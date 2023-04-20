@@ -35,7 +35,6 @@ export async function fetchFromWeb(url: string) {
     const HTMLData = await fetchPage(url);
     const dom = new JSDOM(HTMLData);
     return dom.window.document;
-
 }
 
 function extractLinks(document: Document) {
@@ -47,8 +46,6 @@ function extractLinks(document: Document) {
 
 export function extractCharacterData(characterDocument: Document) {
     const transformedCharacterData: Transformation[] = extractTransformedCharacterData(characterDocument);
-
-    
 
     const characterData: Character = {
         name: characterDocument.querySelector('.mw-parser-output')?.querySelector('table > tbody > tr > td:nth-child(2)')?.innerHTML.split('<br>')[1].split('</b>')[0].replaceAll('&amp;', '&') ?? 'Error',
@@ -128,4 +125,3 @@ function extractTransformedCharacterData(characterDocument: Document): Transform
     }
     return transformedArray
 }
-
