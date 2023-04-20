@@ -36,6 +36,29 @@ before(async function () {
   separateDetailsBoxData = extractCharacterData(separateDetailsBoxDocument);
 })
 
+describe("Multitransform Art URL Extraction", function () {
+  it("should be able to extract the Max Level - multitransform", () => {
+    equal(multiTransformEZACharacterData.artURL, "https://static.wikia.nocookie.net/dbz-dokkanbattle/images/5/5e/Card_1014760_artwork.png/revision/latest?cb=20230124190253");
+  });
+});
+
+describe("LR Art URL Extraction", function () {
+  it("should be able to extract the LR Art", () => {
+    equal(standardCharacterData.artURL, "https://static.wikia.nocookie.net/dbz-dokkanbattle/images/8/8a/Card_1020220_artwork_apng.webp/revision/latest?cb=20210802101948");
+  });
+});
+
+describe("Transformed Art URL Extraction Multi Transformation", function () {
+  it("should be able to extract the Multi Transformation Art", () => {
+    equal(multiTransformEZACharacterData.transformations[1].artURL, "https://static.wikia.nocookie.net/dbz-dokkanbattle/images/a/ac/Card_4014780_artwork.png/revision/latest?cb=20230124190256");
+  });
+});
+
+describe("LR Art URL Extraction Transformation", function () {
+  it("should be able to extract the LR Transformation Art", () => {
+    equal(transformCharacterData.transformations[0].artURL, "https://static.wikia.nocookie.net/dbz-dokkanbattle/images/4/41/Card_4022390_artwork_apng.webp/revision/latest?cb=20220131111841");
+  });
+});
 
 describe("Name Extraction", function () {
   it("should be able to extract the name - multitransform", () => {
