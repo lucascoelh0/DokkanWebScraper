@@ -14,29 +14,41 @@ export async function saveDokkanResults() {
     }
     console.log('Starting scrape');
     const URData = await getDokkanData('UR');
-    console.log('First set done');
-    const URData2 = await getDokkanData('UR?from=Evil+Pride+Frieza+(Final+Form)+(Angel)');
-    console.log('Second set done');
-    const URData3 = await getDokkanData('UR?from=Next-Level+Strike+Super+Saiyan+God+SS+Goku');
-    console.log('Third set done');
-    const URData4 = await getDokkanData('UR?from=Training+and+Refreshment+Goku');
-    console.log('Forth set done');
+    console.log('Finished scraping UR');
     const LRData = await getDokkanData('LR');
-    console.log('Finished scrape, saving data');
-    let data = LRData.concat(URData, URData2, URData3, URData4);
+    console.log('Finished scraping LR');
+
+    const data = URData.concat(LRData);
     let currentDate = new Date();
     let day = ("0" + currentDate.getUTCDate()).slice(-2);
     let month = ("0" + currentDate.getUTCMonth() + 1).slice(-2);
     let year = currentDate.getUTCFullYear()
-    saveData(year + month + day + 'DokkanCharacterData', data)
+
+    console.log('Saving images');
+
+    saveData(`${year}${month}${day}DokkanCharacterData`, data);
 
     for (const character of data) {
-        await saveImage(character.portraitFilename, character.portraitURL, 6)
-        await saveImage(character.artFilename, character.artURL, 9)
+        await saveImageWithRetry(character.portraitFilename, character.portraitURL, 6)
+        await saveImageWithRetry(character.artFilename, character.artURL, 9)
 
         for (const transformation of character.transformations) {
-            await saveImage(transformation.portraitFilename, transformation.portraitURL, 6)
-            await saveImage(transformation.artFilename, transformation.artURL, 9)
+            await saveImageWithRetry(transformation.portraitFilename, transformation.portraitURL, 6)
+            await saveImageWithRetry(transformation.artFilename, transformation.artURL, 9)
+        }
+    }
+}
+
+async function saveImageWithRetry(filename: string, url: string, compressionLevel: number, retries = 3) {
+    try {
+        await saveImage(filename, url, compressionLevel);
+    } catch (error) {
+        if (retries > 0) {
+            console.log(`Error saving image from ${url}. Retrying in 2 seconds...`);
+            return saveImageWithRetry(filename, url, compressionLevel, retries - 1);
+        } else {
+            console.error(`Failed to save image from ${url} after 3 attempts.`);
+            throw error;
         }
     }
 }
@@ -52,6 +64,7 @@ function saveData(fileName: string, data: unknown) {
 const saveImage = async (filename: string, url: string, compressionLevel: number) => {
     const path = `data/images/${filename}`
     if (!fs.existsSync(path)) {
+        await delay(200);
         const response = await fetch(url)
         const blob = await response.blob()
         const arrayBuffer = await blob.arrayBuffer()
@@ -60,6 +73,10 @@ const saveImage = async (filename: string, url: string, compressionLevel: number
             .png({ quality: 10, compressionLevel: compressionLevel })
             .toFile(`${path}`)
     }
+}
+
+async function delay(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 saveDokkanResults()

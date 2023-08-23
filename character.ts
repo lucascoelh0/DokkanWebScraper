@@ -41,7 +41,8 @@ export interface Character {
     freeDupeDefence: number,
     rainbowDefence: number,
     kiMultiplier: string,
-    transformations?: Transformation[]
+    standbySkill: string,
+    transformations?: Transformation[],
 }
 
 export enum Classes {
@@ -80,5 +81,6 @@ export interface Transformation {
     portraitURL: string,
     portraitFilename: string,
     artURL: string,
-    artFilename: string
+    artFilename: string,
+    finishingMove: string[],
 }
