@@ -77,9 +77,8 @@ export function extractCharacterData(characterDocument: Document) {
     const conditionRow = characterDocument.querySelector('tr a[href="/wiki/Transformation"] img[alt$="Condition"]')?.closest('tr');
     const conditionDetails = conditionRow?.nextElementSibling?.querySelector('td > center')?.textContent ?? undefined;
     const standbySkillElement = characterDocument.querySelector('[data-image-name="Standby skill.png"]');
-    let standbyDescription = standbySkillElement?.closest('tr')?.nextElementSibling?.textContent ?? undefined;
-
-    const nextRowDescription = standbySkillElement?.closest('tr')?.nextElementSibling?.nextElementSibling?.textContent ?? undefined;
+    let standbyDescription = getTextWithType(standbySkillElement?.closest('tr')?.nextElementSibling, dokkanTypeMap);
+    const nextRowDescription = getTextWithType(standbySkillElement?.closest('tr')?.nextElementSibling?.nextElementSibling, dokkanTypeMap);
     if (nextRowDescription) {
         standbyDescription = standbyDescription ? `${standbyDescription}; ${nextRowDescription}` : nextRowDescription;
     }
@@ -127,7 +126,7 @@ export function extractCharacterData(characterDocument: Document) {
         freeDupeDefence: parseInt(characterDocument.querySelector('.righttablecard > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(4) > td:nth-child(4) > center:nth-child(1)')?.textContent ?? 'Error'),
         rainbowDefence: parseInt(characterDocument.querySelector('.righttablecard > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(4) > td:nth-child(5) > center:nth-child(1)')?.textContent ?? 'Error'),
         kiMultiplier: (characterDocument.querySelector('.righttablecard > table:nth-child(6) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(1)')?.innerHTML.split('► ')[1].split('<br>')[0].concat('; ', characterDocument.querySelector('.righttablecard > table:nth-child(6) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(1)')?.innerHTML.split('<br>► ')[1] ?? '').replace('<a href="/wiki/Super_Attack_Multipliers" title="Super Attack Multipliers">SA Multiplier</a>', 'SA Multiplier') ?? characterDocument.querySelector('.righttablecard')?.nextElementSibling?.querySelector('tr:nth-child(2) > td')?.textContent?.split('► ')[1]) ?? 'Error',
-        standbySkill: standbyDescription,
+        standbySkill: standbyDescription.includes('Error') ? "" : standbyDescription,
         transformations: transformedCharacterData,
     }
 
