@@ -185,8 +185,8 @@ function extractTransformedCharacterData(characterDocument: Document): Transform
             artFilename: "",
             finishingMove: finishMoves,
         }
-        transformationData.portraitFilename = `portrait_${transformationData.id}.png`
-        transformationData.artFilename = `art_${transformationData.id}.jpg`
+        transformationData.portraitFilename = `portrait_${transformationData.id}`
+        transformationData.artFilename = `art_${transformationData.id}`
         transformedArray.push(transformationData)
     }
     return transformedArray
