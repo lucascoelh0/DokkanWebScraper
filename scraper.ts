@@ -108,6 +108,7 @@ export function extractCharacterData(characterDocument: Document) {
         ezaActiveSkill: characterDocument.querySelectorAll('table.ezawidth')[1]?.querySelector('[data-image-name="Active skill.png"]')?.closest('tr')?.nextElementSibling?.textContent ?? undefined,
         ezaActiveSkillCondition: characterDocument.querySelectorAll('table.ezawidth')[1]?.querySelector('[data-image-name="Active skill.png"]')?.closest('tr')?.nextElementSibling?.nextElementSibling?.nextElementSibling?.querySelector('td > center')?.textContent ?? undefined,
         transformationCondition: conditionDetails,
+        domain: characterDocument.querySelector('[data-image-name="Domain text.png"]')?.closest('tr')?.nextElementSibling?.textContent ?? undefined,
         links: Array.from(characterDocument.querySelector('[data-image-name="Link skill.png"]')?.closest('tr')?.nextElementSibling?.querySelectorAll('span > a') ?? []).map(link => link.textContent ?? 'Error'),
         categories: Array.from(characterDocument.querySelector('[data-image-name="Category.png"]')?.closest('tr')?.nextElementSibling?.querySelectorAll('a') ?? []).map(link => link.textContent ?? 'Error'),
         kiMeter: Array.from(characterDocument.querySelector('[data-image-name="Ki meter.png"]')?.closest('tbody')?.querySelectorAll('img') ?? []).map(kiMeter => kiMeter.getAttribute('alt')?.split('.png')[0] ?? 'Error').slice(1),
@@ -130,8 +131,8 @@ export function extractCharacterData(characterDocument: Document) {
         transformations: transformedCharacterData,
     }
 
-    characterData.portraitFilename = `portrait_${characterData.id}.png`
-    characterData.artFilename = `art_${characterData.id}.jpg`
+    characterData.portraitFilename = `portrait_${characterData.id}`
+    characterData.artFilename = `art_${characterData.id}`
 
     characterData.transformations.forEach(function (value) {
         value.baseCharacterId = characterData.id
@@ -179,6 +180,7 @@ function extractTransformedCharacterData(characterDocument: Document): Transform
             activeSkill: characterDocument.querySelector(`.mw-parser-output > div:nth-child(2) > div:nth-child(${index + 2})`)?.querySelector('[data-image-name="Active skill.png"]')?.closest('tr')?.nextElementSibling?.textContent ?? undefined,
             activeSkillCondition: characterDocument.querySelector(`.mw-parser-output > div:nth-child(2) > div:nth-child(${index + 2})`)?.querySelector('[data-image-name="Activation Condition.png"]')?.closest('tr')?.nextElementSibling?.textContent ?? undefined,
             links: Array.from(characterDocument.querySelector(`.mw-parser-output > div:nth-child(2) > div:nth-child(${index + 2})`)?.querySelector('[data-image-name="Link skill.png"]')?.closest('tr')?.nextElementSibling?.querySelectorAll('span > a') ?? []).map(link => link.textContent ?? 'Error'),
+            domain: characterDocument.querySelector(`.mw-parser-output > div:nth-child(2) > div:nth-child(${index + 2})`)?.querySelector('[data-image-name="Domain text.png"]')?.closest('tr')?.nextElementSibling?.textContent ?? undefined,
             portraitURL: characterDocument.querySelector(`.mw-parser-output > div:nth-child(2) > div:nth-child(${index + 2}) > table > tbody > tr > td > div > img`)?.getAttribute('src') ?? characterDocument.querySelector(`.mw-parser-output > div:nth-child(2) > div:nth-child(${index + 2}) > table > tbody > tr > td > a`)?.getAttribute('href'),
             portraitFilename: "",
             artURL: (characterDocument.querySelector(`.mw-parser-output > div:nth-child(2) > div:nth-child(${index + 2}`)?.querySelector(`.lefttablecard > table:nth-child(1) > tbody > tr > td > center > span > a`)?.getAttribute('href') || characterDocument.querySelector(`.mw-parser-output > div:nth-child(2) > div:nth-child(${index + 2})`)?.querySelector(`.lefttablecard > table:nth-child(1) > tbody > tr > td > center > span > div > img`)?.getAttribute('src')) ?? 'Error',

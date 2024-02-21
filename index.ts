@@ -29,12 +29,12 @@ export async function saveDokkanResults() {
     saveData(`${year}${month}${day}DokkanCharacterData`, data);
 
     for (const character of data) {
-        await saveImageWithRetry(character.portraitFilename, character.portraitURL, 6)
-        await saveImageWithRetry(character.artFilename, character.artURL, 9)
+        await saveImageWithRetry(`${character.portraitFilename}.png`, character.portraitURL, 6)
+        await saveImageWithRetry(`${character.artFilename}.jpg`, character.artURL, 9)
 
         for (const transformation of character.transformations) {
-            await saveImageWithRetry(transformation.portraitFilename, transformation.portraitURL, 6)
-            await saveImageWithRetry(transformation.artFilename, transformation.artURL, 9)
+            await saveImageWithRetry(`${transformation.portraitFilename}.png`, transformation.portraitURL, 6)
+            await saveImageWithRetry(`${transformation.artFilename}.jpg`, transformation.artURL, 9)
         }
     }
 }
