@@ -69,7 +69,50 @@ function extractLinks(document: Document) {
 }
 
 export function extractCharacterData(characterDocument: Document) {
-    const transformedCharacterData: Transformation[] = extractTransformedCharacterData(characterDocument);
+    function cleanText(text: string): string {
+        return text
+            .replace(/\[\d+\]/g, '') // Removes [1], [2], etc.
+            .replace(/, plus an additional HP,/g, '; plus an additional HP,'); // Adjusts leader skill text
+    }
+
+    function cleanStringFields(obj: any) {
+        for (const key in obj) {
+            if (typeof obj[key] === 'string') {
+                obj[key] = cleanText(obj[key]);
+            }
+        }
+        return obj;
+    }
+
+    function cleanObject(obj: any): any {
+        for (const propName in obj) {
+            if (obj[propName] === undefined || obj[propName] === '' || 
+                Array.isArray(obj[propName]) && obj[propName].length === 0) {
+                delete obj[propName];
+            }
+        }
+        return obj;
+    }
+
+    function getUnitSuperAttacks() {
+        // Get all Unit Super Attacks
+        const unitSuperAttacks = Array.from(characterDocument.querySelectorAll('[data-image-name="Unit SA.png"]'))
+            .map(element => element.closest('tr')?.nextElementSibling?.textContent.trim() ?? undefined);
+
+        // Get all Activation Conditions
+        const activationConditions = Array.from(characterDocument.querySelectorAll('[data-image-name="Activation Condition.png"]'))
+            .map(element => element.closest('tr')?.nextElementSibling?.textContent.trim() ?? undefined);
+
+        // Combine the Unit Super Attacks with their respective Activation Conditions
+        return unitSuperAttacks.map((attack, index) => {
+            return {
+                unitSuperAttack: attack,
+                unitSuperAttackCondition: activationConditions[index]
+            };
+        });
+    }
+
+    const transformedCharacterData: Transformation[] = extractTransformedCharacterData(characterDocument).filter(transformation => transformation.id !== "11066");
     const leaderSkillElement = characterDocument.querySelector('[data-image-name="Leader Skill.png"]')?.closest('tr')?.nextElementSibling;
     const ezaLeaderSkillElement = characterDocument.querySelector('.ezatabber > div > div:nth-child(3) > table > tbody > tr:nth-child(2) > td') ?? undefined;
     const passiveSkillElement = characterDocument.querySelector('[data-image-name="Passive skill.png"]')?.closest('tr')?.nextElementSibling ?? undefined;
@@ -101,6 +144,7 @@ export function extractCharacterData(characterDocument: Document) {
         ezaSuperAttack: characterDocument.querySelectorAll('table.ezawidth')[1]?.querySelector('[data-image-name="Super atk.png"]')?.closest('tr')?.nextElementSibling?.textContent ?? undefined,
         ultraSuperAttack: characterDocument.querySelector('[data-image-name="Ultra Super atk.png"]')?.closest('tr')?.nextElementSibling?.textContent ?? undefined,
         ezaUltraSuperAttack: characterDocument.querySelectorAll('table.ezawidth')[1]?.querySelector('[data-image-name="Ultra Super atk.png"]')?.closest('tr')?.nextElementSibling?.textContent ?? undefined,
+        unitSuperAttacks: getUnitSuperAttacks(),
         passive: passiveSkillElement != undefined ? getTextWithType(passiveSkillElement, dokkanTypeMap) : undefined,
         ezaPassive: ezaPassiveSkillElement != undefined ? getTextWithType(ezaPassiveSkillElement, dokkanTypeMap) : undefined,
         activeSkill: (characterDocument.querySelector('[data-image-name="Active skill.png"]')?.closest('tr')?.nextElementSibling?.textContent || characterDocument.querySelector('[data-image-name="Active skill.png"]')?.closest('tr')?.nextElementSibling?.nextElementSibling?.textContent) ?? undefined,
@@ -131,14 +175,36 @@ export function extractCharacterData(characterDocument: Document) {
         transformations: transformedCharacterData,
     }
 
-    characterData.portraitFilename = `portrait_${characterData.id}`
-    characterData.artFilename = `art_${characterData.id}`
+    characterData.portraitFilename = `portrait_${characterData.id}`;
+    characterData.artFilename = `art_${characterData.id}`;
 
     characterData.transformations.forEach(function (value) {
-        value.baseCharacterId = characterData.id
+        value.baseCharacterId = characterData.id;
     })
 
-    return characterData
+    for (const key in characterData) {
+        if (typeof characterData[key] === 'string') {
+            characterData[key] = cleanText(characterData[key]);
+        }
+    }
+
+    // Clean the unitSuperAttacks fields
+    if (Array.isArray(characterData.unitSuperAttacks)) {
+        characterData.unitSuperAttacks = characterData.unitSuperAttacks.map(cleanStringFields);
+    }
+
+    // Clean the transformations fields
+    if (Array.isArray(characterData.transformations)) {
+        characterData.transformations = characterData.transformations.map(cleanStringFields);
+    }
+
+    if (characterData.transformations) {
+        characterData.transformations = characterData.transformations.map(transformation => cleanObject(transformation));
+    }
+
+    const cleanedCharacterData = cleanObject(characterData);
+
+    return cleanedCharacterData;
 }
 
 function extractTransformedCharacterData(characterDocument: Document): Transformation[] {

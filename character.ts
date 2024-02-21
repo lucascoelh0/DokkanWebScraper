@@ -16,6 +16,7 @@ export interface Character {
     ezaSuperAttack?: string,
     ultraSuperAttack?: string,
     ezaUltraSuperAttack?: string,
+    unitSuperAttacks?: UnitSuperAttack[]; 
     passive: string,
     ezaPassive?: string,
     activeSkill?: string,
@@ -44,6 +45,11 @@ export interface Character {
     kiMultiplier: string,
     standbySkill: string,
     transformations?: Transformation[],
+}
+
+export interface UnitSuperAttack {
+    unitSuperAttack: string | undefined;
+    unitSuperAttackCondition: string | undefined;
 }
 
 export enum Classes {
