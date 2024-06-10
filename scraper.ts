@@ -112,11 +112,11 @@ export function extractCharacterData(characterDocument: Document) {
         });
     }
 
+    const hasSuperEZA = characterDocument.querySelector('li.wds-tabs__tab[data-hash="Super_Z-Awakened"]') !== null;
     const transformedCharacterData: Transformation[] = extractTransformedCharacterData(characterDocument).filter(transformation => transformation.id !== "11066");
     const leaderSkillElement = characterDocument.querySelector('[data-image-name="Leader Skill.png"]')?.closest('tr')?.nextElementSibling;
     const ezaLeaderSkillElement = characterDocument.querySelector('.ezatabber > div > div:nth-child(3) > table > tbody > tr:nth-child(2) > td') ?? undefined;
     const passiveSkillElement = characterDocument.querySelector('[data-image-name="Passive skill.png"]')?.closest('tr')?.nextElementSibling ?? undefined;
-    const ezaPassiveSkillElement = characterDocument.querySelectorAll('table.ezawidth')[1]?.querySelector('[data-image-name="Passive skill.png"]')?.closest('tr')?.nextElementSibling ?? undefined;
     const conditionRow = characterDocument.querySelector('tr a[href="/wiki/Transformation"] img[alt$="Condition"]')?.closest('tr');
     const conditionDetails = conditionRow?.nextElementSibling?.querySelector('td > center')?.textContent ?? undefined;
     const standbySkillElement = characterDocument.querySelector('[data-image-name="Standby skill.png"]');
@@ -124,6 +124,24 @@ export function extractCharacterData(characterDocument: Document) {
     const nextRowDescription = getTextWithType(standbySkillElement?.closest('tr')?.nextElementSibling?.nextElementSibling, dokkanTypeMap);
     if (nextRowDescription) {
         standbyDescription = standbyDescription ? `${standbyDescription}; ${nextRowDescription}` : nextRowDescription;
+    }
+
+    let ezaPassiveSkill;
+    let sezaPassiveSkill;
+    if (hasSuperEZA) {
+        const passiveTabsContainer = characterDocument.querySelector('tr td[colspan="2"] .eventstabber .tabber.wds-tabber');
+        const tabsContent = passiveTabsContainer.querySelectorAll('.wds-tab__content');
+
+        if (tabsContent[0]) {
+            ezaPassiveSkill = tabsContent[0].querySelector('center')?.textContent.trim() || 'Error';
+        }
+
+        if (tabsContent[1]) {
+            sezaPassiveSkill = tabsContent[1].querySelector('center')?.textContent.trim() || 'Error';
+        }
+    } else {
+        let ezaPassiveSkillElement = characterDocument.querySelectorAll('table.ezawidth')[1]?.querySelector('[data-image-name="Passive skill.png"]')?.closest('tr')?.nextElementSibling ?? undefined;
+        ezaPassiveSkill = ezaPassiveSkillElement != undefined ? getTextWithType(ezaPassiveSkillElement, dokkanTypeMap) : undefined
     }
 
     const characterData: Character = {
@@ -146,7 +164,8 @@ export function extractCharacterData(characterDocument: Document) {
         ezaUltraSuperAttack: characterDocument.querySelectorAll('table.ezawidth')[1]?.querySelector('[data-image-name="Ultra Super atk.png"]')?.closest('tr')?.nextElementSibling?.textContent ?? undefined,
         unitSuperAttacks: getUnitSuperAttacks(),
         passive: passiveSkillElement != undefined ? getTextWithType(passiveSkillElement, dokkanTypeMap) : undefined,
-        ezaPassive: ezaPassiveSkillElement != undefined ? getTextWithType(ezaPassiveSkillElement, dokkanTypeMap) : undefined,
+        ezaPassive: ezaPassiveSkill ?? undefined,
+        sezaPassive: sezaPassiveSkill ?? undefined,
         activeSkill: (characterDocument.querySelector('[data-image-name="Active skill.png"]')?.closest('tr')?.nextElementSibling?.textContent || characterDocument.querySelector('[data-image-name="Active skill.png"]')?.closest('tr')?.nextElementSibling?.nextElementSibling?.textContent) ?? undefined,
         activeSkillCondition: characterDocument.querySelector('[data-image-name="Active skill.png"]')?.closest('tr')?.nextElementSibling?.nextElementSibling?.nextElementSibling?.querySelector('td > center')?.textContent ?? undefined,
         ezaActiveSkill: characterDocument.querySelectorAll('table.ezawidth')[1]?.querySelector('[data-image-name="Active skill.png"]')?.closest('tr')?.nextElementSibling?.textContent ?? undefined,

@@ -19,6 +19,7 @@ export interface Character {
     unitSuperAttacks?: UnitSuperAttack[]; 
     passive: string,
     ezaPassive?: string,
+    sezaPassive?: string,
     activeSkill?: string,
     activeSkillCondition?: string,
     ezaActiveSkill?: string,
@@ -82,6 +83,7 @@ export interface Transformation {
     ezaUltraSuperAttack?: string,
     passive: string,
     ezaPassive?: string,
+    sezaPassive?: string,
     activeSkill?: string,
     activeSkillCondition?: string,
     domain: string,
