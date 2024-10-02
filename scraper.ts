@@ -11,8 +11,12 @@ export async function getDokkanData(rarity: string) {
     while (currentPageUrl) {
         const document: Document = await fetchFromWeb(currentPageUrl);
         const links: string[] = extractLinks(document);
+        const linkToRemove = 'https://dbz-dokkanbattle.fandom.com/wiki/Category:Dokkan_Fest_Exclusive';
 
-        const charactersData = await Promise.all(links.map(async link => {
+        // Filter out the specific link
+        const filteredLinks: string[] = links.filter(link => link !== linkToRemove);
+
+        const charactersData = await Promise.all(filteredLinks.map(async link => {
             const characterDocument: Document = await fetchFromWeb(link);
             return extractCharacterData(characterDocument);
         }));
@@ -144,6 +148,9 @@ export function extractCharacterData(characterDocument: Document) {
         ezaPassiveSkill = ezaPassiveSkillElement != undefined ? getTextWithType(ezaPassiveSkillElement, dokkanTypeMap) : undefined
     }
 
+    const idElement = characterDocument.querySelector('.mw-parser-output table > tbody > tr:nth-child(3) > td:nth-child(6) > center');
+    const id = idElement ? idElement.textContent.trim() : 'Error';
+
     const characterData: Character = {
         name: characterDocument.querySelector('.mw-parser-output')?.querySelector('table > tbody > tr > td:nth-child(2)')?.innerHTML.split('<br>')[1].split('</b>')[0].replaceAll('&amp;', '&') ?? 'Error',
         title: characterDocument.querySelector('.mw-parser-output')?.querySelector('table > tbody > tr > td:nth-child(2)')?.innerHTML.split('<br>')[0].split('<b>')[1] ?? 'Error',
@@ -153,7 +160,7 @@ export function extractCharacterData(characterDocument: Document) {
         characterClass: Classes[characterDocument.querySelector('.mw-parser-output')?.querySelector('table > tbody > tr:nth-child(3) > td:nth-child(4) > center:nth-child(1) > a:nth-child(1)')?.getAttribute('title')?.split(' ')[0].split('Category:')[1] ?? 'Error'],
         type: Types[characterDocument.querySelector('.mw-parser-output')?.querySelector('table > tbody > tr:nth-child(3) > td:nth-child(4) > center:nth-child(1) > a:nth-child(1)')?.getAttribute('title')?.split(' ')[1] ?? 'Error'],
         cost: parseInt((characterDocument.querySelector('.mw-parser-output')?.querySelector('table > tbody > tr:nth-child(3) > td:nth-child(5) > center:nth-child(1)')?.textContent) ?? 'Error'),
-        id: characterDocument.querySelector('.mw-parser-output')?.querySelector('table > tbody > tr:nth-child(3) > td:nth-child(6) > center:nth-child(1)')?.textContent ?? 'Error',
+        id: id,
         portraitURL: (characterDocument.querySelector('.mw-parser-output')?.querySelector('table > tbody > tr > td > div > img')?.getAttribute('src') || characterDocument.querySelector('.mw-parser-output')?.querySelector('table > tbody > tr > td > a')?.getAttribute('href')) ?? 'Error',
         portraitFilename: "",
         leaderSkill: getTextWithType(leaderSkillElement, dokkanTypeMap),
@@ -191,15 +198,17 @@ export function extractCharacterData(characterDocument: Document) {
         rainbowDefence: parseInt(characterDocument.querySelector('.righttablecard > table:nth-child(3) > tbody:nth-child(1) > tr:nth-child(4) > td:nth-child(5) > center:nth-child(1)')?.textContent ?? 'Error'),
         kiMultiplier: (characterDocument.querySelector('.righttablecard > table:nth-child(6) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(1)')?.innerHTML.split('► ')[1].split('<br>')[0].concat('; ', characterDocument.querySelector('.righttablecard > table:nth-child(6) > tbody:nth-child(1) > tr:nth-child(2) > td:nth-child(1)')?.innerHTML.split('<br>► ')[1] ?? '').replace('<a href="/wiki/Super_Attack_Multipliers" title="Super Attack Multipliers">SA Multiplier</a>', 'SA Multiplier') ?? characterDocument.querySelector('.righttablecard')?.nextElementSibling?.querySelector('tr:nth-child(2) > td')?.textContent?.split('► ')[1]) ?? 'Error',
         standbySkill: standbyDescription.includes('Error') ? "" : standbyDescription,
-        transformations: transformedCharacterData,
+        transformations: id != "1885" ? transformedCharacterData : undefined,
     }
 
     characterData.portraitFilename = `portrait_${characterData.id}`;
     characterData.artFilename = `art_${characterData.id}`;
 
-    characterData.transformations.forEach(function (value) {
-        value.baseCharacterId = characterData.id;
-    })
+    if (id != "1885") {
+        characterData.transformations.forEach(function (value) {
+            value.baseCharacterId = characterData.id;
+        })
+    }
 
     for (const key in characterData) {
         if (typeof characterData[key] === 'string') {
