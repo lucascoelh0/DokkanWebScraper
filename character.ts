@@ -139,7 +139,8 @@ export interface EquipmentSourcePage {
 export interface UnitSuperAttack {
     name?: string;
     effect?: string;
-    type?: string;
+    type?: AttackTypes;
+    rawType?: string;
     ki?: number;
     style?: string;
     unitSuperAttack: string | undefined;
@@ -162,7 +163,8 @@ export interface PassiveDetails {
 export interface SuperAttackDetails {
     name?: string,
     effect?: string,
-    type?: string,
+    type?: AttackTypes,
+    rawType?: string,
     ki?: number,
     style?: string,
     condition?: string,
@@ -219,6 +221,12 @@ export enum Rarities {
     SSR = "SSR",
     UR = "UR",
     LR = "LR"
+}
+
+export enum AttackTypes {
+    Physical = "Physical",
+    KiBlast = "Ki Blast",
+    Other = "Other",
 }
 
 export interface Transformation {

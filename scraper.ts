@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { JSDOM } from 'jsdom';
 import { promisify } from 'util';
-import { AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, PassiveDetails, PortraitSpec, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
+import { AttackTypes, AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, PassiveDetails, PortraitSpec, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
 
 const DOKKAN_INFO_BASE_URL = 'https://dokkaninfo.com';
 const DOKKAN_INFO_CARD_LIST_URL = `${DOKKAN_INFO_BASE_URL}/cards?sort=open_at`;
@@ -956,7 +956,8 @@ function unitSuperAttacks(superAttacks: DokkanInfoSuperAttack[]): UnitSuperAttac
         .map(superAttack => ({
             name: cleanInlineText(superAttack.attack?.name),
             effect: cleanMultilineText(superAttack.attack?.description),
-            type: cleanInlineText(superAttack.rawAttribute?.name),
+            type: attackType(superAttack.rawAttribute?.name),
+            rawType: cleanInlineText(superAttack.rawAttribute?.name),
             ki: superAttack.eball_num_start,
             style: cleanInlineText(superAttack.style),
             unitSuperAttack: cleanInlineText(formatNamedDescription(superAttack.attack)),
@@ -1014,7 +1015,8 @@ function superAttackDetails(superAttacks: DokkanListValue<DokkanInfoSuperAttack>
     return cleanObject({
         name: cleanInlineText(attack.attack?.name),
         effect: cleanMultilineText(attack.attack?.description),
-        type: cleanInlineText(attack.rawAttribute?.name),
+        type: attackType(attack.rawAttribute?.name),
+        rawType: cleanInlineText(attack.rawAttribute?.name),
         ki: attack.eball_num_start,
         style: cleanInlineText(attack.style),
         condition: cleanMultilineText(attack.attack?.causality_description ?? attack.causality_description ?? attack.causality_conditions),
@@ -1036,6 +1038,20 @@ function matchingSuperAttack(superAttacks: DokkanListValue<DokkanInfoSuperAttack
 
         return style.includes('normal') || (!style.includes('hyper') && !style.includes('ultra') && !style.includes('extra') && !style.includes('condition') && ki < 18);
     });
+}
+
+function attackType(value: string | undefined): AttackTypes {
+    const normalized = cleanInlineText(value).toLowerCase();
+
+    if (normalized.includes('ki blast')) {
+        return AttackTypes.KiBlast;
+    }
+
+    if (normalized.includes('unarmed') || normalized.includes('armed') || normalized.includes('physical')) {
+        return AttackTypes.Physical;
+    }
+
+    return AttackTypes.Other;
 }
 
 function characterExtraInfo(card: DokkanInfoCardSummary): CharacterExtraInfo {

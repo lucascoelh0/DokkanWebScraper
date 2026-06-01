@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync } from "fs";
-import { writeFile } from "fs/promises";
 import { resolve } from "path";
 import { getDokkanData, getEquipmentData } from "./scraper";
 import * as fs from 'fs';
 import * as sharp from 'sharp';
 import { Character, PortraitSpec, Rarities } from "./character";
+import { writeFormattedJson } from "./format-json";
 
 const DOKKAN_INFO_ASSET_BASE_URL = 'https://dokkaninfo.com/assets/global/en';
 
@@ -27,8 +27,8 @@ export async function saveDokkanResults() {
 
     console.log('Saving images');
 
-    saveData(`${year}${month}${day}DokkanCharacterData`, data);
-    saveData(`${year}${month}${day}DokkanEquipmentData`, equipment);
+    await saveData(`${year}${month}${day}DokkanCharacterData`, data);
+    await saveData(`${year}${month}${day}DokkanEquipmentData`, equipment);
 
     for (const portrait of collectPortraitTargets(data)) {
         await savePortraitWithRetry(`${portrait.filename}.png`, portrait.spec, 6)
@@ -63,11 +63,11 @@ async function saveImageWithRetry(filename: string, url: string, compressionLeve
     }
 }
 
-function saveData(fileName: string, data: unknown) {
-    writeFile(
+async function saveData(fileName: string, data: unknown) {
+    await writeFormattedJson(
         resolve(__dirname, `data/${fileName}.json`),
-        JSON.stringify(data),
-        { encoding: 'utf8' })
+        data,
+    );
 }
 
 function collectPortraitTargets(characters: Character[]): { filename: string, spec?: PortraitSpec }[] {

@@ -119,7 +119,7 @@ Leader, passive, links, categories, stats, ki meter and art URL keep the existin
 Structured combat fields now exist alongside the legacy compatibility strings:
 
 - `passiveDetails` / `ezaPassiveDetails`: passive name, multi-line text and split lines
-- `superAttackDetails`, `ultraSuperAttackDetails`, `exSuperAttackDetails` and EZA variants: attack name, effect, raw attack type, Ki threshold, style and extras
+- `superAttackDetails`, `ultraSuperAttackDetails`, `exSuperAttackDetails` and EZA variants: attack name, normalized attack type, raw attack type, Ki threshold, style and extras
 - `extraInfo`: currently used for structured Ki multiplier data
 
 Super attacks:
@@ -128,6 +128,8 @@ Super attacks:
 - `ultraSuperAttack`: `style: "Hyper"` or Ki >= 18
 - `exSuperAttack`: `style: "Extra"`
 - `unitSuperAttacks`: `style: "Condition"` or `style: "Unit"`
+- attack `type`: `Physical`, `Ki Blast`, or `Other`
+- attack `rawType`: original DokkanInfo label such as `Unarmed` or `Armed`
 
 Active skills:
 
@@ -165,3 +167,19 @@ Other mechanics:
 DokkanInfo sometimes serves a base card payload on an awakened card URL while putting the requested rarity in the list data. The scraper merges list fields into detail fields so rarity, stats, release dates and card ID stay correct for all rarities.
 
 Some transformed states only work through the transformation endpoint when EZA query params are included. The scraper first tries the plain endpoint, then retries with `?eza=true&step={max_eza_step}` when available.
+
+## JSON formatting
+
+The scraper now writes pretty-printed JSON by default.
+
+To reformat existing JSON files in `data/` without scraping again:
+
+```powershell
+npm run format:data
+```
+
+To format a specific file only:
+
+```powershell
+npx ts-node format-json.ts data/20260601DokkanCharacterData.json
+```

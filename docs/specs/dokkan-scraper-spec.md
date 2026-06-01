@@ -95,11 +95,18 @@ Structured fields added on top:
 
 - `name`: attack name
 - `effect`: attack effect text
-- `type`: raw attack type such as `Unarmed`
+- `type`: normalized attack type enum: `Physical`, `Ki Blast`, or `Other`
+- `rawType`: raw DokkanInfo attack type such as `Unarmed`
 - `ki`: starting Ki threshold when available
 - `style`: DokkanInfo style such as `Normal`, `Hyper`, `Extra`, `Condition`
 - `condition`: causality or activation condition text when present
 - `extras`: formatted extra effect labels from DokkanInfo
+
+Attack type normalization rules:
+
+- `Ki Blast` stays `Ki Blast`
+- `Unarmed`, `Armed`, and `Physical` map to `Physical`
+- missing or unknown values map to `Other`
 
 ### `CharacterExtraInfo`
 
@@ -131,6 +138,11 @@ Minimum validation for scraper changes:
 2. targeted smoke scrape with `DOKKAN_SCRAPER_LIMIT`
 3. targeted card scrape with `DOKKAN_SCRAPER_CARD_IDS`
 4. if equipment changed, smoke scrape with `DOKKAN_SCRAPER_EQUIPMENT_LIMIT`
+
+## Output Formatting
+
+- Character and equipment JSON outputs must be pretty-printed with indentation.
+- `npm run format:data` must reformat existing JSON files in `data/` without running a new scrape.
 
 ## Current Known Gaps
 
