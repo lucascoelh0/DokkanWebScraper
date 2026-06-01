@@ -61,7 +61,7 @@ Awakening references:
 - `previousAwakenings`: related cards with lower rarity than the current card
 - `nextAwakenings`: related cards with higher rarity than the current card
 
-Each awakening reference includes `id`, `legacyId`, `name`, `rarity`, `characterClass`, `type`, `releaseDate`, `portraitURL` and `artURL`.
+Each awakening reference includes `id`, `legacyId`, `name`, `rarity`, `characterClass`, `type`, `releaseDate`, `portraitURL`, `portraitAssets` and `artURL`.
 
 ## Equipment
 
@@ -103,7 +103,9 @@ Dates are saved as UTC ISO strings.
 
 ## Mechanics mapping
 
-Leader, passive, links, categories, stats, ki meter, art URL and portrait URL keep the existing fields where possible.
+Leader, passive, links, categories, stats, ki meter and art URL keep the existing fields where possible.
+
+`portraitURL` now points to a locally composed file in `data/images`, for example `images/portrait_1033830.png`. The composition uses the same DokkanInfo layers the site uses in `card-icon`, and `portraitAssets` preserves those source URLs for future regeneration or alternate rendering.
 
 Structured combat fields now exist alongside the legacy compatibility strings:
 

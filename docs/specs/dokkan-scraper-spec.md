@@ -58,8 +58,13 @@ Stable top-level fields still used by the Android app:
 
 Field rules:
 
-- `portraitURL` must use the same thumb asset used by the DokkanInfo `card-icon` component:
-  `/assets/global/en/character/thumb/card_{icon_id}_thumb/card_{icon_id}_thumb.png`
+- `portraitURL` must point to the locally composed portrait image:
+  `images/portrait_{id}.png`
+- `portraitAssets` must preserve the DokkanInfo layers used by the `card-icon` component:
+  - background: `/layout/en/image/character/character_thumb_bg/cha_base_0{bg_element}_0{rarity}.png`
+  - icon: `/character/thumb/card_{icon_id}_thumb/card_{icon_id}_thumb.png`
+  - rarity: `/layout/en/image/character/cha_rare_sm_{rarity}.png`
+  - type: `/layout/en/image/character/cha_type_icon_{element}.png`
 - `artURL` continues to use the full card art asset
 - `characterClass` should come from `element` when DokkanInfo encodes Super or Extreme there
 - if `element` does not encode class, such as many SSR cards with values like `00` through `04`, infer class from `awakening_element_type`

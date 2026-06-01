@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { JSDOM } from 'jsdom';
 import { promisify } from 'util';
-import { AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, PassiveDetails, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
+import { AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, PassiveDetails, PortraitAssets, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
 
 const DOKKAN_INFO_BASE_URL = 'https://dokkaninfo.com';
 const DOKKAN_INFO_CARD_LIST_URL = `${DOKKAN_INFO_BASE_URL}/cards?sort=open_at`;
@@ -39,6 +39,7 @@ interface DokkanInfoCardSummary {
     def_hipo?: number;
     element: string;
     awakening_element_type?: number;
+    bg_element?: string;
     icon_id?: number;
     asset_id?: number;
     open_at?: number;
@@ -749,6 +750,7 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
     const ezaExtraSuperAttack = superAttackDetails(ezaSuperAttacks, 'extra');
     const extraInfo = characterExtraInfo(card);
     const awakeningCards = arrayFromDokkanList(data.awakening_cards);
+    const portraitFilename = `portrait_${id}`;
 
     const characterData: Character = {
         name: cleanInlineText(card.name),
@@ -766,8 +768,9 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
         cost: toNumber(card.cost),
         id,
         legacyId,
-        portraitURL: cardThumbUrl(card.icon_id ?? assetId),
-        portraitFilename: `portrait_${id}`,
+        portraitURL: portraitOutputUrl(portraitFilename),
+        portraitFilename,
+        portraitAssets: portraitAssets(card),
         leaderSkill: cleanMultilineText(data.leader_skill?.description),
         ezaLeaderSkill: cleanMultilineText(data.eza_data?.leader_skill?.description),
         superAttack: normalSuperAttack?.effect ?? '',
@@ -889,6 +892,23 @@ function cardImageUrl(assetId: number, filename: string): string {
 
 function cardThumbUrl(iconId: number): string {
     return `${DOKKAN_INFO_ASSET_BASE_URL}/character/thumb/card_${iconId}_thumb/card_${iconId}_thumb.png`;
+}
+
+function portraitOutputUrl(portraitFilename: string): string {
+    return `images/${portraitFilename}.png`;
+}
+
+function portraitAssets(card: DokkanInfoCardSummary): PortraitAssets {
+    const rarityKey = rarityFromNumber(card.rarity).toLowerCase();
+    const iconId = card.icon_id ?? card.asset_id ?? normalizeAssetId(card.id);
+    const bgElement = (card.bg_element ?? `${parseInt(card.element, 10) % 10}`).padStart(1, '0');
+
+    return {
+        backgroundURL: `${DOKKAN_INFO_ASSET_BASE_URL}/layout/en/image/character/character_thumb_bg/cha_base_0${bgElement}_0${card.rarity}.png`,
+        iconURL: cardThumbUrl(iconId),
+        rarityURL: `${DOKKAN_INFO_ASSET_BASE_URL}/layout/en/image/character/cha_rare_sm_${rarityKey}.png`,
+        typeURL: `${DOKKAN_INFO_ASSET_BASE_URL}/layout/en/image/character/cha_type_icon_${card.element}.png`,
+    };
 }
 
 function rarityFromNumber(rarity: number): Rarities {
@@ -1047,6 +1067,7 @@ function transformations(data: DokkanInfoCardData, baseCharacterId: string): Tra
         const ultraSuperAttack = superAttackDetails(superAttacks, 'ultra');
         const extraSuperAttack = superAttackDetails(superAttacks, 'extra');
         const extraInfo = characterExtraInfo(detailCard);
+        const portraitFilename = `portrait_${id}`;
 
         return cleanObject({
             id,
@@ -1073,8 +1094,9 @@ function transformations(data: DokkanInfoCardData, baseCharacterId: string): Tra
             transformationCondition: namedDescriptionsText(detail?.transformation),
             domain: namedDescriptionsText(detail?.dokkan_fields),
             links: detailLinks.length ? detailLinks : links,
-            portraitURL: cardThumbUrl(detailCard.icon_id ?? assetId),
-            portraitFilename: `portrait_${id}`,
+            portraitURL: portraitOutputUrl(portraitFilename),
+            portraitFilename,
+            portraitAssets: portraitAssets(detailCard),
             artURL: cardImageUrl(assetId, `${assetId}.png`),
             artFilename: `art_${id}`,
             extraInfo,
@@ -1099,7 +1121,8 @@ function awakeningReferences(cards: DokkanListValue<DokkanInfoCardSummary>): Awa
             characterClass: classFromCard(card),
             type: typeFromElement(card.element),
             releaseDate: releaseDate(card.open_at),
-            portraitURL: cardThumbUrl(card.icon_id ?? assetId),
+            portraitURL: portraitOutputUrl(`portrait_${card.id}`),
+            portraitAssets: portraitAssets(card),
             artURL: cardImageUrl(assetId, `${assetId}.png`),
         };
     });

@@ -16,6 +16,7 @@ export interface Character {
     legacyId?: string,
     portraitURL: string,
     portraitFilename: string,
+    portraitAssets?: PortraitAssets,
     leaderSkill: string,
     ezaLeaderSkill?: string,
     superAttack: string,
@@ -145,6 +146,13 @@ export interface UnitSuperAttack {
     unitSuperAttackCondition: string | undefined;
 }
 
+export interface PortraitAssets {
+    backgroundURL: string,
+    iconURL: string,
+    rarityURL: string,
+    typeURL: string,
+}
+
 export interface PassiveDetails {
     name?: string,
     text?: string,
@@ -181,6 +189,7 @@ export interface AwakeningReference {
     type: Types,
     releaseDate?: string,
     portraitURL: string,
+    portraitAssets?: PortraitAssets,
     artURL: string,
 }
 
@@ -248,6 +257,7 @@ export interface Transformation {
     links:string[],
     portraitURL: string,
     portraitFilename: string,
+    portraitAssets?: PortraitAssets,
     artURL: string,
     artFilename: string,
     extraInfo?: CharacterExtraInfo,
