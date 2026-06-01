@@ -1,5 +1,12 @@
 # DokkanInfo scraper reference
 
+Primary short-form specs now live in:
+
+- `docs/specs/dokkan-scraper-spec.md`
+- `docs/specs/passive-analysis-roadmap.md`
+
+Use those first for future prompt context. This file stays as a more narrative reference.
+
 ## Source
 
 The scraper uses `https://dokkaninfo.com/cards?sort=open_at` as the catalog source.
@@ -97,6 +104,12 @@ Dates are saved as UTC ISO strings.
 ## Mechanics mapping
 
 Leader, passive, links, categories, stats, ki meter, art URL and portrait URL keep the existing fields where possible.
+
+Structured combat fields now exist alongside the legacy compatibility strings:
+
+- `passiveDetails` / `ezaPassiveDetails`: passive name, multi-line text and split lines
+- `superAttackDetails`, `ultraSuperAttackDetails`, `exSuperAttackDetails` and EZA variants: attack name, effect, raw attack type, Ki threshold, style and extras
+- `extraInfo`: currently used for structured Ki multiplier data
 
 Super attacks:
 

@@ -26,7 +26,9 @@ export interface Character {
     ezaExSuperAttack?: string,
     unitSuperAttacks?: UnitSuperAttack[]; 
     passive: string,
+    passiveDetails?: PassiveDetails,
     ezaPassive?: string,
+    ezaPassiveDetails?: PassiveDetails,
     sezaPassive?: string,
     activeSkill?: string,
     activeSkillCondition?: string,
@@ -52,6 +54,13 @@ export interface Character {
     freeDupeDefence: number,
     rainbowDefence: number,
     kiMultiplier: string,
+    extraInfo?: CharacterExtraInfo,
+    superAttackDetails?: SuperAttackDetails,
+    ezaSuperAttackDetails?: SuperAttackDetails,
+    ultraSuperAttackDetails?: SuperAttackDetails,
+    ezaUltraSuperAttackDetails?: SuperAttackDetails,
+    exSuperAttackDetails?: SuperAttackDetails,
+    ezaExSuperAttackDetails?: SuperAttackDetails,
     standbySkill: string,
     finishingMove?: string[],
     transformations?: Transformation[],
@@ -127,8 +136,40 @@ export interface EquipmentSourcePage {
 }
 
 export interface UnitSuperAttack {
+    name?: string;
+    effect?: string;
+    type?: string;
+    ki?: number;
+    style?: string;
     unitSuperAttack: string | undefined;
     unitSuperAttackCondition: string | undefined;
+}
+
+export interface PassiveDetails {
+    name?: string,
+    text?: string,
+    lines?: string[],
+}
+
+export interface SuperAttackDetails {
+    name?: string,
+    effect?: string,
+    type?: string,
+    ki?: number,
+    style?: string,
+    condition?: string,
+    extras?: string[],
+}
+
+export interface CharacterExtraInfo {
+    kiMultiplierText?: string,
+    kiMultiplierSteps?: KiMultiplierStep[],
+}
+
+export interface KiMultiplierStep {
+    ki?: number,
+    percent: number,
+    label?: string,
 }
 
 export interface AwakeningReference {
@@ -189,8 +230,16 @@ export interface Transformation {
     ezaUltraSuperAttack?: string,
     exSuperAttack?: string,
     ezaExSuperAttack?: string,
+    superAttackDetails?: SuperAttackDetails,
+    ezaSuperAttackDetails?: SuperAttackDetails,
+    ultraSuperAttackDetails?: SuperAttackDetails,
+    ezaUltraSuperAttackDetails?: SuperAttackDetails,
+    exSuperAttackDetails?: SuperAttackDetails,
+    ezaExSuperAttackDetails?: SuperAttackDetails,
     passive: string,
+    passiveDetails?: PassiveDetails,
     ezaPassive?: string,
+    ezaPassiveDetails?: PassiveDetails,
     sezaPassive?: string,
     activeSkill?: string,
     activeSkillCondition?: string,
@@ -201,6 +250,7 @@ export interface Transformation {
     portraitFilename: string,
     artURL: string,
     artFilename: string,
+    extraInfo?: CharacterExtraInfo,
     standbySkill?: string,
     finishingMove: string[],
     dokkanFrontierPassives?: DokkanFrontierPassive[],

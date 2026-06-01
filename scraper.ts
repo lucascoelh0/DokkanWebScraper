@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { JSDOM } from 'jsdom';
 import { promisify } from 'util';
-import { AwakeningReference, Character, CharacterEquipmentReference, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, Rarities, Transformation, Types, UnitSuperAttack } from "./character";
+import { AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, PassiveDetails, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
 
 const DOKKAN_INFO_BASE_URL = 'https://dokkaninfo.com';
 const DOKKAN_INFO_CARD_LIST_URL = `${DOKKAN_INFO_BASE_URL}/cards?sort=open_at`;
@@ -136,6 +136,8 @@ interface DokkanInfoSuperAttack {
     causality_conditions?: string;
     causality_description?: string;
     attack?: DokkanInfoNamedDescription;
+    rawAttribute?: DokkanInfoRawAttribute;
+    extras?: DokkanInfoNamedDescription[];
 }
 
 interface DokkanInfoFrontierPassive {
@@ -143,6 +145,14 @@ interface DokkanInfoFrontierPassive {
     origin_battle_id?: number;
     passive_skill?: string;
 }
+
+interface DokkanInfoRawAttribute {
+    id?: number;
+    raw_attribute?: number;
+    name?: string;
+}
+
+type DokkanListValue<T> = T[] | Record<string, T> | undefined;
 
 let cachedCardList: DokkanInfoCardSummary[] | undefined;
 let preferCurl = false;
@@ -259,7 +269,7 @@ async function fetchDokkanInfoEzaData(data: DokkanInfoCardData): Promise<DokkanI
 }
 
 async function fetchDokkanInfoTransformationDetails(data: DokkanInfoCardData): Promise<DokkanInfoCardData[]> {
-    const transformationCards = (data.transformations ?? [])
+    const transformationCards = arrayFromDokkanList(data.transformations as DokkanListValue<DokkanInfoCardSummary>)
         .filter(transformation => transformation.id !== data.card.id)
         .filter((transformation, index, transformations) => transformations.findIndex(item => item.id === transformation.id) === index);
 
@@ -728,17 +738,27 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
     const hipoDef = data.def_hipo ?? card.def_hipo ?? 0;
     const superAttacks = data.super_attacks ?? [];
     const ezaSuperAttacks = data.eza_data?.super_attacks ?? [];
+    const passive = passiveDetails(data.passive_skill);
+    const ezaPassive = passiveDetails(data.eza_data?.passive_skill);
+    const normalSuperAttack = superAttackDetails(superAttacks, 'normal');
+    const ezaNormalSuperAttack = superAttackDetails(ezaSuperAttacks, 'normal');
+    const ultraSuperAttack = superAttackDetails(superAttacks, 'ultra');
+    const ezaUltraSuperAttack = superAttackDetails(ezaSuperAttacks, 'ultra');
+    const extraSuperAttack = superAttackDetails(superAttacks, 'extra');
+    const ezaExtraSuperAttack = superAttackDetails(ezaSuperAttacks, 'extra');
+    const extraInfo = characterExtraInfo(card);
+    const awakeningCards = arrayFromDokkanList(data.awakening_cards);
 
     const characterData: Character = {
-        name: cleanText(card.name),
-        title: cleanText(data.leader_skill?.name),
+        name: cleanInlineText(card.name),
+        title: cleanInlineText(data.leader_skill?.name),
         maxLevel: toNumber(card.lv_max),
         maxSALevel: toNumber(card.skill_lv_max),
         rarity: rarityFromNumber(card.rarity),
         releaseDate: releaseDate(card.open_at),
         ezaReleaseDate: releaseDate(card.eza_open_at ?? data.eza_open_date?.open_at),
         sezaReleaseDate: releaseDate(card.seza_open_at ?? data.seza_open_date?.open_at),
-        summonable: cleanText(data.summonable),
+        summonable: cleanInlineText(data.summonable),
         isSummonable: data.summonable === 'Summonable',
         characterClass: classFromElement(card.element),
         type: typeFromElement(card.element),
@@ -747,17 +767,25 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
         legacyId,
         portraitURL: cardImageUrl(assetId, `card_${assetId}_character.png`),
         portraitFilename: `portrait_${id}`,
-        leaderSkill: cleanText(data.leader_skill?.description),
-        ezaLeaderSkill: cleanText(data.eza_data?.leader_skill?.description),
-        superAttack: superAttackText(superAttacks, 'normal'),
-        ezaSuperAttack: superAttackText(ezaSuperAttacks, 'normal'),
-        ultraSuperAttack: superAttackText(superAttacks, 'ultra'),
-        ezaUltraSuperAttack: superAttackText(ezaSuperAttacks, 'ultra'),
-        exSuperAttack: superAttackText(superAttacks, 'extra'),
-        ezaExSuperAttack: superAttackText(ezaSuperAttacks, 'extra'),
+        leaderSkill: cleanMultilineText(data.leader_skill?.description),
+        ezaLeaderSkill: cleanMultilineText(data.eza_data?.leader_skill?.description),
+        superAttack: normalSuperAttack?.effect ?? '',
+        ezaSuperAttack: ezaNormalSuperAttack?.effect,
+        ultraSuperAttack: ultraSuperAttack?.effect,
+        ezaUltraSuperAttack: ezaUltraSuperAttack?.effect,
+        exSuperAttack: extraSuperAttack?.effect,
+        ezaExSuperAttack: ezaExtraSuperAttack?.effect,
+        superAttackDetails: normalSuperAttack,
+        ezaSuperAttackDetails: ezaNormalSuperAttack,
+        ultraSuperAttackDetails: ultraSuperAttack,
+        ezaUltraSuperAttackDetails: ezaUltraSuperAttack,
+        exSuperAttackDetails: extraSuperAttack,
+        ezaExSuperAttackDetails: ezaExtraSuperAttack,
         unitSuperAttacks: unitSuperAttacks(superAttacks),
-        passive: cleanText(data.passive_skill?.itemized_description ?? data.passive_skill?.description),
-        ezaPassive: cleanText(data.eza_data?.passive_skill?.itemized_description ?? data.eza_data?.passive_skill?.description),
+        passive: passive?.text ?? '',
+        passiveDetails: passive,
+        ezaPassive: ezaPassive?.text,
+        ezaPassiveDetails: ezaPassive,
         activeSkill: activeSkillText(data.active_skill),
         activeSkillCondition: activeSkillCondition(data.active_skill),
         ezaActiveSkill: activeSkillText(data.eza_data?.active_skill),
@@ -781,17 +809,18 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
         maxDefence: toNumber(card.def_max),
         freeDupeDefence: freeDupeStat(card.def_max, hipoDef),
         rainbowDefence: rainbowStat(card.def_max, hipoDef),
-        kiMultiplier: kiMultiplier(card),
-        standbySkill: cleanText(data.stand_by_skill?.description ?? data.stand_by_skill?.name),
+        kiMultiplier: extraInfo.kiMultiplierText ?? '',
+        extraInfo,
+        standbySkill: cleanMultilineText(data.stand_by_skill?.description ?? data.stand_by_skill?.name),
         finishingMove: finishSkillTexts(data.finish_skills),
         transformations: transformations(data, id),
-        awakeningCards: awakeningReferences(data.awakening_cards),
-        previousAwakenings: awakeningReferences(data.awakening_cards?.filter(awakeningCard => awakeningCard.rarity < card.rarity)),
-        nextAwakenings: awakeningReferences(data.awakening_cards?.filter(awakeningCard => awakeningCard.rarity > card.rarity)),
+        awakeningCards: awakeningReferences(awakeningCards),
+        previousAwakenings: awakeningReferences(awakeningCards.filter(awakeningCard => awakeningCard.rarity < card.rarity)),
+        nextAwakenings: awakeningReferences(awakeningCards.filter(awakeningCard => awakeningCard.rarity > card.rarity)),
         equipment: characterEquipmentReferences(data),
         dokkanFrontierPassives: dokkanFrontierPassives(data.originPassiveSkills),
-        dokkanFrontierGroupPassive: cleanText(data.passive_skill?.sougou_only_itemized_description),
-        dokkanFrontierCharacterPassive: cleanText(data.passive_skill?.kobetu_only_itemized_description),
+        dokkanFrontierGroupPassive: cleanMultilineText(data.passive_skill?.sougou_only_itemized_description),
+        dokkanFrontierCharacterPassive: cleanMultilineText(data.passive_skill?.kobetu_only_itemized_description),
     };
 
     return cleanObject(characterData);
@@ -874,7 +903,86 @@ function classFromElement(element: string): Classes {
 }
 
 function superAttackText(superAttacks: DokkanInfoSuperAttack[], kind: 'normal' | 'ultra' | 'extra'): string {
-    const attack = superAttacks.find(superAttack => {
+    return superAttackDetails(superAttacks, kind).effect ?? '';
+}
+
+function unitSuperAttacks(superAttacks: DokkanInfoSuperAttack[]): UnitSuperAttack[] {
+    return arrayFromDokkanList(superAttacks)
+        .filter(superAttack => {
+            const style = (superAttack.style ?? '').toLowerCase();
+            return style.includes('unit') || style.includes('condition');
+        })
+        .map(superAttack => ({
+            name: cleanInlineText(superAttack.attack?.name),
+            effect: cleanMultilineText(superAttack.attack?.description),
+            type: cleanInlineText(superAttack.rawAttribute?.name),
+            ki: superAttack.eball_num_start,
+            style: cleanInlineText(superAttack.style),
+            unitSuperAttack: cleanInlineText(formatNamedDescription(superAttack.attack)),
+            unitSuperAttackCondition: cleanMultilineText(superAttack.causality_description ?? superAttack.causality_conditions),
+        }))
+        .filter(superAttack => superAttack.unitSuperAttack || superAttack.unitSuperAttackCondition);
+}
+
+function formatNamedDescription(value: DokkanInfoNamedDescription | undefined): string {
+    if (!value) {
+        return '';
+    }
+
+    const name = cleanInlineText(value.name);
+    const description = cleanMultilineText(value.itemized_description ?? value.effect_description ?? value.description);
+    return [name, description].filter(Boolean).join(': ');
+}
+
+function activeSkillText(value: DokkanInfoNamedDescription | undefined): string {
+    return formatNamedDescription(value);
+}
+
+function activeSkillCondition(value: DokkanInfoNamedDescription | undefined): string {
+    return cleanMultilineText(value?.condition_description ?? value?.causality_description ?? value?.conditions);
+}
+
+function namedDescriptionsText(value: DokkanInfoNamedDescription | DokkanInfoNamedDescription[] | Record<string, DokkanInfoNamedDescription> | undefined): string {
+    const values = Array.isArray(value) ? value : value && 'name' in value ? [value] : arrayFromDokkanList(value as DokkanListValue<DokkanInfoNamedDescription>);
+    return values.map(formatNamedDescription).filter(Boolean).join('; ');
+}
+
+function finishSkillTexts(values: DokkanListValue<DokkanInfoNamedDescription>): string[] {
+    return arrayFromDokkanList(values).map(formatNamedDescription).filter(Boolean);
+}
+
+function passiveDetails(value: DokkanInfoPassiveSkill | undefined): PassiveDetails | undefined {
+    if (!value) {
+        return undefined;
+    }
+
+    const text = cleanMultilineText(value.itemized_description ?? value.description);
+    return cleanObject({
+        name: cleanInlineText(value.name),
+        text,
+        lines: text ? text.split('\n').map(line => line.trim()).filter(Boolean) : undefined,
+    });
+}
+
+function superAttackDetails(superAttacks: DokkanListValue<DokkanInfoSuperAttack>, kind: 'normal' | 'ultra' | 'extra'): SuperAttackDetails | undefined {
+    const attack = matchingSuperAttack(superAttacks, kind);
+    if (!attack) {
+        return undefined;
+    }
+
+    return cleanObject({
+        name: cleanInlineText(attack.attack?.name),
+        effect: cleanMultilineText(attack.attack?.description),
+        type: cleanInlineText(attack.rawAttribute?.name),
+        ki: attack.eball_num_start,
+        style: cleanInlineText(attack.style),
+        condition: cleanMultilineText(attack.attack?.causality_description ?? attack.causality_description ?? attack.causality_conditions),
+        extras: arrayFromDokkanList(attack.extras).map(extra => formatNamedDescription(extra)).filter(Boolean),
+    });
+}
+
+function matchingSuperAttack(superAttacks: DokkanListValue<DokkanInfoSuperAttack>, kind: 'normal' | 'ultra' | 'extra'): DokkanInfoSuperAttack | undefined {
+    return arrayFromDokkanList(superAttacks).find(superAttack => {
         const style = (superAttack.style ?? '').toLowerCase();
         const ki = superAttack.eball_num_start ?? 0;
         if (kind === 'extra') {
@@ -887,55 +995,20 @@ function superAttackText(superAttacks: DokkanInfoSuperAttack[], kind: 'normal' |
 
         return style.includes('normal') || (!style.includes('hyper') && !style.includes('ultra') && !style.includes('extra') && !style.includes('condition') && ki < 18);
     });
-
-    return cleanText(formatNamedDescription(attack?.attack));
 }
 
-function unitSuperAttacks(superAttacks: DokkanInfoSuperAttack[]): UnitSuperAttack[] {
-    return superAttacks
-        .filter(superAttack => {
-            const style = (superAttack.style ?? '').toLowerCase();
-            return style.includes('unit') || style.includes('condition');
-        })
-        .map(superAttack => ({
-            unitSuperAttack: cleanText(formatNamedDescription(superAttack.attack)),
-            unitSuperAttackCondition: cleanText(superAttack.causality_description ?? superAttack.causality_conditions),
-        }))
-        .filter(superAttack => superAttack.unitSuperAttack || superAttack.unitSuperAttackCondition);
-}
-
-function formatNamedDescription(value: DokkanInfoNamedDescription | undefined): string {
-    if (!value) {
-        return '';
-    }
-
-    const name = cleanText(value.name);
-    const description = cleanText(value.itemized_description ?? value.effect_description ?? value.description);
-    return [name, description].filter(Boolean).join(': ');
-}
-
-function activeSkillText(value: DokkanInfoNamedDescription | undefined): string {
-    return formatNamedDescription(value);
-}
-
-function activeSkillCondition(value: DokkanInfoNamedDescription | undefined): string {
-    return cleanText(value?.condition_description ?? value?.causality_description ?? value?.conditions);
-}
-
-function namedDescriptionsText(value: DokkanInfoNamedDescription | DokkanInfoNamedDescription[] | undefined): string {
-    const values = Array.isArray(value) ? value : value ? [value] : [];
-    return values.map(formatNamedDescription).filter(Boolean).join('; ');
-}
-
-function finishSkillTexts(values: DokkanInfoNamedDescription[] | undefined): string[] {
-    return (values ?? []).map(formatNamedDescription).filter(Boolean);
+function characterExtraInfo(card: DokkanInfoCardSummary): CharacterExtraInfo {
+    return cleanObject({
+        kiMultiplierText: kiMultiplier(card),
+        kiMultiplierSteps: kiMultiplierSteps(card),
+    });
 }
 
 function transformations(data: DokkanInfoCardData, baseCharacterId: string): Transformation[] {
     const currentCardId = data.card.id;
     const links = uniqueCleanNames(data.links);
-    const detailsById = new Map((data.transformation_details ?? []).map(detail => [detail.card.id, detail]));
-    const transformedCards = (data.transformations ?? [])
+    const detailsById = new Map(arrayFromDokkanList(data.transformation_details as DokkanListValue<DokkanInfoCardData>).map(detail => [detail.card.id, detail]));
+    const transformedCards = arrayFromDokkanList(data.transformations as DokkanListValue<DokkanInfoCardSummary>)
         .filter(transformation => transformation.id !== currentCardId)
         .filter((transformation, index, allTransformations) => allTransformations.findIndex(item => item.id === transformation.id) === index);
 
@@ -947,23 +1020,32 @@ function transformations(data: DokkanInfoCardData, baseCharacterId: string): Tra
         const legacyId = toLegacyId(assetId);
         const superAttacks = detail?.super_attacks ?? [];
         const detailLinks = uniqueCleanNames(detail?.links);
+        const passive = passiveDetails(detail?.passive_skill);
+        const normalSuperAttack = superAttackDetails(superAttacks, 'normal');
+        const ultraSuperAttack = superAttackDetails(superAttacks, 'ultra');
+        const extraSuperAttack = superAttackDetails(superAttacks, 'extra');
+        const extraInfo = characterExtraInfo(detailCard);
 
         return cleanObject({
             id,
             baseCharacterId,
             legacyId,
-            name: cleanText(detailCard.name),
+            name: cleanInlineText(detailCard.name),
             releaseDate: releaseDate(detailCard.open_at),
             ezaReleaseDate: releaseDate(detailCard.eza_open_at),
             sezaReleaseDate: releaseDate(detailCard.seza_open_at),
-            summonable: cleanText(detail?.summonable),
+            summonable: cleanInlineText(detail?.summonable),
             isSummonable: detail?.summonable === 'Summonable',
             characterClass: classFromElement(detailCard.element),
             type: typeFromElement(detailCard.element),
-            superAttack: superAttackText(superAttacks, 'normal'),
-            ultraSuperAttack: superAttackText(superAttacks, 'ultra'),
-            exSuperAttack: superAttackText(superAttacks, 'extra'),
-            passive: cleanText(detail?.passive_skill?.itemized_description ?? detail?.passive_skill?.description),
+            superAttack: normalSuperAttack?.effect ?? '',
+            ultraSuperAttack: ultraSuperAttack?.effect,
+            exSuperAttack: extraSuperAttack?.effect,
+            superAttackDetails: normalSuperAttack,
+            ultraSuperAttackDetails: ultraSuperAttack,
+            exSuperAttackDetails: extraSuperAttack,
+            passive: passive?.text ?? '',
+            passiveDetails: passive,
             activeSkill: activeSkillText(detail?.active_skill),
             activeSkillCondition: activeSkillCondition(detail?.active_skill),
             transformationCondition: namedDescriptionsText(detail?.transformation),
@@ -973,17 +1055,18 @@ function transformations(data: DokkanInfoCardData, baseCharacterId: string): Tra
             portraitFilename: `portrait_${id}`,
             artURL: cardImageUrl(assetId, `${assetId}.png`),
             artFilename: `art_${id}`,
-            standbySkill: cleanText(detail?.stand_by_skill?.description ?? detail?.stand_by_skill?.name),
+            extraInfo,
+            standbySkill: cleanMultilineText(detail?.stand_by_skill?.description ?? detail?.stand_by_skill?.name),
             finishingMove: finishSkillTexts(detail?.finish_skills),
             dokkanFrontierPassives: dokkanFrontierPassives(detail?.originPassiveSkills),
-            dokkanFrontierGroupPassive: cleanText(detail?.passive_skill?.sougou_only_itemized_description),
-            dokkanFrontierCharacterPassive: cleanText(detail?.passive_skill?.kobetu_only_itemized_description),
+            dokkanFrontierGroupPassive: cleanMultilineText(detail?.passive_skill?.sougou_only_itemized_description),
+            dokkanFrontierCharacterPassive: cleanMultilineText(detail?.passive_skill?.kobetu_only_itemized_description),
         }) as Transformation;
     });
 }
 
-function awakeningReferences(cards: DokkanInfoCardSummary[] | undefined): AwakeningReference[] {
-    return (cards ?? []).map(card => {
+function awakeningReferences(cards: DokkanListValue<DokkanInfoCardSummary>): AwakeningReference[] {
+    return arrayFromDokkanList(cards).map(card => {
         const assetId = card.asset_id ?? card.icon_id ?? normalizeAssetId(card.id);
 
         return {
@@ -1001,18 +1084,18 @@ function awakeningReferences(cards: DokkanInfoCardSummary[] | undefined): Awaken
 }
 
 function dokkanFrontierPassives(values: DokkanInfoFrontierPassive[] | undefined): DokkanFrontierPassive[] {
-    return (values ?? [])
+    return arrayFromDokkanList(values)
         .map(value => ({
-            title: cleanText(value.title),
+            title: cleanInlineText(value.title),
             originBattleId: value.origin_battle_id,
-            passive: cleanText(value.passive_skill),
+            passive: cleanMultilineText(value.passive_skill),
         }))
         .filter(value => value.passive);
 }
 
-function uniqueCleanNames(values: DokkanInfoNamedDescription[] | undefined): string[] {
-    return Array.from(new Set((values ?? [])
-        .map(value => cleanText(value.name ?? value.description))
+function uniqueCleanNames(values: DokkanListValue<DokkanInfoNamedDescription>): string[] {
+    return Array.from(new Set(arrayFromDokkanList(values)
+        .map(value => cleanInlineText(value.name ?? value.description))
         .filter(Boolean)));
 }
 
@@ -1037,6 +1120,14 @@ function kiMultiplier(card: DokkanInfoCardSummary): string {
     return values.filter(Boolean).join('; ');
 }
 
+function kiMultiplierSteps(card: DokkanInfoCardSummary) {
+    return [
+        card.eball_mod_num100 !== undefined ? { ki: toNumber(card.eball_mod_num100), percent: toNumber(card.eball_mod_min), label: 'minimum' } : undefined,
+        card.eball_mod_mid_num ? { ki: toNumber(card.eball_mod_mid_num), percent: toNumber(card.eball_mod_mid), label: 'mid' } : undefined,
+        card.eball_mod_max_num ? { ki: toNumber(card.eball_mod_max_num), percent: toNumber(card.eball_mod_max), label: 'max' } : undefined,
+    ].filter(Boolean);
+}
+
 function freeDupeStat(maxStat: number | undefined, hipoStat: number): number {
     return toNumber(maxStat) + Math.min(2000, Math.max(0, hipoStat));
 }
@@ -1057,21 +1148,43 @@ function toNumber(value: number | undefined): number {
     return Number.isFinite(value) ? Number(value) : 0;
 }
 
-function cleanText(value: string | undefined | null): string {
+function cleanInlineText(value: string | undefined | null): string {
     return (value ?? '')
         .replace(/&#039;/g, "'")
         .replace(/&quot;/g, '"')
         .replace(/&amp;/g, '&')
         .replace(/\{[^}]+}/g, '')
-        .replace(/\*([^*]+)\*/g, '$1:')
-        .replace(/\r?\n\s*-\s*/g, '; ')
-        .replace(/^\s*-\s*/g, '')
+        .replace(/\*([^*]+)\*/g, '$1')
         .replace(/\r?\n/g, ' ')
         .replace(/\s+/g, ' ')
         .replace(/\s+([,.;:])/g, '$1')
-        .replace(/:\s*;/g, ':')
-        .replace(/^;\s*/, '')
         .trim();
+}
+
+function cleanMultilineText(value: string | undefined | null): string {
+    return (value ?? '')
+        .replace(/&#039;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/\{[^}]+}/g, '')
+        .replace(/\r\n/g, '\n')
+        .split('\n')
+        .map(line => line.replace(/\*([^*]+)\*/g, '$1').replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+}
+
+function cleanText(value: string | undefined | null): string {
+    return cleanInlineText(value);
+}
+
+function arrayFromDokkanList<T>(value: DokkanListValue<T>): T[] {
+    if (!value) {
+        return [];
+    }
+
+    return Array.isArray(value) ? value : Object.values(value);
 }
 
 function cleanObject<T>(obj: T): T {

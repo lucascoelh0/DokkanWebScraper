@@ -1,0 +1,124 @@
+# Dokkan Scraper Spec
+
+## Purpose
+
+This scraper now targets `dokkaninfo.com` as the source of truth for cards and equipment.
+
+The main goal of this spec is to keep future prompts short:
+
+- update this spec first when the data contract changes
+- then update code
+- then run smoke validation
+
+## Sources
+
+- Card catalog: `https://dokkaninfo.com/cards?sort=open_at`
+- Card detail: `https://dokkaninfo.com/cards/{id}`
+- EZA detail: `https://dokkaninfo.com/api/cards/{id}/eza?eza=true&step={step}`
+- Transformation detail: `https://dokkaninfo.com/api/cards/{id}/transformation`
+- Equipment index: `https://dokkaninfo.com/items/equipment`
+
+## Parsing Rules
+
+1. DokkanInfo list-like fields are not always arrays.
+Some pages return arrays, others return objects keyed by numeric strings.
+Every parser step must accept both formats.
+
+2. Preserve structure before flattening.
+If DokkanInfo provides names, styles, raw attack types, or multi-line passive text, keep those in structured fields.
+Compatibility strings can still exist, but they should be derived from the structured data.
+
+3. Prefer DokkanInfo IDs over legacy IDs.
+`id` is the real DokkanInfo card ID string.
+`legacyId` is compatibility-only.
+
+4. Keep raw-looking gameplay text readable.
+Multi-line passive or attack descriptions should stay multi-line in structured fields.
+Do not aggressively collapse bullets into one sentence when the source already provides sections.
+
+## Character Contract
+
+Stable top-level fields still used by the Android app:
+
+- `id`, `legacyId`
+- `name`, `title`
+- `rarity`, `type`, `characterClass`
+- `releaseDate`, `ezaReleaseDate`, `sezaReleaseDate`
+- `summonable`, `isSummonable`
+- `leaderSkill`, `ezaLeaderSkill`
+- `superAttack`, `ultraSuperAttack`, `exSuperAttack`
+- `ezaSuperAttack`, `ezaUltraSuperAttack`, `ezaExSuperAttack`
+- `passive`, `ezaPassive`
+- `activeSkill`, `activeSkillCondition`
+- `domain`, `standbySkill`, `finishingMove`
+- `links`, `categories`
+- stat fields
+- awakening references
+- equipment references
+
+Structured fields added on top:
+
+- `passiveDetails`
+- `ezaPassiveDetails`
+- `superAttackDetails`
+- `ezaSuperAttackDetails`
+- `ultraSuperAttackDetails`
+- `ezaUltraSuperAttackDetails`
+- `exSuperAttackDetails`
+- `ezaExSuperAttackDetails`
+- `extraInfo`
+
+## Structured Fields
+
+### `PassiveDetails`
+
+- `name`: passive skill name from DokkanInfo
+- `text`: multi-line passive text
+- `lines`: passive text split by line for later parsing
+
+### `SuperAttackDetails`
+
+- `name`: attack name
+- `effect`: attack effect text
+- `type`: raw attack type such as `Unarmed`
+- `ki`: starting Ki threshold when available
+- `style`: DokkanInfo style such as `Normal`, `Hyper`, `Extra`, `Condition`
+- `condition`: causality or activation condition text when present
+- `extras`: formatted extra effect labels from DokkanInfo
+
+### `CharacterExtraInfo`
+
+- `kiMultiplierText`: compatibility string summary
+- `kiMultiplierSteps`: structured multiplier steps
+
+## Equipment Contract
+
+Two equipment surfaces exist:
+
+1. Card-level compatibility on each card payload:
+- `cardEquipment`
+- `characterEquipment`
+
+2. Global equipment catalog:
+- `getEquipmentData()`
+
+Rules:
+
+- use official DokkanInfo equipment IDs whenever available
+- if a rendered equipment page has no official ID, generate a stable synthetic ID
+- preserve `restrictions` and `sourcePages`
+
+## Validation
+
+Minimum validation for scraper changes:
+
+1. `npm run build`
+2. targeted smoke scrape with `DOKKAN_SCRAPER_LIMIT`
+3. targeted card scrape with `DOKKAN_SCRAPER_CARD_IDS`
+4. if equipment changed, smoke scrape with `DOKKAN_SCRAPER_EQUIPMENT_LIMIT`
+
+## Current Known Gaps
+
+- The old `scraper.spec.ts` still targets Fandom and no longer reflects the DokkanInfo contract.
+- Passive classification, stat extraction, and effect tagging are not implemented yet.
+- Some compatibility strings still coexist with the new structured fields until the Android app migrates.
