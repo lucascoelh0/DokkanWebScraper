@@ -4,10 +4,14 @@ export interface Character {
     maxLevel: number,
     maxSALevel: number,
     rarity: Rarities,
+    releaseDate?: string,
+    ezaReleaseDate?: string,
+    sezaReleaseDate?: string,
     characterClass: Classes,
     type: Types,
     cost: number,
     id: string,
+    legacyId?: string,
     portraitURL: string,
     portraitFilename: string,
     leaderSkill: string,
@@ -16,6 +20,8 @@ export interface Character {
     ezaSuperAttack?: string,
     ultraSuperAttack?: string,
     ezaUltraSuperAttack?: string,
+    exSuperAttack?: string,
+    ezaExSuperAttack?: string,
     unitSuperAttacks?: UnitSuperAttack[]; 
     passive: string,
     ezaPassive?: string,
@@ -45,6 +51,7 @@ export interface Character {
     rainbowDefence: number,
     kiMultiplier: string,
     standbySkill: string,
+    finishingMove?: string[],
     transformations?: Transformation[],
 }
 
@@ -67,6 +74,10 @@ export enum Types {
 }
 
 export enum Rarities {
+    N = "N",
+    R = "R",
+    SR = "SR",
+    SSR = "SSR",
     UR = "UR",
     LR = "LR"
 }
@@ -74,23 +85,31 @@ export enum Rarities {
 export interface Transformation {
     id: string,
     baseCharacterId: string,
+    legacyId?: string,
     name: string,
+    releaseDate?: string,
+    ezaReleaseDate?: string,
+    sezaReleaseDate?: string,
     characterClass: Classes,
     type: Types,
     superAttack: string,
     ezaSuperAttack?: string,
     ultraSuperAttack?: string,
     ezaUltraSuperAttack?: string,
+    exSuperAttack?: string,
+    ezaExSuperAttack?: string,
     passive: string,
     ezaPassive?: string,
     sezaPassive?: string,
     activeSkill?: string,
     activeSkillCondition?: string,
+    transformationCondition?: string,
     domain: string,
     links:string[],
     portraitURL: string,
     portraitFilename: string,
     artURL: string,
     artFilename: string,
+    standbySkill?: string,
     finishingMove: string[],
 }
