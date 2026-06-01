@@ -4,7 +4,9 @@ import { resolve } from "path";
 import { getDokkanData, getEquipmentData } from "./scraper";
 import * as fs from 'fs';
 import * as sharp from 'sharp';
-import { Character, PortraitAssets } from "./character";
+import { Character, PortraitSpec, Rarities } from "./character";
+
+const DOKKAN_INFO_ASSET_BASE_URL = 'https://dokkaninfo.com/assets/global/en';
 
 export async function saveDokkanResults() {
     if (!existsSync(resolve(__dirname, 'data'))) {
@@ -29,17 +31,17 @@ export async function saveDokkanResults() {
     saveData(`${year}${month}${day}DokkanEquipmentData`, equipment);
 
     for (const portrait of collectPortraitTargets(data)) {
-        await savePortraitWithRetry(`${portrait.filename}.png`, portrait.assets, 6)
+        await savePortraitWithRetry(`${portrait.filename}.png`, portrait.spec, 6)
     }
 }
 
-async function savePortraitWithRetry(filename: string, portraitAssets: PortraitAssets | undefined, compressionLevel: number, retries = 3) {
+async function savePortraitWithRetry(filename: string, portraitSpec: PortraitSpec | undefined, compressionLevel: number, retries = 3) {
     try {
-        await savePortrait(filename, portraitAssets, compressionLevel);
+        await savePortrait(filename, portraitSpec, compressionLevel);
     } catch (error) {
         if (retries > 0) {
             console.log(`Error composing portrait ${filename}. Retrying in 2 seconds...`);
-            return savePortraitWithRetry(filename, portraitAssets, compressionLevel, retries - 1);
+            return savePortraitWithRetry(filename, portraitSpec, compressionLevel, retries - 1);
         } else {
             console.error(`Failed to compose portrait ${filename} after 3 attempts.`);
             throw error;
@@ -68,22 +70,22 @@ function saveData(fileName: string, data: unknown) {
         { encoding: 'utf8' })
 }
 
-function collectPortraitTargets(characters: Character[]): { filename: string, assets?: PortraitAssets }[] {
-    const portraits = new Map<string, PortraitAssets | undefined>();
+function collectPortraitTargets(characters: Character[]): { filename: string, spec?: PortraitSpec }[] {
+    const portraits = new Map<string, PortraitSpec | undefined>();
 
-    const addPortrait = (filename: string | undefined, assets: PortraitAssets | undefined) => {
+    const addPortrait = (filename: string | undefined, spec: PortraitSpec | undefined) => {
         if (!filename || portraits.has(filename)) {
             return;
         }
 
-        portraits.set(filename, assets);
+        portraits.set(filename, spec);
     };
 
     for (const character of characters) {
-        addPortrait(character.portraitFilename, character.portraitAssets);
+        addPortrait(character.portraitFilename, character.portraitSpec);
 
         for (const transformation of character.transformations ?? []) {
-            addPortrait(transformation.portraitFilename, transformation.portraitAssets);
+            addPortrait(transformation.portraitFilename, transformation.portraitSpec);
         }
 
         for (const awakening of [
@@ -91,23 +93,24 @@ function collectPortraitTargets(characters: Character[]): { filename: string, as
             ...(character.previousAwakenings ?? []),
             ...(character.nextAwakenings ?? []),
         ]) {
-            addPortrait(`portrait_${awakening.id}`, awakening.portraitAssets);
+            addPortrait(`portrait_${awakening.id}`, awakening.portraitSpec);
         }
     }
 
-    return Array.from(portraits, ([filename, assets]) => ({ filename, assets }));
+    return Array.from(portraits, ([filename, spec]) => ({ filename, spec }));
 }
 
-const savePortrait = async (filename: string, portraitAssets: PortraitAssets | undefined, compressionLevel: number) => {
+const savePortrait = async (filename: string, portraitSpec: PortraitSpec | undefined, compressionLevel: number) => {
     const path = `data/images/${filename}`
     if (await isCurrentPortrait(path)) {
         return;
     }
 
-    if (!portraitAssets) {
-        throw new Error(`Missing portrait assets for ${filename}`);
+    if (!portraitSpec) {
+        throw new Error(`Missing portrait spec for ${filename}`);
     }
 
+    const portraitAssets = portraitAssetUrls(portraitSpec);
     await delay(200);
     const [background, icon, rarity, type] = await Promise.all([
         fetchImageBuffer(portraitAssets.backgroundURL),
@@ -139,6 +142,34 @@ const savePortrait = async (filename: string, portraitAssets: PortraitAssets | u
         ])
         .png({ quality: 10, compressionLevel: compressionLevel })
         .toFile(`${path}`)
+}
+
+function portraitAssetUrls(spec: PortraitSpec) {
+    const rarityNumber = rarityToNumber(spec.rarity);
+    const rarityKey = spec.rarity.toLowerCase();
+    const frameColorId = spec.frameColorId.toString().padStart(1, '0');
+    const iconId = spec.iconId.toString().padStart(7, '0');
+    const elementCode = spec.elementCode.padStart(2, '0');
+
+    return {
+        backgroundURL: `${DOKKAN_INFO_ASSET_BASE_URL}/layout/en/image/character/character_thumb_bg/cha_base_0${frameColorId}_0${rarityNumber}.png`,
+        iconURL: `${DOKKAN_INFO_ASSET_BASE_URL}/character/thumb/card_${iconId}_thumb/card_${iconId}_thumb.png`,
+        rarityURL: `${DOKKAN_INFO_ASSET_BASE_URL}/layout/en/image/character/cha_rare_sm_${rarityKey}.png`,
+        typeURL: `${DOKKAN_INFO_ASSET_BASE_URL}/layout/en/image/character/cha_type_icon_${elementCode}.png`,
+    };
+}
+
+function rarityToNumber(rarity: Rarities): number {
+    const rarityMap: Record<Rarities, number> = {
+        [Rarities.N]: 0,
+        [Rarities.R]: 1,
+        [Rarities.SR]: 2,
+        [Rarities.SSR]: 3,
+        [Rarities.UR]: 4,
+        [Rarities.LR]: 5,
+    };
+
+    return rarityMap[rarity];
 }
 
 

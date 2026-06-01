@@ -60,11 +60,13 @@ Field rules:
 
 - `portraitURL` must point to the locally composed portrait image:
   `images/portrait_{id}.png`
-- `portraitAssets` must preserve the DokkanInfo layers used by the `card-icon` component:
-  - background: `/layout/en/image/character/character_thumb_bg/cha_base_0{bg_element}_0{rarity}.png`
-  - icon: `/character/thumb/card_{icon_id}_thumb/card_{icon_id}_thumb.png`
-  - rarity: `/layout/en/image/character/cha_rare_sm_{rarity}.png`
-  - type: `/layout/en/image/character/cha_type_icon_{element}.png`
+- `portraitSpec` must preserve the data needed to rebuild the DokkanInfo `card-icon` portrait locally:
+  - `iconId`: thumb asset id used in `/character/thumb/card_{iconId}_thumb/...`
+  - `frameColorId`: frame/background color id used in `cha_base_0{frameColorId}_0{rarityNumber}.png`
+  - `rarity`: rarity enum used for the rarity badge
+  - `elementCode`: raw DokkanInfo element code used in `cha_type_icon_{elementCode}.png`
+- `elementCode` is a visual key, not a gameplay key.
+  Do not rebuild the type badge from `type + characterClass`, because cards like SSR `1033830` visually use `01` while gameplay class is inferred as `Extreme`.
 - `artURL` continues to use the full card art asset
 - `characterClass` should come from `element` when DokkanInfo encodes Super or Extreme there
 - if `element` does not encode class, such as many SSR cards with values like `00` through `04`, infer class from `awakening_element_type`

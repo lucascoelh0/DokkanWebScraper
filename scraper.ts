@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { JSDOM } from 'jsdom';
 import { promisify } from 'util';
-import { AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, PassiveDetails, PortraitAssets, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
+import { AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, PassiveDetails, PortraitSpec, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
 
 const DOKKAN_INFO_BASE_URL = 'https://dokkaninfo.com';
 const DOKKAN_INFO_CARD_LIST_URL = `${DOKKAN_INFO_BASE_URL}/cards?sort=open_at`;
@@ -770,7 +770,7 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
         legacyId,
         portraitURL: portraitOutputUrl(portraitFilename),
         portraitFilename,
-        portraitAssets: portraitAssets(card),
+        portraitSpec: portraitSpec(card),
         leaderSkill: cleanMultilineText(data.leader_skill?.description),
         ezaLeaderSkill: cleanMultilineText(data.eza_data?.leader_skill?.description),
         superAttack: normalSuperAttack?.effect ?? '',
@@ -898,16 +898,15 @@ function portraitOutputUrl(portraitFilename: string): string {
     return `images/${portraitFilename}.png`;
 }
 
-function portraitAssets(card: DokkanInfoCardSummary): PortraitAssets {
-    const rarityKey = rarityFromNumber(card.rarity).toLowerCase();
+function portraitSpec(card: DokkanInfoCardSummary): PortraitSpec {
     const iconId = card.icon_id ?? card.asset_id ?? normalizeAssetId(card.id);
-    const bgElement = (card.bg_element ?? `${parseInt(card.element, 10) % 10}`).padStart(1, '0');
+    const frameColorId = parseInt(card.bg_element ?? `${parseInt(card.element, 10) % 10}`, 10);
 
     return {
-        backgroundURL: `${DOKKAN_INFO_ASSET_BASE_URL}/layout/en/image/character/character_thumb_bg/cha_base_0${bgElement}_0${card.rarity}.png`,
-        iconURL: cardThumbUrl(iconId),
-        rarityURL: `${DOKKAN_INFO_ASSET_BASE_URL}/layout/en/image/character/cha_rare_sm_${rarityKey}.png`,
-        typeURL: `${DOKKAN_INFO_ASSET_BASE_URL}/layout/en/image/character/cha_type_icon_${card.element}.png`,
+        iconId,
+        frameColorId,
+        rarity: rarityFromNumber(card.rarity),
+        elementCode: card.element.padStart(2, '0'),
     };
 }
 
@@ -1096,7 +1095,7 @@ function transformations(data: DokkanInfoCardData, baseCharacterId: string): Tra
             links: detailLinks.length ? detailLinks : links,
             portraitURL: portraitOutputUrl(portraitFilename),
             portraitFilename,
-            portraitAssets: portraitAssets(detailCard),
+            portraitSpec: portraitSpec(detailCard),
             artURL: cardImageUrl(assetId, `${assetId}.png`),
             artFilename: `art_${id}`,
             extraInfo,
@@ -1122,7 +1121,7 @@ function awakeningReferences(cards: DokkanListValue<DokkanInfoCardSummary>): Awa
             type: typeFromElement(card.element),
             releaseDate: releaseDate(card.open_at),
             portraitURL: portraitOutputUrl(`portrait_${card.id}`),
-            portraitAssets: portraitAssets(card),
+            portraitSpec: portraitSpec(card),
             artURL: cardImageUrl(assetId, `${assetId}.png`),
         };
     });

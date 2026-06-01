@@ -61,7 +61,7 @@ Awakening references:
 - `previousAwakenings`: related cards with lower rarity than the current card
 - `nextAwakenings`: related cards with higher rarity than the current card
 
-Each awakening reference includes `id`, `legacyId`, `name`, `rarity`, `characterClass`, `type`, `releaseDate`, `portraitURL`, `portraitAssets` and `artURL`.
+Each awakening reference includes `id`, `legacyId`, `name`, `rarity`, `characterClass`, `type`, `releaseDate`, `portraitURL`, `portraitSpec` and `artURL`.
 
 ## Equipment
 
@@ -105,7 +105,16 @@ Dates are saved as UTC ISO strings.
 
 Leader, passive, links, categories, stats, ki meter and art URL keep the existing fields where possible.
 
-`portraitURL` now points to a locally composed file in `data/images`, for example `images/portrait_1033830.png`. The composition uses the same DokkanInfo layers the site uses in `card-icon`, and `portraitAssets` preserves those source URLs for future regeneration or alternate rendering.
+`portraitURL` now points to a locally composed file in `data/images`, for example `images/portrait_1033830.png`.
+
+`portraitSpec` is the app-facing contract for rebuilding the same portrait locally without storing raw layer URLs in JSON:
+
+- `iconId`: card thumb asset id
+- `frameColorId`: frame/background color selector from DokkanInfo
+- `rarity`: rarity enum for the rarity badge
+- `elementCode`: raw visual type-badge key such as `01` or `21`
+
+`elementCode` must stay raw because some SSR and lower-rarity cards do not visually encode their inferred gameplay class in the badge asset. For example, `1033830` is classified as `Extreme` for gameplay purposes, but its visual type icon still comes from `cha_type_icon_01.png`.
 
 Structured combat fields now exist alongside the legacy compatibility strings:
 
