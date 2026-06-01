@@ -140,7 +140,6 @@ export interface UnitSuperAttack {
     name?: string;
     effect?: string;
     type?: AttackTypes;
-    rawType?: string;
     ki?: number;
     style?: string;
     unitSuperAttack: string | undefined;
@@ -164,7 +163,6 @@ export interface SuperAttackDetails {
     name?: string,
     effect?: string,
     type?: AttackTypes,
-    rawType?: string,
     ki?: number,
     style?: string,
     condition?: string,

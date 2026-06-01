@@ -96,7 +96,6 @@ Structured fields added on top:
 - `name`: attack name
 - `effect`: attack effect text
 - `type`: normalized attack type enum: `Armed`, `Unarmed`, `Ki Blast`, or `Other`
-- `rawType`: raw DokkanInfo attack type such as `Unarmed`
 - `ki`: starting Ki threshold when available
 - `style`: DokkanInfo style such as `Normal`, `Hyper`, `Extra`, `Condition`
 - `condition`: causality or activation condition text when present
@@ -108,6 +107,7 @@ Attack type normalization rules:
 - `Unarmed` stays `Unarmed`
 - `Armed` and `Physical` map to `Armed`
 - missing or unknown values map to `Other`
+- `type` is the app-facing canonical property and must be enough on its own for display/filtering
 
 ### `CharacterExtraInfo`
 
