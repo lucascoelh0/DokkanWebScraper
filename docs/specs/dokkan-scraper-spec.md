@@ -56,6 +56,14 @@ Stable top-level fields still used by the Android app:
 - awakening references
 - equipment references
 
+Field rules:
+
+- `portraitURL` must use the same thumb asset used by the DokkanInfo `card-icon` component:
+  `/assets/global/en/character/thumb/card_{icon_id}_thumb/card_{icon_id}_thumb.png`
+- `artURL` continues to use the full card art asset
+- `characterClass` should come from `element` when DokkanInfo encodes Super or Extreme there
+- if `element` does not encode class, such as many SSR cards with values like `00` through `04`, infer class from `awakening_element_type`
+
 Structured fields added on top:
 
 - `passiveDetails`

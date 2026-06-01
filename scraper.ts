@@ -38,6 +38,7 @@ interface DokkanInfoCardSummary {
     def_max?: number;
     def_hipo?: number;
     element: string;
+    awakening_element_type?: number;
     icon_id?: number;
     asset_id?: number;
     open_at?: number;
@@ -760,12 +761,12 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
         sezaReleaseDate: releaseDate(card.seza_open_at ?? data.seza_open_date?.open_at),
         summonable: cleanInlineText(data.summonable),
         isSummonable: data.summonable === 'Summonable',
-        characterClass: classFromElement(card.element),
+        characterClass: classFromCard(card),
         type: typeFromElement(card.element),
         cost: toNumber(card.cost),
         id,
         legacyId,
-        portraitURL: cardImageUrl(assetId, `card_${assetId}_character.png`),
+        portraitURL: cardThumbUrl(card.icon_id ?? assetId),
         portraitFilename: `portrait_${id}`,
         leaderSkill: cleanMultilineText(data.leader_skill?.description),
         ezaLeaderSkill: cleanMultilineText(data.eza_data?.leader_skill?.description),
@@ -886,6 +887,10 @@ function cardImageUrl(assetId: number, filename: string): string {
     return `${DOKKAN_INFO_ASSET_BASE_URL}/character/card/${assetId}/${filename}`;
 }
 
+function cardThumbUrl(iconId: number): string {
+    return `${DOKKAN_INFO_ASSET_BASE_URL}/character/thumb/card_${iconId}_thumb/card_${iconId}_thumb.png`;
+}
+
 function rarityFromNumber(rarity: number): Rarities {
     const rarityMap = [Rarities.N, Rarities.R, Rarities.SR, Rarities.SSR, Rarities.UR, Rarities.LR];
     return rarityMap[rarity] ?? Rarities.N;
@@ -900,6 +905,23 @@ function typeFromElement(element: string): Types {
 function classFromElement(element: string): Classes {
     const classIndex = Math.floor(parseInt(element, 10) / 10) % 10;
     return classIndex === 2 ? Classes.Extreme : Classes.Super;
+}
+
+function classFromCard(card: DokkanInfoCardSummary): Classes {
+    const classIndex = Math.floor(parseInt(card.element, 10) / 10) % 10;
+    if (classIndex === 1) {
+        return Classes.Super;
+    }
+
+    if (classIndex === 2) {
+        return Classes.Extreme;
+    }
+
+    if (card.awakening_element_type === 2) {
+        return Classes.Extreme;
+    }
+
+    return Classes.Super;
 }
 
 function superAttackText(superAttacks: DokkanInfoSuperAttack[], kind: 'normal' | 'ultra' | 'extra'): string {
@@ -1036,7 +1058,7 @@ function transformations(data: DokkanInfoCardData, baseCharacterId: string): Tra
             sezaReleaseDate: releaseDate(detailCard.seza_open_at),
             summonable: cleanInlineText(detail?.summonable),
             isSummonable: detail?.summonable === 'Summonable',
-            characterClass: classFromElement(detailCard.element),
+            characterClass: classFromCard(detailCard),
             type: typeFromElement(detailCard.element),
             superAttack: normalSuperAttack?.effect ?? '',
             ultraSuperAttack: ultraSuperAttack?.effect,
@@ -1051,7 +1073,7 @@ function transformations(data: DokkanInfoCardData, baseCharacterId: string): Tra
             transformationCondition: namedDescriptionsText(detail?.transformation),
             domain: namedDescriptionsText(detail?.dokkan_fields),
             links: detailLinks.length ? detailLinks : links,
-            portraitURL: cardImageUrl(assetId, `card_${assetId}_character.png`),
+            portraitURL: cardThumbUrl(detailCard.icon_id ?? assetId),
             portraitFilename: `portrait_${id}`,
             artURL: cardImageUrl(assetId, `${assetId}.png`),
             artFilename: `art_${id}`,
@@ -1074,10 +1096,10 @@ function awakeningReferences(cards: DokkanListValue<DokkanInfoCardSummary>): Awa
             legacyId: toLegacyId(assetId),
             name: cleanText(card.name),
             rarity: rarityFromNumber(card.rarity),
-            characterClass: classFromElement(card.element),
+            characterClass: classFromCard(card),
             type: typeFromElement(card.element),
             releaseDate: releaseDate(card.open_at),
-            portraitURL: cardImageUrl(assetId, `card_${assetId}_character.png`),
+            portraitURL: cardThumbUrl(card.icon_id ?? assetId),
             artURL: cardImageUrl(assetId, `${assetId}.png`),
         };
     });
