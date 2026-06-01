@@ -58,9 +58,72 @@ export interface Character {
     awakeningCards?: AwakeningReference[],
     previousAwakenings?: AwakeningReference[],
     nextAwakenings?: AwakeningReference[],
+    equipment?: CharacterEquipmentReference[],
     dokkanFrontierPassives?: DokkanFrontierPassive[],
     dokkanFrontierGroupPassive?: string,
     dokkanFrontierCharacterPassive?: string,
+}
+
+export interface Equipment {
+    id: string,
+    officialId?: number,
+    name: string,
+    description: string,
+    grade?: string,
+    hp?: number,
+    attack?: number,
+    defence?: number,
+    sellingExchangePoint?: number,
+    count?: number,
+    equipmentSkillLimitationSetId?: number,
+    iconImageId?: number,
+    isEternal?: boolean,
+    iconURL?: string,
+    iconFilename?: string,
+    backgroundURL?: string,
+    backgroundFilename?: string,
+    restrictions?: EquipmentRestriction[],
+    sourcePages?: EquipmentSourcePage[],
+}
+
+export interface CharacterEquipmentReference {
+    id: string,
+    officialId?: number,
+    name: string,
+    description: string,
+    grade?: string,
+    hp?: number,
+    attack?: number,
+    defence?: number,
+    sellingExchangePoint?: number,
+    count?: number,
+    equipmentSkillLimitationSetId?: number,
+    iconImageId?: number,
+    isEternal?: boolean,
+    iconURL?: string,
+    iconFilename?: string,
+    restrictions?: EquipmentRestriction[],
+}
+
+export interface EquipmentRestriction {
+    type: 'card' | 'category' | 'character' | 'type' | 'class' | 'other',
+    rawDescription?: string,
+    cardIds?: string[],
+    cardTitles?: string[],
+    cardNames?: string[],
+    categoryIds?: string[],
+    categoryNames?: string[],
+    characterIds?: string[],
+    characterNames?: string[],
+    classes?: Classes[],
+    types?: Types[],
+}
+
+export interface EquipmentSourcePage {
+    type: 'card' | 'category' | 'character' | 'type' | 'class' | 'other',
+    id?: string,
+    name?: string,
+    url: string,
 }
 
 export interface UnitSuperAttack {

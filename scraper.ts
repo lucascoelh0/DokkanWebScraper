@@ -1,11 +1,13 @@
 import axios from 'axios';
+import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { JSDOM } from 'jsdom';
 import { promisify } from 'util';
-import { AwakeningReference, Character, Classes, DokkanFrontierPassive, Rarities, Transformation, Types, UnitSuperAttack } from "./character";
+import { AwakeningReference, Character, CharacterEquipmentReference, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, Rarities, Transformation, Types, UnitSuperAttack } from "./character";
 
 const DOKKAN_INFO_BASE_URL = 'https://dokkaninfo.com';
 const DOKKAN_INFO_CARD_LIST_URL = `${DOKKAN_INFO_BASE_URL}/cards?sort=open_at`;
+const DOKKAN_INFO_EQUIPMENT_BASE_URL = `${DOKKAN_INFO_BASE_URL}/items/equipment`;
 const DOKKAN_INFO_ASSET_BASE_URL = `${DOKKAN_INFO_BASE_URL}/assets/global/en`;
 const DEFAULT_CONCURRENCY = 4;
 const execFileAsync = promisify(execFile);
@@ -21,6 +23,7 @@ const browserHeaders = {
 interface DokkanInfoCardSummary {
     id: number;
     name: string;
+    character_id?: number;
     rarity: number;
     lv_max: number;
     skill_lv_max?: number;
@@ -50,6 +53,7 @@ interface DokkanInfoCardSummary {
     eza?: number;
     seza?: number;
     awoken_max?: number;
+    equipment?: DokkanInfoEquipment[];
 }
 
 interface DokkanInfoCardData {
@@ -74,9 +78,26 @@ interface DokkanInfoCardData {
     originPassiveSkills?: DokkanInfoFrontierPassive[];
     links?: DokkanInfoNamedDescription[];
     equipmentCategories?: DokkanInfoNamedDescription[];
+    cardEquipment?: Record<string, DokkanInfoEquipment>;
+    characterEquipment?: Record<string, DokkanInfoEquipment>;
     categories?: DokkanInfoNamedDescription[];
     summonable?: string;
     eza_data?: DokkanInfoEzaData;
+}
+
+interface DokkanInfoEquipment {
+    id?: number;
+    name?: string;
+    description?: string;
+    grade?: string;
+    selling_exchange_point?: number;
+    hp?: number;
+    attack?: number;
+    defense?: number;
+    equipment_skill_limitation_set_id?: number;
+    icon_image_id?: number;
+    is_eternal?: number;
+    count?: number;
 }
 
 interface DokkanInfoEzaData {
@@ -142,6 +163,28 @@ export async function getDokkanData(): Promise<Character[]> {
         const detail = await fetchDokkanInfoCardData(card);
         return mapDokkanInfoCard(detail);
     });
+}
+
+export async function getEquipmentData(): Promise<Equipment[]> {
+    const equipment = new Map<string, Equipment>();
+    const concurrency = parseInt(process.env.DOKKAN_SCRAPER_CONCURRENCY ?? '', 10) || DEFAULT_CONCURRENCY;
+
+    await addRenderedEquipmentPage(equipment, `${DOKKAN_INFO_EQUIPMENT_BASE_URL}/other`, {
+        type: 'other',
+        name: 'Other',
+        url: `${DOKKAN_INFO_EQUIPMENT_BASE_URL}/other`,
+    });
+
+    await scrapeEquipmentSection(equipment, 'categories', 'category', concurrency);
+    await scrapeEquipmentSection(equipment, 'characters', 'character', concurrency);
+    await scrapeEquipmentSection(equipment, 'types', 'type', concurrency);
+    await scrapeCardSpecificEquipment(equipment, concurrency);
+
+    return Array.from(equipment.values())
+        .map(cleanObject)
+        .sort((a, b) => (a.officialId ?? Number.MAX_SAFE_INTEGER) - (b.officialId ?? Number.MAX_SAFE_INTEGER)
+            || a.name.localeCompare(b.name)
+            || a.id.localeCompare(b.id));
 }
 
 async function fetchDokkanInfoCardList(): Promise<DokkanInfoCardSummary[]> {
@@ -253,6 +296,345 @@ async function fetchDokkanInfoTransformationData(transformationId: number, ezaSt
     }
 
     return undefined;
+}
+
+async function scrapeEquipmentSection(
+    equipment: Map<string, Equipment>,
+    section: 'categories' | 'characters' | 'types',
+    restrictionType: EquipmentSourcePage['type'],
+    concurrency: number,
+): Promise<void> {
+    const indexDocument = await fetchFromWeb(`${DOKKAN_INFO_EQUIPMENT_BASE_URL}/${section}`);
+    const links = equipmentIndexLinks(indexDocument, section, restrictionType);
+    const limitedLinks = applyEquipmentDebugLimit(links);
+
+    await mapWithConcurrency(limitedLinks, concurrency, async (source, index) => {
+        console.log(`[EQUIPMENT:${section}] ${index + 1}/${limitedLinks.length}: ${source.id ?? ''} ${source.name ?? ''}`);
+        await addRenderedEquipmentPage(equipment, source.url, source);
+    });
+}
+
+async function scrapeCardSpecificEquipment(equipment: Map<string, Equipment>, concurrency: number): Promise<void> {
+    const indexDocument = await fetchFromWeb(`${DOKKAN_INFO_EQUIPMENT_BASE_URL}/cards`);
+    const links = applyEquipmentDebugLimit(equipmentIndexLinks(indexDocument, 'cards', 'card'));
+
+    await mapWithConcurrency(links, concurrency, async (source, index) => {
+        console.log(`[EQUIPMENT:cards] ${index + 1}/${links.length}: ${source.id ?? ''}`);
+        const document = await fetchFromWeb(source.url);
+        const cardJson = document.querySelector('card-icon')?.getAttribute('v-bind:card');
+        if (!cardJson) {
+            return;
+        }
+
+        const card = JSON.parse(cardJson) as DokkanInfoCardSummary;
+        const cardSource = {
+            ...source,
+            id: card.id?.toString() ?? source.id,
+            name: cleanText(card.name) || source.name,
+        };
+
+        for (const item of card.equipment ?? []) {
+            const restrictions = equipmentRestrictions(item.description, cardSource, card);
+            addEquipment(equipment, equipmentFromDokkanInfo(item, cardSource, restrictions));
+        }
+    });
+}
+
+async function addRenderedEquipmentPage(equipment: Map<string, Equipment>, url: string, source: EquipmentSourcePage): Promise<void> {
+    const document = await fetchFromWeb(url);
+    const titleName = equipmentSourceName(document.querySelector('title')?.textContent ?? '');
+    const sourceFromTitle = {
+        ...source,
+        name: equipmentSourceName(source.name) || titleName,
+    };
+
+    for (const item of renderedEquipmentItems(document, sourceFromTitle)) {
+        addEquipment(equipment, item);
+    }
+}
+
+function equipmentSourceName(value: string | undefined): string {
+    return cleanText(value)
+        .replace(/^Equipment\s*-\s*/i, '')
+        .replace(/\s*\|\s*Dokkan Info!?\s*$/i, '')
+        .trim();
+}
+
+function equipmentIndexLinks(document: Document, section: string, restrictionType: EquipmentSourcePage['type']): EquipmentSourcePage[] {
+    return Array.from(document.querySelectorAll(`a[href^="/items/equipment/${section}/"]`))
+        .map(anchor => {
+            const href = anchor.getAttribute('href') ?? '';
+            const id = href.split('/').pop();
+            const imageAlt = anchor.querySelector('img')?.getAttribute('alt');
+            const text = cleanText(anchor.textContent);
+            const name = cleanText(imageAlt && !imageAlt.startsWith('cha_type_icon_') ? imageAlt : text);
+            return {
+                type: id === 'super' || id === 'extreme' ? 'class' : restrictionType,
+                id,
+                name,
+                url: `${DOKKAN_INFO_BASE_URL}${href}`,
+            } as EquipmentSourcePage;
+        })
+        .filter(source => source.id && source.url)
+        .filter((source, index, sources) => sources.findIndex(item => item.url === source.url) === index);
+}
+
+function renderedEquipmentItems(document: Document, source: EquipmentSourcePage): Equipment[] {
+    const containers = new Set<Element>();
+
+    for (const icon of Array.from(document.querySelectorAll('img[src*="/item/equipment/equ_item_"]'))) {
+        const container = closestEquipmentContainer(icon);
+        if (container) {
+            containers.add(container);
+        }
+    }
+
+    return Array.from(containers).map(container => {
+        const name = cleanText(container.querySelector('b')?.textContent);
+        const icon = container.querySelector('img[src*="/item/equipment/equ_item_"]');
+        const background = container.querySelector('img[src*="equipment_thumb_bg"]');
+        const description = cleanText(Array.from(container.querySelectorAll('.row.border-radius-10-top .col'))
+            .map(element => cleanText(element.textContent))
+            .filter(text => text && text !== name && !text.includes('equ_base_') && !text.includes('equ_item_'))
+            .pop());
+        const iconImageId = numericIdFromPath(icon?.getAttribute('src') ?? '');
+        const grade = gradeFromBackground(background?.getAttribute('alt') ?? background?.getAttribute('src') ?? '');
+
+        return equipmentFromRenderedHtml({
+            name,
+            description,
+            grade,
+            icon_image_id: iconImageId,
+            hp: statFromDescription(description, 'HP'),
+            attack: statFromDescription(description, 'ATK'),
+            defense: statFromDescription(description, 'DEF'),
+        }, source);
+    }).filter(item => item.name);
+}
+
+function closestEquipmentContainer(icon: Element): Element | undefined {
+    let current: Element | null = icon;
+    while (current) {
+        if (current.classList.contains('bg-main') && current.querySelector('b') && current.querySelector('img[src*="/item/equipment/equ_item_"]')) {
+            return current;
+        }
+
+        current = current.parentElement;
+    }
+
+    return undefined;
+}
+
+function equipmentFromRenderedHtml(item: DokkanInfoEquipment, source: EquipmentSourcePage): Equipment {
+    return equipmentFromDokkanInfo(item, source, equipmentRestrictions(item.description, source));
+}
+
+function equipmentFromDokkanInfo(item: DokkanInfoEquipment, source: EquipmentSourcePage, restrictions: EquipmentRestriction[]): Equipment {
+    const officialId = item.id;
+    const iconImageId = item.icon_image_id;
+    const grade = cleanText(item.grade);
+    const id = officialId ? officialId.toString() : syntheticEquipmentId(item, source);
+
+    return cleanObject({
+        id,
+        officialId,
+        name: cleanText(item.name),
+        description: cleanText(item.description),
+        grade,
+        hp: toNumber(item.hp),
+        attack: toNumber(item.attack),
+        defence: toNumber(item.defense),
+        sellingExchangePoint: item.selling_exchange_point,
+        count: item.count,
+        equipmentSkillLimitationSetId: item.equipment_skill_limitation_set_id,
+        iconImageId,
+        isEternal: item.is_eternal === undefined ? undefined : item.is_eternal === 1,
+        iconURL: iconImageId ? equipmentIconUrl(iconImageId) : undefined,
+        iconFilename: iconImageId ? `equipment_${id}` : undefined,
+        backgroundURL: grade ? equipmentBackgroundUrl(grade) : undefined,
+        backgroundFilename: grade ? `equipment_background_${grade}` : undefined,
+        restrictions,
+        sourcePages: [source],
+    }) as Equipment;
+}
+
+function addEquipment(equipment: Map<string, Equipment>, item: Equipment): void {
+    const current = equipment.get(item.id);
+    if (!current) {
+        equipment.set(item.id, item);
+        return;
+    }
+
+    current.restrictions = uniqueByJson([...(current.restrictions ?? []), ...(item.restrictions ?? [])]);
+    current.sourcePages = uniqueByJson([...(current.sourcePages ?? []), ...(item.sourcePages ?? [])]);
+}
+
+function equipmentRestrictions(description: string | undefined, source: EquipmentSourcePage, card?: DokkanInfoCardSummary): EquipmentRestriction[] {
+    const rawDescription = cleanText(description);
+    const restriction: EquipmentRestriction = {
+        type: source.type,
+        rawDescription,
+    };
+
+    if (source.type === 'card') {
+        restriction.cardIds = [card?.id?.toString() ?? source.id].filter(Boolean) as string[];
+        const cardTarget = cardTargetFromDescription(rawDescription);
+        restriction.cardTitles = cardTarget.title ? [cardTarget.title] : undefined;
+        restriction.cardNames = [cardTarget.name || card?.name || source.name].map(cleanText).filter(Boolean);
+    }
+
+    if (source.type === 'category') {
+        restriction.categoryIds = source.id ? [source.id] : undefined;
+        restriction.categoryNames = quotedNames(rawDescription).length ? quotedNames(rawDescription) : source.name ? [source.name] : undefined;
+    }
+
+    if (source.type === 'character') {
+        restriction.characterIds = source.id ? [source.id] : undefined;
+        restriction.characterNames = quotedNames(rawDescription).length ? quotedNames(rawDescription) : source.name ? [source.name] : undefined;
+    }
+
+    if (source.type === 'type') {
+        const element = elementRestriction(source.id);
+        restriction.classes = element.classes;
+        restriction.types = element.types;
+    }
+
+    if (source.type === 'class') {
+        restriction.classes = source.id === 'extreme' ? [Classes.Extreme] : [Classes.Super];
+    }
+
+    return [cleanObject(restriction)];
+}
+
+function characterEquipmentReferences(data: DokkanInfoCardData): CharacterEquipmentReference[] {
+    const references = [
+        ...equipmentValues(data.cardEquipment).map(item => equipmentFromDokkanInfo(item, {
+            type: 'card',
+            id: data.card.id.toString(),
+            name: cleanText(data.card.name),
+            url: `${DOKKAN_INFO_EQUIPMENT_BASE_URL}/cards/${data.card.id}`,
+        }, equipmentRestrictions(item.description, {
+            type: 'card',
+            id: data.card.id.toString(),
+            name: cleanText(data.card.name),
+            url: `${DOKKAN_INFO_EQUIPMENT_BASE_URL}/cards/${data.card.id}`,
+        }, data.card))),
+        ...equipmentValues(data.characterEquipment).map(item => equipmentFromDokkanInfo(item, {
+            type: 'character',
+            id: data.card.character_id?.toString(),
+            name: cleanText(data.card.name),
+            url: `${DOKKAN_INFO_EQUIPMENT_BASE_URL}/characters/${data.card.character_id ?? ''}`,
+        }, equipmentRestrictions(item.description, {
+            type: 'character',
+            id: data.card.character_id?.toString(),
+            name: cleanText(data.card.name),
+            url: `${DOKKAN_INFO_EQUIPMENT_BASE_URL}/characters/${data.card.character_id ?? ''}`,
+        }))),
+    ];
+
+    return uniqueByJson(references.map(item => cleanObject({
+        id: item.id,
+        officialId: item.officialId,
+        name: item.name,
+        description: item.description,
+        grade: item.grade,
+        hp: item.hp,
+        attack: item.attack,
+        defence: item.defence,
+        sellingExchangePoint: item.sellingExchangePoint,
+        count: item.count,
+        equipmentSkillLimitationSetId: item.equipmentSkillLimitationSetId,
+        iconImageId: item.iconImageId,
+        isEternal: item.isEternal,
+        iconURL: item.iconURL,
+        iconFilename: item.iconFilename,
+        restrictions: item.restrictions,
+    }) as CharacterEquipmentReference));
+}
+
+function equipmentValues(value: Record<string, DokkanInfoEquipment> | undefined): DokkanInfoEquipment[] {
+    return Object.values(value ?? {});
+}
+
+function applyEquipmentDebugLimit<T>(items: T[]): T[] {
+    const limit = parseInt(process.env.DOKKAN_SCRAPER_EQUIPMENT_LIMIT ?? '', 10);
+    return limit > 0 ? items.slice(0, limit) : items;
+}
+
+function syntheticEquipmentId(item: DokkanInfoEquipment, source: EquipmentSourcePage): string {
+    const signature = [
+        cleanText(item.name),
+        cleanText(item.description),
+        cleanText(item.grade),
+        item.icon_image_id ?? '',
+        source.type,
+        source.id ?? '',
+    ].join('|');
+
+    return `synthetic:${createHash('sha1').update(signature).digest('hex').slice(0, 12)}`;
+}
+
+function cardTargetFromDescription(description: string): { title?: string, name?: string } {
+    const match = description.match(/Can be equipped to\s+\[([^\]]+)\]\s*([^.]*)\./i);
+    return {
+        title: cleanText(match?.[1]),
+        name: cleanText(match?.[2]),
+    };
+}
+
+function quotedNames(description: string): string[] {
+    return Array.from(new Set(Array.from(description.matchAll(/"([^"]+)"/g)).map(match => cleanText(match[1])).filter(Boolean)));
+}
+
+function elementRestriction(element: string | undefined): { classes?: Classes[], types?: Types[] } {
+    if (!element || !/^\d+$/.test(element)) {
+        return {};
+    }
+
+    const classIndex = Math.floor(parseInt(element, 10) / 10) % 10;
+    const classes = classIndex === 1 ? [Classes.Super] : classIndex === 2 ? [Classes.Extreme] : undefined;
+    return {
+        classes,
+        types: [typeFromElement(element)],
+    };
+}
+
+function statFromDescription(description: string, stat: 'HP' | 'ATK' | 'DEF'): number | undefined {
+    const match = description.match(new RegExp(`(?:character's|character\\u2019s) ${stat} \\+(\\d+)`, 'i'))
+        ?? description.match(new RegExp(`${stat} \\+(\\d+)(?!\\s*Lv\\.)`, 'i'));
+    return match ? parseInt(match[1], 10) : undefined;
+}
+
+function numericIdFromPath(path: string): number | undefined {
+    const match = path.match(/(\d+)(?=\.png$)/);
+    return match ? parseInt(match[1], 10) : undefined;
+}
+
+function gradeFromBackground(value: string): string {
+    const match = value.match(/equ_base_([a-z]+)(?:_\d+)?/i);
+    return cleanText(match?.[1]);
+}
+
+function equipmentIconUrl(iconImageId: number): string {
+    return `${DOKKAN_INFO_ASSET_BASE_URL}/item/equipment/equ_item_${iconImageId.toString().padStart(5, '0')}.png`;
+}
+
+function equipmentBackgroundUrl(grade: string): string {
+    const backgroundName = grade === 'gold' ? 'equ_base_gold_2' : `equ_base_${grade}`;
+    return `${DOKKAN_INFO_ASSET_BASE_URL}/layout/en/image/item/equipment/equipment_thumb_bg/${backgroundName}.png`;
+}
+
+function uniqueByJson<T>(values: T[]): T[] {
+    const seen = new Set<string>();
+    return values.filter(value => {
+        const key = JSON.stringify(value);
+        if (seen.has(key)) {
+            return false;
+        }
+
+        seen.add(key);
+        return true;
+    });
 }
 
 async function fetchPage(url: string, retries = 3): Promise<string> {
@@ -406,6 +788,7 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
         awakeningCards: awakeningReferences(data.awakening_cards),
         previousAwakenings: awakeningReferences(data.awakening_cards?.filter(awakeningCard => awakeningCard.rarity < card.rarity)),
         nextAwakenings: awakeningReferences(data.awakening_cards?.filter(awakeningCard => awakeningCard.rarity > card.rarity)),
+        equipment: characterEquipmentReferences(data),
         dokkanFrontierPassives: dokkanFrontierPassives(data.originPassiveSkills),
         dokkanFrontierGroupPassive: cleanText(data.passive_skill?.sougou_only_itemized_description),
         dokkanFrontierCharacterPassive: cleanText(data.passive_skill?.kobetu_only_itemized_description),

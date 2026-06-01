@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "fs";
 import { writeFile } from "fs/promises";
 import { resolve } from "path";
-import { getDokkanData } from "./scraper";
+import { getDokkanData, getEquipmentData } from "./scraper";
 import * as fs from 'fs';
 import * as sharp from 'sharp';
 
@@ -15,6 +15,8 @@ export async function saveDokkanResults() {
     console.log('Starting scrape');
     const data = await getDokkanData();
     console.log('Finished scraping cards');
+    const equipment = await getEquipmentData();
+    console.log('Finished scraping equipment');
     let currentDate = new Date();
     let day = ("0" + currentDate.getUTCDate()).slice(-2);
     let month = ("0" + (currentDate.getUTCMonth() + 1)).slice(-2);
@@ -23,6 +25,7 @@ export async function saveDokkanResults() {
     console.log('Saving images');
 
     saveData(`${year}${month}${day}DokkanCharacterData`, data);
+    saveData(`${year}${month}${day}DokkanEquipmentData`, equipment);
 
     for (const character of data) {
         await saveImageWithRetry(`${character.portraitFilename}.png`, character.portraitURL, 6)

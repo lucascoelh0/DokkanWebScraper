@@ -56,6 +56,36 @@ Awakening references:
 
 Each awakening reference includes `id`, `legacyId`, `name`, `rarity`, `characterClass`, `type`, `releaseDate`, `portraitURL` and `artURL`.
 
+## Equipment
+
+`getDokkanData()` now adds an `equipment` array to each card when DokkanInfo exposes compatible Skill Orbs in the card payload.
+
+The card payload currently exposes:
+
+- `cardEquipment`: equipment tied to one specific card/title
+- `characterEquipment`: equipment tied to character-name restrictions
+
+These entries use DokkanInfo's official equipment IDs and include `id`, `officialId`, `name`, `description`, `grade`, stat bonuses, exchange-point info, icon URL and parsed restriction metadata. For card-specific equipment the restriction includes the target `cardIds`, plus parsed `cardTitles` and `cardNames` when the description uses the `[Title] Character Name` format.
+
+`getEquipmentData()` scrapes the equipment catalog from:
+
+- `/items/equipment/other`
+- `/items/equipment/cards`
+- `/items/equipment/categories`
+- `/items/equipment/characters`
+- `/items/equipment/types`
+
+The scraper saves this as `data/{YYYYMMDD}DokkanEquipmentData.json` from `index.ts`.
+
+Official equipment IDs are used whenever they are embedded by DokkanInfo, especially on card-specific equipment pages. Some aggregate equipment pages are server-rendered without an equipment ID in the HTML; those entries get a stable synthetic ID based on name, description, grade, icon and source page. The original source page and parsed restrictions are still preserved so the Android app can filter by card, category, character name, class or type.
+
+For quick equipment smoke tests, set `DOKKAN_SCRAPER_EQUIPMENT_LIMIT` to limit the number of category/character/type/card equipment pages fetched:
+
+```powershell
+$env:DOKKAN_SCRAPER_EQUIPMENT_LIMIT='2'
+npx ts-node -e "const { getEquipmentData } = require('./scraper'); getEquipmentData().then(data => console.log(data.length))"
+```
+
 ## Release dates
 
 Dates are saved as UTC ISO strings.
