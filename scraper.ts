@@ -1047,8 +1047,12 @@ function attackType(value: string | undefined): AttackTypes {
         return AttackTypes.KiBlast;
     }
 
-    if (normalized.includes('unarmed') || normalized.includes('armed') || normalized.includes('physical')) {
-        return AttackTypes.Physical;
+    if (normalized.includes('unarmed')) {
+        return AttackTypes.Unarmed;
+    }
+
+    if (normalized.includes('armed') || normalized.includes('physical')) {
+        return AttackTypes.Armed;
     }
 
     return AttackTypes.Other;

@@ -224,7 +224,8 @@ export enum Rarities {
 }
 
 export enum AttackTypes {
-    Physical = "Physical",
+    Armed = "Armed",
+    Unarmed = "Unarmed",
     KiBlast = "Ki Blast",
     Other = "Other",
 }

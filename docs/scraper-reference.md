@@ -128,7 +128,7 @@ Super attacks:
 - `ultraSuperAttack`: `style: "Hyper"` or Ki >= 18
 - `exSuperAttack`: `style: "Extra"`
 - `unitSuperAttacks`: `style: "Condition"` or `style: "Unit"`
-- attack `type`: `Physical`, `Ki Blast`, or `Other`
+- attack `type`: `Armed`, `Unarmed`, `Ki Blast`, or `Other`
 - attack `rawType`: original DokkanInfo label such as `Unarmed` or `Armed`
 
 Active skills:

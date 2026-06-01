@@ -95,7 +95,7 @@ Structured fields added on top:
 
 - `name`: attack name
 - `effect`: attack effect text
-- `type`: normalized attack type enum: `Physical`, `Ki Blast`, or `Other`
+- `type`: normalized attack type enum: `Armed`, `Unarmed`, `Ki Blast`, or `Other`
 - `rawType`: raw DokkanInfo attack type such as `Unarmed`
 - `ki`: starting Ki threshold when available
 - `style`: DokkanInfo style such as `Normal`, `Hyper`, `Extra`, `Condition`
@@ -105,7 +105,8 @@ Structured fields added on top:
 Attack type normalization rules:
 
 - `Ki Blast` stays `Ki Blast`
-- `Unarmed`, `Armed`, and `Physical` map to `Physical`
+- `Unarmed` stays `Unarmed`
+- `Armed` and `Physical` map to `Armed`
 - missing or unknown values map to `Other`
 
 ### `CharacterExtraInfo`
