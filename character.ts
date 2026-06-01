@@ -7,6 +7,8 @@ export interface Character {
     releaseDate?: string,
     ezaReleaseDate?: string,
     sezaReleaseDate?: string,
+    summonable?: string,
+    isSummonable?: boolean,
     characterClass: Classes,
     type: Types,
     cost: number,
@@ -53,11 +55,35 @@ export interface Character {
     standbySkill: string,
     finishingMove?: string[],
     transformations?: Transformation[],
+    awakeningCards?: AwakeningReference[],
+    previousAwakenings?: AwakeningReference[],
+    nextAwakenings?: AwakeningReference[],
+    dokkanFrontierPassives?: DokkanFrontierPassive[],
+    dokkanFrontierGroupPassive?: string,
+    dokkanFrontierCharacterPassive?: string,
 }
 
 export interface UnitSuperAttack {
     unitSuperAttack: string | undefined;
     unitSuperAttackCondition: string | undefined;
+}
+
+export interface AwakeningReference {
+    id: string,
+    legacyId?: string,
+    name: string,
+    rarity: Rarities,
+    characterClass: Classes,
+    type: Types,
+    releaseDate?: string,
+    portraitURL: string,
+    artURL: string,
+}
+
+export interface DokkanFrontierPassive {
+    title?: string,
+    originBattleId?: number,
+    passive: string,
 }
 
 export enum Classes {
@@ -90,6 +116,8 @@ export interface Transformation {
     releaseDate?: string,
     ezaReleaseDate?: string,
     sezaReleaseDate?: string,
+    summonable?: string,
+    isSummonable?: boolean,
     characterClass: Classes,
     type: Types,
     superAttack: string,
@@ -112,4 +140,7 @@ export interface Transformation {
     artFilename: string,
     standbySkill?: string,
     finishingMove: string[],
+    dokkanFrontierPassives?: DokkanFrontierPassive[],
+    dokkanFrontierGroupPassive?: string,
+    dokkanFrontierCharacterPassive?: string,
 }

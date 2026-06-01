@@ -41,6 +41,21 @@ npx ts-node -e "const { getDokkanData } = require('./scraper'); getDokkanData().
 
 `legacyId` stores the old shortened asset-derived ID, for example `1231`. This prevents duplicate IDs when multiple rarities share the same asset, such as SSR and Z-Awakened UR variants.
 
+## Summon and awakenings
+
+Summon availability:
+
+- `summonable`: raw DokkanInfo label, for example `Summonable`
+- `isSummonable`: boolean convenience field; `false` when DokkanInfo does not mark the card as summonable
+
+Awakening references:
+
+- `awakeningCards`: all related cards returned by `awakening_cards`
+- `previousAwakenings`: related cards with lower rarity than the current card
+- `nextAwakenings`: related cards with higher rarity than the current card
+
+Each awakening reference includes `id`, `legacyId`, `name`, `rarity`, `characterClass`, `type`, `releaseDate`, `portraitURL` and `artURL`.
+
 ## Release dates
 
 Dates are saved as UTC ISO strings.
@@ -73,6 +88,9 @@ Other mechanics:
 - `standbySkill`: `stand_by_skill`
 - `finishingMove`: `finish_skills`
 - `transformations`: fetched from `/api/cards/{id}/transformation`, with EZA query params when needed
+- `dokkanFrontierPassives`: `originPassiveSkills`, including battle title and `originBattleId`
+- `dokkanFrontierGroupPassive`: `passive_skill.sougou_only_itemized_description`
+- `dokkanFrontierCharacterPassive`: `passive_skill.kobetu_only_itemized_description`
 
 ## Example coverage checked
 
@@ -85,6 +103,8 @@ Other mechanics:
 - Exchange: `1029701`
 - EZA: `1022781`, `1025071`
 - SEZA: `1013771`
+- Summonable + awakening chain: `1032530`, `1032541`, `1032551`
+- Dokkan Frontier passive: `1032771`
 
 ## Known caveats
 

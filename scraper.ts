@@ -2,7 +2,7 @@ import axios from 'axios';
 import { execFile } from 'child_process';
 import { JSDOM } from 'jsdom';
 import { promisify } from 'util';
-import { Character, Classes, Rarities, Transformation, Types, UnitSuperAttack } from "./character";
+import { AwakeningReference, Character, Classes, DokkanFrontierPassive, Rarities, Transformation, Types, UnitSuperAttack } from "./character";
 
 const DOKKAN_INFO_BASE_URL = 'https://dokkaninfo.com';
 const DOKKAN_INFO_CARD_LIST_URL = `${DOKKAN_INFO_BASE_URL}/cards?sort=open_at`;
@@ -68,11 +68,14 @@ interface DokkanInfoCardData {
     transformation?: DokkanInfoNamedDescription | DokkanInfoNamedDescription[];
     transformations?: DokkanInfoCardSummary[];
     transformation_details?: DokkanInfoCardData[];
+    awakening_cards?: DokkanInfoCardSummary[];
     finish_skills?: DokkanInfoNamedDescription[];
     dokkan_fields?: DokkanInfoNamedDescription[];
+    originPassiveSkills?: DokkanInfoFrontierPassive[];
     links?: DokkanInfoNamedDescription[];
     equipmentCategories?: DokkanInfoNamedDescription[];
     categories?: DokkanInfoNamedDescription[];
+    summonable?: string;
     eza_data?: DokkanInfoEzaData;
 }
 
@@ -112,6 +115,12 @@ interface DokkanInfoSuperAttack {
     causality_conditions?: string;
     causality_description?: string;
     attack?: DokkanInfoNamedDescription;
+}
+
+interface DokkanInfoFrontierPassive {
+    title?: string;
+    origin_battle_id?: number;
+    passive_skill?: string;
 }
 
 let cachedCardList: DokkanInfoCardSummary[] | undefined;
@@ -347,6 +356,8 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
         releaseDate: releaseDate(card.open_at),
         ezaReleaseDate: releaseDate(card.eza_open_at ?? data.eza_open_date?.open_at),
         sezaReleaseDate: releaseDate(card.seza_open_at ?? data.seza_open_date?.open_at),
+        summonable: cleanText(data.summonable),
+        isSummonable: data.summonable === 'Summonable',
         characterClass: classFromElement(card.element),
         type: typeFromElement(card.element),
         cost: toNumber(card.cost),
@@ -392,6 +403,12 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
         standbySkill: cleanText(data.stand_by_skill?.description ?? data.stand_by_skill?.name),
         finishingMove: finishSkillTexts(data.finish_skills),
         transformations: transformations(data, id),
+        awakeningCards: awakeningReferences(data.awakening_cards),
+        previousAwakenings: awakeningReferences(data.awakening_cards?.filter(awakeningCard => awakeningCard.rarity < card.rarity)),
+        nextAwakenings: awakeningReferences(data.awakening_cards?.filter(awakeningCard => awakeningCard.rarity > card.rarity)),
+        dokkanFrontierPassives: dokkanFrontierPassives(data.originPassiveSkills),
+        dokkanFrontierGroupPassive: cleanText(data.passive_skill?.sougou_only_itemized_description),
+        dokkanFrontierCharacterPassive: cleanText(data.passive_skill?.kobetu_only_itemized_description),
     };
 
     return cleanObject(characterData);
@@ -556,6 +573,8 @@ function transformations(data: DokkanInfoCardData, baseCharacterId: string): Tra
             releaseDate: releaseDate(detailCard.open_at),
             ezaReleaseDate: releaseDate(detailCard.eza_open_at),
             sezaReleaseDate: releaseDate(detailCard.seza_open_at),
+            summonable: cleanText(detail?.summonable),
+            isSummonable: detail?.summonable === 'Summonable',
             characterClass: classFromElement(detailCard.element),
             type: typeFromElement(detailCard.element),
             superAttack: superAttackText(superAttacks, 'normal'),
@@ -573,8 +592,39 @@ function transformations(data: DokkanInfoCardData, baseCharacterId: string): Tra
             artFilename: `art_${id}`,
             standbySkill: cleanText(detail?.stand_by_skill?.description ?? detail?.stand_by_skill?.name),
             finishingMove: finishSkillTexts(detail?.finish_skills),
+            dokkanFrontierPassives: dokkanFrontierPassives(detail?.originPassiveSkills),
+            dokkanFrontierGroupPassive: cleanText(detail?.passive_skill?.sougou_only_itemized_description),
+            dokkanFrontierCharacterPassive: cleanText(detail?.passive_skill?.kobetu_only_itemized_description),
         }) as Transformation;
     });
+}
+
+function awakeningReferences(cards: DokkanInfoCardSummary[] | undefined): AwakeningReference[] {
+    return (cards ?? []).map(card => {
+        const assetId = card.asset_id ?? card.icon_id ?? normalizeAssetId(card.id);
+
+        return {
+            id: card.id.toString(),
+            legacyId: toLegacyId(assetId),
+            name: cleanText(card.name),
+            rarity: rarityFromNumber(card.rarity),
+            characterClass: classFromElement(card.element),
+            type: typeFromElement(card.element),
+            releaseDate: releaseDate(card.open_at),
+            portraitURL: cardImageUrl(assetId, `card_${assetId}_character.png`),
+            artURL: cardImageUrl(assetId, `${assetId}.png`),
+        };
+    });
+}
+
+function dokkanFrontierPassives(values: DokkanInfoFrontierPassive[] | undefined): DokkanFrontierPassive[] {
+    return (values ?? [])
+        .map(value => ({
+            title: cleanText(value.title),
+            originBattleId: value.origin_battle_id,
+            passive: cleanText(value.passive_skill),
+        }))
+        .filter(value => value.passive);
 }
 
 function uniqueCleanNames(values: DokkanInfoNamedDescription[] | undefined): string[] {
