@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { JSDOM } from 'jsdom';
 import { promisify } from 'util';
-import { AttackTypes, AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, PassiveDetails, PortraitSpec, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
+import { AttackTypes, AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, LeaderSkillClause, LeaderSkillDetails, PassiveDetails, PortraitSpec, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
 
 const DOKKAN_INFO_BASE_URL = 'https://dokkaninfo.com';
 const DOKKAN_INFO_CARD_LIST_URL = `${DOKKAN_INFO_BASE_URL}/cards?sort=open_at`;
@@ -158,10 +158,10 @@ type DokkanListValue<T> = T[] | Record<string, T> | undefined;
 
 type LeaderSkillBoostForm = 'percentage' | 'flat';
 
-interface ParsedLeaderSkillSummary {
-    hpBoost: number;
-    atkBoost: number;
-    defBoost: number;
+interface LeaderSkillBoostValues {
+    hp: number;
+    atk: number;
+    def: number;
     boostForm: LeaderSkillBoostForm;
 }
 
@@ -760,6 +760,10 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
     const extraInfo = characterExtraInfo(card);
     const awakeningCards = arrayFromDokkanList(data.awakening_cards);
     const portraitFilename = `portrait_${id}`;
+    const leaderSkill = cleanMultilineText(data.leader_skill?.description);
+    const ezaLeaderSkill = cleanMultilineText(data.eza_data?.leader_skill?.description);
+    const leaderSkillDetails = parseLeaderSkillDetails(leaderSkill);
+    const ezaLeaderSkillDetails = parseLeaderSkillDetails(ezaLeaderSkill);
 
     const characterData: Character = {
         name: cleanInlineText(card.name),
@@ -780,12 +784,11 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
         portraitURL: portraitOutputUrl(portraitFilename),
         portraitFilename,
         portraitSpec: portraitSpec(card),
-        leaderSkill: cleanMultilineText(data.leader_skill?.description),
-        ezaLeaderSkill: cleanMultilineText(data.eza_data?.leader_skill?.description),
-        leaderSkillBoost: leaderSkillBoost(
-            cleanMultilineText(data.leader_skill?.description),
-            cleanMultilineText(data.eza_data?.leader_skill?.description),
-        ),
+        leaderSkill,
+        ezaLeaderSkill,
+        leaderSkillBoost: ezaLeaderSkillDetails?.displayBoost ?? leaderSkillDetails?.displayBoost,
+        leaderSkillDetails,
+        ezaLeaderSkillDetails,
         superAttack: normalSuperAttack?.effect ?? '',
         ezaSuperAttack: ezaNormalSuperAttack?.effect,
         ultraSuperAttack: ultraSuperAttack?.effect,
@@ -1069,62 +1072,98 @@ function attackType(value: string | undefined): AttackTypes {
     return AttackTypes.Other;
 }
 
-function leaderSkillBoost(leaderSkill: string | undefined, ezaLeaderSkill: string | undefined): number | undefined {
-    const sourceLeaderSkill = ezaLeaderSkill || leaderSkill;
-    if (!sourceLeaderSkill) {
+export function parseLeaderSkillDetails(leaderSkill: string | undefined): LeaderSkillDetails | undefined {
+    const normalizedLeaderSkill = cleanMultilineText(leaderSkill);
+    if (!normalizedLeaderSkill) {
         return undefined;
     }
 
-    const parsedLeaderSkills = parseLeaderSkillSummary(sourceLeaderSkill);
-    const boost = getBaseLeaderSkillBoost(parsedLeaderSkills);
-    return boost || undefined;
+    const clauses = splitLeaderSkillClauses(normalizedLeaderSkill)
+        .map(parseLeaderSkillClause)
+        .filter((clause): clause is LeaderSkillClause => Boolean(clause));
+    const displayBoost = calculateLeaderSkillDisplayBoost(clauses);
+
+    return {
+        rawText: normalizedLeaderSkill,
+        displayBoost,
+        clauses,
+    };
 }
 
-function parseLeaderSkillSummary(leaderSkill: string): ParsedLeaderSkillSummary[] {
-    const parsedSkills: ParsedLeaderSkillSummary[] = [];
-    const segments = leaderSkill.split(/; plus an additional/i);
-
-    if (segments.length > 1) {
-        segments[1] = segments[1].replace(/\(.*/, '').trim();
-        const lastSegment = segments[1].split(';').pop()?.replace(/\(.*/, '').trim();
-        if (lastSegment) {
-            segments.push(lastSegment);
-        }
-    }
-
-    if (segments.length > 2) {
-        segments[1] = segments[1].split(';')[0];
-    }
-
-    segments.forEach(subText => {
-        const subSegments = subText.split(/;or|; or|;/i);
-        subSegments.forEach(segment => {
-            const parsed = parseLeaderSkillSummarySegment(segment);
-            if (parsed) {
-                parsedSkills.push(parsed);
-            }
-        });
-    });
-
-    return parsedSkills;
+interface RawLeaderSkillClause {
+    rawText: string;
+    stackGroup: LeaderSkillClause['stackGroup'];
+    targetMode: LeaderSkillClause['targetMode'];
 }
 
-function parseLeaderSkillSummarySegment(segment: string): ParsedLeaderSkillSummary | undefined {
-    const normalizedSegment = cleanInlineText(segment);
-    if (!normalizedSegment) {
+function splitLeaderSkillClauses(leaderSkill: string): RawLeaderSkillClause[] {
+    const normalized = cleanInlineText(leaderSkill);
+    const additionalSections = normalized.split(/(?:,|;)?\s*plus an additional\s+/i);
+    const baseSection = additionalSections.shift() ?? '';
+    const clauses: RawLeaderSkillClause[] = splitAlternativeClauses(baseSection, 'primary', 'base');
+
+    for (const additionalSection of additionalSections) {
+        clauses.push(...splitAlternativeClauses(
+            additionalSection,
+            'additional',
+            /\balso belong\b/i.test(additionalSection) ? 'also-belong' : 'base',
+        ));
+    }
+
+    return clauses;
+}
+
+function splitAlternativeClauses(
+    text: string,
+    initialStackGroup: LeaderSkillClause['stackGroup'],
+    targetMode: LeaderSkillClause['targetMode'],
+): RawLeaderSkillClause[] {
+    const parts = text
+        .split(/\s*;\s*or\s+|\s*;\s*(?=(?:"|Super|Extreme|AGL|TEQ|INT|STR|PHY|Type|All Type|All Types))|\s+or\s+(?=(?:Super|Extreme|AGL|TEQ|INT|STR|PHY|Type|All Type|All Types))/i)
+        .map(part => cleanInlineText(part))
+        .filter(Boolean);
+
+    return parts.map((rawText, index) => ({
+        rawText,
+        stackGroup: index === 0 ? initialStackGroup : 'secondary',
+        targetMode,
+    }));
+}
+
+function parseLeaderSkillClause(clause: RawLeaderSkillClause): LeaderSkillClause | undefined {
+    if (!clause.rawText) {
         return undefined;
     }
 
-    const boostForm: LeaderSkillBoostForm = normalizedSegment.includes('%') ? 'percentage' : 'flat';
+    const boost = parseLeaderSkillBoostValues(clause.rawText);
+    const categories = extractLeaderSkillCategories(clause.rawText);
+    const types = extractLeaderSkillTypes(clause.rawText);
+    const classes = extractLeaderSkillClasses(clause.rawText);
+    const ki = extractLeaderSkillKi(clause.rawText);
 
-    if (boostForm === 'percentage') {
-        return parsePercentageLeaderSkillSummary(normalizedSegment);
-    }
-
-    return parseFlatLeaderSkillSummary(normalizedSegment);
+    return cleanObject({
+        rawText: clause.rawText,
+        stackGroup: clause.stackGroup,
+        targetMode: clause.targetMode,
+        categories,
+        types,
+        classes,
+        ki,
+        hp: boost.hp,
+        atk: boost.atk,
+        def: boost.def,
+        boostForm: boost.boostForm,
+    }) as LeaderSkillClause;
 }
 
-function parsePercentageLeaderSkillSummary(segment: string): ParsedLeaderSkillSummary {
+function parseLeaderSkillBoostValues(segment: string): LeaderSkillBoostValues {
+    const boostForm: LeaderSkillBoostForm = segment.includes('%') ? 'percentage' : 'flat';
+    return boostForm === 'percentage'
+        ? parsePercentageLeaderSkillSummary(segment)
+        : parseFlatLeaderSkillSummary(segment);
+}
+
+function parsePercentageLeaderSkillSummary(segment: string): LeaderSkillBoostValues {
     const separatedBoostPattern1 = /(HP|ATK|DEF) & (HP|ATK|DEF) \+(\d+)% and (HP|ATK|DEF) \+(\d+)%/i;
     const separatedBoostPattern2 = /HP \+(\d+)% and ATK & DEF \+(\d+)%/i;
     const combinedBoostPattern = /HP, ATK (?:&|and) DEF \+(\d+)%/i;
@@ -1136,9 +1175,9 @@ function parsePercentageLeaderSkillSummary(segment: string): ParsedLeaderSkillSu
     const separateStatBoostMatch = segment.match(separateStatBoostPattern);
     const combinedBoost = parseFloat(combinedBoostMatch?.[1] ?? '0');
 
-    let hpBoost = combinedBoost;
-    let atkBoost = combinedBoost;
-    let defBoost = combinedBoost;
+    let hp = combinedBoost;
+    let atk = combinedBoost;
+    let def = combinedBoost;
 
     if (separateStatBoostMatch) {
         const firstType = separateStatBoostMatch[1];
@@ -1146,9 +1185,9 @@ function parsePercentageLeaderSkillSummary(segment: string): ParsedLeaderSkillSu
         const sharedBoost = parseFloat(separateStatBoostMatch[3] ?? '0');
         const attackBoost = parseFloat(separateStatBoostMatch[5] ?? '0');
 
-        hpBoost = firstType === 'HP' || secondType === 'HP' ? sharedBoost : 0;
-        defBoost = firstType === 'DEF' || secondType === 'DEF' ? sharedBoost : 0;
-        atkBoost = attackBoost;
+        hp = firstType === 'HP' || secondType === 'HP' ? sharedBoost : 0;
+        def = firstType === 'DEF' || secondType === 'DEF' ? sharedBoost : 0;
+        atk = attackBoost;
     } else if (separatedBoostMatch1) {
         const firstType = separatedBoostMatch1[1];
         const secondType = separatedBoostMatch1[2];
@@ -1156,44 +1195,83 @@ function parsePercentageLeaderSkillSummary(segment: string): ParsedLeaderSkillSu
         const thirdType = separatedBoostMatch1[4];
         const thirdBoost = parseFloat(separatedBoostMatch1[5] ?? '0');
 
-        hpBoost = firstType === 'HP' || secondType === 'HP'
+        hp = firstType === 'HP' || secondType === 'HP'
             ? sharedBoost
             : thirdType === 'HP' ? thirdBoost : combinedBoost;
-        atkBoost = firstType === 'ATK' || secondType === 'ATK'
+        atk = firstType === 'ATK' || secondType === 'ATK'
             ? sharedBoost
             : thirdType === 'ATK' ? thirdBoost : combinedBoost;
-        defBoost = firstType === 'DEF' || secondType === 'DEF'
+        def = firstType === 'DEF' || secondType === 'DEF'
             ? sharedBoost
             : thirdType === 'DEF' ? thirdBoost : combinedBoost;
     } else if (separatedBoostMatch2) {
-        hpBoost = parseFloat(separatedBoostMatch2[1] ?? '0');
-        atkBoost = parseFloat(separatedBoostMatch2[2] ?? '0');
-        defBoost = atkBoost;
+        hp = parseFloat(separatedBoostMatch2[1] ?? '0');
+        atk = parseFloat(separatedBoostMatch2[2] ?? '0');
+        def = atk;
     }
 
     return {
-        hpBoost,
-        atkBoost,
-        defBoost,
+        hp,
+        atk,
+        def,
         boostForm: 'percentage',
     };
 }
 
-function parseFlatLeaderSkillSummary(segment: string): ParsedLeaderSkillSummary {
+function parseFlatLeaderSkillSummary(segment: string): LeaderSkillBoostValues {
     const flatBoostPattern = /(HP|ATK|DEF) \+(\d+)/gi;
     const matches = Array.from(segment.matchAll(flatBoostPattern));
 
     const flatBoostMap = new Map(matches.map(match => [match[1], parseFloat(match[2] ?? '0')]));
 
     return {
-        hpBoost: flatBoostMap.get('HP') ?? 0,
-        atkBoost: flatBoostMap.get('ATK') ?? 0,
-        defBoost: flatBoostMap.get('DEF') ?? 0,
+        hp: flatBoostMap.get('HP') ?? 0,
+        atk: flatBoostMap.get('ATK') ?? 0,
+        def: flatBoostMap.get('DEF') ?? 0,
         boostForm: 'flat',
     };
 }
 
-function getBaseLeaderSkillBoost(parsedLeaderSkills: ParsedLeaderSkillSummary[]): number {
+function extractLeaderSkillCategories(segment: string): string[] | undefined {
+    const categories = Array.from(segment.matchAll(/"([^"]+)"/g))
+        .map(match => cleanInlineText(match[1]))
+        .filter(Boolean);
+
+    return categories.length ? Array.from(new Set(categories)) : undefined;
+}
+
+function extractLeaderSkillTypes(segment: string): string[] | undefined {
+    if (!/\bType\b/i.test(segment)) {
+        return undefined;
+    }
+
+    if (/\bAll Type\b|\bAll Types\b/i.test(segment)) {
+        return ['All'];
+    }
+
+    const explicitTypes = Array.from(segment.matchAll(/\b(AGL|TEQ|INT|STR|PHY)\b/gi))
+        .map(match => match[1].toUpperCase());
+
+    if (explicitTypes.length) {
+        return Array.from(new Set(explicitTypes));
+    }
+
+    return ['All'];
+}
+
+function extractLeaderSkillClasses(segment: string): string[] | undefined {
+    const classes = Array.from(segment.matchAll(/\b(Super|Extreme)\b(?=\s+(?:Class|AGL|TEQ|INT|STR|PHY|Type|Types))/gi))
+        .map(match => match[1][0].toUpperCase() + match[1].slice(1).toLowerCase());
+
+    return classes.length ? Array.from(new Set(classes)) : undefined;
+}
+
+function extractLeaderSkillKi(segment: string): number | undefined {
+    const kiBoost = segment.match(/Ki \+(\d+)/i)?.[1];
+    return kiBoost ? parseInt(kiBoost, 10) : undefined;
+}
+
+function calculateLeaderSkillDisplayBoost(parsedLeaderSkills: Pick<LeaderSkillClause, 'hp' | 'atk' | 'def' | 'boostForm'>[]): number {
     let totalBoost = 0;
     let endLoop = false;
 
@@ -1203,8 +1281,8 @@ function getBaseLeaderSkillBoost(parsedLeaderSkills: ParsedLeaderSkillSummary[])
         }
 
         const boost = leaderSkill.boostForm === 'percentage'
-            ? (leaderSkill.hpBoost + leaderSkill.atkBoost + leaderSkill.defBoost) / 3
-            : leaderSkill.atkBoost;
+            ? (leaderSkill.hp + leaderSkill.atk + leaderSkill.def) / 3
+            : leaderSkill.atk;
 
         if (boost < 40 && totalBoost > 0 && totalBoost < 200) {
             totalBoost += boost;

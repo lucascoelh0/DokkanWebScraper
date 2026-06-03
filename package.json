@@ -12,7 +12,7 @@
     "format:data": "npx ts-node format-json.ts",
     "watch": "tsc -w",
     "prestart": "npm run build",
-    "test": "mocha",
+    "test": "npm run build && mocha --no-config lib/scraper.spec.js",
     "run": "npx ts-node index.ts"
   },
   "repository": {

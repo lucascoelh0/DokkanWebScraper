@@ -50,6 +50,8 @@ Stable top-level fields still used by the Android app:
 - `summonable`, `isSummonable`
 - `leaderSkill`, `ezaLeaderSkill`
 - `leaderSkillBoost`
+- `leaderSkillDetails`
+- `ezaLeaderSkillDetails`
 - `superAttack`, `ultraSuperAttack`, `exSuperAttack`
 - `ezaSuperAttack`, `ezaUltraSuperAttack`, `ezaExSuperAttack`
 - `passive`, `ezaPassive`
@@ -64,6 +66,18 @@ Field rules:
 
 - `leaderSkillBoost` is the app-facing summary number for the card's best leader skill value, such as `170`, `200`, or `230`
 - when EZA leader skill exists, summary should prefer the EZA leader skill text
+- `leaderSkillDetails` / `ezaLeaderSkillDetails` are the structured contracts for future app-side leader matching
+- each leader skill detail contains:
+  - `rawText`
+  - `displayBoost`
+  - `clauses[]`
+- each clause contains:
+  - `rawText`
+  - `stackGroup`: `primary`, `secondary`, or `additional`
+  - `targetMode`: `base` or `also-belong`
+  - optional `categories`, `types`, `classes`, `ki`
+  - numeric `hp`, `atk`, `def`
+  - `boostForm`: `percentage` or `flat`
 
 - `portraitURL` must point to the locally composed portrait image:
   `images/portrait_{id}.png`
@@ -154,6 +168,6 @@ Minimum validation for scraper changes:
 
 ## Current Known Gaps
 
-- The old `scraper.spec.ts` still targets Fandom and no longer reflects the DokkanInfo contract.
+- `scraper.spec.ts` now focuses on unit coverage for the DokkanInfo leader skill parser and display-boost summary rules.
 - Passive classification, stat extraction, and effect tagging are not implemented yet.
 - Some compatibility strings still coexist with the new structured fields until the Android app migrates.

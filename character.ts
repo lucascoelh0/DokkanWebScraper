@@ -20,6 +20,8 @@ export interface Character {
     leaderSkill: string,
     ezaLeaderSkill?: string,
     leaderSkillBoost?: number,
+    leaderSkillDetails?: LeaderSkillDetails,
+    ezaLeaderSkillDetails?: LeaderSkillDetails,
     superAttack: string,
     ezaSuperAttack?: string,
     ultraSuperAttack?: string,
@@ -173,6 +175,26 @@ export interface SuperAttackDetails {
 export interface CharacterExtraInfo {
     kiMultiplierText?: string,
     kiMultiplierSteps?: KiMultiplierStep[],
+}
+
+export interface LeaderSkillDetails {
+    rawText: string,
+    displayBoost: number,
+    clauses: LeaderSkillClause[],
+}
+
+export interface LeaderSkillClause {
+    rawText: string,
+    stackGroup: 'primary' | 'secondary' | 'additional',
+    targetMode: 'base' | 'also-belong',
+    categories?: string[],
+    types?: string[],
+    classes?: string[],
+    ki?: number,
+    hp: number,
+    atk: number,
+    def: number,
+    boostForm: 'percentage' | 'flat',
 }
 
 export interface KiMultiplierStep {

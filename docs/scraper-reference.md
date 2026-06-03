@@ -59,6 +59,7 @@ Leader skill summary:
 
 - `leaderSkillBoost`: numeric summary used by the Android app for list/filter display
 - the scraper currently mirrors the app's legacy summary rules, preferring `ezaLeaderSkill` when present
+- `leaderSkillDetails` / `ezaLeaderSkillDetails`: structured leader clauses for future app-side matching and simulator migration
 
 Awakening references:
 
@@ -124,7 +125,8 @@ Leader, passive, links, categories, stats, ki meter and art URL keep the existin
 Structured combat fields now exist alongside the legacy compatibility strings:
 
 - `passiveDetails` / `ezaPassiveDetails`: passive name, multi-line text and split lines
-- `superAttackDetails`, `ultraSuperAttackDetails`, `exSuperAttackDetails` and EZA variants: attack name, normalized attack type, raw attack type, Ki threshold, style and extras
+- `leaderSkillDetails` / `ezaLeaderSkillDetails`: raw text, display boost and structured clauses
+- `superAttackDetails`, `ultraSuperAttackDetails`, `exSuperAttackDetails` and EZA variants: attack name, normalized attack type, Ki threshold, style and extras
 - `extraInfo`: currently used for structured Ki multiplier data
 
 Super attacks:
