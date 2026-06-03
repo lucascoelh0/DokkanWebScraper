@@ -55,6 +55,11 @@ Summon availability:
 - `summonable`: raw DokkanInfo label, for example `Summonable`
 - `isSummonable`: boolean convenience field; `false` when DokkanInfo does not mark the card as summonable
 
+Leader skill summary:
+
+- `leaderSkillBoost`: numeric summary used by the Android app for list/filter display
+- the scraper currently mirrors the app's legacy summary rules, preferring `ezaLeaderSkill` when present
+
 Awakening references:
 
 - `awakeningCards`: all related cards returned by `awakening_cards`

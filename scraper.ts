@@ -156,6 +156,15 @@ interface DokkanInfoRawAttribute {
 
 type DokkanListValue<T> = T[] | Record<string, T> | undefined;
 
+type LeaderSkillBoostForm = 'percentage' | 'flat';
+
+interface ParsedLeaderSkillSummary {
+    hpBoost: number;
+    atkBoost: number;
+    defBoost: number;
+    boostForm: LeaderSkillBoostForm;
+}
+
 let cachedCardList: DokkanInfoCardSummary[] | undefined;
 let preferCurl = false;
 
@@ -773,6 +782,10 @@ function mapDokkanInfoCard(data: DokkanInfoCardData): Character {
         portraitSpec: portraitSpec(card),
         leaderSkill: cleanMultilineText(data.leader_skill?.description),
         ezaLeaderSkill: cleanMultilineText(data.eza_data?.leader_skill?.description),
+        leaderSkillBoost: leaderSkillBoost(
+            cleanMultilineText(data.leader_skill?.description),
+            cleanMultilineText(data.eza_data?.leader_skill?.description),
+        ),
         superAttack: normalSuperAttack?.effect ?? '',
         ezaSuperAttack: ezaNormalSuperAttack?.effect,
         ultraSuperAttack: ultraSuperAttack?.effect,
@@ -1054,6 +1067,156 @@ function attackType(value: string | undefined): AttackTypes {
     }
 
     return AttackTypes.Other;
+}
+
+function leaderSkillBoost(leaderSkill: string | undefined, ezaLeaderSkill: string | undefined): number | undefined {
+    const sourceLeaderSkill = ezaLeaderSkill || leaderSkill;
+    if (!sourceLeaderSkill) {
+        return undefined;
+    }
+
+    const parsedLeaderSkills = parseLeaderSkillSummary(sourceLeaderSkill);
+    const boost = getBaseLeaderSkillBoost(parsedLeaderSkills);
+    return boost || undefined;
+}
+
+function parseLeaderSkillSummary(leaderSkill: string): ParsedLeaderSkillSummary[] {
+    const parsedSkills: ParsedLeaderSkillSummary[] = [];
+    const segments = leaderSkill.split(/; plus an additional/i);
+
+    if (segments.length > 1) {
+        segments[1] = segments[1].replace(/\(.*/, '').trim();
+        const lastSegment = segments[1].split(';').pop()?.replace(/\(.*/, '').trim();
+        if (lastSegment) {
+            segments.push(lastSegment);
+        }
+    }
+
+    if (segments.length > 2) {
+        segments[1] = segments[1].split(';')[0];
+    }
+
+    segments.forEach(subText => {
+        const subSegments = subText.split(/;or|; or|;/i);
+        subSegments.forEach(segment => {
+            const parsed = parseLeaderSkillSummarySegment(segment);
+            if (parsed) {
+                parsedSkills.push(parsed);
+            }
+        });
+    });
+
+    return parsedSkills;
+}
+
+function parseLeaderSkillSummarySegment(segment: string): ParsedLeaderSkillSummary | undefined {
+    const normalizedSegment = cleanInlineText(segment);
+    if (!normalizedSegment) {
+        return undefined;
+    }
+
+    const boostForm: LeaderSkillBoostForm = normalizedSegment.includes('%') ? 'percentage' : 'flat';
+
+    if (boostForm === 'percentage') {
+        return parsePercentageLeaderSkillSummary(normalizedSegment);
+    }
+
+    return parseFlatLeaderSkillSummary(normalizedSegment);
+}
+
+function parsePercentageLeaderSkillSummary(segment: string): ParsedLeaderSkillSummary {
+    const separatedBoostPattern1 = /(HP|ATK|DEF) & (HP|ATK|DEF) \+(\d+)% and (HP|ATK|DEF) \+(\d+)%/i;
+    const separatedBoostPattern2 = /HP \+(\d+)% and ATK & DEF \+(\d+)%/i;
+    const combinedBoostPattern = /HP, ATK (?:&|and) DEF \+(\d+)%/i;
+    const separateStatBoostPattern = /(HP|DEF) & (DEF|HP) \+(\d+)%, (ATK) \+(\d+)%/i;
+
+    const separatedBoostMatch1 = segment.match(separatedBoostPattern1);
+    const separatedBoostMatch2 = segment.match(separatedBoostPattern2);
+    const combinedBoostMatch = segment.match(combinedBoostPattern);
+    const separateStatBoostMatch = segment.match(separateStatBoostPattern);
+    const combinedBoost = parseFloat(combinedBoostMatch?.[1] ?? '0');
+
+    let hpBoost = combinedBoost;
+    let atkBoost = combinedBoost;
+    let defBoost = combinedBoost;
+
+    if (separateStatBoostMatch) {
+        const firstType = separateStatBoostMatch[1];
+        const secondType = separateStatBoostMatch[2];
+        const sharedBoost = parseFloat(separateStatBoostMatch[3] ?? '0');
+        const attackBoost = parseFloat(separateStatBoostMatch[5] ?? '0');
+
+        hpBoost = firstType === 'HP' || secondType === 'HP' ? sharedBoost : 0;
+        defBoost = firstType === 'DEF' || secondType === 'DEF' ? sharedBoost : 0;
+        atkBoost = attackBoost;
+    } else if (separatedBoostMatch1) {
+        const firstType = separatedBoostMatch1[1];
+        const secondType = separatedBoostMatch1[2];
+        const sharedBoost = parseFloat(separatedBoostMatch1[3] ?? '0');
+        const thirdType = separatedBoostMatch1[4];
+        const thirdBoost = parseFloat(separatedBoostMatch1[5] ?? '0');
+
+        hpBoost = firstType === 'HP' || secondType === 'HP'
+            ? sharedBoost
+            : thirdType === 'HP' ? thirdBoost : combinedBoost;
+        atkBoost = firstType === 'ATK' || secondType === 'ATK'
+            ? sharedBoost
+            : thirdType === 'ATK' ? thirdBoost : combinedBoost;
+        defBoost = firstType === 'DEF' || secondType === 'DEF'
+            ? sharedBoost
+            : thirdType === 'DEF' ? thirdBoost : combinedBoost;
+    } else if (separatedBoostMatch2) {
+        hpBoost = parseFloat(separatedBoostMatch2[1] ?? '0');
+        atkBoost = parseFloat(separatedBoostMatch2[2] ?? '0');
+        defBoost = atkBoost;
+    }
+
+    return {
+        hpBoost,
+        atkBoost,
+        defBoost,
+        boostForm: 'percentage',
+    };
+}
+
+function parseFlatLeaderSkillSummary(segment: string): ParsedLeaderSkillSummary {
+    const flatBoostPattern = /(HP|ATK|DEF) \+(\d+)/gi;
+    const matches = Array.from(segment.matchAll(flatBoostPattern));
+
+    const flatBoostMap = new Map(matches.map(match => [match[1], parseFloat(match[2] ?? '0')]));
+
+    return {
+        hpBoost: flatBoostMap.get('HP') ?? 0,
+        atkBoost: flatBoostMap.get('ATK') ?? 0,
+        defBoost: flatBoostMap.get('DEF') ?? 0,
+        boostForm: 'flat',
+    };
+}
+
+function getBaseLeaderSkillBoost(parsedLeaderSkills: ParsedLeaderSkillSummary[]): number {
+    let totalBoost = 0;
+    let endLoop = false;
+
+    parsedLeaderSkills.forEach(leaderSkill => {
+        if (endLoop) {
+            return;
+        }
+
+        const boost = leaderSkill.boostForm === 'percentage'
+            ? (leaderSkill.hpBoost + leaderSkill.atkBoost + leaderSkill.defBoost) / 3
+            : leaderSkill.atkBoost;
+
+        if (boost < 40 && totalBoost > 0 && totalBoost < 200) {
+            totalBoost += boost;
+            endLoop = true;
+        } else if (totalBoost === 0 && boost > totalBoost) {
+            totalBoost = boost;
+        } else if (totalBoost !== 200 && totalBoost > 170 && totalBoost < 230 && boost <= 50) {
+            totalBoost += boost;
+        }
+    });
+
+    return totalBoost;
 }
 
 function characterExtraInfo(card: DokkanInfoCardSummary): CharacterExtraInfo {

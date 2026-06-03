@@ -49,6 +49,7 @@ Stable top-level fields still used by the Android app:
 - `releaseDate`, `ezaReleaseDate`, `sezaReleaseDate`
 - `summonable`, `isSummonable`
 - `leaderSkill`, `ezaLeaderSkill`
+- `leaderSkillBoost`
 - `superAttack`, `ultraSuperAttack`, `exSuperAttack`
 - `ezaSuperAttack`, `ezaUltraSuperAttack`, `ezaExSuperAttack`
 - `passive`, `ezaPassive`
@@ -60,6 +61,9 @@ Stable top-level fields still used by the Android app:
 - equipment references
 
 Field rules:
+
+- `leaderSkillBoost` is the app-facing summary number for the card's best leader skill value, such as `170`, `200`, or `230`
+- when EZA leader skill exists, summary should prefer the EZA leader skill text
 
 - `portraitURL` must point to the locally composed portrait image:
   `images/portrait_{id}.png`

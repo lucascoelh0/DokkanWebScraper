@@ -19,6 +19,7 @@ export interface Character {
     portraitSpec?: PortraitSpec,
     leaderSkill: string,
     ezaLeaderSkill?: string,
+    leaderSkillBoost?: number,
     superAttack: string,
     ezaSuperAttack?: string,
     ultraSuperAttack?: string,
