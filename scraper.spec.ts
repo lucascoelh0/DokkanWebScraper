@@ -1,6 +1,6 @@
 import { deepEqual, equal } from "assert";
 import { describe, it } from "mocha";
-import { parseLeaderSkillDetails } from "./scraper";
+import { isSellingOnlyLeaderSkill, parseLeaderSkillDetails } from "./scraper";
 
 describe("parseLeaderSkillDetails", function () {
   it("parses category leaders with additional category boosts", () => {
@@ -103,5 +103,15 @@ describe("parseLeaderSkillDetails", function () {
       def: 100,
       boostForm: "percentage",
     });
+  });
+});
+
+describe("isSellingOnlyLeaderSkill", function () {
+  it("flags DokkanInfo selling-only placeholder cards", () => {
+    equal(isSellingOnlyLeaderSkill("A character for selling"), true);
+  });
+
+  it("does not flag normal leader skills", () => {
+    equal(isSellingOnlyLeaderSkill(`Super Class Ki +3 and HP, ATK & DEF +130%`), false);
   });
 });

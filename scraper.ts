@@ -179,11 +179,18 @@ export async function getDokkanData(): Promise<Character[]> {
     const limitedCards = applyDebugLimit(selectedCards);
     const concurrency = parseInt(process.env.DOKKAN_SCRAPER_CONCURRENCY ?? '', 10) || DEFAULT_CONCURRENCY;
 
-    return mapWithConcurrency(limitedCards, concurrency, async (card, index) => {
+    const results = await mapWithConcurrency(limitedCards, concurrency, async (card, index) => {
         console.log(`[CARDS] ${index + 1}/${limitedCards.length}: ${card.id} ${card.name}`);
         const detail = await fetchDokkanInfoCardData(card);
+        if (isSellingOnlyCard(detail)) {
+            console.log(`[CARDS] Skipping selling-only card ${card.id} ${card.name}`);
+            return undefined;
+        }
+
         return mapDokkanInfoCard(detail);
     });
+
+    return results.filter((card): card is Character => Boolean(card));
 }
 
 export async function getEquipmentData(): Promise<Equipment[]> {
@@ -862,6 +869,14 @@ function isUsableCard(card: DokkanInfoCardSummary): boolean {
         && card.id <= 3000000
         && (card.hp_init ?? 0) > 300
         && (card.open_at ?? 0) <= nowSeconds;
+}
+
+function isSellingOnlyCard(data: DokkanInfoCardData): boolean {
+    return isSellingOnlyLeaderSkill(data.leader_skill?.description);
+}
+
+export function isSellingOnlyLeaderSkill(leaderSkill: string | undefined): boolean {
+    return cleanInlineText(leaderSkill).toLowerCase() === 'a character for selling';
 }
 
 function selectedCardIds(): number[] | undefined {
