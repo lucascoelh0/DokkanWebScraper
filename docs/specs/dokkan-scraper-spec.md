@@ -36,6 +36,9 @@ Compatibility strings can still exist, but they should be derived from the struc
 Multi-line passive or attack descriptions should stay multi-line in structured fields.
 Do not aggressively collapse bullets into one sentence when the source already provides sections.
 
+5. Normalize common typography artifacts at scrape time.
+Convert smart quotes, common mojibake quote variants, long dashes and non-breaking spaces into stable ASCII-friendly text before serializing JSON.
+
 ## Character Contract
 
 Stable top-level fields still used by the Android app:

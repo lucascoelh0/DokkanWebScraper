@@ -1211,7 +1211,7 @@ function toNumber(value: number | undefined): number {
 }
 
 function cleanInlineText(value: string | undefined | null): string {
-    return (value ?? '')
+    return normalizeTextArtifacts(value ?? '')
         .replace(/&#039;/g, "'")
         .replace(/&quot;/g, '"')
         .replace(/&amp;/g, '&')
@@ -1224,7 +1224,7 @@ function cleanInlineText(value: string | undefined | null): string {
 }
 
 function cleanMultilineText(value: string | undefined | null): string {
-    return (value ?? '')
+    return normalizeTextArtifacts(value ?? '')
         .replace(/&#039;/g, "'")
         .replace(/&quot;/g, '"')
         .replace(/&amp;/g, '&')
@@ -1239,6 +1239,17 @@ function cleanMultilineText(value: string | undefined | null): string {
 
 function cleanText(value: string | undefined | null): string {
     return cleanInlineText(value);
+}
+
+function normalizeTextArtifacts(value: string): string {
+    return value
+        .replace(/â€™|â€˜/g, "'")
+        .replace(/[‘’]/g, "'")
+        .replace(/â€œ|â€/g, '"')
+        .replace(/[“”]/g, '"')
+        .replace(/â€“|â€”/g, '-')
+        .replace(/[–—]/g, '-')
+        .replace(/\u00A0/g, ' ');
 }
 
 function arrayFromDokkanList<T>(value: DokkanListValue<T>): T[] {

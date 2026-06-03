@@ -167,6 +167,8 @@ DokkanInfo sometimes serves a base card payload on an awakened card URL while pu
 
 Some transformed states only work through the transformation endpoint when EZA query params are included. The scraper first tries the plain endpoint, then retries with `?eza=true&step={max_eza_step}` when available.
 
+Text cleanup now also normalizes common typography artifacts from the source, such as smart apostrophes, curly quotes, mojibake quote sequences like `â€™`, long dashes and non-breaking spaces, so downstream apps receive stable plain-text strings.
+
 ## JSON formatting
 
 The scraper now writes pretty-printed JSON by default.
