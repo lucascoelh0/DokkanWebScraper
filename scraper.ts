@@ -172,8 +172,7 @@ export async function getDokkanData(): Promise<Character[]> {
     const cards = await fetchDokkanInfoCardList();
     const selectedCards = selectedCardIds()
         ? cardsFromRequestedIds(cards)
-        : cards
-            .filter(isUsableCard)
+        : filterBaseAwakeningDuplicates(cards.filter(isUsableCard))
             .sort((a, b) => (b.open_at ?? 0) - (a.open_at ?? 0));
 
     const limitedCards = applyDebugLimit(selectedCards);
@@ -879,6 +878,23 @@ export function isSellingOnlyLeaderSkill(leaderSkill: string | undefined): boole
     return cleanInlineText(leaderSkill).toLowerCase() === 'a character for selling';
 }
 
+export function filterBaseAwakeningDuplicates(cards: DokkanInfoCardSummary[]): DokkanInfoCardSummary[] {
+    const bestCardIds = new Set(
+        Array.from(cards.reduce((groups, card) => {
+            const groupId = zAwakeningGroupId(card);
+            const currentBest = groups.get(groupId);
+
+            if (!currentBest || compareBaseAwakeningStage(card, currentBest) < 0) {
+                groups.set(groupId, card);
+            }
+
+            return groups;
+        }, new Map<number, DokkanInfoCardSummary>()).values()).map(card => card.id),
+    );
+
+    return cards.filter(card => bestCardIds.has(card.id));
+}
+
 function selectedCardIds(): number[] | undefined {
     const ids = (process.env.DOKKAN_SCRAPER_CARD_IDS ?? '')
         .split(',')
@@ -902,6 +918,17 @@ function cardsFromRequestedIds(cards: DokkanInfoCardSummary[]): DokkanInfoCardSu
 function applyDebugLimit(cards: DokkanInfoCardSummary[]): DokkanInfoCardSummary[] {
     const limit = parseInt(process.env.DOKKAN_SCRAPER_LIMIT ?? '', 10);
     return limit > 0 ? cards.slice(0, limit) : cards;
+}
+
+function zAwakeningGroupId(card: DokkanInfoCardSummary): number {
+    return card.asset_id ?? normalizeAssetId(card.id);
+}
+
+function compareBaseAwakeningStage(a: DokkanInfoCardSummary, b: DokkanInfoCardSummary): number {
+    return toNumber(a.rarity) - toNumber(b.rarity)
+        || toNumber(a.lv_max) - toNumber(b.lv_max)
+        || toNumber(a.skill_lv_max) - toNumber(b.skill_lv_max)
+        || toNumber(a.id) - toNumber(b.id);
 }
 
 function normalizeAssetId(cardId: number): number {

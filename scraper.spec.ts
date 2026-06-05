@@ -1,6 +1,6 @@
 import { deepEqual, equal } from "assert";
 import { describe, it } from "mocha";
-import { isSellingOnlyLeaderSkill, parseLeaderSkillDetails } from "./scraper";
+import { filterBaseAwakeningDuplicates, isSellingOnlyLeaderSkill, parseLeaderSkillDetails } from "./scraper";
 
 describe("parseLeaderSkillDetails", function () {
   it("parses category leaders with additional category boosts", () => {
@@ -177,5 +177,69 @@ describe("isSellingOnlyLeaderSkill", function () {
 
   it("does not flag normal leader skills", () => {
     equal(isSellingOnlyLeaderSkill(`Super Class Ki +3 and HP, ATK & DEF +130%`), false);
+  });
+});
+
+describe("filterBaseAwakeningDuplicates", function () {
+  it("keeps the original rarity stage but preserves the pre-TUR UR and later Dokkan awakenings", () => {
+    const filtered = filterBaseAwakeningDuplicates([
+      {
+        id: 1033810,
+        name: "Super Saiyan God Goku",
+        rarity: 3,
+        lv_max: 80,
+        element: "30",
+        asset_id: 1033810,
+      },
+      {
+        id: 1033811,
+        name: "Super Saiyan God Goku",
+        rarity: 4,
+        lv_max: 100,
+        element: "30",
+        asset_id: 1033810,
+      },
+      {
+        id: 1033821,
+        name: "Super Saiyan God Goku",
+        rarity: 4,
+        lv_max: 120,
+        element: "30",
+        asset_id: 1033820,
+      },
+    ] as any);
+
+    deepEqual(filtered.map(card => card.id), [1033810, 1033821]);
+  });
+
+  it("keeps the original stage for lower rarities too", () => {
+    const filtered = filterBaseAwakeningDuplicates([
+      {
+        id: 1003840,
+        name: "Goku",
+        rarity: 1,
+        lv_max: 40,
+        element: "10",
+        asset_id: 1003840,
+      },
+      {
+        id: 1003841,
+        name: "Goku",
+        rarity: 2,
+        lv_max: 60,
+        element: "10",
+        asset_id: 1003840,
+      },
+      {
+        id: 1005000,
+        name: "Other Card",
+        rarity: 3,
+        lv_max: 80,
+        element: "20",
+        asset_id: 1005000,
+      },
+    ] as any);
+
+    deepEqual(filtered.map(card => card.id), [1003840, 1005000]);
   });
 });
