@@ -129,6 +129,14 @@ Structured combat fields now exist alongside the legacy compatibility strings:
 - `superAttackDetails`, `ultraSuperAttackDetails`, `exSuperAttackDetails` and EZA variants: attack name, normalized attack type, Ki threshold, style and extras
 - `extraInfo`: currently used for structured Ki multiplier data
 
+Leader skill clauses can now also carry `teamConditions` for leader skills whose activation depends on team composition. This keeps cases like:
+
+- `when team includes Super & Extreme Classes`
+- `when team includes all five Types`
+- `when team includes all five Super Types`
+
+separate from the per-character target fields. In other words, `classes`, `types` and `categories` describe who receives the boost, while `teamConditions` describe what the team must contain for that clause to activate at all.
+
 Super attacks:
 
 - `superAttack`: `style: "Normal"`

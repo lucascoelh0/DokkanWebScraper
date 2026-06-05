@@ -76,8 +76,20 @@ Field rules:
   - `stackGroup`: `primary`, `secondary`, or `additional`
   - `targetMode`: `base` or `also-belong`
   - optional `categories`, `types`, `classes`, `ki`
+  - optional `teamConditions[]` for team-wide requirements that should not be interpreted as per-character targets
   - numeric `hp`, `atk`, `def`
   - `boostForm`: `percentage` or `flat`
+- each `teamCondition` currently contains:
+  - `rawText`
+  - `kind`: `requires-classes` or `requires-types`
+  - optional `classes`, `types`, `classFilter`
+  - optional `requiresAll`, `requiredCount`
+
+Team-condition rules:
+
+- phrases like `when team includes Super & Extreme Classes` must become `teamConditions`, not `classes` on the boost target
+- phrases like `when team includes all five Types` or `all five Super Types` must become `teamConditions`, not target `types`
+- per-character targeting and team requirements are separate concepts in the contract
 
 - `portraitURL` must point to the locally composed portrait image:
   `images/portrait_{id}.png`

@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { JSDOM } from 'jsdom';
 import { promisify } from 'util';
-import { AttackTypes, AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, LeaderSkillClause, LeaderSkillDetails, PassiveDetails, PortraitSpec, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
+import { AttackTypes, AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, LeaderSkillClause, LeaderSkillDetails, LeaderSkillTeamCondition, PassiveDetails, PortraitSpec, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
 
 const DOKKAN_INFO_BASE_URL = 'https://dokkaninfo.com';
 const DOKKAN_INFO_CARD_LIST_URL = `${DOKKAN_INFO_BASE_URL}/cards?sort=open_at`;
@@ -1150,11 +1150,13 @@ function parseLeaderSkillClause(clause: RawLeaderSkillClause): LeaderSkillClause
         return undefined;
     }
 
+    const teamConditions = extractLeaderSkillTeamConditions(clause.rawText);
+    const targetSegment = stripLeaderSkillTeamConditions(clause.rawText);
     const boost = parseLeaderSkillBoostValues(clause.rawText);
-    const categories = extractLeaderSkillCategories(clause.rawText);
-    const types = extractLeaderSkillTypes(clause.rawText);
-    const classes = extractLeaderSkillClasses(clause.rawText);
-    const ki = extractLeaderSkillKi(clause.rawText);
+    const categories = extractLeaderSkillCategories(targetSegment);
+    const types = extractLeaderSkillTypes(targetSegment);
+    const classes = extractLeaderSkillClasses(targetSegment);
+    const ki = extractLeaderSkillKi(targetSegment);
 
     return cleanObject({
         rawText: clause.rawText,
@@ -1163,6 +1165,7 @@ function parseLeaderSkillClause(clause: RawLeaderSkillClause): LeaderSkillClause
         categories,
         types,
         classes,
+        teamConditions,
         ki,
         hp: boost.hp,
         atk: boost.atk,
@@ -1279,6 +1282,44 @@ function extractLeaderSkillClasses(segment: string): string[] | undefined {
         .map(match => match[1][0].toUpperCase() + match[1].slice(1).toLowerCase());
 
     return classes.length ? Array.from(new Set(classes)) : undefined;
+}
+
+function stripLeaderSkillTeamConditions(segment: string): string {
+    return cleanInlineText(segment.replace(/\s+when team includes .*/i, ''));
+}
+
+function extractLeaderSkillTeamConditions(segment: string): LeaderSkillTeamCondition[] | undefined {
+    const normalized = cleanInlineText(segment);
+    const conditions: LeaderSkillTeamCondition[] = [];
+
+    const classConditionMatch = normalized.match(/\bwhen team includes (Super|Extreme) ?& ?(Super|Extreme) Classes\b/i);
+    if (classConditionMatch) {
+        conditions.push(cleanObject({
+            rawText: classConditionMatch[0],
+            kind: 'requires-classes',
+            classes: [toTitleCase(classConditionMatch[1]), toTitleCase(classConditionMatch[2])],
+            requiresAll: true,
+            requiredCount: 2,
+        }) as LeaderSkillTeamCondition);
+    }
+
+    const allFiveTypesMatch = normalized.match(/\bwhen team includes all five (?:(Super|Extreme) )?Types\b/i);
+    if (allFiveTypesMatch) {
+        conditions.push(cleanObject({
+            rawText: allFiveTypesMatch[0],
+            kind: 'requires-types',
+            types: ['AGL', 'TEQ', 'INT', 'STR', 'PHY'],
+            classFilter: allFiveTypesMatch[1] ? toTitleCase(allFiveTypesMatch[1]) : undefined,
+            requiresAll: true,
+            requiredCount: 5,
+        }) as LeaderSkillTeamCondition);
+    }
+
+    return conditions.length ? conditions : undefined;
+}
+
+function toTitleCase(value: string): string {
+    return value[0].toUpperCase() + value.slice(1).toLowerCase();
 }
 
 function extractLeaderSkillKi(segment: string): number | undefined {

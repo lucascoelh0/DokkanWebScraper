@@ -190,11 +190,22 @@ export interface LeaderSkillClause {
     categories?: string[],
     types?: string[],
     classes?: string[],
+    teamConditions?: LeaderSkillTeamCondition[],
     ki?: number,
     hp: number,
     atk: number,
     def: number,
     boostForm: 'percentage' | 'flat',
+}
+
+export interface LeaderSkillTeamCondition {
+    rawText: string,
+    kind: 'requires-classes' | 'requires-types',
+    classes?: string[],
+    types?: string[],
+    classFilter?: string,
+    requiresAll?: boolean,
+    requiredCount?: number,
 }
 
 export interface KiMultiplierStep {

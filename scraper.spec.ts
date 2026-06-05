@@ -104,6 +104,70 @@ describe("parseLeaderSkillDetails", function () {
       boostForm: "percentage",
     });
   });
+
+  it("captures team-wide class and type conditions without polluting per-character targets", () => {
+    const details = parseLeaderSkillDetails(`All allies' Ki +2, HP +150% and ATK & DEF +100% when team includes Super & Extreme Classes, plus an additional Ki +1 and HP, ATK & DEF +70% when team includes all five Types`);
+
+    equal(details?.clauses.length, 2);
+    deepEqual(details?.clauses[0], {
+      rawText: `All allies' Ki +2, HP +150% and ATK & DEF +100% when team includes Super & Extreme Classes`,
+      stackGroup: "primary",
+      targetMode: "base",
+      teamConditions: [{
+        rawText: `when team includes Super & Extreme Classes`,
+        kind: "requires-classes",
+        classes: ["Super", "Extreme"],
+        requiresAll: true,
+        requiredCount: 2,
+      }],
+      ki: 2,
+      hp: 150,
+      atk: 100,
+      def: 100,
+      boostForm: "percentage",
+    });
+    deepEqual(details?.clauses[1], {
+      rawText: `Ki +1 and HP, ATK & DEF +70% when team includes all five Types`,
+      stackGroup: "additional",
+      targetMode: "base",
+      teamConditions: [{
+        rawText: `when team includes all five Types`,
+        kind: "requires-types",
+        types: ["AGL", "TEQ", "INT", "STR", "PHY"],
+        requiresAll: true,
+        requiredCount: 5,
+      }],
+      ki: 1,
+      hp: 70,
+      atk: 70,
+      def: 70,
+      boostForm: "percentage",
+    });
+  });
+
+  it("captures class-filtered all-five-types conditions separately from the target clause", () => {
+    const details = parseLeaderSkillDetails(`Super Type allies' HP, ATK & DEF +30% when team includes all five Super Types`);
+
+    deepEqual(details?.clauses, [{
+      rawText: `Super Type allies' HP, ATK & DEF +30% when team includes all five Super Types`,
+      stackGroup: "primary",
+      targetMode: "base",
+      types: ["All"],
+      classes: ["Super"],
+      teamConditions: [{
+        rawText: `when team includes all five Super Types`,
+        kind: "requires-types",
+        types: ["AGL", "TEQ", "INT", "STR", "PHY"],
+        classFilter: "Super",
+        requiresAll: true,
+        requiredCount: 5,
+      }],
+      hp: 30,
+      atk: 30,
+      def: 30,
+      boostForm: "percentage",
+    }]);
+  });
 });
 
 describe("isSellingOnlyLeaderSkill", function () {
