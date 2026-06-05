@@ -895,6 +895,39 @@ export function filterBaseAwakeningDuplicates(cards: DokkanInfoCardSummary[]): D
     return cards.filter(card => bestCardIds.has(card.id));
 }
 
+export function filterZAwakeningStagesFromTransformations(
+    baseCard: DokkanInfoCardSummary,
+    transformations: DokkanInfoCardSummary[],
+): DokkanInfoCardSummary[] {
+    return transformations.filter(transformation => zAwakeningGroupId(transformation) !== zAwakeningGroupId(baseCard));
+}
+
+export function hasBattleTransformationCondition(
+    transformation: DokkanInfoCardData['transformation'],
+): boolean {
+    const values = Array.isArray(transformation)
+        ? transformation
+        : transformation && (
+            'name' in transformation
+            || 'description' in transformation
+            || 'effect_description' in transformation
+            || 'condition_description' in transformation
+            || 'causality_description' in transformation
+            || 'conditions' in transformation
+        )
+            ? [transformation]
+            : arrayFromDokkanList(transformation as DokkanListValue<DokkanInfoNamedDescription>);
+
+    return values.some(value => cleanMultilineText(
+        value?.condition_description
+        ?? value?.causality_description
+        ?? value?.conditions
+        ?? value?.description
+        ?? value?.effect_description
+        ?? value?.name,
+    ).length > 0);
+}
+
 function selectedCardIds(): number[] | undefined {
     const ids = (process.env.DOKKAN_SCRAPER_CARD_IDS ?? '')
         .split(',')
@@ -1388,10 +1421,17 @@ function characterExtraInfo(card: DokkanInfoCardSummary): CharacterExtraInfo {
 }
 
 function transformations(data: DokkanInfoCardData, baseCharacterId: string): Transformation[] {
+    if (!hasBattleTransformationCondition(data.transformation)) {
+        return [];
+    }
+
     const currentCardId = data.card.id;
     const links = uniqueCleanNames(data.links);
     const detailsById = new Map(arrayFromDokkanList(data.transformation_details as DokkanListValue<DokkanInfoCardData>).map(detail => [detail.card.id, detail]));
-    const transformedCards = arrayFromDokkanList(data.transformations as DokkanListValue<DokkanInfoCardSummary>)
+    const transformedCards = filterZAwakeningStagesFromTransformations(
+        data.card,
+        arrayFromDokkanList(data.transformations as DokkanListValue<DokkanInfoCardSummary>),
+    )
         .filter(transformation => transformation.id !== currentCardId)
         .filter((transformation, index, allTransformations) => allTransformations.findIndex(item => item.id === transformation.id) === index);
 

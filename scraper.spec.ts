@@ -1,6 +1,6 @@
 import { deepEqual, equal } from "assert";
 import { describe, it } from "mocha";
-import { filterBaseAwakeningDuplicates, isSellingOnlyLeaderSkill, parseLeaderSkillDetails } from "./scraper";
+import { filterBaseAwakeningDuplicates, filterZAwakeningStagesFromTransformations, hasBattleTransformationCondition, isSellingOnlyLeaderSkill, parseLeaderSkillDetails } from "./scraper";
 
 describe("parseLeaderSkillDetails", function () {
   it("parses category leaders with additional category boosts", () => {
@@ -241,5 +241,52 @@ describe("filterBaseAwakeningDuplicates", function () {
     ] as any);
 
     deepEqual(filtered.map(card => card.id), [1003840, 1005000]);
+  });
+});
+
+describe("filterZAwakeningStagesFromTransformations", function () {
+  it("removes z-awaken stages from the same awakening track", () => {
+    const filtered = filterZAwakeningStagesFromTransformations(
+      {
+        id: 1034211,
+        name: "Beerus",
+        rarity: 4,
+        lv_max: 100,
+        element: "12",
+        asset_id: 1034210,
+      } as any,
+      [
+        {
+          id: 1034210,
+          name: "Beerus",
+          rarity: 3,
+          lv_max: 80,
+          element: "02",
+          asset_id: 1034210,
+        },
+        {
+          id: 4035001,
+          name: "Beerus (Rage)",
+          rarity: 4,
+          lv_max: 120,
+          element: "12",
+          asset_id: 4035000,
+        },
+      ] as any,
+    );
+
+    deepEqual(filtered.map(card => card.id), [4035001]);
+  });
+});
+
+describe("hasBattleTransformationCondition", function () {
+  it("returns false when the card has no battle transformation condition", () => {
+    equal(hasBattleTransformationCondition(undefined), false);
+  });
+
+  it("returns true when the card has a real transformation condition", () => {
+    equal(hasBattleTransformationCondition({
+      condition_description: "Transformation: Transforms starting from the 4th turn from the start of battle",
+    } as any), true);
   });
 });
