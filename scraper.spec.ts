@@ -1,5 +1,7 @@
 import { deepEqual, equal } from "assert";
 import { describe, it } from "mocha";
+import { gunzipSync } from "zlib";
+import { buildCharacterDatasetArtifact } from "./dataset-artifacts";
 import { filterBaseAwakeningDuplicates, filterZAwakeningStagesFromTransformations, hasBattleTransformationCondition, isSellingOnlyLeaderSkill, parseLeaderSkillDetails } from "./scraper";
 
 describe("parseLeaderSkillDetails", function () {
@@ -276,6 +278,28 @@ describe("filterZAwakeningStagesFromTransformations", function () {
     );
 
     deepEqual(filtered.map(card => card.id), [4035001]);
+  });
+});
+
+describe("buildCharacterDatasetArtifact", function () {
+  it("generates a gzip payload and manifest for the stable app contract", () => {
+    const artifact = buildCharacterDatasetArtifact([
+      {
+        id: "100",
+        name: "Goku",
+      },
+    ] as any, {
+      datasetVersion: "2026-06-07T12:00:00.000Z",
+      generatedAt: "2026-06-07T12:00:00.000Z",
+    });
+
+    equal(artifact.manifest.schemaVersion, 1);
+    equal(artifact.manifest.fileName, "characters.json.gz");
+    equal(artifact.manifest.compression, "gzip");
+    equal(artifact.manifest.characterCount, 1);
+    equal(artifact.manifest.datasetVersion, "2026-06-07T12:00:00.000Z");
+    equal(gunzipSync(artifact.gzipBuffer).toString("utf8"), artifact.jsonText);
+    equal(artifact.manifest.sizeBytes, artifact.gzipBuffer.byteLength);
   });
 });
 

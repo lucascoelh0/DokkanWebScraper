@@ -188,6 +188,23 @@ Text cleanup now also normalizes common typography artifacts from the source, su
 
 The scraper now writes pretty-printed JSON by default.
 
+For app delivery, `index.ts` also writes a stable gzip bundle and manifest to `data/latest/`:
+
+- `characters.json.gz`
+- `characters-manifest.json`
+
+The manifest currently includes:
+
+- `schemaVersion`
+- `datasetVersion`
+- `generatedAt`
+- `fileName`
+- `compression`
+- `sha256`
+- `sizeBytes`
+- `uncompressedSizeBytes`
+- `characterCount`
+
 To reformat existing JSON files in `data/` without scraping again:
 
 ```powershell

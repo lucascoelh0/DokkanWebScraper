@@ -4,6 +4,7 @@ import { getDokkanData, getEquipmentData } from "./scraper";
 import * as fs from 'fs';
 import * as sharp from 'sharp';
 import { Character, PortraitSpec, Rarities } from "./character";
+import { buildCharacterDatasetArtifact, writeCharacterDatasetBundle } from "./dataset-artifacts";
 import { writeFormattedJson } from "./format-json";
 
 const DOKKAN_INFO_ASSET_BASE_URL = 'https://dokkaninfo.com/assets/global/en';
@@ -11,6 +12,9 @@ const DOKKAN_INFO_ASSET_BASE_URL = 'https://dokkaninfo.com/assets/global/en';
 export async function saveDokkanResults() {
     if (!existsSync(resolve(__dirname, 'data'))) {
         mkdirSync('data');
+    }
+    if (!existsSync(resolve(__dirname, 'data/latest'))) {
+        mkdirSync('data/latest');
     }
     if (!existsSync(resolve(__dirname, 'data/images'))) {
         mkdirSync('data/images');
@@ -27,7 +31,7 @@ export async function saveDokkanResults() {
 
     console.log('Saving images');
 
-    await saveData(`${year}${month}${day}DokkanCharacterData`, data);
+    await saveCharacterData(`${year}${month}${day}DokkanCharacterData`, data, currentDate);
     await saveData(`${year}${month}${day}DokkanEquipmentData`, equipment);
 
     for (const portrait of collectPortraitTargets(data)) {
@@ -68,6 +72,20 @@ async function saveData(fileName: string, data: unknown) {
         resolve(__dirname, `data/${fileName}.json`),
         data,
     );
+}
+
+async function saveCharacterData(fileName: string, data: Character[], currentDate: Date) {
+    await saveData(fileName, data);
+
+    const artifact = buildCharacterDatasetArtifact(data, {
+        datasetVersion: currentDate.toISOString(),
+        generatedAt: currentDate.toISOString(),
+        fileName: "characters.json.gz",
+    });
+
+    await writeCharacterDatasetBundle(resolve(__dirname, "data/latest"), artifact, {
+        manifestFileName: "characters-manifest.json",
+    });
 }
 
 function collectPortraitTargets(characters: Character[]): { filename: string, spec?: PortraitSpec }[] {
