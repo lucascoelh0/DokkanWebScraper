@@ -20,6 +20,7 @@ export interface DatasetPublishState {
     bucket: string,
     target: "remote" | "local",
     datasetVersion: string,
+    datasetObjectKey: string,
     manifestSha256: string,
     publishedAt: string,
     portraits: Record<string, string>,
@@ -56,6 +57,18 @@ interface PublishSummary {
     portraitUploadCount: number,
     portraitDeleteCount: number,
     skippedBecauseRemoteMatches: boolean,
+}
+
+function datasetVersionSlug(datasetVersion: string): string {
+    return datasetVersion
+        .trim()
+        .replace(/[:]/g, "-")
+        .replace(/[^\w./-]/g, "_");
+}
+
+function buildRemoteDatasetObjectKey(manifest: DatasetManifest): string {
+    const fileName = manifest.fileName.split("/").pop() ?? "characters.json.gz";
+    return `releases/${datasetVersionSlug(manifest.datasetVersion)}/${fileName}`;
 }
 
 function sha256(buffer: Buffer): string {
@@ -182,6 +195,11 @@ async function execFileAsync(command: string, args: string[]): Promise<{ stdout:
 }
 
 async function runWranglerCommand(args: string[]): Promise<void> {
+    if (process.platform === "win32") {
+        await execFileAsync("cmd.exe", ["/d", "/s", "/c", "npx", "wrangler", ...args]);
+        return;
+    }
+
     await execFileAsync("npx", ["wrangler", ...args]);
 }
 
@@ -357,13 +375,18 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     }
 
     const localManifest = await readManifest(options.manifestPath);
+    const remoteDatasetObjectKey = buildRemoteDatasetObjectKey(localManifest);
+    const remoteManifest: DatasetManifest = {
+        ...localManifest,
+        fileName: remoteDatasetObjectKey,
+    };
     const characters = await readCharactersFromBundle(options.datasetPath);
     const portraitKeys = collectReferencedPortraitKeys(characters);
     const previousState = await readPublishState(options.statePath);
-    const remoteManifest = options.skipRemoteManifestCheck
+    const publishedRemoteManifest = options.skipRemoteManifestCheck
         ? undefined
         : await tryReadRemoteManifest(options.bucket, options.target);
-    const datasetNeedsUpload = !manifestsMatch(localManifest, remoteManifest);
+    const datasetNeedsUpload = !manifestsMatch(remoteManifest, publishedRemoteManifest);
     const skippedBecauseRemoteMatches = !datasetNeedsUpload && !options.forcePortraits && !options.skipPortraits;
 
     const portraitEntries = options.skipPortraits
@@ -373,7 +396,8 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         ? { toUpload: [], toDelete: [] }
         : buildPortraitPublishPlan(portraitEntries, previousState, { forcePortraits: options.forcePortraits });
 
-    console.log(`Dataset version: ${localManifest.datasetVersion}`);
+    console.log(`Dataset version: ${remoteManifest.datasetVersion}`);
+    console.log(`Dataset object key: ${remoteDatasetObjectKey}`);
     console.log(`Dataset upload needed: ${datasetNeedsUpload ? "yes" : "no"}`);
     console.log(`Portraits referenced: ${portraitKeys.length}`);
     console.log(`Portraits to upload: ${portraitPlan.toUpload.length}`);
@@ -392,7 +416,7 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         console.log("Uploading dataset bundle...");
         await uploadObject(
             options.bucket,
-            localManifest.fileName,
+            remoteDatasetObjectKey,
             options.datasetPath,
             "application/gzip",
             "public, max-age=31536000, immutable",
@@ -430,22 +454,42 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
 
     if (datasetNeedsUpload) {
         console.log("Uploading manifest...");
+        const manifestTempDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-r2-publish-manifest-"));
+        const manifestTempPath = resolve(manifestTempDirectory, "characters-manifest.json");
+        await writeFile(manifestTempPath, `${JSON.stringify(remoteManifest, null, 2)}\n`, "utf8");
         await uploadObject(
             options.bucket,
             "characters-manifest.json",
-            options.manifestPath,
+            manifestTempPath,
             "application/json",
             "no-store",
             options.target,
         );
+        await rm(manifestTempDirectory, { recursive: true, force: true });
+    }
+
+    if (
+        datasetNeedsUpload &&
+        previousState?.datasetObjectKey &&
+        previousState.datasetObjectKey.trim().length > 0 &&
+        previousState.datasetObjectKey !== remoteDatasetObjectKey
+    ) {
+        console.log(`Deleting previous dataset release ${previousState.datasetObjectKey}...`);
+        try {
+            await deleteObject(options.bucket, previousState.datasetObjectKey, options.target);
+        } catch (exception) {
+            const message = exception instanceof Error ? exception.message : String(exception);
+            console.warn(`Failed to delete previous dataset release: ${message}`);
+        }
     }
 
     const nextState: DatasetPublishState = {
         schemaVersion: 1,
         bucket: options.bucket,
         target: options.target,
-        datasetVersion: localManifest.datasetVersion,
-        manifestSha256: localManifest.sha256,
+        datasetVersion: remoteManifest.datasetVersion,
+        datasetObjectKey: remoteDatasetObjectKey,
+        manifestSha256: remoteManifest.sha256,
         publishedAt: new Date().toISOString(),
         portraits: Object.fromEntries(portraitEntries.map(entry => [entry.objectKey, entry.sha256])),
     };

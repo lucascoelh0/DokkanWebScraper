@@ -53,6 +53,7 @@ describe("buildPortraitPublishPlan", function () {
       bucket: "dokkanpanion-data",
       target: "remote",
       datasetVersion: "2026-06-24T00:00:00.000Z",
+      datasetObjectKey: "releases/2026-06-24T00-00-00.000Z/characters.json.gz",
       manifestSha256: "manifest-hash",
       publishedAt: "2026-06-24T00:00:00.000Z",
       portraits: {
@@ -87,6 +88,7 @@ describe("buildPortraitPublishPlan", function () {
       bucket: "dokkanpanion-data",
       target: "remote",
       datasetVersion: "2026-06-24T00:00:00.000Z",
+      datasetObjectKey: "releases/2026-06-24T00-00-00.000Z/characters.json.gz",
       manifestSha256: "manifest-hash",
       publishedAt: "2026-06-24T00:00:00.000Z",
       portraits: {
