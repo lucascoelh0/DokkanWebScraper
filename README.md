@@ -13,7 +13,36 @@ The scraper also writes stable app-ingestion artifacts to:
 - `./data/latest/characters.json.gz`
 - `./data/latest/characters-manifest.json`
 
+Future hosting notes and the planned R2/custom-domain setup live in:
+
+- `./docs/dataset-hosting-plan.md`
+
 ## Test 
 ```
 npm run test
 ```
+
+## Publish the app dataset to R2
+
+After generating a fresh `data/latest/characters.json.gz` and `data/latest/characters-manifest.json`, publish what the app consumes with:
+
+```powershell
+npm run publish:r2 -- --bucket dokkanpanion-data
+```
+
+Useful flags:
+
+- `--dry-run`: show what would upload/delete without touching R2
+- `--force-portraits`: re-upload every portrait referenced by the current dataset
+- `--skip-portraits`: publish only `characters.json.gz` + `characters-manifest.json`
+- `--local`: target Wrangler local R2 storage instead of Cloudflare
+
+What the script does:
+
+1. reads the current gzip bundle from `data/latest`
+2. discovers every referenced portrait from the dataset itself
+3. uploads only portraits that changed since the last successful publish
+4. deletes stale portraits that disappeared from the dataset
+5. uploads the manifest last, so the app only sees the new dataset after the assets are already in place
+
+The script stores its last successful publish state in `data/latest/r2-publish-state.json`.
