@@ -2,7 +2,7 @@ import { deepEqual, equal } from "assert";
 import { describe, it } from "mocha";
 import { gunzipSync } from "zlib";
 import { buildCharacterDatasetArtifact } from "./dataset-artifacts";
-import { filterBaseAwakeningDuplicates, filterZAwakeningStagesFromTransformations, hasBattleTransformationCondition, isSellingOnlyLeaderSkill, parseLeaderSkillDetails } from "./scraper";
+import { cleanMultilineText, filterBaseAwakeningDuplicates, filterZAwakeningStagesFromTransformations, hasBattleTransformationCondition, isSellingOnlyLeaderSkill, parseLeaderSkillDetails } from "./scraper";
 
 describe("parseLeaderSkillDetails", function () {
   it("parses category leaders with additional category boosts", () => {
@@ -312,5 +312,23 @@ describe("hasBattleTransformationCondition", function () {
     equal(hasBattleTransformationCondition({
       condition_description: "Transformation: Transforms starting from the 4th turn from the start of battle",
     } as any), true);
+  });
+});
+
+describe("cleanMultilineText", function () {
+  it("removes emphasis asterisks even when DokkanInfo wraps multiple lines", () => {
+    const cleaned = cleanMultilineText(`*Activates the Entrance Animation when there is another
+"Space-Traveling Warriors" or "Terrifying Conquerors"
+Category ally on the team upon the character's entry*
+- Ki +6 and damage reduction rate 10% for 1 turn
+Basic effect(s)
+- ATK & DEF 250%`);
+
+    equal(cleaned, `Activates the Entrance Animation when there is another
+"Space-Traveling Warriors" or "Terrifying Conquerors"
+Category ally on the team upon the character's entry
+- Ki +6 and damage reduction rate 10% for 1 turn
+Basic effect(s)
+- ATK & DEF 250%`);
   });
 });

@@ -1587,12 +1587,13 @@ function cleanInlineText(value: string | undefined | null): string {
         .trim();
 }
 
-function cleanMultilineText(value: string | undefined | null): string {
+export function cleanMultilineText(value: string | undefined | null): string {
     return normalizeTextArtifacts(value ?? '')
         .replace(/&#039;/g, "'")
         .replace(/&quot;/g, '"')
         .replace(/&amp;/g, '&')
         .replace(/\{[^}]+}/g, '')
+        .replace(/\*([\s\S]*?)\*/g, '$1')
         .replace(/\r\n/g, '\n')
         .split('\n')
         .map(line => line.replace(/\*([^*]+)\*/g, '$1').replace(/\s+/g, ' ').trim())
