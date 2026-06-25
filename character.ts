@@ -160,6 +160,12 @@ export interface PassiveDetails {
     name?: string,
     text?: string,
     lines?: string[],
+    sections?: PassiveSection[],
+}
+
+export interface PassiveSection {
+    label?: string,
+    lines: string[],
 }
 
 export interface SuperAttackDetails {

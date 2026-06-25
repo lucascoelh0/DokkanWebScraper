@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { JSDOM } from 'jsdom';
 import { promisify } from 'util';
-import { AttackTypes, AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, LeaderSkillClause, LeaderSkillDetails, LeaderSkillTeamCondition, PassiveDetails, PortraitSpec, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
+import { AttackTypes, AwakeningReference, Character, CharacterEquipmentReference, CharacterExtraInfo, Classes, DokkanFrontierPassive, Equipment, EquipmentRestriction, EquipmentSourcePage, LeaderSkillClause, LeaderSkillDetails, LeaderSkillTeamCondition, PassiveDetails, PassiveSection, PortraitSpec, Rarities, SuperAttackDetails, Transformation, Types, UnitSuperAttack } from "./character";
 
 const DOKKAN_INFO_BASE_URL = 'https://dokkaninfo.com';
 const DOKKAN_INFO_CARD_LIST_URL = `${DOKKAN_INFO_BASE_URL}/cards?sort=open_at`;
@@ -1089,12 +1089,152 @@ function passiveDetails(value: DokkanInfoPassiveSkill | undefined): PassiveDetai
     }
 
     const text = cleanMultilineText(value.itemized_description ?? value.description);
+    const lines = text ? text.split('\n').map(line => line.trim()).filter(Boolean) : undefined;
     return cleanObject({
         name: cleanInlineText(value.name),
         text,
-        lines: text ? text.split('\n').map(line => line.trim()).filter(Boolean) : undefined,
+        lines,
+        sections: lines ? splitPassiveSections(lines) : undefined,
     });
 }
+
+export function splitPassiveSections(lines: string[]): PassiveSection[] {
+    const sections: PassiveSection[] = [];
+    let currentSection: PassiveSection | undefined;
+
+    const pushCurrentSection = () => {
+        if (!currentSection) {
+            return;
+        }
+
+        const normalizedLabel = cleanInlineText(currentSection.label).replace(/:$/, '');
+        const normalizedLines = currentSection.lines
+            .map(line => cleanInlineText(line))
+            .filter(Boolean);
+        if (normalizedLabel || normalizedLines.length > 0) {
+            sections.push({
+                label: normalizedLabel || undefined,
+                lines: normalizedLines,
+            });
+        }
+        currentSection = undefined;
+    };
+
+    for (const rawLine of lines) {
+        const line = cleanInlineText(rawLine);
+        if (!line) {
+            continue;
+        }
+
+        if (line.startsWith('- ')) {
+            if (!currentSection) {
+                currentSection = { lines: [] };
+            }
+            currentSection.lines.push(line.slice(2).trim());
+            continue;
+        }
+
+        if (shouldAppendToCurrentPassiveHeader(currentSection, line)) {
+            currentSection.label = `${currentSection.label} ${normalizePassiveHeaderContinuation(currentSection.label, line)}`.trim();
+            continue;
+        }
+
+        if (isPassiveSectionHeader(line)) {
+            pushCurrentSection();
+            currentSection = {
+                label: line,
+                lines: [],
+            };
+            continue;
+        }
+
+        if (!currentSection) {
+            currentSection = {
+                lines: [line],
+            };
+            continue;
+        }
+
+        if (currentSection.label && currentSection.lines.length === 0) {
+            currentSection.label = `${currentSection.label} ${line}`.trim();
+            continue;
+        }
+
+        if (currentSection.lines.length > 0) {
+            const lastIndex = currentSection.lines.length - 1;
+            currentSection.lines[lastIndex] = `${currentSection.lines[lastIndex]} ${line}`.trim();
+            continue;
+        }
+
+        currentSection.lines.push(line);
+    }
+
+    pushCurrentSection();
+    return sections;
+}
+
+function shouldAppendToCurrentPassiveHeader(
+    currentSection: PassiveSection | undefined,
+    line: string,
+): currentSection is PassiveSection & { label: string } {
+    if (!currentSection?.label || currentSection.lines.length > 0) {
+        return false;
+    }
+
+    return /^Activates the Entrance Animation\b/i.test(currentSection.label);
+}
+
+function normalizePassiveHeaderContinuation(currentLabel: string, line: string): string {
+    if (
+        /^Activates the Entrance Animation\b/i.test(currentLabel) &&
+        /^(When|Upon)\b/.test(line)
+    ) {
+        return line.replace(/^[A-Z]/, letter => letter.toLowerCase());
+    }
+
+    return line;
+}
+
+function isPassiveSectionHeader(line: string): boolean {
+    return PASSIVE_SECTION_HEADER_PATTERNS.some(pattern => pattern.test(line));
+}
+
+const PASSIVE_SECTION_HEADER_PATTERNS = [
+    /^Activates the Entrance Animation\b/i,
+    /^Basic effect\(s\)$/i,
+    /^When the Finish Effect is not activated\b/i,
+    /^Per\b/i,
+    /^For \d+ turns? from (?:the )?character's entry turn\b/i,
+    /^For \d+ turns? from start of turn\b/i,
+    /^For \d+ turns?\b/i,
+    /^When attacking with \d+ Ki\b/i,
+    /^When attacking with \d+ or more Ki\b/i,
+    /^When attacking with \d+ or less Ki\b/i,
+    /^When attacking\b/i,
+    /^When activating the Active Skill\b/i,
+    /^For every \d+ Ki when attacking\b/i,
+    /^For every attack performed\b/i,
+    /^For every attack received\b/i,
+    /^For every Super Attack performed\b/i,
+    /^For every .* Ki Spheres? obtained\b/i,
+    /^For each .* Ki Spheres? obtained\b/i,
+    /^Starting from the \d+(?:st|nd|rd|th) turn\b/i,
+    /^Starting from the character's next attacking turn\b/i,
+    /^As the \d+(?:st|nd|rd) attacker in a turn\b/i,
+    /^When there is another\b/i,
+    /^After the character performs\b/i,
+    /^After receiving\b/i,
+    /^After the enemy launches a Super Attack\b/i,
+    /^When receiving an attack\b/i,
+    /^When receiving a Super Attack\b/i,
+    /^When HP is \d+%/i,
+    /^When all allies attacking in the same turn are\b/i,
+    /^When there are no\b/i,
+    /^When the Domain\b/i,
+    /^With a Rainbow Ki Sphere obtained\b/i,
+    /^The less HP remaining\b/i,
+    /^The more HP remaining\b/i,
+];
 
 function superAttackDetails(superAttacks: DokkanListValue<DokkanInfoSuperAttack>, kind: 'normal' | 'ultra' | 'extra'): SuperAttackDetails | undefined {
     const attack = matchingSuperAttack(superAttacks, kind);
