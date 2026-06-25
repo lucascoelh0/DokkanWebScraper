@@ -1134,6 +1134,12 @@ export function splitPassiveSections(lines: string[]): PassiveSection[] {
             continue;
         }
 
+        if (shouldAppendToPreviousPassiveLine(currentSection, line)) {
+            const lastIndex = currentSection.lines.length - 1;
+            currentSection.lines[lastIndex] = `${currentSection.lines[lastIndex]} ${line}`.trim();
+            continue;
+        }
+
         if (shouldAppendToCurrentPassiveHeader(currentSection, line)) {
             currentSection.label = `${currentSection.label} ${normalizePassiveHeaderContinuation(currentSection.label, line)}`.trim();
             continue;
@@ -1176,12 +1182,23 @@ export function splitPassiveSections(lines: string[]): PassiveSection[] {
 function shouldAppendToCurrentPassiveHeader(
     currentSection: PassiveSection | undefined,
     line: string,
-): currentSection is PassiveSection & { label: string } {
+): boolean {
     if (!currentSection?.label || currentSection.lines.length > 0) {
         return false;
     }
 
     return /^Activates the Entrance Animation\b/i.test(currentSection.label);
+}
+
+function shouldAppendToPreviousPassiveLine(
+    currentSection: PassiveSection | undefined,
+    line: string,
+): boolean {
+    if (!currentSection || currentSection.lines.length === 0) {
+        return false;
+    }
+
+    return /^[a-z]/.test(line);
 }
 
 function normalizePassiveHeaderContinuation(currentLabel: string, line: string): string {
@@ -1221,6 +1238,7 @@ const PASSIVE_SECTION_HEADER_PATTERNS = [
     /^Starting from the \d+(?:st|nd|rd|th) turn\b/i,
     /^Starting from the character's next attacking turn\b/i,
     /^As the \d+(?:st|nd|rd) attacker in a turn\b/i,
+    /^As the \d+(?:st|nd|rd|th) or \d+(?:st|nd|rd|th) attacker in a turn\b/i,
     /^When there is another\b/i,
     /^After the character performs\b/i,
     /^After receiving\b/i,
