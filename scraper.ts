@@ -1579,10 +1579,6 @@ function characterExtraInfo(card: DokkanInfoCardSummary): CharacterExtraInfo {
 }
 
 function transformations(data: DokkanInfoCardData, baseCharacterId: string): Transformation[] {
-    if (!hasBattleTransformationCondition(data.transformation)) {
-        return [];
-    }
-
     const currentCardId = data.card.id;
     const links = uniqueCleanNames(data.links);
     const detailsById = new Map(arrayFromDokkanList(data.transformation_details as DokkanListValue<DokkanInfoCardData>).map(detail => [detail.card.id, detail]));
@@ -1592,6 +1588,10 @@ function transformations(data: DokkanInfoCardData, baseCharacterId: string): Tra
     )
         .filter(transformation => transformation.id !== currentCardId)
         .filter((transformation, index, allTransformations) => allTransformations.findIndex(item => item.id === transformation.id) === index);
+
+    if (transformedCards.length === 0) {
+        return [];
+    }
 
     return transformedCards.map(transformation => {
         const detail = detailsById.get(transformation.id);

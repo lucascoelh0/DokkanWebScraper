@@ -2,7 +2,7 @@ import { deepEqual, equal } from "assert";
 import { describe, it } from "mocha";
 import { gunzipSync } from "zlib";
 import { buildCharacterDatasetArtifact } from "./dataset-artifacts";
-import { cleanMultilineText, filterBaseAwakeningDuplicates, filterZAwakeningStagesFromTransformations, hasBattleTransformationCondition, isSellingOnlyLeaderSkill, parseLeaderSkillDetails, splitPassiveSections } from "./scraper";
+import { cleanMultilineText, extractCharacterData, filterBaseAwakeningDuplicates, filterZAwakeningStagesFromTransformations, hasBattleTransformationCondition, isSellingOnlyLeaderSkill, parseLeaderSkillDetails, splitPassiveSections } from "./scraper";
 
 describe("parseLeaderSkillDetails", function () {
   it("parses category leaders with additional category boosts", () => {
@@ -551,5 +551,149 @@ describe("splitPassiveSections", function () {
         ],
       },
     ]);
+  });
+});
+
+describe("extractCharacterData", function () {
+  it("keeps standby and post-standby states even when DokkanInfo omits a transformation condition on the base card", () => {
+    const dataJson = JSON.stringify({
+      card: {
+        id: 1029091,
+        name: "Jiren",
+        rarity: 5,
+        lv_max: 150,
+        skill_lv_max: 20,
+        cost: 77,
+        hp_init: 1,
+        hp_max: 2,
+        hp_hipo: 3,
+        atk_init: 4,
+        atk_max: 5,
+        atk_hipo: 6,
+        def_init: 7,
+        def_max: 8,
+        def_hipo: 9,
+        element: "10",
+        icon_id: 1029090,
+        open_at: 1733979600,
+      },
+      leader_skill: {
+        name: "Solitary Iron Wall of Power",
+        description: "\"Universe 11\" Category Ki +4 and HP, ATK & DEF +200%",
+      },
+      passive_skill: {
+        name: "The Time Has Come...",
+        description: "Basic effect(s)\n- Ki +8",
+      },
+      super_attacks: [],
+      links: [],
+      categories: [],
+      transformations: [
+        {
+          id: 1029091,
+          name: "Jiren",
+          rarity: 5,
+          lv_max: 150,
+          skill_lv_max: 20,
+          element: "10",
+          icon_id: 1029090,
+          open_at: 1733979600,
+        },
+        {
+          id: 4029101,
+          name: "Jiren",
+          rarity: 5,
+          lv_max: 150,
+          skill_lv_max: 20,
+          element: "10",
+          icon_id: 4029100,
+          open_at: 1733979600,
+        },
+        {
+          id: 4029111,
+          name: "Jiren (Full Power)",
+          rarity: 5,
+          lv_max: 150,
+          skill_lv_max: 20,
+          element: "10",
+          icon_id: 4029110,
+          open_at: 1733979600,
+        },
+      ],
+      transformation_details: [
+        {
+          card: {
+            id: 4029101,
+            name: "Jiren",
+            rarity: 5,
+            lv_max: 150,
+            skill_lv_max: 20,
+            element: "10",
+            icon_id: 4029100,
+            open_at: 1733979600,
+          },
+          passive_skill: {
+            name: "Standby State",
+            description: "Basic effect(s)\n- Guards all attacks",
+          },
+          finish_skills: [
+            {
+              name: "Awakened Full Power",
+              effect_description: "Awakens into Jiren (Full Power)",
+              condition_description: "Can be activated when charge count is 25 or more (once only)",
+            },
+          ],
+          links: [],
+        },
+        {
+          card: {
+            id: 4029111,
+            name: "Jiren (Full Power)",
+            rarity: 5,
+            lv_max: 150,
+            skill_lv_max: 20,
+            element: "10",
+            icon_id: 4029110,
+            open_at: 1733979600,
+          },
+          passive_skill: {
+            name: "I Will Not Lose!",
+            description: "Basic effect(s)\n- ATK & DEF 500%",
+          },
+          links: [],
+        },
+      ],
+    });
+
+    const document = {
+      querySelector: () => ({
+        getAttribute: (attribute: string) => attribute === "v-bind:datajson" ? dataJson : null,
+      }),
+    } as any;
+
+    const character = extractCharacterData(document);
+
+    equal(character.transformations?.length, 2);
+    deepEqual(
+      character.transformations?.map(transformation => ({
+        id: transformation.id,
+        name: transformation.name,
+        finishingMove: transformation.finishingMove,
+      })),
+      [
+        {
+          id: "4029101",
+          name: "Jiren",
+          finishingMove: [
+            "Awakened Full Power: Awakens into Jiren (Full Power)",
+          ],
+        },
+        {
+          id: "4029111",
+          name: "Jiren (Full Power)",
+          finishingMove: undefined,
+        },
+      ],
+    );
   });
 });
