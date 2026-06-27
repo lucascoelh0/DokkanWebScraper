@@ -552,6 +552,80 @@ describe("splitPassiveSections", function () {
       },
     ]);
   });
+
+  it("treats multi-line emphasized headers as real section headers even when the asterisks are split across lines", () => {
+    const sections = splitPassiveSections([
+      `*Basic effect(s)*`,
+      `- Ki +5`,
+      `- ATK & DEF 200%`,
+      `*For every attack performed*`,
+      `- Ki +2`,
+      `- ATK 40% (up to 200%)`,
+      `- DEF 30% (up to 150%)`,
+      `*For every Super Attack performed*`,
+      `- ATK 77% within the turn`,
+      `*When attacking with 18 or more Ki*`,
+      `- Launches an additional attack that has a great chance of`,
+      `becoming a Super Attack`,
+      `*When attacking with 24 Ki*`,
+      `- ATK 58%`,
+      `- Launches an additional Super Attack`,
+      `- Attacks are effective against all Types when HP is 77% or`,
+      `more`,
+      `*When there is another "Kamehameha" or "Earth-Bred`,
+      `Fighters" Category ally attacking in the same turn*`,
+      `- Ki +2`,
+      `- Guards all attacks`,
+      `- High chance of evading enemy's attack if HP is 77% or less`,
+      `when receiving an attack`,
+    ]);
+
+    deepEqual(sections, [
+      {
+        label: `Basic effect(s)`,
+        lines: [
+          `Ki +5`,
+          `ATK & DEF 200%`,
+        ],
+      },
+      {
+        label: `For every attack performed`,
+        lines: [
+          `Ki +2`,
+          `ATK 40% (up to 200%)`,
+          `DEF 30% (up to 150%)`,
+        ],
+      },
+      {
+        label: `For every Super Attack performed`,
+        lines: [
+          `ATK 77% within the turn`,
+        ],
+      },
+      {
+        label: `When attacking with 18 or more Ki`,
+        lines: [
+          `Launches an additional attack that has a great chance of becoming a Super Attack`,
+        ],
+      },
+      {
+        label: `When attacking with 24 Ki`,
+        lines: [
+          `ATK 58%`,
+          `Launches an additional Super Attack`,
+          `Attacks are effective against all Types when HP is 77% or more`,
+        ],
+      },
+      {
+        label: `When there is another "Kamehameha" or "Earth-Bred Fighters" Category ally attacking in the same turn`,
+        lines: [
+          `Ki +2`,
+          `Guards all attacks`,
+          `High chance of evading enemy's attack if HP is 77% or less when receiving an attack`,
+        ],
+      },
+    ]);
+  });
 });
 
 describe("extractCharacterData", function () {

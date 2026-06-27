@@ -1,5 +1,10 @@
 # Dokkan Scraper Spec
 
+Note:
+
+- this document describes the current DokkanInfo-oriented contract
+- the planned Dokkan.fyi target contract lives in `docs/specs/dokkan-fyi-character-contract.md`
+
 ## Purpose
 
 This scraper now targets `dokkaninfo.com` as the source of truth for cards and equipment.

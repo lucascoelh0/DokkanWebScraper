@@ -1121,7 +1121,7 @@ export function splitPassiveSections(lines: string[]): PassiveSection[] {
     };
 
     for (const rawLine of lines) {
-        const line = cleanInlineText(rawLine);
+        const line = normalizePassiveParserLine(rawLine);
         if (!line) {
             continue;
         }
@@ -1177,6 +1177,13 @@ export function splitPassiveSections(lines: string[]): PassiveSection[] {
 
     pushCurrentSection();
     return sections;
+}
+
+function normalizePassiveParserLine(rawLine: string): string {
+    return cleanInlineText(rawLine)
+        .replace(/^\*\s*/, "")
+        .replace(/\s*\*$/, "")
+        .trim();
 }
 
 function shouldAppendToCurrentPassiveHeader(

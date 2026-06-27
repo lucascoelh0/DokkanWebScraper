@@ -1,0 +1,2324 @@
+{
+  "schemaName": "dokkan-fyi-character-contract",
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-26T20:59:37.820Z",
+  "source": "dokkan.fyi",
+  "specPath": "docs/specs/dokkan-fyi-character-contract.md",
+  "sampleCharacterIds": [
+    "1029471",
+    "1030431",
+    "1025591",
+    "1032771"
+  ],
+  "notes": [
+    "Reference snapshot for the planned Dokkan.fyi app contract.",
+    "This file is intentionally small and curated for human review.",
+    "Legacy compatibility fields may still be present while the Android app migrates."
+  ],
+  "characters": [
+    {
+      "name": "Super Saiyan Gohan (Teen)",
+      "title": "All-Out Super Attack",
+      "maxLevel": 150,
+      "maxSALevel": 20,
+      "rarity": "LR",
+      "releaseDate": "2024-09-14T02:00:00.000Z",
+      "summonable": "Summonable",
+      "isSummonable": true,
+      "isFreeToPlay": false,
+      "obtainability": {
+        "type": "summonable",
+        "isFreeToPlay": false,
+        "hasDirectAcquisitionDetails": false
+      },
+      "characterClass": "Super",
+      "type": "STR",
+      "cost": 77,
+      "id": "1029471",
+      "legacyId": "1029470",
+      "portraitURL": "https://cdn.dokkan.fyi/assets/en/character/thumb/card_1029470_thumb/card_1029470_thumb.png",
+      "portraitFilename": "portrait_1029471",
+      "portraitSpec": {
+        "iconId": 1029470,
+        "frameColorId": 3,
+        "rarity": "LR",
+        "elementCode": "13"
+      },
+      "leaderSkill": "\"Kamehameha\" Category\nKi +3 and HP, ATK & DEF +200%",
+      "leaderSkillBoost": 200,
+      "leaderSkillDetails": {
+        "rawText": "\"Kamehameha\" Category\nKi +3 and HP, ATK & DEF +200%",
+        "displayBoost": 200,
+        "clauses": [
+          {
+            "rawText": "\"Kamehameha\" Category Ki +3 and HP, ATK & DEF +200%",
+            "stackGroup": "primary",
+            "targetMode": "base",
+            "categories": [
+              "Kamehameha"
+            ],
+            "ki": 3,
+            "hp": 200,
+            "atk": 200,
+            "def": 200,
+            "boostForm": "percentage"
+          }
+        ]
+      },
+      "superAttack": "Greatly raises ATK and raises DEF for 1 turn\nand causes colossal damage with\na high chance of stunning the enemy",
+      "ultraSuperAttack": "Greatly raises ATK and raises DEF for 1 turn\nand causes mega-colossal damage to enemy;\nraises Super Class allies' DEF by 50% for 1 turn",
+      "exSuperAttack": "",
+      "superAttackDetails": {
+        "name": "Masenko",
+        "effect": "Greatly raises ATK and raises DEF for 1 turn\nand causes colossal damage with\na high chance of stunning the enemy",
+        "type": "Other",
+        "ki": 12,
+        "style": "Normal",
+        "condition": ""
+      },
+      "ultraSuperAttackDetails": {
+        "name": "Super Explosive Wave",
+        "effect": "Greatly raises ATK and raises DEF for 1 turn\nand causes mega-colossal damage to enemy;\nraises Super Class allies' DEF by 50% for 1 turn",
+        "type": "Other",
+        "ki": 18,
+        "style": "Ultra",
+        "condition": ""
+      },
+      "unitSuperAttacks": [],
+      "passive": "Basic effect(s)\n- Ki +5\n- ATK & DEF 200%\nFor every attack performed\n- Ki +2\n- ATK 40% (up to 200%)\n- DEF 30% (up to 150%)\nFor every Super Attack performed\n- ATK 77% within the turn\nWhen attacking with 18 or more Ki\n- Launches an additional attack that has a great chance of\nbecoming a Super Attack\nWhen attacking with 24 Ki\n- ATK 58%\n- Launches an additional Super Attack\n- Attacks are effective against all Types when HP is 77% or\nmore\nWhen there is another \"Kamehameha\" or \"Earth-Bred\nFighters\" Category ally attacking in the same turn\n- Ki +2\n- Guards all attacks\n- High chance of evading enemy's attack if HP is 77% or less\nwhen receiving an attack",
+      "passiveDetails": {
+        "name": "Power to Protect Earth",
+        "text": "Basic effect(s)\n- Ki +5\n- ATK & DEF 200%\nFor every attack performed\n- Ki +2\n- ATK 40% (up to 200%)\n- DEF 30% (up to 150%)\nFor every Super Attack performed\n- ATK 77% within the turn\nWhen attacking with 18 or more Ki\n- Launches an additional attack that has a great chance of\nbecoming a Super Attack\nWhen attacking with 24 Ki\n- ATK 58%\n- Launches an additional Super Attack\n- Attacks are effective against all Types when HP is 77% or\nmore\nWhen there is another \"Kamehameha\" or \"Earth-Bred\nFighters\" Category ally attacking in the same turn\n- Ki +2\n- Guards all attacks\n- High chance of evading enemy's attack if HP is 77% or less\nwhen receiving an attack",
+        "lines": [
+          "Basic effect(s)",
+          "- Ki +5",
+          "- ATK & DEF 200%",
+          "For every attack performed",
+          "- Ki +2",
+          "- ATK 40% (up to 200%)",
+          "- DEF 30% (up to 150%)",
+          "For every Super Attack performed",
+          "- ATK 77% within the turn",
+          "When attacking with 18 or more Ki",
+          "- Launches an additional attack that has a great chance of",
+          "becoming a Super Attack",
+          "When attacking with 24 Ki",
+          "- ATK 58%",
+          "- Launches an additional Super Attack",
+          "- Attacks are effective against all Types when HP is 77% or",
+          "more",
+          "When there is another \"Kamehameha\" or \"Earth-Bred",
+          "Fighters\" Category ally attacking in the same turn",
+          "- Ki +2",
+          "- Guards all attacks",
+          "- High chance of evading enemy's attack if HP is 77% or less",
+          "when receiving an attack"
+        ],
+        "sections": [
+          {
+            "label": "Basic effect(s)",
+            "lines": [
+              "Ki +5",
+              "ATK & DEF 200%"
+            ]
+          },
+          {
+            "label": "For every attack performed",
+            "lines": [
+              "Ki +2",
+              "ATK 40% (up to 200%)",
+              "DEF 30% (up to 150%)"
+            ]
+          },
+          {
+            "label": "For every Super Attack performed",
+            "lines": [
+              "ATK 77% within the turn"
+            ]
+          },
+          {
+            "label": "When attacking with 18 or more Ki",
+            "lines": [
+              "Launches an additional attack that has a great chance of becoming a Super Attack"
+            ]
+          },
+          {
+            "label": "When attacking with 24 Ki",
+            "lines": [
+              "ATK 58%",
+              "Launches an additional Super Attack",
+              "Attacks are effective against all Types when HP is 77% or more"
+            ]
+          },
+          {
+            "label": "When there is another \"Kamehameha\" or \"Earth-Bred Fighters\" Category ally attacking in the same turn",
+            "lines": [
+              "Ki +2",
+              "Guards all attacks",
+              "High chance of evading enemy's attack if HP is 77% or less when receiving an attack"
+            ]
+          }
+        ]
+      },
+      "activeSkill": "",
+      "activeSkillCondition": "",
+      "transformationCondition": "",
+      "domain": "",
+      "links": [
+        "All in the Family",
+        "Fierce Battle",
+        "Golden Warrior",
+        "Legendary Power",
+        "Prepared for Battle",
+        "Saiyan Warrior Race",
+        "Super Saiyan"
+      ],
+      "categories": [
+        "Bond of Parent and Child",
+        "Defenders of Justice",
+        "Demonic Power",
+        "Earth-Bred Fighters",
+        "Earth-Protecting Heroes",
+        "Full Power",
+        "Goku's Family",
+        "Hybrid Saiyans",
+        "Kamehameha",
+        "Majin Buu Saga",
+        "Movie Heroes",
+        "Power of Wishes",
+        "Saviors",
+        "Siblings' Bond",
+        "Super Saiyans"
+      ],
+      "kiMeter": [
+        "0 Ki: 40%",
+        "3 Ki: 100%",
+        "12 Ki: 150%",
+        "24 Ki: 200%"
+      ],
+      "artURL": "https://cdn.dokkan.fyi/assets/en/character/card/1029470/card_1029470_cutin.png",
+      "artFilename": "art_1029471",
+      "baseHP": 5829,
+      "maxLevelHP": 19238,
+      "freeDupeHP": 19238,
+      "rainbowHP": 19238,
+      "baseAttack": 4474,
+      "maxLevelAttack": 14765,
+      "freeDupeAttack": 14765,
+      "rainbowAttack": 14765,
+      "baseDefence": 2893,
+      "maxDefence": 9550,
+      "freeDupeDefence": 9550,
+      "rainbowDefence": 9550,
+      "kiMultiplier": "0 Ki 40%; 3 Ki 100%; 12 Ki 150%; 24 Ki 200%",
+      "extraInfo": {
+        "kiMultiplierText": "0 Ki 40%; 3 Ki 100%; 12 Ki 150%; 24 Ki 200%",
+        "kiMultiplierSteps": [
+          {
+            "ki": 0,
+            "percent": 40
+          },
+          {
+            "ki": 3,
+            "percent": 100
+          },
+          {
+            "ki": 12,
+            "percent": 150
+          },
+          {
+            "ki": 24,
+            "percent": 200
+          }
+        ]
+      },
+      "standbySkill": "Enters Standby Mode: Stands by for 5 turns, during which 7 Dragon Balls appear, charge count increases by 1 per Ki Sphere obtained by allies and by an additional 4 per Dragon Ball obtained by allies.",
+      "finishingMove": [
+        "Kamehameha\nRaises ATK by 15% temporarily per charge count and causes ultimate damage to enemy.\nCondition: Can be activated when charge count is 34 or less (once only).",
+        "Brotherhood Kamehameha\nRaises ATK by 15% temporarily per charge count and causes super-ultimate damage to enemy.\nCondition: Can be activated when charge count is 35 or more with 6 or fewer Dragon Balls obtained (once only).",
+        "Family Kamehameha\nRaises ATK by 20% temporarily per charge count, causes super-ultimate damage to enemy and attacks effective against all Types.\nCondition: Can be activated when charge count is 35 or more with 7 Dragon Balls obtained (once only)."
+      ],
+      "standby": {
+        "id": "24",
+        "name": "Enters Standby Mode",
+        "description": "Stands by for 5 turns, during which 7 Dragon Balls appear, charge count increases by 1 per Ki Sphere obtained by allies and by an additional 4 per Dragon Ball obtained by allies.",
+        "condition": "Can be activated when HP is 77% or less, or starting from the 3rd turn from the character's entry turn (once only).",
+        "targetCharacterId": "4029481",
+        "finishSkills": [
+          {
+            "id": "20",
+            "name": "Kamehameha",
+            "description": "Raises ATK by 15% temporarily per charge count and causes ultimate damage to enemy.",
+            "condition": "Can be activated when charge count is 34 or less (once only).",
+            "effectKind": "mixed",
+            "legacyText": "Kamehameha\nRaises ATK by 15% temporarily per charge count and causes ultimate damage to enemy.\nCondition: Can be activated when charge count is 34 or less (once only)."
+          },
+          {
+            "id": "21",
+            "name": "Brotherhood Kamehameha",
+            "description": "Raises ATK by 15% temporarily per charge count and causes super-ultimate damage to enemy.",
+            "condition": "Can be activated when charge count is 35 or more with 6 or fewer Dragon Balls obtained (once only).",
+            "effectKind": "mixed",
+            "legacyText": "Brotherhood Kamehameha\nRaises ATK by 15% temporarily per charge count and causes super-ultimate damage to enemy.\nCondition: Can be activated when charge count is 35 or more with 6 or fewer Dragon Balls obtained (once only)."
+          },
+          {
+            "id": "22",
+            "name": "Family Kamehameha",
+            "description": "Raises ATK by 20% temporarily per charge count, causes super-ultimate damage to enemy and attacks effective against all Types.",
+            "condition": "Can be activated when charge count is 35 or more with 7 Dragon Balls obtained (once only).",
+            "effectKind": "mixed",
+            "legacyText": "Family Kamehameha\nRaises ATK by 20% temporarily per charge count, causes super-ultimate damage to enemy and attacks effective against all Types.\nCondition: Can be activated when charge count is 35 or more with 7 Dragon Balls obtained (once only)."
+          }
+        ],
+        "legacyText": "Enters Standby Mode: Stands by for 5 turns, during which 7 Dragon Balls appear, charge count increases by 1 per Ki Sphere obtained by allies and by an additional 4 per Dragon Ball obtained by allies."
+      },
+      "finishSkills": [
+        {
+          "id": "20",
+          "name": "Kamehameha",
+          "description": "Raises ATK by 15% temporarily per charge count and causes ultimate damage to enemy.",
+          "condition": "Can be activated when charge count is 34 or less (once only).",
+          "effectKind": "mixed",
+          "legacyText": "Kamehameha\nRaises ATK by 15% temporarily per charge count and causes ultimate damage to enemy.\nCondition: Can be activated when charge count is 34 or less (once only)."
+        },
+        {
+          "id": "21",
+          "name": "Brotherhood Kamehameha",
+          "description": "Raises ATK by 15% temporarily per charge count and causes super-ultimate damage to enemy.",
+          "condition": "Can be activated when charge count is 35 or more with 6 or fewer Dragon Balls obtained (once only).",
+          "effectKind": "mixed",
+          "legacyText": "Brotherhood Kamehameha\nRaises ATK by 15% temporarily per charge count and causes super-ultimate damage to enemy.\nCondition: Can be activated when charge count is 35 or more with 6 or fewer Dragon Balls obtained (once only)."
+        },
+        {
+          "id": "22",
+          "name": "Family Kamehameha",
+          "description": "Raises ATK by 20% temporarily per charge count, causes super-ultimate damage to enemy and attacks effective against all Types.",
+          "condition": "Can be activated when charge count is 35 or more with 7 Dragon Balls obtained (once only).",
+          "effectKind": "mixed",
+          "legacyText": "Family Kamehameha\nRaises ATK by 20% temporarily per charge count, causes super-ultimate damage to enemy and attacks effective against all Types.\nCondition: Can be activated when charge count is 35 or more with 7 Dragon Balls obtained (once only)."
+        }
+      ],
+      "exclusiveSkillOrbs": [
+        {
+          "id": "4409",
+          "name": "[Character-Exclusive] EX Skill Orb DEF + Lv. 8",
+          "description": "Can be equipped to [All-Out Super Attack]\nSuper Saiyan Gohan (Teen).\nThe equipped character's DEF +800.\nCannot be exchanged for Trade Points.",
+          "grade": "bronze",
+          "reusable": true,
+          "iconImageId": "00009",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00009.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_bronze.png",
+          "skills": [
+            {
+              "id": "440900",
+              "attribute": "defense",
+              "level": 8
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "mission-reward",
+              "sourceName": "Mission Reward",
+              "missionId": "25160",
+              "missionCategoryId": "796",
+              "bannerImageUrl": "https://cdn.dokkan.fyi/assets/en/mission/mission_banner_event_796_3.png",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "id": "4410",
+          "name": "[Character-Exclusive] EX Skill Orb Combo Attack + Lv. 4, Critical Hit + Lv. 4",
+          "description": "Can be equipped to [All-Out Super Attack]\nSuper Saiyan Gohan (Teen). Its level is added\nto the equipped character's Hidden Potential\nSkill level. Cannot be exchanged for Trade Points.",
+          "grade": "silver",
+          "reusable": true,
+          "iconImageId": "00090",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00090.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_silver.png",
+          "skills": [
+            {
+              "id": "441000",
+              "attribute": "",
+              "level": 4,
+              "hiddenPotentialSkillId": 1
+            },
+            {
+              "id": "441001",
+              "attribute": "",
+              "level": 4,
+              "hiddenPotentialSkillId": 2
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "mission-reward",
+              "sourceName": "Mission Reward",
+              "missionId": "25161",
+              "missionCategoryId": "796",
+              "bannerImageUrl": "https://cdn.dokkan.fyi/assets/en/mission/mission_banner_event_796_3.png",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "id": "4411",
+          "name": "[Character-Exclusive] EX Skill Orb Combo Attack + Lv. 5, Critical Hit + Lv. 5",
+          "description": "Can be equipped to [All-Out Super Attack]\nSuper Saiyan Gohan (Teen). Its level is added\nto the equipped character's Hidden Potential\nSkill level. Cannot be exchanged for Trade Points.",
+          "grade": "gold",
+          "reusable": true,
+          "iconImageId": "00055",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00055.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_gold.png",
+          "skills": [
+            {
+              "id": "441100",
+              "attribute": "",
+              "level": 5,
+              "hiddenPotentialSkillId": 1
+            },
+            {
+              "id": "441101",
+              "attribute": "",
+              "level": 5,
+              "hiddenPotentialSkillId": 2
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "mission-reward",
+              "sourceName": "Mission Reward",
+              "missionId": "25162",
+              "missionCategoryId": "796",
+              "bannerImageUrl": "https://cdn.dokkan.fyi/assets/en/mission/mission_banner_event_796_3.png",
+              "quantity": 1
+            }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "4029481",
+          "baseCharacterId": "1029471",
+          "legacyId": "4029480",
+          "name": "Super Saiyan Gohan (Teen)",
+          "releaseDate": "2024-09-14T02:00:00.000Z",
+          "summonable": "Summonable",
+          "isSummonable": true,
+          "isFreeToPlay": false,
+          "obtainability": {
+            "type": "summonable",
+            "isFreeToPlay": false,
+            "hasDirectAcquisitionDetails": false
+          },
+          "characterClass": "Super",
+          "type": "STR",
+          "superAttack": "None",
+          "ultraSuperAttack": "",
+          "exSuperAttack": "",
+          "superAttackDetails": {
+            "name": "None",
+            "effect": "None",
+            "type": "Other",
+            "ki": 12,
+            "style": "Normal",
+            "condition": ""
+          },
+          "passive": "When the Finish Effect is not activated\n- Unable to attack\nBasic effect(s)\n- Guards all attacks\nPer Super Class ally attacking in the same turn\n- ATK 77%\nWhen all allies attacking in the same turn are Super Class\ncharacters\n- Damage reduction rate 77%\nWhen receiving an attack\n- DEF 50% per Ki Sphere obtained\nWhen the Finish Effect is activated\n- ATK 258%",
+          "passiveDetails": {
+            "name": "Power of Wishes and Justice",
+            "text": "When the Finish Effect is not activated\n- Unable to attack\nBasic effect(s)\n- Guards all attacks\nPer Super Class ally attacking in the same turn\n- ATK 77%\nWhen all allies attacking in the same turn are Super Class\ncharacters\n- Damage reduction rate 77%\nWhen receiving an attack\n- DEF 50% per Ki Sphere obtained\nWhen the Finish Effect is activated\n- ATK 258%",
+            "lines": [
+              "When the Finish Effect is not activated",
+              "- Unable to attack",
+              "Basic effect(s)",
+              "- Guards all attacks",
+              "Per Super Class ally attacking in the same turn",
+              "- ATK 77%",
+              "When all allies attacking in the same turn are Super Class",
+              "characters",
+              "- Damage reduction rate 77%",
+              "When receiving an attack",
+              "- DEF 50% per Ki Sphere obtained",
+              "When the Finish Effect is activated",
+              "- ATK 258%"
+            ],
+            "sections": [
+              {
+                "label": "When the Finish Effect is not activated",
+                "lines": [
+                  "Unable to attack"
+                ]
+              },
+              {
+                "label": "Basic effect(s)",
+                "lines": [
+                  "Guards all attacks"
+                ]
+              },
+              {
+                "label": "Per Super Class ally attacking in the same turn",
+                "lines": [
+                  "ATK 77%"
+                ]
+              },
+              {
+                "label": "When all allies attacking in the same turn are Super Class characters",
+                "lines": [
+                  "Damage reduction rate 77%"
+                ]
+              },
+              {
+                "label": "When receiving an attack",
+                "lines": [
+                  "DEF 50% per Ki Sphere obtained When the Finish Effect is activated",
+                  "ATK 258%"
+                ]
+              }
+            ]
+          },
+          "activeSkill": "",
+          "activeSkillCondition": "",
+          "transformationCondition": "Can be activated when HP is 77% or less, or starting from the 3rd turn from the character's entry turn (once only).",
+          "domain": "",
+          "links": [
+            "Fierce Battle",
+            "Golden Warrior",
+            "Kamehameha",
+            "Legendary Power",
+            "Prepared for Battle",
+            "Saiyan Warrior Race",
+            "Super Saiyan"
+          ],
+          "portraitURL": "https://cdn.dokkan.fyi/assets/en/character/thumb/card_4029480_thumb/card_4029480_thumb.png",
+          "portraitFilename": "portrait_4029481",
+          "portraitSpec": {
+            "iconId": 4029480,
+            "frameColorId": 3,
+            "rarity": "LR",
+            "elementCode": "13"
+          },
+          "artURL": "https://cdn.dokkan.fyi/assets/en/character/card/4029480/card_4029480_cutin.png",
+          "artFilename": "art_4029481",
+          "extraInfo": {
+            "kiMultiplierText": "0 Ki 40%; 3 Ki 100%; 12 Ki 150%; 24 Ki 200%",
+            "kiMultiplierSteps": [
+              {
+                "ki": 0,
+                "percent": 40
+              },
+              {
+                "ki": 3,
+                "percent": 100
+              },
+              {
+                "ki": 12,
+                "percent": 150
+              },
+              {
+                "ki": 24,
+                "percent": 200
+              }
+            ]
+          },
+          "standbySkill": "",
+          "finishingMove": [
+            "Kamehameha\nRaises ATK by 15% temporarily per charge count and causes ultimate damage to enemy.\nCondition: Can be activated when charge count is 34 or less (once only).",
+            "Brotherhood Kamehameha\nRaises ATK by 15% temporarily per charge count and causes super-ultimate damage to enemy.\nCondition: Can be activated when charge count is 35 or more with 6 or fewer Dragon Balls obtained (once only).",
+            "Family Kamehameha\nRaises ATK by 20% temporarily per charge count, causes super-ultimate damage to enemy and attacks effective against all Types.\nCondition: Can be activated when charge count is 35 or more with 7 Dragon Balls obtained (once only)."
+          ],
+          "finishSkills": [
+            {
+              "id": "20",
+              "name": "Kamehameha",
+              "description": "Raises ATK by 15% temporarily per charge count and causes ultimate damage to enemy.",
+              "condition": "Can be activated when charge count is 34 or less (once only).",
+              "effectKind": "mixed",
+              "legacyText": "Kamehameha\nRaises ATK by 15% temporarily per charge count and causes ultimate damage to enemy.\nCondition: Can be activated when charge count is 34 or less (once only)."
+            },
+            {
+              "id": "21",
+              "name": "Brotherhood Kamehameha",
+              "description": "Raises ATK by 15% temporarily per charge count and causes super-ultimate damage to enemy.",
+              "condition": "Can be activated when charge count is 35 or more with 6 or fewer Dragon Balls obtained (once only).",
+              "effectKind": "mixed",
+              "legacyText": "Brotherhood Kamehameha\nRaises ATK by 15% temporarily per charge count and causes super-ultimate damage to enemy.\nCondition: Can be activated when charge count is 35 or more with 6 or fewer Dragon Balls obtained (once only)."
+            },
+            {
+              "id": "22",
+              "name": "Family Kamehameha",
+              "description": "Raises ATK by 20% temporarily per charge count, causes super-ultimate damage to enemy and attacks effective against all Types.",
+              "condition": "Can be activated when charge count is 35 or more with 7 Dragon Balls obtained (once only).",
+              "effectKind": "mixed",
+              "legacyText": "Family Kamehameha\nRaises ATK by 20% temporarily per charge count, causes super-ultimate damage to enemy and attacks effective against all Types.\nCondition: Can be activated when charge count is 35 or more with 7 Dragon Balls obtained (once only)."
+            }
+          ],
+          "transformationSource": "standby",
+          "transformationSourceLabel": "Standby Skill"
+        }
+      ]
+    },
+    {
+      "name": "Super Saiyan Goku + Super Saiyan Vegeta (Angel)",
+      "title": "Incomparable Radiance",
+      "maxLevel": 150,
+      "maxSALevel": 20,
+      "rarity": "LR",
+      "releaseDate": "2025-01-28T21:00:00.000Z",
+      "summonable": "Summonable",
+      "isSummonable": true,
+      "isFreeToPlay": false,
+      "obtainability": {
+        "type": "summonable",
+        "isFreeToPlay": false,
+        "hasDirectAcquisitionDetails": false
+      },
+      "characterClass": "Super",
+      "type": "TEQ",
+      "cost": 77,
+      "id": "1030431",
+      "legacyId": "1030430",
+      "portraitURL": "https://cdn.dokkan.fyi/assets/en/character/thumb/card_1030430_thumb/card_1030430_thumb.png",
+      "portraitFilename": "portrait_1030431",
+      "portraitSpec": {
+        "iconId": 1030430,
+        "frameColorId": 1,
+        "rarity": "LR",
+        "elementCode": "11"
+      },
+      "leaderSkill": "\"Earth-Protecting Heroes\", \"Fused Fighters\"\nor \"Pure Saiyans\" Category Ki +3,\nHP +200% and ATK & DEF +170%,\nplus an additional HP, ATK & DEF +50%\nfor characters who also belong to the\n\"Earth-Bred Fighters\" or \"Potara\" Category",
+      "leaderSkillBoost": 230,
+      "leaderSkillDetails": {
+        "rawText": "\"Earth-Protecting Heroes\", \"Fused Fighters\"\nor \"Pure Saiyans\" Category Ki +3,\nHP +200% and ATK & DEF +170%,\nplus an additional HP, ATK & DEF +50%\nfor characters who also belong to the\n\"Earth-Bred Fighters\" or \"Potara\" Category",
+        "displayBoost": 230,
+        "clauses": [
+          {
+            "rawText": "\"Earth-Protecting Heroes\", \"Fused Fighters\" or \"Pure Saiyans\" Category Ki +3, HP +200% and ATK & DEF +170%",
+            "stackGroup": "primary",
+            "targetMode": "base",
+            "categories": [
+              "Earth-Protecting Heroes",
+              "Fused Fighters",
+              "Pure Saiyans"
+            ],
+            "ki": 3,
+            "hp": 200,
+            "atk": 170,
+            "def": 170,
+            "boostForm": "percentage"
+          },
+          {
+            "rawText": "HP, ATK & DEF +50% for characters who also belong to the \"Earth-Bred Fighters\" or \"Potara\" Category",
+            "stackGroup": "additional",
+            "targetMode": "also-belong",
+            "categories": [
+              "Earth-Bred Fighters",
+              "Potara"
+            ],
+            "hp": 50,
+            "atk": 50,
+            "def": 50,
+            "boostForm": "percentage"
+          }
+        ]
+      },
+      "superAttack": "Raises ATK,\ngreatly raises DEF for 1 turn and\ncauses colossal damage to enemy",
+      "ultraSuperAttack": "Greatly raises ATK,\ngreatly raises DEF for 1 turn and\ncauses mega-colossal damage to enemy",
+      "exSuperAttack": "",
+      "superAttackDetails": {
+        "name": "Kamehameha",
+        "effect": "Raises ATK,\ngreatly raises DEF for 1 turn and\ncauses colossal damage to enemy",
+        "type": "Ki Blast",
+        "ki": 12,
+        "style": "Normal",
+        "condition": ""
+      },
+      "ultraSuperAttackDetails": {
+        "name": "All-Out Super Saiyan 3",
+        "effect": "Greatly raises ATK,\ngreatly raises DEF for 1 turn and\ncauses mega-colossal damage to enemy",
+        "type": "Unarmed",
+        "ki": 18,
+        "style": "Ultra",
+        "condition": ""
+      },
+      "unitSuperAttacks": [],
+      "passive": "Basic effect(s)\n- ATK & DEF 200%\n- Receives an additional Ki +2 per Type Ki Sphere obtained\n- \"Earth-Protecting Heroes\" or \"Potara\" Category allies'\nKi +1 and DEF 40%\nFor 3 turns from the character's entry turn\n- Damage reduction rate 50%\nWhen attacking\n- ATK 200%\n- Damage reduction rate 20%\nWhen attacking with 10 or more Ki\n- Attacks are effective against all Types\nWhen attacking with 20 or more Ki\n- Launches an additional Super Attack\nAs the 2nd or 3rd attacker in a turn\n- Damage reduction rate 20%\n- Launches an additional attack that has a great chance of\nbecoming a Super Attack\nStarting from the 4th turn from the start of battle\n- Meets up with Super Saiyan Vegeta (Angel) and can\nperform Reversible Exchange",
+      "passiveDetails": {
+        "name": "Elder Kai's Plan",
+        "text": "Basic effect(s)\n- ATK & DEF 200%\n- Receives an additional Ki +2 per Type Ki Sphere obtained\n- \"Earth-Protecting Heroes\" or \"Potara\" Category allies'\nKi +1 and DEF 40%\nFor 3 turns from the character's entry turn\n- Damage reduction rate 50%\nWhen attacking\n- ATK 200%\n- Damage reduction rate 20%\nWhen attacking with 10 or more Ki\n- Attacks are effective against all Types\nWhen attacking with 20 or more Ki\n- Launches an additional Super Attack\nAs the 2nd or 3rd attacker in a turn\n- Damage reduction rate 20%\n- Launches an additional attack that has a great chance of\nbecoming a Super Attack\nStarting from the 4th turn from the start of battle\n- Meets up with Super Saiyan Vegeta (Angel) and can\nperform Reversible Exchange",
+        "lines": [
+          "Basic effect(s)",
+          "- ATK & DEF 200%",
+          "- Receives an additional Ki +2 per Type Ki Sphere obtained",
+          "- \"Earth-Protecting Heroes\" or \"Potara\" Category allies'",
+          "Ki +1 and DEF 40%",
+          "For 3 turns from the character's entry turn",
+          "- Damage reduction rate 50%",
+          "When attacking",
+          "- ATK 200%",
+          "- Damage reduction rate 20%",
+          "When attacking with 10 or more Ki",
+          "- Attacks are effective against all Types",
+          "When attacking with 20 or more Ki",
+          "- Launches an additional Super Attack",
+          "As the 2nd or 3rd attacker in a turn",
+          "- Damage reduction rate 20%",
+          "- Launches an additional attack that has a great chance of",
+          "becoming a Super Attack",
+          "Starting from the 4th turn from the start of battle",
+          "- Meets up with Super Saiyan Vegeta (Angel) and can",
+          "perform Reversible Exchange"
+        ],
+        "sections": [
+          {
+            "label": "Basic effect(s)",
+            "lines": [
+              "ATK & DEF 200%",
+              "Receives an additional Ki +2 per Type Ki Sphere obtained",
+              "\"Earth-Protecting Heroes\" or \"Potara\" Category allies' Ki +1 and DEF 40%"
+            ]
+          },
+          {
+            "label": "For 3 turns from the character's entry turn",
+            "lines": [
+              "Damage reduction rate 50%"
+            ]
+          },
+          {
+            "label": "When attacking",
+            "lines": [
+              "ATK 200%",
+              "Damage reduction rate 20%"
+            ]
+          },
+          {
+            "label": "When attacking with 10 or more Ki",
+            "lines": [
+              "Attacks are effective against all Types"
+            ]
+          },
+          {
+            "label": "When attacking with 20 or more Ki",
+            "lines": [
+              "Launches an additional Super Attack"
+            ]
+          },
+          {
+            "label": "As the 2nd or 3rd attacker in a turn",
+            "lines": [
+              "Damage reduction rate 20%",
+              "Launches an additional attack that has a great chance of becoming a Super Attack"
+            ]
+          },
+          {
+            "label": "Starting from the 4th turn from the start of battle",
+            "lines": [
+              "Meets up with Super Saiyan Vegeta (Angel) and can perform Reversible Exchange"
+            ]
+          }
+        ]
+      },
+      "activeSkill": "Special Fusion: Performs a Potara Fusion that lasts for 4 turns",
+      "activeSkillCondition": "Can be activated starting from the 5th turn from the start of battle (once only, be it before or after Reversible Exchange).",
+      "transformationCondition": "",
+      "domain": "",
+      "links": [
+        "All in the Family",
+        "Experienced Fighters",
+        "Fierce Battle",
+        "Kamehameha",
+        "Legendary Power",
+        "Prepared for Battle",
+        "Super Saiyan"
+      ],
+      "categories": [
+        "Accelerated Battle",
+        "Battle of Wits",
+        "Bond of Friendship",
+        "Bond of Parent and Child",
+        "Earth-Bred Fighters",
+        "Earth-Protecting Heroes",
+        "Final Trump Card",
+        "Fused Fighters",
+        "Gifted Warriors",
+        "Goku's Family",
+        "Kamehameha",
+        "Majin Buu Saga",
+        "Mastered Evolution",
+        "Otherworld Warriors",
+        "Potara",
+        "Pure Saiyans",
+        "Resurrected Warriors",
+        "Successors",
+        "Super Saiyans",
+        "Time Limit",
+        "Turtle School",
+        "Vegeta's Family",
+        "Worthy Rivals"
+      ],
+      "kiMeter": [
+        "0 Ki: 40%",
+        "3 Ki: 100%",
+        "12 Ki: 170%",
+        "24 Ki: 200%"
+      ],
+      "artURL": "https://cdn.dokkan.fyi/assets/en/character/card/1030430/card_1030430_cutin.png",
+      "artFilename": "art_1030431",
+      "baseHP": 5056,
+      "maxLevelHP": 16688,
+      "freeDupeHP": 16688,
+      "rainbowHP": 16688,
+      "baseAttack": 4628,
+      "maxLevelAttack": 15275,
+      "freeDupeAttack": 15275,
+      "rainbowAttack": 15275,
+      "baseDefence": 3087,
+      "maxDefence": 10188,
+      "freeDupeDefence": 10188,
+      "rainbowDefence": 10188,
+      "kiMultiplier": "0 Ki 40%; 3 Ki 100%; 12 Ki 170%; 24 Ki 200%",
+      "extraInfo": {
+        "kiMultiplierText": "0 Ki 40%; 3 Ki 100%; 12 Ki 170%; 24 Ki 200%",
+        "kiMultiplierSteps": [
+          {
+            "ki": 0,
+            "percent": 40
+          },
+          {
+            "ki": 3,
+            "percent": 100
+          },
+          {
+            "ki": 12,
+            "percent": 170
+          },
+          {
+            "ki": 24,
+            "percent": 200
+          }
+        ]
+      },
+      "standbySkill": "",
+      "finishingMove": [],
+      "finishSkills": [],
+      "reversibleExchange": {
+        "targetCharacterId": "4030441",
+        "targetCharacterName": "Super Saiyan Vegeta (Angel) + Super Saiyan Goku",
+        "condition": "Meets up with Super Saiyan Vegeta (Angel) and can perform Reversible Exchange starting from the 4th turn from the start of battle.",
+        "legacyText": "Meets up with Super Saiyan Vegeta (Angel) and can perform Reversible Exchange starting from the 4th turn from the start of battle."
+      },
+      "exclusiveSkillOrbs": [
+        {
+          "id": "5870",
+          "name": "[Character-Exclusive] EX Skill Orb DEF + Lv. 9",
+          "description": "Can be equipped to [Incomparable Radiance]\nSuper Saiyan Goku + Super Saiyan Vegeta (Angel).\nThe equipped character's DEF +900.\nCannot be exchanged for Trade Points.",
+          "grade": "bronze",
+          "reusable": true,
+          "iconImageId": "00009",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00009.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_bronze.png",
+          "skills": [
+            {
+              "id": "587000",
+              "attribute": "defense",
+              "level": 9
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "mission-reward",
+              "sourceName": "Mission Reward",
+              "missionId": "27653",
+              "missionCategoryId": "1705",
+              "bannerImageUrl": "https://cdn.dokkan.fyi/assets/en/mission/mission_banner_event_1705_A.png",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "id": "5871",
+          "name": "[Character-Exclusive] EX Skill Orb Evasion + Lv. 6, DEF + Lv. 6",
+          "description": "Can be equipped to [Incomparable Radiance] Super Saiyan\nGoku + Super Saiyan Vegeta (Angel). Its level is added to\nthe equipped character's Hidden Potential Skill level, and\nthe equipped character's DEF +1200. Cannot be exchanged\nfor Trade Points.",
+          "grade": "silver",
+          "reusable": true,
+          "iconImageId": "00136",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00136.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_silver.png",
+          "skills": [
+            {
+              "id": "587100",
+              "attribute": "",
+              "level": 6,
+              "hiddenPotentialSkillId": 3
+            },
+            {
+              "id": "587101",
+              "attribute": "defense",
+              "level": 6
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "mission-reward",
+              "sourceName": "Mission Reward",
+              "missionId": "27654",
+              "missionCategoryId": "1705",
+              "bannerImageUrl": "https://cdn.dokkan.fyi/assets/en/mission/mission_banner_event_1705_A.png",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "id": "5872",
+          "name": "[Character-Exclusive] EX Skill Orb Combo Attack + Lv. 6, Critical Hit + Lv. 6",
+          "description": "Can be equipped to [Incomparable Radiance] Super Saiyan\nGoku + Super Saiyan Vegeta (Angel). Its level is added to\nthe equipped character's Hidden Potential Skill level.\nCannot be exchanged for Trade Points.",
+          "grade": "gold",
+          "reusable": true,
+          "iconImageId": "00055",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00055.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_gold.png",
+          "skills": [
+            {
+              "id": "587200",
+              "attribute": "",
+              "level": 6,
+              "hiddenPotentialSkillId": 1
+            },
+            {
+              "id": "587201",
+              "attribute": "",
+              "level": 6,
+              "hiddenPotentialSkillId": 2
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "mission-reward",
+              "sourceName": "Mission Reward",
+              "missionId": "27655",
+              "missionCategoryId": "1705",
+              "bannerImageUrl": "https://cdn.dokkan.fyi/assets/en/mission/mission_banner_event_1705_A.png",
+              "quantity": 1
+            }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "4030441",
+          "baseCharacterId": "1030431",
+          "legacyId": "4030440",
+          "name": "Super Saiyan Vegeta (Angel) + Super Saiyan Goku",
+          "releaseDate": "2025-01-28T21:00:00.000Z",
+          "summonable": "Summonable",
+          "isSummonable": true,
+          "isFreeToPlay": false,
+          "obtainability": {
+            "type": "summonable",
+            "isFreeToPlay": false,
+            "hasDirectAcquisitionDetails": false
+          },
+          "characterClass": "Super",
+          "type": "TEQ",
+          "superAttack": "Raises DEF,\ngreatly raises ATK for 1 turn and\ncauses colossal damage to enemy",
+          "ultraSuperAttack": "Greatly raises DEF,\ngreatly raises ATK for 1 turn and\ncauses mega-colossal damage to enemy",
+          "exSuperAttack": "",
+          "superAttackDetails": {
+            "name": "Big Bang Attack",
+            "effect": "Raises DEF,\ngreatly raises ATK for 1 turn and\ncauses colossal damage to enemy",
+            "type": "Ki Blast",
+            "ki": 12,
+            "style": "Normal",
+            "condition": ""
+          },
+          "ultraSuperAttackDetails": {
+            "name": "Burning Stars Cannon",
+            "effect": "Greatly raises DEF,\ngreatly raises ATK for 1 turn and\ncauses mega-colossal damage to enemy",
+            "type": "Other",
+            "ki": 18,
+            "style": "Ultra",
+            "condition": ""
+          },
+          "passive": "Basic effect(s)\n- Can perform Reversible Exchange with Super Saiyan Goku\n- ATK & DEF 200%\n- Damage reduction rate 50%\n- Receives an additional Ki +2 per Type Ki Sphere obtained\n- \"Earth-Protecting Heroes\" or \"Potara\" Category allies'\nKi +1 and ATK 40%\nWhen attacking\n- ATK 100%\nWhen receiving an attack with 10 or more Ki\n- Damage reduction rate 20%\nWhen attacking with 20 or more Ki\n- Launches an additional Super Attack\nAs the 1st attacker in a turn\n- Guards all attacks\n- Launches an additional attack that has a great chance of\nbecoming a Super Attack",
+          "passiveDetails": {
+            "name": "King Yemma's Plan",
+            "text": "Basic effect(s)\n- Can perform Reversible Exchange with Super Saiyan Goku\n- ATK & DEF 200%\n- Damage reduction rate 50%\n- Receives an additional Ki +2 per Type Ki Sphere obtained\n- \"Earth-Protecting Heroes\" or \"Potara\" Category allies'\nKi +1 and ATK 40%\nWhen attacking\n- ATK 100%\nWhen receiving an attack with 10 or more Ki\n- Damage reduction rate 20%\nWhen attacking with 20 or more Ki\n- Launches an additional Super Attack\nAs the 1st attacker in a turn\n- Guards all attacks\n- Launches an additional attack that has a great chance of\nbecoming a Super Attack",
+            "lines": [
+              "Basic effect(s)",
+              "- Can perform Reversible Exchange with Super Saiyan Goku",
+              "- ATK & DEF 200%",
+              "- Damage reduction rate 50%",
+              "- Receives an additional Ki +2 per Type Ki Sphere obtained",
+              "- \"Earth-Protecting Heroes\" or \"Potara\" Category allies'",
+              "Ki +1 and ATK 40%",
+              "When attacking",
+              "- ATK 100%",
+              "When receiving an attack with 10 or more Ki",
+              "- Damage reduction rate 20%",
+              "When attacking with 20 or more Ki",
+              "- Launches an additional Super Attack",
+              "As the 1st attacker in a turn",
+              "- Guards all attacks",
+              "- Launches an additional attack that has a great chance of",
+              "becoming a Super Attack"
+            ],
+            "sections": [
+              {
+                "label": "Basic effect(s)",
+                "lines": [
+                  "Can perform Reversible Exchange with Super Saiyan Goku",
+                  "ATK & DEF 200%",
+                  "Damage reduction rate 50%",
+                  "Receives an additional Ki +2 per Type Ki Sphere obtained",
+                  "\"Earth-Protecting Heroes\" or \"Potara\" Category allies' Ki +1 and ATK 40%"
+                ]
+              },
+              {
+                "label": "When attacking",
+                "lines": [
+                  "ATK 100%"
+                ]
+              },
+              {
+                "label": "When receiving an attack with 10 or more Ki",
+                "lines": [
+                  "Damage reduction rate 20%"
+                ]
+              },
+              {
+                "label": "When attacking with 20 or more Ki",
+                "lines": [
+                  "Launches an additional Super Attack"
+                ]
+              },
+              {
+                "label": "As the 1st attacker in a turn",
+                "lines": [
+                  "Guards all attacks",
+                  "Launches an additional attack that has a great chance of becoming a Super Attack"
+                ]
+              }
+            ]
+          },
+          "activeSkill": "Pure Saiyans' Pride: Ki +3, ATK & DEF +18% and\nguards all attacks in battle",
+          "activeSkillCondition": "Can be activated upon entering attacking turn (once only, be it before or after Reversible Exchange).",
+          "transformationCondition": "Meets up with Super Saiyan Vegeta (Angel) and can perform Reversible Exchange starting from the 4th turn from the start of battle.",
+          "domain": "",
+          "links": [
+            "Experienced Fighters",
+            "Fierce Battle",
+            "Legendary Power",
+            "Prepared for Battle",
+            "Prodigies",
+            "Saiyan Warrior Race",
+            "Super Saiyan"
+          ],
+          "portraitURL": "https://cdn.dokkan.fyi/assets/en/character/thumb/card_4030440_thumb/card_4030440_thumb.png",
+          "portraitFilename": "portrait_4030441",
+          "portraitSpec": {
+            "iconId": 4030440,
+            "frameColorId": 1,
+            "rarity": "LR",
+            "elementCode": "11"
+          },
+          "artURL": "https://cdn.dokkan.fyi/assets/en/character/card/4030440/card_4030440_cutin.png",
+          "artFilename": "art_4030441",
+          "extraInfo": {
+            "kiMultiplierText": "0 Ki 40%; 3 Ki 100%; 12 Ki 170%; 24 Ki 200%",
+            "kiMultiplierSteps": [
+              {
+                "ki": 0,
+                "percent": 40
+              },
+              {
+                "ki": 3,
+                "percent": 100
+              },
+              {
+                "ki": 12,
+                "percent": 170
+              },
+              {
+                "ki": 24,
+                "percent": 200
+              }
+            ]
+          },
+          "standbySkill": "",
+          "finishingMove": [],
+          "finishSkills": [],
+          "reversibleExchange": {
+            "targetCharacterId": "1030431",
+            "targetCharacterName": "Super Saiyan Goku + Super Saiyan Vegeta (Angel)",
+            "condition": "Can be activated upon entering attacking turn (once only, be it before or after Reversible Exchange).",
+            "legacyText": "Can be activated upon entering attacking turn (once only, be it before or after Reversible Exchange)."
+          },
+          "transformationSource": "reversible-exchange",
+          "transformationSourceLabel": "Passive Skill"
+        },
+        {
+          "id": "4030451",
+          "baseCharacterId": "1030431",
+          "legacyId": "4030450",
+          "name": "Super Vegito",
+          "releaseDate": "2025-01-28T21:00:00.000Z",
+          "summonable": "Summonable",
+          "isSummonable": true,
+          "isFreeToPlay": false,
+          "obtainability": {
+            "type": "summonable",
+            "isFreeToPlay": false,
+            "hasDirectAcquisitionDetails": false
+          },
+          "characterClass": "Super",
+          "type": "TEQ",
+          "superAttack": "",
+          "ultraSuperAttack": "Greatly raises ATK & DEF for 1 turn and\ncauses mega-colossal damage to enemy",
+          "exSuperAttack": "",
+          "ultraSuperAttackDetails": {
+            "name": "Kamehameha",
+            "effect": "Greatly raises ATK & DEF for 1 turn and\ncauses mega-colossal damage to enemy",
+            "type": "Ki Blast",
+            "ki": 12,
+            "style": "Ultra",
+            "condition": ""
+          },
+          "passive": "Basic effect(s)\n- Fully recovers HP\n- ATK & DEF 300%\n- Receives an additional Ki +3 per Type Ki Sphere obtained\n- Guards all attacks\n- Damage reduction rate 60%\n- Launches an additional Ultra Super Attack\n- \"Earth-Protecting Heroes\" or \"Potara\" Category allies'\nKi +2 and ATK & DEF 40%\nFor every attack performed\n- Chance of performing a critical hit 20%\n(up to 100%)\nFor every attack received\n- ATK 10% within the turn\nWhen receiving a normal attack\n- Counters with ferocious power\nFor 4 turns from the character's entry turn\n- Foresees enemy's Super Attack",
+          "passiveDetails": {
+            "name": "Vegito, Fighter of High Morale",
+            "text": "Basic effect(s)\n- Fully recovers HP\n- ATK & DEF 300%\n- Receives an additional Ki +3 per Type Ki Sphere obtained\n- Guards all attacks\n- Damage reduction rate 60%\n- Launches an additional Ultra Super Attack\n- \"Earth-Protecting Heroes\" or \"Potara\" Category allies'\nKi +2 and ATK & DEF 40%\nFor every attack performed\n- Chance of performing a critical hit 20%\n(up to 100%)\nFor every attack received\n- ATK 10% within the turn\nWhen receiving a normal attack\n- Counters with ferocious power\nFor 4 turns from the character's entry turn\n- Foresees enemy's Super Attack",
+            "lines": [
+              "Basic effect(s)",
+              "- Fully recovers HP",
+              "- ATK & DEF 300%",
+              "- Receives an additional Ki +3 per Type Ki Sphere obtained",
+              "- Guards all attacks",
+              "- Damage reduction rate 60%",
+              "- Launches an additional Ultra Super Attack",
+              "- \"Earth-Protecting Heroes\" or \"Potara\" Category allies'",
+              "Ki +2 and ATK & DEF 40%",
+              "For every attack performed",
+              "- Chance of performing a critical hit 20%",
+              "(up to 100%)",
+              "For every attack received",
+              "- ATK 10% within the turn",
+              "When receiving a normal attack",
+              "- Counters with ferocious power",
+              "For 4 turns from the character's entry turn",
+              "- Foresees enemy's Super Attack"
+            ],
+            "sections": [
+              {
+                "label": "Basic effect(s)",
+                "lines": [
+                  "Fully recovers HP",
+                  "ATK & DEF 300%",
+                  "Receives an additional Ki +3 per Type Ki Sphere obtained",
+                  "Guards all attacks",
+                  "Damage reduction rate 60%",
+                  "Launches an additional Ultra Super Attack",
+                  "\"Earth-Protecting Heroes\" or \"Potara\" Category allies' Ki +2 and ATK & DEF 40%"
+                ]
+              },
+              {
+                "label": "For every attack performed",
+                "lines": [
+                  "Chance of performing a critical hit 20% (up to 100%)"
+                ]
+              },
+              {
+                "label": "For every attack received",
+                "lines": [
+                  "ATK 10% within the turn When receiving a normal attack",
+                  "Counters with ferocious power"
+                ]
+              },
+              {
+                "label": "For 4 turns from the character's entry turn",
+                "lines": [
+                  "Foresees enemy's Super Attack"
+                ]
+              }
+            ]
+          },
+          "activeSkill": "Spirit Sword: Causes ultimate damage to enemy;\nDEF +300%, directs enemy's attack\ntowards the character and all attacks\nbecome critical hits for 1 turn",
+          "activeSkillCondition": "Can be activated upon entering attacking turn (once only).",
+          "transformationCondition": "Can be activated starting from the 5th turn from the start of battle (once only, be it before or after Reversible Exchange).",
+          "domain": "",
+          "links": [
+            "Fierce Battle",
+            "Fused Fighter",
+            "Golden Warrior",
+            "Legendary Power",
+            "Power Bestowed by God",
+            "Prepared for Battle",
+            "Super Saiyan"
+          ],
+          "portraitURL": "https://cdn.dokkan.fyi/assets/en/character/thumb/card_4030450_thumb/card_4030450_thumb.png",
+          "portraitFilename": "portrait_4030451",
+          "portraitSpec": {
+            "iconId": 4030450,
+            "frameColorId": 1,
+            "rarity": "LR",
+            "elementCode": "11"
+          },
+          "artURL": "https://cdn.dokkan.fyi/assets/en/character/card/4030450/card_4030450_cutin.png",
+          "artFilename": "art_4030451",
+          "extraInfo": {
+            "kiMultiplierText": "0 Ki 40%; 3 Ki 100%; 12 Ki 170%; 24 Ki 200%",
+            "kiMultiplierSteps": [
+              {
+                "ki": 0,
+                "percent": 40
+              },
+              {
+                "ki": 3,
+                "percent": 100
+              },
+              {
+                "ki": 12,
+                "percent": 170
+              },
+              {
+                "ki": 24,
+                "percent": 200
+              }
+            ]
+          },
+          "standbySkill": "",
+          "finishingMove": [],
+          "finishSkills": [],
+          "transformationSource": "active-skill",
+          "transformationSourceLabel": "Active Skill"
+        }
+      ]
+    },
+    {
+      "name": "Piccolo (Power Awakening)",
+      "title": "Exploding Latent Power",
+      "maxLevel": 150,
+      "maxSALevel": 25,
+      "rarity": "LR",
+      "releaseDate": "2022-12-28T02:00:00.000Z",
+      "ezaReleaseDate": "2026-01-14T05:00:00.000Z",
+      "summonable": "Summonable",
+      "isSummonable": true,
+      "isFreeToPlay": false,
+      "obtainability": {
+        "type": "summonable",
+        "isFreeToPlay": false,
+        "hasDirectAcquisitionDetails": false
+      },
+      "characterClass": "Super",
+      "type": "TEQ",
+      "cost": 77,
+      "id": "1025591",
+      "legacyId": "1025590",
+      "portraitURL": "https://cdn.dokkan.fyi/assets/en/character/thumb/card_1025590_thumb/card_1025590_thumb.png",
+      "portraitFilename": "portrait_1025591",
+      "portraitSpec": {
+        "iconId": 1025590,
+        "frameColorId": 1,
+        "rarity": "LR",
+        "elementCode": "11"
+      },
+      "leaderSkill": "\"Super Heroes\" or \"Battle of Wits\" Category\nKi +3 and HP, ATK & DEF +170%, plus an\nadditional Ki +1 and HP, ATK & DEF +30%\nfor characters who also belong to the\n\"Bond of Master and Disciple\" or\n\"Movie Heroes\" Category",
+      "leaderSkillBoost": 200,
+      "leaderSkillDetails": {
+        "rawText": "\"Super Heroes\" or \"Battle of Wits\" Category\nKi +3 and HP, ATK & DEF +170%, plus an\nadditional Ki +1 and HP, ATK & DEF +30%\nfor characters who also belong to the\n\"Bond of Master and Disciple\" or\n\"Movie Heroes\" Category",
+        "displayBoost": 200,
+        "clauses": [
+          {
+            "rawText": "\"Super Heroes\" or \"Battle of Wits\" Category Ki +3 and HP, ATK & DEF +170%",
+            "stackGroup": "primary",
+            "targetMode": "base",
+            "categories": [
+              "Super Heroes",
+              "Battle of Wits"
+            ],
+            "ki": 3,
+            "hp": 170,
+            "atk": 170,
+            "def": 170,
+            "boostForm": "percentage"
+          },
+          {
+            "rawText": "Ki +1 and HP, ATK & DEF +30% for characters who also belong to the \"Bond of Master and Disciple\" or \"Movie Heroes\" Category",
+            "stackGroup": "additional",
+            "targetMode": "also-belong",
+            "categories": [
+              "Bond of Master and Disciple",
+              "Movie Heroes"
+            ],
+            "ki": 1,
+            "hp": 30,
+            "atk": 30,
+            "def": 30,
+            "boostForm": "percentage"
+          }
+        ]
+      },
+      "superAttack": "Greatly raises DEF and raises ATK for 1 turn\nand causes colossal damage with\na medium chance of stunning the enemy",
+      "ultraSuperAttack": "Greatly raises ATK & DEF for 1 turn,\ncauses mega-colossal damage to enemy\nand lowers ATK & DEF",
+      "exSuperAttack": "",
+      "superAttackDetails": {
+        "name": "Explosive Demon Wave",
+        "effect": "Greatly raises DEF and raises ATK for 1 turn\nand causes colossal damage with\na medium chance of stunning the enemy",
+        "type": "Other",
+        "ki": 12,
+        "style": "Normal",
+        "condition": ""
+      },
+      "ultraSuperAttackDetails": {
+        "name": "Special Beam Cannon",
+        "effect": "Greatly raises ATK & DEF for 1 turn,\ncauses mega-colossal damage to enemy\nand lowers ATK & DEF",
+        "type": "Other",
+        "ki": 18,
+        "style": "Ultra",
+        "condition": ""
+      },
+      "unitSuperAttacks": [],
+      "passive": "Activates the Entrance Animation when there is another\n\"Bond of Master and Disciple\" Category ally on the team\nupon the character's entry\n- Damage reduction rate 30% for 1 turn\n- ATK & DEF 200% and guards all attacks\nBasic effect(s)\n- ATK & DEF 200%\n- Receives an additional Ki +1 per Ki Sphere obtained\n- Chance of performing a critical hit & damage reduction rate 40%\nFor every attack received\n- Ki +2 (up to +8)\n- ATK & DEF 50% (up to 200%)\nAs the 1st attacker in a turn\n- DEF 100% before attacking\nAfter receiving an attack as the 1st attacker in a turn\n- ATK 100%, chance of performing a critical hit 40% and\nall allies' Ki +2 within the turn\nAfter receiving an attack as the 2nd or 3rd attacker in a turn\n- All allies' Ki +2 and ATK, DEF & chance of performing a critical hit\n20% for 2 turns\nWhen HP is 30% or less at the start of the character's attacking turn\nafter the character receives 4 or more attacks in battle\n- Fully recovers HP\n- Chance of performing a critical hit & damage reduction rate\n15%",
+      "passiveDetails": {
+        "name": "Awakened Namekian",
+        "text": "Activates the Entrance Animation when there is another\n\"Bond of Master and Disciple\" Category ally on the team\nupon the character's entry\n- Damage reduction rate 30% for 1 turn\n- ATK & DEF 200% and guards all attacks\nBasic effect(s)\n- ATK & DEF 200%\n- Receives an additional Ki +1 per Ki Sphere obtained\n- Chance of performing a critical hit & damage reduction rate 40%\nFor every attack received\n- Ki +2 (up to +8)\n- ATK & DEF 50% (up to 200%)\nAs the 1st attacker in a turn\n- DEF 100% before attacking\nAfter receiving an attack as the 1st attacker in a turn\n- ATK 100%, chance of performing a critical hit 40% and\nall allies' Ki +2 within the turn\nAfter receiving an attack as the 2nd or 3rd attacker in a turn\n- All allies' Ki +2 and ATK, DEF & chance of performing a critical hit\n20% for 2 turns\nWhen HP is 30% or less at the start of the character's attacking turn\nafter the character receives 4 or more attacks in battle\n- Fully recovers HP\n- Chance of performing a critical hit & damage reduction rate\n15%",
+        "lines": [
+          "Activates the Entrance Animation when there is another",
+          "\"Bond of Master and Disciple\" Category ally on the team",
+          "upon the character's entry",
+          "- Damage reduction rate 30% for 1 turn",
+          "- ATK & DEF 200% and guards all attacks",
+          "Basic effect(s)",
+          "- ATK & DEF 200%",
+          "- Receives an additional Ki +1 per Ki Sphere obtained",
+          "- Chance of performing a critical hit & damage reduction rate 40%",
+          "For every attack received",
+          "- Ki +2 (up to +8)",
+          "- ATK & DEF 50% (up to 200%)",
+          "As the 1st attacker in a turn",
+          "- DEF 100% before attacking",
+          "After receiving an attack as the 1st attacker in a turn",
+          "- ATK 100%, chance of performing a critical hit 40% and",
+          "all allies' Ki +2 within the turn",
+          "After receiving an attack as the 2nd or 3rd attacker in a turn",
+          "- All allies' Ki +2 and ATK, DEF & chance of performing a critical hit",
+          "20% for 2 turns",
+          "When HP is 30% or less at the start of the character's attacking turn",
+          "after the character receives 4 or more attacks in battle",
+          "- Fully recovers HP",
+          "- Chance of performing a critical hit & damage reduction rate",
+          "15%"
+        ],
+        "sections": [
+          {
+            "label": "Activates the Entrance Animation when there is another \"Bond of Master and Disciple\" Category ally on the team upon the character's entry",
+            "lines": [
+              "Damage reduction rate 30% for 1 turn",
+              "ATK & DEF 200% and guards all attacks"
+            ]
+          },
+          {
+            "label": "Basic effect(s)",
+            "lines": [
+              "ATK & DEF 200%",
+              "Receives an additional Ki +1 per Ki Sphere obtained",
+              "Chance of performing a critical hit & damage reduction rate 40%"
+            ]
+          },
+          {
+            "label": "For every attack received",
+            "lines": [
+              "Ki +2 (up to +8)",
+              "ATK & DEF 50% (up to 200%)"
+            ]
+          },
+          {
+            "label": "As the 1st attacker in a turn",
+            "lines": [
+              "DEF 100% before attacking"
+            ]
+          },
+          {
+            "label": "After receiving an attack as the 1st attacker in a turn",
+            "lines": [
+              "ATK 100%, chance of performing a critical hit 40% and all allies' Ki +2 within the turn"
+            ]
+          },
+          {
+            "label": "After receiving an attack as the 2nd or 3rd attacker in a turn",
+            "lines": [
+              "All allies' Ki +2 and ATK, DEF & chance of performing a critical hit 20% for 2 turns"
+            ]
+          },
+          {
+            "label": "When HP is 30% or less at the start of the character's attacking turn after the character receives 4 or more attacks in battle",
+            "lines": [
+              "Fully recovers HP",
+              "Chance of performing a critical hit & damage reduction rate 15%"
+            ]
+          }
+        ]
+      },
+      "activeSkill": "Giant Form: Turns into Giant Form",
+      "activeSkillCondition": "Can be activated when all allies attacking in the same turn are \"Super Heroes\" Category characters starting from the 3rd turn from the start of battle, or when facing only 1 enemy starting from the 6th turn from the start of battle (once only).",
+      "transformationCondition": "",
+      "domain": "",
+      "links": [
+        "Brainiacs",
+        "Fierce Battle",
+        "Legendary Power",
+        "Namekians",
+        "Power Bestowed by God",
+        "Solid Support",
+        "Transform"
+      ],
+      "categories": [
+        "Battle of Fate",
+        "Battle of Wits",
+        "Bond of Master and Disciple",
+        "Connected Hope",
+        "Demonic Power",
+        "Earth-Bred Fighters",
+        "Full Power",
+        "Fused Fighters",
+        "Giant Form",
+        "Gifted Warriors",
+        "Movie Heroes",
+        "Namekians",
+        "Power of Wishes",
+        "Powerful Comeback",
+        "Rapid Growth",
+        "Revenge",
+        "Successors",
+        "Super Heroes",
+        "Transformation Boost",
+        "Worthy Rivals"
+      ],
+      "kiMeter": [
+        "0 Ki: 40%",
+        "3 Ki: 100%",
+        "12 Ki: 150%",
+        "24 Ki: 200%"
+      ],
+      "artURL": "https://cdn.dokkan.fyi/assets/en/character/card/1025590/card_1025590_cutin.png",
+      "artFilename": "art_1025591",
+      "baseHP": 5250,
+      "maxLevelHP": 23168,
+      "freeDupeHP": 23168,
+      "rainbowHP": 23168,
+      "baseAttack": 4010,
+      "maxLevelAttack": 17699,
+      "freeDupeAttack": 17699,
+      "rainbowAttack": 17699,
+      "baseDefence": 3763,
+      "maxDefence": 16608,
+      "freeDupeDefence": 16608,
+      "rainbowDefence": 16608,
+      "kiMultiplier": "0 Ki 40%; 3 Ki 100%; 12 Ki 150%; 24 Ki 200%",
+      "extraInfo": {
+        "kiMultiplierText": "0 Ki 40%; 3 Ki 100%; 12 Ki 150%; 24 Ki 200%",
+        "kiMultiplierSteps": [
+          {
+            "ki": 0,
+            "percent": 40
+          },
+          {
+            "ki": 3,
+            "percent": 100
+          },
+          {
+            "ki": 12,
+            "percent": 150
+          },
+          {
+            "ki": 24,
+            "percent": 200
+          }
+        ]
+      },
+      "standbySkill": "",
+      "finishingMove": [],
+      "finishSkills": [],
+      "exclusiveSkillOrbs": [
+        {
+          "id": "3085",
+          "name": "[Character-Exclusive] EX Skill Orb HP + Lv. 8",
+          "description": "Can be equipped to [Exploding Latent Power]\nPiccolo (Power Awakening). The equipped character's\nHP +800. Cannot be exchanged for Trade Points.",
+          "grade": "bronze",
+          "reusable": true,
+          "iconImageId": "00008",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00008.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_bronze.png",
+          "skills": [
+            {
+              "id": "308500",
+              "attribute": "hp",
+              "level": 8
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "shop-item",
+              "sourceName": "Shop Item",
+              "shopItemId": "26903020",
+              "price": 2,
+              "discountedPrice": 2,
+              "treasureItemId": "32",
+              "treasureItemName": "Super Mineral Water",
+              "treasureItemDescription": "A Treasure obtained in the event\n\"Stay Strong! Super Heroes of Tomorrow!\".\nCan be used at Baba's Shop.",
+              "treasureItemImageSuffix": 47,
+              "startsAt": "2025-12-29 01:00:00",
+              "endsAt": "2026-01-29 14:59:59",
+              "isIndefinite": false
+            }
+          ]
+        },
+        {
+          "id": "3086",
+          "name": "[Character-Exclusive] EX Skill Orb ATK + Lv. 8",
+          "description": "Can be equipped to [Exploding Latent Power]\nPiccolo (Power Awakening). The equipped character's\nATK +800. Cannot be exchanged for Trade Points.",
+          "grade": "bronze",
+          "reusable": true,
+          "iconImageId": "00010",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00010.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_bronze.png",
+          "skills": [
+            {
+              "id": "308600",
+              "attribute": "attack",
+              "level": 8
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "shop-item",
+              "sourceName": "Shop Item",
+              "shopItemId": "26903021",
+              "price": 2,
+              "discountedPrice": 2,
+              "treasureItemId": "32",
+              "treasureItemName": "Super Mineral Water",
+              "treasureItemDescription": "A Treasure obtained in the event\n\"Stay Strong! Super Heroes of Tomorrow!\".\nCan be used at Baba's Shop.",
+              "treasureItemImageSuffix": 47,
+              "startsAt": "2025-12-29 01:00:00",
+              "endsAt": "2026-01-29 14:59:59",
+              "isIndefinite": false
+            }
+          ]
+        },
+        {
+          "id": "3087",
+          "name": "[Character-Exclusive] EX Skill Orb DEF + Lv. 8",
+          "description": "Can be equipped to [Exploding Latent Power]\nPiccolo (Power Awakening). The equipped character's\nDEF +800. Cannot be exchanged for Trade Points.",
+          "grade": "bronze",
+          "reusable": true,
+          "iconImageId": "00009",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00009.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_bronze.png",
+          "skills": [
+            {
+              "id": "308700",
+              "attribute": "defense",
+              "level": 8
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "shop-item",
+              "sourceName": "Shop Item",
+              "shopItemId": "26903022",
+              "price": 2,
+              "discountedPrice": 2,
+              "treasureItemId": "32",
+              "treasureItemName": "Super Mineral Water",
+              "treasureItemDescription": "A Treasure obtained in the event\n\"Stay Strong! Super Heroes of Tomorrow!\".\nCan be used at Baba's Shop.",
+              "treasureItemImageSuffix": 47,
+              "startsAt": "2025-12-29 01:00:00",
+              "endsAt": "2026-01-29 14:59:59",
+              "isIndefinite": false
+            }
+          ]
+        },
+        {
+          "id": "3088",
+          "name": "[Character-Exclusive] EX Skill Orb Combo Attack + Lv. 3, Critical Hit + Lv. 3",
+          "description": "Can be equipped to [Exploding Latent Power]\nPiccolo (Power Awakening). Its level is added to\nthe equipped character's Hidden Potential Skill level.\nCannot be exchanged for Trade Points.",
+          "grade": "silver",
+          "reusable": true,
+          "iconImageId": "00090",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00090.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_silver.png",
+          "skills": [
+            {
+              "id": "308800",
+              "attribute": "",
+              "level": 3,
+              "hiddenPotentialSkillId": 1
+            },
+            {
+              "id": "308801",
+              "attribute": "",
+              "level": 3,
+              "hiddenPotentialSkillId": 2
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "shop-item",
+              "sourceName": "Shop Item",
+              "shopItemId": "26903023",
+              "price": 5,
+              "discountedPrice": 5,
+              "treasureItemId": "32",
+              "treasureItemName": "Super Mineral Water",
+              "treasureItemDescription": "A Treasure obtained in the event\n\"Stay Strong! Super Heroes of Tomorrow!\".\nCan be used at Baba's Shop.",
+              "treasureItemImageSuffix": 47,
+              "startsAt": "2025-12-29 01:00:00",
+              "endsAt": "2026-01-29 14:59:59",
+              "isIndefinite": false
+            }
+          ]
+        },
+        {
+          "id": "3089",
+          "name": "[Character-Exclusive] EX Skill Orb Combo Attack + Lv. 4, DEF + Lv. 2",
+          "description": "Can be equipped to [Exploding Latent Power]\nPiccolo (Power Awakening). Its level is added to\nthe equipped character's Hidden Potential Skill level,\nand the equipped character's DEF +400.\nCannot be exchanged for Trade Points.",
+          "grade": "silver",
+          "reusable": true,
+          "iconImageId": "00085",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00085.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_silver.png",
+          "skills": [
+            {
+              "id": "308900",
+              "attribute": "",
+              "level": 4,
+              "hiddenPotentialSkillId": 1
+            },
+            {
+              "id": "308901",
+              "attribute": "defense",
+              "level": 2
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "shop-item",
+              "sourceName": "Shop Item",
+              "shopItemId": "26903024",
+              "price": 5,
+              "discountedPrice": 5,
+              "treasureItemId": "32",
+              "treasureItemName": "Super Mineral Water",
+              "treasureItemDescription": "A Treasure obtained in the event\n\"Stay Strong! Super Heroes of Tomorrow!\".\nCan be used at Baba's Shop.",
+              "treasureItemImageSuffix": 47,
+              "startsAt": "2025-12-29 01:00:00",
+              "endsAt": "2026-01-29 14:59:59",
+              "isIndefinite": false
+            }
+          ]
+        },
+        {
+          "id": "3090",
+          "name": "[Character-Exclusive] EX Skill Orb Critical Hit + Lv. 4, DEF + Lv. 2",
+          "description": "Can be equipped to [Exploding Latent Power]\nPiccolo (Power Awakening). Its level is added to\nthe equipped character's Hidden Potential Skill level,\nand the equipped character's DEF +400.\nCannot be exchanged for Trade Points.",
+          "grade": "silver",
+          "reusable": true,
+          "iconImageId": "00101",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00101.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_silver.png",
+          "skills": [
+            {
+              "id": "309000",
+              "attribute": "",
+              "level": 4,
+              "hiddenPotentialSkillId": 2
+            },
+            {
+              "id": "309001",
+              "attribute": "defense",
+              "level": 2
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "shop-item",
+              "sourceName": "Shop Item",
+              "shopItemId": "26903025",
+              "price": 5,
+              "discountedPrice": 5,
+              "treasureItemId": "32",
+              "treasureItemName": "Super Mineral Water",
+              "treasureItemDescription": "A Treasure obtained in the event\n\"Stay Strong! Super Heroes of Tomorrow!\".\nCan be used at Baba's Shop.",
+              "treasureItemImageSuffix": 47,
+              "startsAt": "2025-12-29 01:00:00",
+              "endsAt": "2026-01-29 14:59:59",
+              "isIndefinite": false
+            }
+          ]
+        },
+        {
+          "id": "3091",
+          "name": "[Character-Exclusive] EX Skill Orb Combo Attack + Lv. 5, Critical Hit + Lv. 3",
+          "description": "Can be equipped to [Exploding Latent Power]\nPiccolo (Power Awakening). Its level is added to\nthe equipped character's Hidden Potential Skill level.\nCannot be exchanged for Trade Points.",
+          "grade": "gold",
+          "reusable": true,
+          "iconImageId": "00055",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00055.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_gold.png",
+          "skills": [
+            {
+              "id": "309100",
+              "attribute": "",
+              "level": 5,
+              "hiddenPotentialSkillId": 1
+            },
+            {
+              "id": "309101",
+              "attribute": "",
+              "level": 3,
+              "hiddenPotentialSkillId": 2
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "shop-item",
+              "sourceName": "Shop Item",
+              "shopItemId": "26903026",
+              "price": 6,
+              "discountedPrice": 6,
+              "treasureItemId": "32",
+              "treasureItemName": "Super Mineral Water",
+              "treasureItemDescription": "A Treasure obtained in the event\n\"Stay Strong! Super Heroes of Tomorrow!\".\nCan be used at Baba's Shop.",
+              "treasureItemImageSuffix": 47,
+              "startsAt": "2025-12-29 01:00:00",
+              "endsAt": "2026-01-29 14:59:59",
+              "isIndefinite": false
+            }
+          ]
+        },
+        {
+          "id": "3092",
+          "name": "[Character-Exclusive] EX Skill Orb Combo Attack + Lv. 3, Critical Hit + Lv. 5",
+          "description": "Can be equipped to [Exploding Latent Power]\nPiccolo (Power Awakening). Its level is added to\nthe equipped character's Hidden Potential Skill level.\nCannot be exchanged for Trade Points.",
+          "grade": "gold",
+          "reusable": true,
+          "iconImageId": "00055",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00055.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_gold.png",
+          "skills": [
+            {
+              "id": "309200",
+              "attribute": "",
+              "level": 5,
+              "hiddenPotentialSkillId": 2
+            },
+            {
+              "id": "309201",
+              "attribute": "",
+              "level": 3,
+              "hiddenPotentialSkillId": 1
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "shop-item",
+              "sourceName": "Shop Item",
+              "shopItemId": "26903027",
+              "price": 6,
+              "discountedPrice": 6,
+              "treasureItemId": "32",
+              "treasureItemName": "Super Mineral Water",
+              "treasureItemDescription": "A Treasure obtained in the event\n\"Stay Strong! Super Heroes of Tomorrow!\".\nCan be used at Baba's Shop.",
+              "treasureItemImageSuffix": 47,
+              "startsAt": "2025-12-29 01:00:00",
+              "endsAt": "2026-01-29 14:59:59",
+              "isIndefinite": false
+            }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "4025591",
+          "baseCharacterId": "1025591",
+          "legacyId": "4025590",
+          "name": "Orange Piccolo (Giant Form)",
+          "releaseDate": "2022-12-28T02:00:00.000Z",
+          "summonable": "Summonable",
+          "isSummonable": true,
+          "isFreeToPlay": false,
+          "obtainability": {
+            "type": "summonable",
+            "isFreeToPlay": false,
+            "hasDirectAcquisitionDetails": false
+          },
+          "characterClass": "Super",
+          "type": "TEQ",
+          "superAttack": "Greatly raises ATK temporarily and\ncauses destructive damage to enemy",
+          "ultraSuperAttack": "Massively raises ATK temporarily and\ncauses destructive damage to enemy",
+          "exSuperAttack": "",
+          "superAttackDetails": {
+            "name": "Fierce Awakening Dance",
+            "effect": "Greatly raises ATK temporarily and\ncauses destructive damage to enemy",
+            "type": "Other",
+            "ki": 12,
+            "style": "Normal",
+            "condition": ""
+          },
+          "ultraSuperAttackDetails": {
+            "name": "Namekian Explosive Barrage Strike",
+            "effect": "Massively raises ATK temporarily and\ncauses destructive damage to enemy",
+            "type": "Unarmed",
+            "ki": 18,
+            "style": "Ultra",
+            "condition": ""
+          },
+          "passive": "Basic effect(s)\n- Receives an additional Ki +2 per Ki Sphere obtained\n- Launches an additional attack that has a medium chance of\nbecoming a Super Attack",
+          "passiveDetails": {
+            "name": "A Little Extra from Shenron",
+            "text": "Basic effect(s)\n- Receives an additional Ki +2 per Ki Sphere obtained\n- Launches an additional attack that has a medium chance of\nbecoming a Super Attack",
+            "lines": [
+              "Basic effect(s)",
+              "- Receives an additional Ki +2 per Ki Sphere obtained",
+              "- Launches an additional attack that has a medium chance of",
+              "becoming a Super Attack"
+            ],
+            "sections": [
+              {
+                "label": "Basic effect(s)",
+                "lines": [
+                  "Receives an additional Ki +2 per Ki Sphere obtained",
+                  "Launches an additional attack that has a medium chance of becoming a Super Attack"
+                ]
+              }
+            ]
+          },
+          "activeSkill": "",
+          "activeSkillCondition": "",
+          "transformationCondition": "Can be activated when all allies attacking in the same turn are \"Super Heroes\" Category characters starting from the 3rd turn from the start of battle, or when facing only 1 enemy starting from the 6th turn from the start of battle (once only).",
+          "domain": "",
+          "links": [],
+          "portraitURL": "https://cdn.dokkan.fyi/assets/en/character/thumb/card_4025590_thumb/card_4025590_thumb.png",
+          "portraitFilename": "portrait_4025591",
+          "portraitSpec": {
+            "iconId": 4025590,
+            "frameColorId": 1,
+            "rarity": "LR",
+            "elementCode": "11"
+          },
+          "artURL": "https://cdn.dokkan.fyi/assets/en/character/card/4025590/card_4025590_cutin.png",
+          "artFilename": "art_4025591",
+          "extraInfo": {
+            "kiMultiplierText": "0 Ki 40%; 3 Ki 100%; 12 Ki 150%; 24 Ki 200%",
+            "kiMultiplierSteps": [
+              {
+                "ki": 0,
+                "percent": 40
+              },
+              {
+                "ki": 3,
+                "percent": 100
+              },
+              {
+                "ki": 12,
+                "percent": 150
+              },
+              {
+                "ki": 24,
+                "percent": 200
+              }
+            ]
+          },
+          "standbySkill": "",
+          "finishingMove": [],
+          "finishSkills": [],
+          "transformationSource": "active-skill",
+          "transformationSourceLabel": "Active Skill"
+        }
+      ]
+    },
+    {
+      "name": "Goku",
+      "title": "Limit-Shattering Saiyan",
+      "maxLevel": 150,
+      "maxSALevel": 20,
+      "rarity": "LR",
+      "releaseDate": "2026-05-20T05:00:00.000Z",
+      "summonable": "Freely Obtainable",
+      "isSummonable": false,
+      "isFreeToPlay": true,
+      "obtainability": {
+        "type": "freely-obtainable",
+        "isFreeToPlay": true,
+        "hasDirectAcquisitionDetails": false
+      },
+      "characterClass": "Super",
+      "type": "TEQ",
+      "cost": 99,
+      "id": "1032771",
+      "legacyId": "1032770",
+      "portraitURL": "https://cdn.dokkan.fyi/assets/en/character/thumb/card_1032770_thumb/card_1032770_thumb.png",
+      "portraitFilename": "portrait_1032771",
+      "portraitSpec": {
+        "iconId": 1032770,
+        "frameColorId": 1,
+        "rarity": "LR",
+        "elementCode": "11"
+      },
+      "leaderSkill": "\"Planet Namek Saga\" Category\nKi +3 and HP, ATK & DEF +100%,\nplus an additional HP, ATK & DEF +80%\nfor characters who are also Super Class",
+      "leaderSkillBoost": 100,
+      "leaderSkillDetails": {
+        "rawText": "\"Planet Namek Saga\" Category\nKi +3 and HP, ATK & DEF +100%,\nplus an additional HP, ATK & DEF +80%\nfor characters who are also Super Class",
+        "displayBoost": 100,
+        "clauses": [
+          {
+            "rawText": "\"Planet Namek Saga\" Category Ki +3 and HP, ATK & DEF +100%",
+            "stackGroup": "primary",
+            "targetMode": "base",
+            "categories": [
+              "Planet Namek Saga"
+            ],
+            "ki": 3,
+            "hp": 100,
+            "atk": 100,
+            "def": 100,
+            "boostForm": "percentage"
+          },
+          {
+            "rawText": "HP, ATK & DEF +80% for characters who are also Super Class",
+            "stackGroup": "additional",
+            "targetMode": "base",
+            "classes": [
+              "Super"
+            ],
+            "hp": 80,
+            "atk": 80,
+            "def": 80,
+            "boostForm": "percentage"
+          }
+        ]
+      },
+      "superAttack": "Raises ATK & DEF for 1 turn and\ncauses colossal damage to enemy",
+      "ultraSuperAttack": "Greatly raises ATK & DEF for 1 turn and\ncauses mega-colossal damage to enemy",
+      "exSuperAttack": "",
+      "superAttackDetails": {
+        "name": "Meteor Smash",
+        "effect": "Raises ATK & DEF for 1 turn and\ncauses colossal damage to enemy",
+        "type": "Unarmed",
+        "ki": 12,
+        "style": "Normal",
+        "condition": ""
+      },
+      "ultraSuperAttackDetails": {
+        "name": "Kamehameha",
+        "effect": "Greatly raises ATK & DEF for 1 turn and\ncauses mega-colossal damage to enemy",
+        "type": "Ki Blast",
+        "ki": 18,
+        "style": "Ultra",
+        "condition": ""
+      },
+      "unitSuperAttacks": [],
+      "passive": "Basic effect(s)\n- Ki +3 and ATK & DEF 259%\n- Receives an additional Ki +1 per Ki Sphere obtained\n- Launches an additional Super Attack\n- Medium chance of performing a critical hit\n- Damage reduction rate 30%\nPer \"Planet Namek Saga\" Category ally on the team\n- DEF 59% (up to 159%)\n- Damage reduction rate 10% (up to 30%)\nThe less HP remaining\n- ATK & DEF (up to 200%)\nWhen attacking\n- ATK 200%\nWhen receiving an attack\n- DEF 200%",
+      "passiveDetails": {
+        "name": "Strength to Challenge Formidable Foes",
+        "text": "Basic effect(s)\n- Ki +3 and ATK & DEF 259%\n- Receives an additional Ki +1 per Ki Sphere obtained\n- Launches an additional Super Attack\n- Medium chance of performing a critical hit\n- Damage reduction rate 30%\nPer \"Planet Namek Saga\" Category ally on the team\n- DEF 59% (up to 159%)\n- Damage reduction rate 10% (up to 30%)\nThe less HP remaining\n- ATK & DEF (up to 200%)\nWhen attacking\n- ATK 200%\nWhen receiving an attack\n- DEF 200%",
+        "lines": [
+          "Basic effect(s)",
+          "- Ki +3 and ATK & DEF 259%",
+          "- Receives an additional Ki +1 per Ki Sphere obtained",
+          "- Launches an additional Super Attack",
+          "- Medium chance of performing a critical hit",
+          "- Damage reduction rate 30%",
+          "Per \"Planet Namek Saga\" Category ally on the team",
+          "- DEF 59% (up to 159%)",
+          "- Damage reduction rate 10% (up to 30%)",
+          "The less HP remaining",
+          "- ATK & DEF (up to 200%)",
+          "When attacking",
+          "- ATK 200%",
+          "When receiving an attack",
+          "- DEF 200%"
+        ],
+        "sections": [
+          {
+            "label": "Basic effect(s)",
+            "lines": [
+              "Ki +3 and ATK & DEF 259%",
+              "Receives an additional Ki +1 per Ki Sphere obtained",
+              "Launches an additional Super Attack",
+              "Medium chance of performing a critical hit",
+              "Damage reduction rate 30%"
+            ]
+          },
+          {
+            "label": "Per \"Planet Namek Saga\" Category ally on the team",
+            "lines": [
+              "DEF 59% (up to 159%)",
+              "Damage reduction rate 10% (up to 30%)"
+            ]
+          },
+          {
+            "label": "The less HP remaining",
+            "lines": [
+              "ATK & DEF (up to 200%)"
+            ]
+          },
+          {
+            "label": "When attacking",
+            "lines": [
+              "ATK 200%"
+            ]
+          },
+          {
+            "label": "When receiving an attack",
+            "lines": [
+              "DEF 200%"
+            ]
+          }
+        ]
+      },
+      "activeSkill": "",
+      "activeSkillCondition": "",
+      "transformationCondition": "",
+      "domain": "",
+      "links": [
+        "High Compatibility",
+        "Legendary Power",
+        "Saiyan Warrior Race",
+        "Shattering the Limit",
+        "The Saiyan Lineage",
+        "Turtle School",
+        "Z Fighters"
+      ],
+      "categories": [
+        "Battle of Fate",
+        "Bond of Friendship",
+        "Bond of Parent and Child",
+        "Earth-Bred Fighters",
+        "Entrusted Will",
+        "Exploding Rage",
+        "Goku's Family",
+        "Kamehameha",
+        "Legendary Existence",
+        "Miraculous Awakening",
+        "Planet Namek Saga",
+        "Powerful Comeback",
+        "Pure Saiyans",
+        "Saviors",
+        "Super Saiyans",
+        "Transformation Boost",
+        "Turtle School"
+      ],
+      "kiMeter": [
+        "0 Ki: 40%",
+        "3 Ki: 100%",
+        "12 Ki: 145%",
+        "24 Ki: 200%"
+      ],
+      "artURL": "https://cdn.dokkan.fyi/assets/en/character/card/1032770/card_1032770_cutin.png",
+      "artFilename": "art_1032771",
+      "baseHP": 5921,
+      "maxLevelHP": 19542,
+      "freeDupeHP": 19542,
+      "rainbowHP": 19542,
+      "baseAttack": 3763,
+      "maxLevelAttack": 12418,
+      "freeDupeAttack": 12418,
+      "rainbowAttack": 12418,
+      "baseDefence": 2177,
+      "maxDefence": 7186,
+      "freeDupeDefence": 7186,
+      "rainbowDefence": 7186,
+      "kiMultiplier": "0 Ki 40%; 3 Ki 100%; 12 Ki 145%; 24 Ki 200%",
+      "extraInfo": {
+        "kiMultiplierText": "0 Ki 40%; 3 Ki 100%; 12 Ki 145%; 24 Ki 200%",
+        "kiMultiplierSteps": [
+          {
+            "ki": 0,
+            "percent": 40
+          },
+          {
+            "ki": 3,
+            "percent": 100
+          },
+          {
+            "ki": 12,
+            "percent": 145
+          },
+          {
+            "ki": 24,
+            "percent": 200
+          }
+        ]
+      },
+      "standbySkill": "",
+      "finishingMove": [],
+      "finishSkills": [],
+      "exclusiveSkillOrbs": [
+        {
+          "id": "8517",
+          "name": "[Character-Exclusive] EX Skill Orb DEF + Lv. 5",
+          "description": "Can be equipped to [Limit-Shattering Saiyan] Goku.\nThe equipped character's DEF +500.\nCannot be exchanged for Trade Points.",
+          "grade": "bronze",
+          "reusable": true,
+          "iconImageId": "00009",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00009.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_bronze.png",
+          "skills": [
+            {
+              "id": "851700",
+              "attribute": "defense",
+              "level": 5
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "mission-reward",
+              "sourceName": "Mission Reward",
+              "missionId": "33230",
+              "missionCategoryId": "200101",
+              "bannerImageUrl": "https://cdn.dokkan.fyi/assets/en/",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "id": "8518",
+          "name": "[Character-Exclusive] EX Skill Orb Critical Hit + Lv. 5",
+          "description": "Can be equipped to [Limit-Shattering Saiyan]\nGoku. Its level is added to the equipped\ncharacter's Hidden Potential Skill level.\nCannot be exchanged for Trade Points.",
+          "grade": "silver",
+          "reusable": true,
+          "iconImageId": "00018",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00018.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_silver.png",
+          "skills": [
+            {
+              "id": "851800",
+              "attribute": "",
+              "level": 5,
+              "hiddenPotentialSkillId": 2
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "mission-reward",
+              "sourceName": "Mission Reward",
+              "missionId": "33231",
+              "missionCategoryId": "200101",
+              "bannerImageUrl": "https://cdn.dokkan.fyi/assets/en/",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "id": "8519",
+          "name": "[Character-Exclusive] EX Skill Orb Combo Attack + Lv. 5",
+          "description": "Can be equipped to [Limit-Shattering Saiyan]\nGoku. Its level is added to the equipped\ncharacter's Hidden Potential Skill level.\nCannot be exchanged for Trade Points.",
+          "grade": "silver",
+          "reusable": true,
+          "iconImageId": "00013",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00013.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_silver.png",
+          "skills": [
+            {
+              "id": "851900",
+              "attribute": "",
+              "level": 5,
+              "hiddenPotentialSkillId": 1
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "mission-reward",
+              "sourceName": "Mission Reward",
+              "missionId": "33231",
+              "missionCategoryId": "200101",
+              "bannerImageUrl": "https://cdn.dokkan.fyi/assets/en/",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "id": "8520",
+          "name": "[Character-Exclusive] EX Skill Orb Combo Attack + Lv. 3, Critical Hit + Lv. 3",
+          "description": "Can be equipped to [Limit-Shattering Saiyan]\nGoku. Its level is added to the equipped\ncharacter's Hidden Potential Skill level.\nCannot be exchanged for Trade Points.",
+          "grade": "gold",
+          "reusable": true,
+          "iconImageId": "00055",
+          "iconURL": "https://cdn.dokkan.fyi/assets/en/item/equ_item_00055.png",
+          "backgroundURL": "https://cdn.dokkan.fyi/assets/en/layout/en/image/equipment/equipment_thumb_bg/equ_base_gold.png",
+          "skills": [
+            {
+              "id": "852000",
+              "attribute": "",
+              "level": 3,
+              "hiddenPotentialSkillId": 1
+            },
+            {
+              "id": "852001",
+              "attribute": "",
+              "level": 3,
+              "hiddenPotentialSkillId": 2
+            }
+          ],
+          "acquisition": [
+            {
+              "sourceType": "mission-reward",
+              "sourceName": "Mission Reward",
+              "missionId": "33239",
+              "missionCategoryId": "200101",
+              "bannerImageUrl": "https://cdn.dokkan.fyi/assets/en/",
+              "quantity": 1
+            }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "4032781",
+          "baseCharacterId": "1032771",
+          "legacyId": "4032780",
+          "name": "Super Saiyan Goku",
+          "releaseDate": "2026-05-20T05:00:00.000Z",
+          "summonable": "Freely Obtainable",
+          "isSummonable": false,
+          "isFreeToPlay": true,
+          "obtainability": {
+            "type": "freely-obtainable",
+            "isFreeToPlay": true,
+            "hasDirectAcquisitionDetails": false
+          },
+          "characterClass": "Super",
+          "type": "TEQ",
+          "superAttack": "Greatly raises ATK and\nraises DEF for 1 turn and\ncauses colossal damage to enemy",
+          "ultraSuperAttack": "Massively raises ATK and\ngreatly raises DEF for 1 turn and\ncauses mega-colossal damage to enemy",
+          "exSuperAttack": "",
+          "superAttackDetails": {
+            "name": "Super Meteor Smash",
+            "effect": "Greatly raises ATK and\nraises DEF for 1 turn and\ncauses colossal damage to enemy",
+            "type": "Unarmed",
+            "ki": 12,
+            "style": "Normal",
+            "condition": ""
+          },
+          "ultraSuperAttackDetails": {
+            "name": "Super Kamehameha",
+            "effect": "Massively raises ATK and\ngreatly raises DEF for 1 turn and\ncauses mega-colossal damage to enemy",
+            "type": "Ki Blast",
+            "ki": 18,
+            "style": "Ultra",
+            "condition": ""
+          },
+          "passive": "Basic effect(s)\n- Ki +6 and ATK & DEF 259%\n- Receives an additional Ki +1 per Ki Sphere obtained\n- Launches an additional Super Attack\n- Chance of performing a critical hit & damage reduction rate 59%\nThe less HP remaining\n- ATK & DEF (up to 300%)\nWhen attacking\n- ATK 200%\nWhen receiving an attack\n- DEF 200%\nFor 5 turns from the character's entry turn\n- ATK & DEF 159%\nWhen there is a \"Wicked Bloodline\" or \"Planet Namek Saga\" Category\nenemy\n- Launches an additional Super Attack",
+          "passiveDetails": {
+            "name": "Fierce Power of Rage",
+            "text": "Basic effect(s)\n- Ki +6 and ATK & DEF 259%\n- Receives an additional Ki +1 per Ki Sphere obtained\n- Launches an additional Super Attack\n- Chance of performing a critical hit & damage reduction rate 59%\nThe less HP remaining\n- ATK & DEF (up to 300%)\nWhen attacking\n- ATK 200%\nWhen receiving an attack\n- DEF 200%\nFor 5 turns from the character's entry turn\n- ATK & DEF 159%\nWhen there is a \"Wicked Bloodline\" or \"Planet Namek Saga\" Category\nenemy\n- Launches an additional Super Attack",
+            "lines": [
+              "Basic effect(s)",
+              "- Ki +6 and ATK & DEF 259%",
+              "- Receives an additional Ki +1 per Ki Sphere obtained",
+              "- Launches an additional Super Attack",
+              "- Chance of performing a critical hit & damage reduction rate 59%",
+              "The less HP remaining",
+              "- ATK & DEF (up to 300%)",
+              "When attacking",
+              "- ATK 200%",
+              "When receiving an attack",
+              "- DEF 200%",
+              "For 5 turns from the character's entry turn",
+              "- ATK & DEF 159%",
+              "When there is a \"Wicked Bloodline\" or \"Planet Namek Saga\" Category",
+              "enemy",
+              "- Launches an additional Super Attack"
+            ],
+            "sections": [
+              {
+                "label": "Basic effect(s)",
+                "lines": [
+                  "Ki +6 and ATK & DEF 259%",
+                  "Receives an additional Ki +1 per Ki Sphere obtained",
+                  "Launches an additional Super Attack",
+                  "Chance of performing a critical hit & damage reduction rate 59%"
+                ]
+              },
+              {
+                "label": "The less HP remaining",
+                "lines": [
+                  "ATK & DEF (up to 300%)"
+                ]
+              },
+              {
+                "label": "When attacking",
+                "lines": [
+                  "ATK 200%"
+                ]
+              },
+              {
+                "label": "When receiving an attack",
+                "lines": [
+                  "DEF 200%"
+                ]
+              },
+              {
+                "label": "For 5 turns from the character's entry turn",
+                "lines": [
+                  "ATK & DEF 159% When there is a \"Wicked Bloodline\" or \"Planet Namek Saga\" Category enemy",
+                  "Launches an additional Super Attack"
+                ]
+              }
+            ]
+          },
+          "activeSkill": "",
+          "activeSkillCondition": "",
+          "transformationCondition": "Transforms starting from the 6th turn from the start of battle.",
+          "domain": "",
+          "links": [
+            "Golden Warrior",
+            "Kamehameha",
+            "Legendary Power",
+            "Prepared for Battle",
+            "Saiyan Warrior Race",
+            "Shattering the Limit",
+            "The Saiyan Lineage"
+          ],
+          "portraitURL": "https://cdn.dokkan.fyi/assets/en/character/thumb/card_4032780_thumb/card_4032780_thumb.png",
+          "portraitFilename": "portrait_4032781",
+          "portraitSpec": {
+            "iconId": 4032780,
+            "frameColorId": 1,
+            "rarity": "LR",
+            "elementCode": "11"
+          },
+          "artURL": "https://cdn.dokkan.fyi/assets/en/character/card/4032780/card_4032780_cutin.png",
+          "artFilename": "art_4032781",
+          "extraInfo": {
+            "kiMultiplierText": "0 Ki 40%; 3 Ki 100%; 12 Ki 145%; 24 Ki 200%",
+            "kiMultiplierSteps": [
+              {
+                "ki": 0,
+                "percent": 40
+              },
+              {
+                "ki": 3,
+                "percent": 100
+              },
+              {
+                "ki": 12,
+                "percent": 145
+              },
+              {
+                "ki": 24,
+                "percent": 200
+              }
+            ]
+          },
+          "standbySkill": "",
+          "finishingMove": [],
+          "finishSkills": [],
+          "transformationSource": "passive-skill",
+          "transformationSourceLabel": "Passive Skill"
+        }
+      ]
+    }
+  ]
+}

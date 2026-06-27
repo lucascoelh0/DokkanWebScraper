@@ -9,6 +9,8 @@ export interface Character {
     sezaReleaseDate?: string,
     summonable?: string,
     isSummonable?: boolean,
+    isFreeToPlay?: boolean,
+    obtainability?: CharacterObtainabilityDetails,
     characterClass: Classes,
     type: Types,
     cost: number,
@@ -67,6 +69,10 @@ export interface Character {
     ezaExSuperAttackDetails?: SuperAttackDetails,
     standbySkill: string,
     finishingMove?: string[],
+    standby?: StandbySkillDetails,
+    finishSkills?: FinishSkill[],
+    reversibleExchange?: ReversibleExchangeDetails,
+    exclusiveSkillOrbs?: CharacterExclusiveSkillOrb[],
     transformations?: Transformation[],
     awakeningCards?: AwakeningReference[],
     previousAwakenings?: AwakeningReference[],
@@ -116,6 +122,46 @@ export interface CharacterEquipmentReference {
     iconURL?: string,
     iconFilename?: string,
     restrictions?: EquipmentRestriction[],
+}
+
+export interface CharacterExclusiveSkillOrb {
+    id: string,
+    name: string,
+    description: string,
+    grade?: string,
+    reusable?: boolean,
+    iconImageId?: string,
+    iconURL?: string,
+    backgroundURL?: string,
+    skills: CharacterExclusiveSkillOrbSkill[],
+    acquisition?: CharacterExclusiveSkillOrbAcquisition[],
+}
+
+export interface CharacterExclusiveSkillOrbSkill {
+    id?: string,
+    attribute?: string,
+    level?: number,
+    hiddenPotentialSkillId?: number | null,
+}
+
+export interface CharacterExclusiveSkillOrbAcquisition {
+    sourceType: "mission-reward" | "shop-item" | "unknown",
+    sourceName?: string,
+    missionId?: string,
+    missionCategoryId?: string,
+    bannerImageUrl?: string,
+    quantity?: number,
+    shopItemId?: string,
+    price?: number,
+    discountedPrice?: number,
+    treasureItemId?: string,
+    treasureItemName?: string,
+    treasureItemDescription?: string,
+    treasureItemImageSuffix?: number,
+    startsAt?: string,
+    endsAt?: string,
+    isIndefinite?: boolean,
+    note?: string,
 }
 
 export interface EquipmentRestriction {
@@ -239,6 +285,62 @@ export interface DokkanFrontierPassive {
     passive: string,
 }
 
+export type TransformationSource =
+    | "transformation-path"
+    | "active-skill"
+    | "standby"
+    | "reversible-exchange"
+    | "finish-skill"
+    | "passive-skill"
+    | "unknown";
+
+export type FinishSkillEffectKind =
+    | "damage"
+    | "buff"
+    | "transform"
+    | "mixed"
+    | "unknown";
+
+export interface FinishSkill {
+    id?: string,
+    name: string,
+    description: string,
+    condition: string,
+    targetTransformationId?: string,
+    effectKind?: FinishSkillEffectKind,
+    legacyText?: string,
+}
+
+export interface StandbySkillDetails {
+    id?: string,
+    name: string,
+    description: string,
+    condition: string,
+    targetCharacterId?: string,
+    finishSkills: FinishSkill[],
+    legacyText?: string,
+}
+
+export type CharacterObtainability =
+    | "summonable"
+    | "freely-obtainable"
+    | "stage-reward"
+    | "world-tournament-reward"
+    | "unknown";
+
+export interface CharacterObtainabilityDetails {
+    type: CharacterObtainability,
+    isFreeToPlay: boolean,
+    hasDirectAcquisitionDetails?: boolean,
+}
+
+export interface ReversibleExchangeDetails {
+    targetCharacterId: string,
+    targetCharacterName?: string,
+    condition: string,
+    legacyText?: string,
+}
+
 export enum Classes {
     Super = "Super",
     Extreme = "Extreme"
@@ -278,6 +380,8 @@ export interface Transformation {
     sezaReleaseDate?: string,
     summonable?: string,
     isSummonable?: boolean,
+    isFreeToPlay?: boolean,
+    obtainability?: CharacterObtainabilityDetails,
     characterClass: Classes,
     type: Types,
     superAttack: string,
@@ -310,6 +414,11 @@ export interface Transformation {
     extraInfo?: CharacterExtraInfo,
     standbySkill?: string,
     finishingMove: string[],
+    standby?: StandbySkillDetails,
+    finishSkills?: FinishSkill[],
+    reversibleExchange?: ReversibleExchangeDetails,
+    transformationSource?: TransformationSource,
+    transformationSourceLabel?: string,
     dokkanFrontierPassives?: DokkanFrontierPassive[],
     dokkanFrontierGroupPassive?: string,
     dokkanFrontierCharacterPassive?: string,

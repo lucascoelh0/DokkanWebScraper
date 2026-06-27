@@ -6,6 +6,23 @@ Scrapes the Dokkan Wiki to build a database of characters etc
 npm run run
 ```
 
+## Run the dokkan.fyi migration experiment
+```
+npm run run:fyi-experiment
+```
+
+This writes:
+
+- `./data/fyi-experiment/latest/characters.json`
+- `./data/fyi-experiment/latest/coverage-report.json`
+
+You can override the default 20-character spike set with:
+
+```powershell
+$env:DOKKAN_FYI_CHARACTER_IDS="1032521,1025731,1033061"
+npm run run:fyi-experiment
+```
+
 Output goes to `./data/{currentDate}DokkanCharacterData.json`
 
 The scraper also writes stable app-ingestion artifacts to:
@@ -16,6 +33,37 @@ The scraper also writes stable app-ingestion artifacts to:
 Future hosting notes and the planned R2/custom-domain setup live in:
 
 - `./docs/dataset-hosting-plan.md`
+
+The planned migration from DokkanInfo to `dokkan.fyi` lives in:
+
+- `./docs/dokkan-fyi-migration-plan.md`
+
+The target app-facing `dokkan.fyi` character contract lives in:
+
+- `./docs/specs/dokkan-fyi-character-contract.md`
+
+The planned auxiliary datasets around characters live in:
+
+- `./docs/specs/dokkan-fyi-auxiliary-datasets-plan.md`
+
+You can also generate a small contract reference snapshot for review:
+
+```powershell
+npm run run:fyi-contract-sample
+```
+
+This writes:
+
+- `./docs/specs/examples/dokkan-fyi-character-sample.json`
+
+## Scrape dokkan.fyi support memories
+```powershell
+npm run run:fyi-support-memories
+```
+
+This writes:
+
+- `./data/support-memories/latest/support-memories.json`
 
 ## Test 
 ```
