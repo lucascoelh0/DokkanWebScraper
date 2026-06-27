@@ -75,6 +75,25 @@ This writes:
 - `./data/summons/latest/summons-index.json`
 - `./data/summons/latest/summons-details.json`
 
+## Scrape dokkan.fyi Z-Battles
+```powershell
+npm run run:fyi-z-battles
+```
+
+This writes:
+
+- `./data/z-battles/latest/z-battles.json`
+
+Useful development overrides:
+
+```powershell
+$env:DOKKAN_FYI_Z_BATTLE_LIMIT="5"
+npm run run:fyi-z-battles
+
+$env:DOKKAN_FYI_Z_BATTLE_IDS="205,55"
+npm run run:fyi-z-battles
+```
+
 ## Test 
 ```
 npm run test

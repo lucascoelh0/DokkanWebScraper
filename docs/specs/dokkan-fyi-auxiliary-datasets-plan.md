@@ -183,6 +183,8 @@ Recommendation:
 
 - Z-Battles deserve their own dataset branch, not just a generic stage row
 - they are especially valuable for medal and EZA acquisition linking later
+- do not trust `stage.has_super` alone; some pages expose `superStage` even when `has_super` is `false`
+- beneficial character lists are paginated and must be expanded across `?characters={page}`
 
 ### Dokkan Frontier
 
