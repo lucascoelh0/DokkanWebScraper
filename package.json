@@ -15,6 +15,7 @@
     "run:fyi-contract-sample": "npx ts-node fyi-contract-sample.ts",
     "run:fyi-experiment": "npx ts-node fyi-experiment.ts",
     "run:fyi-summons": "npx ts-node fyi-summons-run.ts",
+    "run:fyi-stages": "npx ts-node fyi-stages-run.ts",
     "run:fyi-z-battles": "npx ts-node fyi-z-battles-run.ts",
     "watch": "tsc -w",
     "prestart": "npm run build",

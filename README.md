@@ -94,6 +94,23 @@ $env:DOKKAN_FYI_Z_BATTLE_IDS="205,55"
 npm run run:fyi-z-battles
 ```
 
+## Scrape dokkan.fyi stage indexes
+```powershell
+npm run run:fyi-stages
+```
+
+This writes:
+
+- `./data/stages/latest/quest-story-stages.json`
+- `./data/stages/latest/event-stages.json`
+
+Useful development override:
+
+```powershell
+$env:DOKKAN_FYI_EVENT_STAGE_AREA_LIMIT="10"
+npm run run:fyi-stages
+```
+
 ## Test 
 ```
 npm run test
