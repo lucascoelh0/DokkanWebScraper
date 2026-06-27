@@ -65,6 +65,16 @@ This writes:
 
 - `./data/support-memories/latest/support-memories.json`
 
+## Scrape active dokkan.fyi summons
+```powershell
+npm run run:fyi-summons
+```
+
+This writes:
+
+- `./data/summons/latest/summons-index.json`
+- `./data/summons/latest/summons-details.json`
+
 ## Test 
 ```
 npm run test
