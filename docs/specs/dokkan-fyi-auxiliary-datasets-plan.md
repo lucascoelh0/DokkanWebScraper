@@ -151,9 +151,8 @@ Confirmed payload:
 - props:
   - `stage`
   - `levels`
-  - `beneficialCharacters`
   - `missionCategories`
-  - optional `superStage`, `superLevels`, `superBeneficialCharacters`, `superTeam`
+  - optional `superStage`, `superLevels`, `superTeam`
 
 Observed stage fields:
 
@@ -184,7 +183,7 @@ Recommendation:
 - Z-Battles deserve their own dataset branch, not just a generic stage row
 - they are especially valuable for medal and EZA acquisition linking later
 - do not trust `stage.has_super` alone; some pages expose `superStage` even when `has_super` is `false`
-- beneficial character lists are paginated and must be expanded across `?characters={page}`
+- beneficial-character recommendations are better derived app-side from `beneficial_items` plus the character database
 
 ### Dokkan Frontier
 

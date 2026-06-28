@@ -24,7 +24,6 @@ export interface ZBattlePhase {
     enemies: ZBattleEnemyProfile[],
     beneficialItems: ZBattleBeneficialItem[],
     ezaCharacters: ZBattleCharacterRef[],
-    beneficialCharacters: ZBattleCharacterRef[],
     levels: ZBattleLevel[],
     rewardCheckpoints: ZBattleRewardCheckpoint[],
     missionCategories: ZBattleMissionCategory[],

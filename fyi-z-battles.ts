@@ -46,10 +46,8 @@ interface FyiZBattleShowPagePayload {
     props: {
         stage: FyiZBattleStageDetail,
         levels: FyiZBattleLevel[],
-        beneficialCharacters?: FyiPaginated<FyiCharacterSummary>,
         superStage?: FyiZBattleStageDetail | null,
         superLevels?: FyiZBattleLevel[] | null,
-        superBeneficialCharacters?: FyiPaginated<FyiCharacterSummary> | null,
         missionCategories?: FyiMissionCategory[] | null,
         superMissionCategories?: FyiMissionCategory[] | null,
     },
@@ -248,41 +246,8 @@ class DokkanFyiZBattleClient {
     }
 
     async fetchBattle(battleId: number): Promise<ZBattle> {
-        const basePayload = await this.fetchBattlePage(battleId, 1);
-        const mergedPayload = await this.expandBattleCharacterPages(battleId, basePayload);
-        return mapZBattleFromFyi(mergedPayload, battleId);
-    }
-
-    private async expandBattleCharacterPages(
-        battleId: number,
-        page: FyiZBattleShowPagePayload,
-    ): Promise<FyiZBattleShowPagePayload> {
-        const normalLastPage = toOptionalNumber(page.props.beneficialCharacters?.meta?.last_page) ?? 1;
-        const superLastPage = toOptionalNumber(page.props.superBeneficialCharacters?.meta?.last_page) ?? 1;
-        const lastPage = Math.max(normalLastPage, superLastPage);
-
-        if (lastPage <= 1) {
-            return page;
-        }
-
-        const normalCharacters = [...(page.props.beneficialCharacters?.data ?? [])];
-        const superCharacters = [...(page.props.superBeneficialCharacters?.data ?? [])];
-
-        for (let characterPage = 2; characterPage <= lastPage; characterPage++) {
-            const nextPage = await this.fetchBattlePage(battleId, characterPage);
-            normalCharacters.push(...(nextPage.props.beneficialCharacters?.data ?? []));
-            superCharacters.push(...(nextPage.props.superBeneficialCharacters?.data ?? []));
-        }
-
-        if (page.props.beneficialCharacters) {
-            page.props.beneficialCharacters.data = dedupeCharacters(normalCharacters);
-        }
-
-        if (page.props.superBeneficialCharacters) {
-            page.props.superBeneficialCharacters.data = dedupeCharacters(superCharacters);
-        }
-
-        return page;
+        const payload = await this.fetchBattlePage(battleId);
+        return mapZBattleFromFyi(payload, battleId);
     }
 
     private async fetchIndexPage(page: number): Promise<FyiZBattleIndexPagePayload> {
@@ -299,12 +264,8 @@ class DokkanFyiZBattleClient {
         return extractPagePayload<FyiZBattleIndexPagePayload>(html);
     }
 
-    private async fetchBattlePage(battleId: number, characterPage: number): Promise<FyiZBattleShowPagePayload> {
-        const query = characterPage > 1
-            ? `?${new URLSearchParams({ characters: characterPage.toString() }).toString()}`
-            : "";
-
-        const response = await fetch(`${DOKKAN_FYI_BASE_URL}/z-battles/${battleId}${query}`, {
+    private async fetchBattlePage(battleId: number): Promise<FyiZBattleShowPagePayload> {
+        const response = await fetch(`${DOKKAN_FYI_BASE_URL}/z-battles/${battleId}`, {
             headers: browserHeaders(),
         });
 
@@ -358,7 +319,6 @@ export function mapZBattleFromFyi(payload: FyiZBattleShowPagePayload, battleId: 
         mapZBattlePhaseFromFyi({
             phase: payload.props.stage,
             levels: payload.props.levels,
-            beneficialCharacters: payload.props.beneficialCharacters?.data ?? [],
             missionCategories: payload.props.missionCategories ?? [],
             kind: "normal",
         }),
@@ -368,7 +328,6 @@ export function mapZBattleFromFyi(payload: FyiZBattleShowPagePayload, battleId: 
         phases.push(mapZBattlePhaseFromFyi({
             phase: payload.props.superStage,
             levels: payload.props.superLevels ?? [],
-            beneficialCharacters: payload.props.superBeneficialCharacters?.data ?? [],
             missionCategories: payload.props.superMissionCategories ?? [],
             kind: "super",
         }));
@@ -387,7 +346,6 @@ export function mapZBattleFromFyi(payload: FyiZBattleShowPagePayload, battleId: 
 export function mapZBattlePhaseFromFyi(input: {
     phase: FyiZBattleStageDetail,
     levels: FyiZBattleLevel[],
-    beneficialCharacters: FyiCharacterSummary[],
     missionCategories: FyiMissionCategory[],
     kind: "normal" | "super",
 }): ZBattlePhase {
@@ -399,7 +357,6 @@ export function mapZBattlePhaseFromFyi(input: {
         enemies: (input.phase.enemies ?? []).map(mapEnemyProfileFromFyi),
         beneficialItems: (input.phase.beneficial_items ?? []).map(mapBeneficialItemFromFyi),
         ezaCharacters: (input.phase.eza_characters ?? []).map(mapCharacterRefFromFyi),
-        beneficialCharacters: input.beneficialCharacters.map(mapCharacterRefFromFyi),
         levels: input.levels.map(mapZBattleLevelFromFyi),
         rewardCheckpoints: (input.phase.check_points ?? []).map(mapRewardCheckpointFromFyi),
         missionCategories: input.missionCategories.map(mapMissionCategoryFromFyi),
@@ -607,20 +564,6 @@ function requestedBattleIds(): number[] {
 function requestedBattleLimit(): number | undefined {
     const value = parseInt(process.env.DOKKAN_FYI_Z_BATTLE_LIMIT ?? "", 10);
     return Number.isFinite(value) && value > 0 ? value : undefined;
-}
-
-function dedupeCharacters(characters: FyiCharacterSummary[]): FyiCharacterSummary[] {
-    const byId = new Map<number, FyiCharacterSummary>();
-
-    for (const character of characters) {
-        if (!character?.id) {
-            continue;
-        }
-
-        byId.set(character.id, character);
-    }
-
-    return Array.from(byId.values());
 }
 
 function extractPagePayload<T>(html: string): T {

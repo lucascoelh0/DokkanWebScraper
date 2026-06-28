@@ -68,7 +68,7 @@ describe("mapMissionCategoryFromFyi", function () {
 });
 
 describe("mapZBattlePhaseFromFyi", function () {
-    it("maps phase payloads into level, reward, and character structures", () => {
+    it("maps phase payloads into level, reward, and rule structures", () => {
         const phase = mapZBattlePhaseFromFyi({
             kind: "normal",
             phase: {
@@ -171,22 +171,6 @@ describe("mapZBattlePhaseFromFyi", function () {
                     ],
                 },
             ],
-            beneficialCharacters: [
-                {
-                    id: 1032521,
-                    canonical_id: 752,
-                    base_character_id: 1032521,
-                    name: "Goku",
-                    rarity_text: "LR",
-                    type_text: "STR",
-                    awakening_type: 1,
-                    thumbnail_id: 1032520,
-                    has_seza: true,
-                    leader_skill: {
-                        name: "Thousandfold Plea",
-                    },
-                },
-            ] as any,
             missionCategories: [
                 {
                     id: 3728,
@@ -209,7 +193,6 @@ describe("mapZBattlePhaseFromFyi", function () {
         equal(phase.images.bannerUrl, "https://cdn.dokkan.fyi/assets/banners/en/event/eve_banner/zbattle_list_banner_205.png");
         equal(phase.beneficialItems[0].categories[0].name, "Final Trump Card");
         equal(phase.ezaCharacters[0].name, "Cooler (Final Form)");
-        equal(phase.beneficialCharacters[0].leaderSkillName, "Thousandfold Plea");
         equal(phase.levels[0].enemyCard?.rarity, "LR");
         equal(phase.levels[0].firstRewards[0].rewardType, "Dragon Stone");
         equal(phase.rewardCheckpoints[0].rewards[0].name, "Turles [Bronze]");
@@ -234,9 +217,6 @@ describe("mapZBattleFromFyi", function () {
                     eza_characters: [],
                 },
                 levels: [],
-                beneficialCharacters: {
-                    data: [],
-                },
                 superStage: {
                     id: 728,
                     name: "Cooler (Final Form)",
@@ -250,9 +230,6 @@ describe("mapZBattleFromFyi", function () {
                     eza_characters: [],
                 },
                 superLevels: [],
-                superBeneficialCharacters: {
-                    data: [],
-                },
                 missionCategories: [],
                 superMissionCategories: [],
             },
