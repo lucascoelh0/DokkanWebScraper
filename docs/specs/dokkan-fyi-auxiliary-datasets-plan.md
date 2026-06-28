@@ -279,8 +279,8 @@ Observed fields:
 
 Recommendation:
 
-- purely optional content dataset
-- low gameplay priority
+- compact optional content dataset
+- useful for collection or cosmetics surfaces, but still below gameplay catalogs in priority
 
 ### Categories
 
@@ -303,11 +303,12 @@ Observed fields:
 
 Recommendation:
 
-- keep character categories sourced from the character page for now
-- use the categories surface later as:
-  - reverse lookup
-  - support-memory linkage
-  - category metadata normalization
+- keep character-page categories as the canonical per-character membership list
+- scrape the categories surface as a reverse-lookup dataset for:
+  - leaders by category
+  - support units by category
+  - support memories by category
+  - future category metadata normalization
 
 ## Proposed dataset boundaries
 
@@ -458,8 +459,8 @@ Suggested scope:
 
 Current recommendation:
 
-- defer migration of category sourcing for characters
 - keep using character-page categories as the canonical per-character list for now
+- treat `categories.json` as the right source for category landing-page data
 
 ### 8. Wallpapers dataset
 
