@@ -44,6 +44,7 @@ Already implemented in this scraper:
 Current `acquisition.json` scope:
 
 - event mission rewards
+- Dokkan Frontier chapter and node mission rewards
 - Z-Battle level and checkpoint rewards
 - awakening medal source normalization for:
   - stage drops

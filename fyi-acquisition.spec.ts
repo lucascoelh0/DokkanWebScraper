@@ -85,6 +85,85 @@ describe("buildAcquisitionDataset", () => {
                     },
                 ],
             },
+            frontierChapters: {
+                generatedAt: "2026-01-01T00:00:00.000Z",
+                source: "dokkan.fyi",
+                chapterCount: 1,
+                pageCount: 1,
+                nodeCount: 1,
+                missionCount: 2,
+                chapters: [
+                    {
+                        id: "2001",
+                        seriesId: "2",
+                        seriesName: "Dragon Ball Z",
+                        name: "Planet Namek Saga",
+                        bannerImagePath: "origin/episode_banner/origin_map_02_01.png",
+                        pages: [
+                            {
+                                id: "200101",
+                                pageNumber: 1,
+                                nodes: [
+                                    {
+                                        id: "20010102",
+                                        missions: [
+                                            {
+                                                id: "32185",
+                                                type: "Mission::QuestAndZBattleClearMission::CountMission",
+                                                name: "Activate the specified character's Active Skill and clear Node 2.",
+                                                description: "Clear Node 2 in Dokkan Frontier.",
+                                                categoryId: "200101",
+                                                rewards: [
+                                                    {
+                                                        id: "55289",
+                                                        missionId: "32185",
+                                                        itemId: "1",
+                                                        itemType: "CardSkinItem",
+                                                        quantity: 1,
+                                                        name: "Vegeta card skin step 1",
+                                                        description: "Unlock scene step 1.",
+                                                        cardId: "1029571",
+                                                        step: 1,
+                                                        linkTo: "internal:OriginMapScene?episode=2001&battle=20010102",
+                                                    },
+                                                ],
+                                                characters: [],
+                                            },
+                                        ],
+                                        unlockMissions: [],
+                                        requiredCharacters: [],
+                                        intensityEffects: [],
+                                        rounds: [],
+                                    },
+                                ],
+                                backgroundImagePath: "origin/map_bg/test.png",
+                            },
+                        ],
+                        groupExchange: [],
+                        chapterMissions: [
+                            {
+                                id: "33000",
+                                type: "Mission::CountMission",
+                                name: "Clear Planet Namek Saga.",
+                                description: "Clear the chapter.",
+                                categoryId: "2001",
+                                rewards: [
+                                    {
+                                        id: "33001",
+                                        missionId: "33000",
+                                        itemId: "11",
+                                        itemType: "Point::Stone",
+                                        quantity: 3,
+                                        rewardType: "Dragon Stone",
+                                        amount: 1,
+                                    },
+                                ],
+                                characters: [],
+                            },
+                        ],
+                    },
+                ],
+            },
             zBattles: {
                 generatedAt: "2026-01-01T00:00:00.000Z",
                 source: "dokkan.fyi",
@@ -131,16 +210,18 @@ describe("buildAcquisitionDataset", () => {
             },
         });
 
-        equal(dataset.itemCount, 2);
-        equal(dataset.sourceCount, 4);
+        equal(dataset.itemCount, 3);
+        equal(dataset.sourceCount, 6);
 
         const stone = dataset.items.find(item => item.key === "Point::Stone:11");
         const medal = dataset.items.find(item => item.key === "AwakeningMedal:100874");
+        const frontierSkin = dataset.items.find(item => item.itemType === "CardSkinItem");
 
         deepEqual(
             stone?.sources.map(source => source.kind),
             [
                 "event-mission",
+                "frontier-chapter-mission",
                 "z-battle-level",
             ],
         );
@@ -152,5 +233,11 @@ describe("buildAcquisitionDataset", () => {
                 "awakening-medal-z-battle",
             ],
         );
+
+        equal(frontierSkin?.itemId, "1");
+        equal(frontierSkin?.cardId, "1029571");
+        equal(frontierSkin?.step, 1);
+        equal(frontierSkin?.sources[0].kind, "frontier-node-mission");
+        equal(frontierSkin?.sources[0].frontierNodeId, "20010102");
     });
 });

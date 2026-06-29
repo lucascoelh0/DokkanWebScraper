@@ -1,5 +1,7 @@
 export type AcquisitionSourceKind =
     | "event-mission"
+    | "frontier-chapter-mission"
+    | "frontier-node-mission"
     | "z-battle-level"
     | "z-battle-checkpoint"
     | "awakening-medal-stage"
@@ -24,6 +26,10 @@ export interface AcquisitionItem {
     rarity?: number,
     zeni?: number,
     tradePoints?: number,
+    cardId?: string,
+    step?: number,
+    linkTo?: string,
+    bgmId?: string,
     sources: AcquisitionSource[],
 }
 
@@ -41,6 +47,10 @@ export interface AcquisitionSource {
     missionCategoryId?: string,
     missionId?: string,
     missionType?: string,
+    frontierSeriesId?: string,
+    frontierChapterId?: string,
+    frontierPageId?: string,
+    frontierNodeId?: string,
     zBattleId?: string,
     zBattlePhaseId?: string,
     level?: number,

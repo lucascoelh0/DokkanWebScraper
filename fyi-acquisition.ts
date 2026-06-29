@@ -2,6 +2,7 @@ import { mkdir, readFile } from "fs/promises";
 import { resolve } from "path";
 import { AcquisitionDataset, AcquisitionItem, AcquisitionSource } from "./acquisition";
 import { AwakeningMedal, AwakeningMedalDataset, AwakeningMedalStageSource, AwakeningMedalWorldTournamentSource } from "./awakening-path";
+import { DokkanFrontierChapter, DokkanFrontierChaptersDataset, DokkanFrontierMission, DokkanFrontierNode, DokkanFrontierPage, DokkanFrontierReward } from "./dokkan-frontier";
 import { EventMissionCategory, EventMissionDataset, EventMissionEntry, EventMissionReward } from "./event-mission";
 import { writeFormattedJson } from "./format-json";
 import { ZBattle, ZBattleDataset, ZBattleLevel, ZBattlePhase, ZBattleRewardCheckpoint, ZBattleRewardItem } from "./z-battle";
@@ -9,6 +10,7 @@ import { ZBattle, ZBattleDataset, ZBattleLevel, ZBattlePhase, ZBattleRewardCheck
 interface AcquisitionBuildInput {
     eventMissions: EventMissionDataset,
     awakeningMedals: AwakeningMedalDataset,
+    frontierChapters: DokkanFrontierChaptersDataset,
     zBattles: ZBattleDataset,
 }
 
@@ -19,15 +21,17 @@ interface AcquisitionItemBuilder extends AcquisitionItem {
 const DOKKAN_FYI_BASE_URL = "https://dokkan.fyi";
 
 export async function getDokkanFyiAcquisitionDataset(): Promise<AcquisitionDataset> {
-    const [eventMissions, awakeningMedals, zBattles] = await Promise.all([
+    const [eventMissions, awakeningMedals, frontierChapters, zBattles] = await Promise.all([
         readJsonFile<EventMissionDataset>("data/event-missions/latest/event-missions.json"),
         readJsonFile<AwakeningMedalDataset>("data/awakening/latest/awakening-medals.json"),
+        readJsonFile<DokkanFrontierChaptersDataset>("data/dokkan-frontier/latest/dokkan-frontier-chapters.json"),
         readJsonFile<ZBattleDataset>("data/z-battles/latest/z-battles.json"),
     ]);
 
     return buildAcquisitionDataset({
         eventMissions,
         awakeningMedals,
+        frontierChapters,
         zBattles,
     });
 }
@@ -52,6 +56,10 @@ export function buildAcquisitionDataset(input: AcquisitionBuildInput): Acquisiti
 
     for (const category of input.eventMissions.categories) {
         addEventMissionSources(itemsByKey, category);
+    }
+
+    for (const chapter of input.frontierChapters.chapters) {
+        addFrontierSources(itemsByKey, chapter);
     }
 
     for (const battle of input.zBattles.battles) {
@@ -184,6 +192,60 @@ function addEventMissionSources(itemsByKey: Map<string, AcquisitionItemBuilder>,
     }
 }
 
+function addFrontierSources(itemsByKey: Map<string, AcquisitionItemBuilder>, chapter: DokkanFrontierChapter) {
+    for (const mission of chapter.chapterMissions) {
+        addFrontierMissionSources(itemsByKey, chapter, mission);
+    }
+
+    for (const page of chapter.pages) {
+        for (const node of page.nodes) {
+            for (const mission of node.missions) {
+                addFrontierMissionSources(itemsByKey, chapter, mission, page, node);
+            }
+        }
+    }
+}
+
+function addFrontierMissionSources(
+    itemsByKey: Map<string, AcquisitionItemBuilder>,
+    chapter: DokkanFrontierChapter,
+    mission: DokkanFrontierMission,
+    page?: DokkanFrontierPage,
+    node?: DokkanFrontierNode,
+) {
+    for (const reward of mission.rewards) {
+        const itemIdentity = createFrontierRewardIdentity(reward);
+
+        if (!itemIdentity) {
+            continue;
+        }
+
+        upsertSource(
+            itemsByKey,
+            itemIdentity,
+            {
+                key: buildFrontierSourceKey(chapter, mission, reward, page, node),
+                kind: node ? "frontier-node-mission" : "frontier-chapter-mission",
+                title: mission.name || "Dokkan Frontier mission",
+                subtitle: buildFrontierSubtitle(chapter, page, node),
+                description: mission.description,
+                quantity: reward.quantity,
+                imageUrl: toDokkanCdnUrl(chapter.bannerImagePath),
+                sourcePath: `${DOKKAN_FYI_BASE_URL}/dokkan-frontier/${chapter.seriesId}/chapters/${chapter.id}`,
+                startsAt: mission.startsAt,
+                endsAt: mission.endsAt,
+                missionCategoryId: mission.categoryId,
+                missionId: mission.id,
+                missionType: mission.type,
+                frontierSeriesId: chapter.seriesId,
+                frontierChapterId: chapter.id,
+                frontierPageId: page?.id,
+                frontierNodeId: node?.id,
+            },
+        );
+    }
+}
+
 function addZBattleSources(itemsByKey: Map<string, AcquisitionItemBuilder>, battle: ZBattle) {
     for (const phase of battle.phases) {
         for (const level of phase.levels) {
@@ -305,10 +367,15 @@ function createItemIdentity(
         rarity?: number,
         zeni?: number,
         tradePoints?: number,
+        cardId?: string,
+        step?: number,
+        linkTo?: string,
+        bgmId?: string,
+        key?: string,
     },
 ): Omit<AcquisitionItem, "sources"> {
     return {
-        key: `${itemType}:${itemId}`,
+        key: payload.key || `${itemType}:${itemId}`,
         itemType,
         itemId,
         name: payload.name,
@@ -316,7 +383,38 @@ function createItemIdentity(
         rarity: payload.rarity,
         zeni: payload.zeni,
         tradePoints: payload.tradePoints,
+        cardId: payload.cardId,
+        step: payload.step,
+        linkTo: payload.linkTo,
+        bgmId: payload.bgmId,
     };
+}
+
+function createFrontierRewardIdentity(reward: DokkanFrontierReward): Omit<AcquisitionItem, "sources"> | undefined {
+    const itemType = reward.itemType;
+
+    if (!itemType) {
+        return undefined;
+    }
+
+    const stableItemId = resolveFrontierItemId(reward);
+
+    if (!stableItemId) {
+        return undefined;
+    }
+
+    return createItemIdentity(itemType, stableItemId, {
+        key: buildFrontierItemKey(itemType, stableItemId, reward),
+        name: reward.name,
+        description: reward.description,
+        rarity: reward.rarity,
+        zeni: reward.zeni,
+        tradePoints: reward.tradePoints,
+        cardId: reward.cardId,
+        step: reward.step,
+        linkTo: reward.linkTo,
+        bgmId: reward.bgmId,
+    });
 }
 
 function compareItems(left: AcquisitionItem, right: AcquisitionItem): number {
@@ -356,6 +454,84 @@ function buildBabaShopSubtitle(sale: AwakeningMedal["babaShopSales"][number]): s
     ].filter(Boolean);
 
     return parts.length > 0 ? parts.join(" x ") : undefined;
+}
+
+function buildFrontierItemKey(itemType: string, stableItemId: string, reward: DokkanFrontierReward): string {
+    if (itemType !== "CardSkinItem") {
+        return `${itemType}:${stableItemId}`;
+    }
+
+    const parts = [
+        itemType,
+        stableItemId,
+        reward.cardId,
+        reward.step?.toString(),
+        reward.bgmId,
+        reward.linkTo,
+    ].filter(Boolean);
+
+    return parts.join(":");
+}
+
+function buildFrontierSourceKey(
+    chapter: DokkanFrontierChapter,
+    mission: DokkanFrontierMission,
+    reward: DokkanFrontierReward,
+    page?: DokkanFrontierPage,
+    node?: DokkanFrontierNode,
+): string {
+    const parts = [
+        node ? "frontier-node-mission" : "frontier-chapter-mission",
+        chapter.id,
+        page?.id,
+        node?.id,
+        mission.id,
+        reward.id || reward.itemType || reward.itemId,
+        resolveFrontierItemId(reward),
+    ].filter(Boolean);
+
+    return parts.join(":");
+}
+
+function buildFrontierSubtitle(
+    chapter: DokkanFrontierChapter,
+    page?: DokkanFrontierPage,
+    node?: DokkanFrontierNode,
+): string {
+    const parts = [
+        `Dokkan Frontier - ${chapter.seriesName}`,
+        chapter.name,
+        page?.pageNumber ? `Page ${page.pageNumber}` : undefined,
+        node ? `Node ${frontierNodeOrdinal(node.id)}` : undefined,
+    ].filter(Boolean);
+
+    return parts.join(" - ");
+}
+
+function frontierNodeOrdinal(nodeId: string): string {
+    const match = nodeId.match(/(\d{2})$/);
+
+    if (!match) {
+        return nodeId;
+    }
+
+    return String(parseInt(match[1], 10));
+}
+
+function resolveFrontierItemId(reward: DokkanFrontierReward): string | undefined {
+    return reward.itemId || reward.cardId || reward.bgmId;
+}
+
+function toDokkanCdnUrl(path?: string): string | undefined {
+    if (!path) {
+        return undefined;
+    }
+
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+        return path;
+    }
+
+    return `https://cdn.dokkan.fyi/assets/${path.replace(/^\/+/, "")}`;
 }
 
 async function readJsonFile<T>(relativePath: string): Promise<T> {
