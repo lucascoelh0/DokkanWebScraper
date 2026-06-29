@@ -40,6 +40,7 @@ Already implemented in this scraper:
 - `awakening-medals.json`
 - `acquisition.json`
 - `acquisition-source-index.json`
+- `acquisition-navigation.json`
 - `category-context.json`
 - `categories.json`
 - `wallpapers.json`
@@ -64,6 +65,19 @@ Current `acquisition-source-index.json` scope:
   - Frontier chapters and nodes
   - Z-Battles
   - awakening stage quests/areas
+  - Baba Shop sales
+  - World Tournament rewards
+
+Current `acquisition-navigation.json` scope:
+
+- normalized `sourceKey -> app navigation target`
+- mission-linked acquisition resolves into `mission-catalog` keys
+- current target coverage for:
+  - event missions
+  - Frontier chapter missions
+  - Frontier node missions
+  - Z-Battle levels and checkpoints
+  - awakening stage quest/area routes
   - Baba Shop sales
   - World Tournament rewards
 
@@ -612,9 +626,10 @@ Why:
 13. `awakening-medals.json` [done]
 14. `acquisition.json` [done]
 15. `acquisition-source-index.json` [done]
-16. `category-context.json` [done]
-17. `categories.json` [done]
-18. `wallpapers.json` [done]
+16. `acquisition-navigation.json` [done]
+17. `category-context.json` [done]
+18. `categories.json` [done]
+19. `wallpapers.json` [done]
 
 Why:
 
