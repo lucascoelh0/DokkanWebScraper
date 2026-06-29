@@ -30,6 +30,7 @@ Already implemented in this scraper:
 - `summons-details.json`
 - `quest-story-stages.json`
 - `event-stages.json`
+- `stage-catalog.json`
 - `z-battles.json`
 - `panel-missions.json`
 - `event-missions.json`
@@ -99,6 +100,20 @@ Current `mission-catalog.json` scope:
   - event mission categories
   - Frontier chapters
   - Frontier nodes
+
+Current `stage-catalog.json` scope:
+
+- normalized `quest-story`, `event`, and `z-battle` stage surfaces under one shared contract
+- group hierarchy coverage for:
+  - quest-story chapters
+  - quest-story areas
+  - event areas
+  - Z-Battles
+- entry coverage for:
+  - quest-stage difficulty rows
+  - event-stage difficulty rows
+  - Z-Battle levels
+  - Z-Battle reward checkpoints
 
 Still planned:
 
@@ -601,7 +616,8 @@ Why:
 
 4. `quest-story-stages.json` [done]
 5. `event-stages.json` [done]
-6. `z-battles.json` [done]
+6. `stage-catalog.json` [done]
+7. `z-battles.json` [done]
 
 Why:
 
@@ -610,11 +626,11 @@ Why:
 
 ### Phase C: mission and mode-specific layers
 
-7. `panel-missions.json` [done]
-8. `event-missions.json` [done]
-9. `mission-catalog.json` [done]
-10. `dokkan-frontier-series.json` [done]
-11. `dokkan-frontier-chapters.json` [done]
+8. `panel-missions.json` [done]
+9. `event-missions.json` [done]
+10. `mission-catalog.json` [done]
+11. `dokkan-frontier-series.json` [done]
+12. `dokkan-frontier-chapters.json` [done]
 
 Why:
 
@@ -623,14 +639,14 @@ Why:
 
 ### Phase D: reverse-lookup and polish datasets
 
-12. `awakening-paths.json` [done]
-13. `awakening-medals.json` [done]
-14. `acquisition.json` [done]
-15. `acquisition-source-index.json` [done]
-16. `acquisition-navigation.json` [done]
-17. `category-context.json` [done]
-18. `categories.json` [done]
-19. `wallpapers.json` [done]
+13. `awakening-paths.json` [done]
+14. `awakening-medals.json` [done]
+15. `acquisition.json` [done]
+16. `acquisition-source-index.json` [done]
+17. `acquisition-navigation.json` [done]
+18. `category-context.json` [done]
+19. `categories.json` [done]
+20. `wallpapers.json` [done]
 
 Why:
 
