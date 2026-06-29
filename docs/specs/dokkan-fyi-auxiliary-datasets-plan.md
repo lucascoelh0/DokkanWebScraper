@@ -21,6 +21,27 @@ Examples of those shared systems:
 - acquisition sources
 - categories as reverse-lookup metadata
 
+## Implementation status
+
+Already implemented in this scraper:
+
+- `support-memories.json`
+- `summons-index.json`
+- `summons-details.json`
+- `quest-story-stages.json`
+- `event-stages.json`
+- `z-battles.json`
+- `panel-missions.json`
+- `categories.json`
+- `wallpapers.json`
+
+Still planned:
+
+- `dokkan-frontier-series.json`
+- `dokkan-frontier-chapters.json`
+- broader mission surfaces beyond panel missions
+- event / medal / acquisition datasets that will later power orb and awakening-source joins
+
 ## Confirmed Dokkan.fyi surfaces
 
 The following pages were inspected and confirmed to expose structured Inertia page payloads:
@@ -503,9 +524,9 @@ That eventual normalized layer could point to:
 
 ### Phase A: low-risk standalone wins
 
-1. `support-memories.json`
-2. `summons-index.json`
-3. `summons-details.json`
+1. `support-memories.json` [done]
+2. `summons-index.json` [done]
+3. `summons-details.json` [done]
 
 Why:
 
@@ -515,9 +536,9 @@ Why:
 
 ### Phase B: structured gameplay catalog
 
-4. `quest-story-stages.json`
-5. `event-stages.json`
-6. `z-battles.json`
+4. `quest-story-stages.json` [done]
+5. `event-stages.json` [done]
+6. `z-battles.json` [done]
 
 Why:
 
@@ -526,7 +547,7 @@ Why:
 
 ### Phase C: mission and mode-specific layers
 
-7. `panel-missions.json`
+7. `panel-missions.json` [done]
 8. `dokkan-frontier-series.json`
 9. `dokkan-frontier-chapters.json`
 
@@ -537,8 +558,8 @@ Why:
 
 ### Phase D: reverse-lookup and polish datasets
 
-10. `categories.json`
-11. `wallpapers.json`
+10. `categories.json` [done]
+11. `wallpapers.json` [done]
 
 Why:
 
