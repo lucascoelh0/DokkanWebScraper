@@ -43,6 +43,7 @@ Already implemented in this scraper:
 - `acquisition-source-index.json`
 - `acquisition-navigation.json`
 - `category-context.json`
+- `team-context.json`
 - `categories.json`
 - `wallpapers.json`
 
@@ -88,6 +89,23 @@ Current `category-context.json` scope:
 - normalized `category -> leaderIds/supportIds/supportMemoryIds`
 - normalized `supportMemory -> categoryIds/applicableCharacterIds`
 - normalized `character -> categoryIds/leaderOfCategoryIds/supportOfCategoryIds/applicableSupportMemoryIds`
+
+Current `team-context.json` scope:
+
+- app-facing join layer for categories, character roles and support memories
+- category coverage includes:
+  - leaders
+  - support units
+  - support memories
+- character coverage includes:
+  - category refs
+  - leader-of-category refs
+  - support-of-category refs
+  - applicable support memory refs
+- support memory coverage includes:
+  - category refs
+  - applicable character ids
+  - core film/cost/unlock metadata
 
 Current `mission-catalog.json` scope:
 
@@ -646,8 +664,9 @@ Why:
 16. `acquisition-source-index.json` [done]
 17. `acquisition-navigation.json` [done]
 18. `category-context.json` [done]
-19. `categories.json` [done]
-20. `wallpapers.json` [done]
+19. `team-context.json` [done]
+20. `categories.json` [done]
+21. `wallpapers.json` [done]
 
 Why:
 
