@@ -44,6 +44,7 @@ Already implemented in this scraper:
 - `acquisition-navigation.json`
 - `category-context.json`
 - `team-context.json`
+- `category-roster.json`
 - `categories.json`
 - `wallpapers.json`
 
@@ -106,6 +107,22 @@ Current `team-context.json` scope:
   - category refs
   - applicable character ids
   - core film/cost/unlock metadata
+
+Current `category-roster.json` scope:
+
+- app-facing category-detail dataset
+- category coverage includes:
+  - leaders
+  - support units
+  - support memories
+  - full member roster
+- member coverage includes:
+  - title
+  - rarity / type / class
+  - portrait refs
+  - latest release state inference (`initial` / `eza` / `seza`)
+  - role flags for leader/support membership
+  - reversible exchange and free-to-play flags
 
 Current `mission-catalog.json` scope:
 
@@ -665,8 +682,9 @@ Why:
 17. `acquisition-navigation.json` [done]
 18. `category-context.json` [done]
 19. `team-context.json` [done]
-20. `categories.json` [done]
-21. `wallpapers.json` [done]
+20. `category-roster.json` [done]
+21. `categories.json` [done]
+22. `wallpapers.json` [done]
 
 Why:
 
