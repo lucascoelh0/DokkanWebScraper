@@ -32,6 +32,7 @@ Already implemented in this scraper:
 - `event-stages.json`
 - `z-battles.json`
 - `panel-missions.json`
+- `event-missions.json`
 - `dokkan-frontier-series.json`
 - `dokkan-frontier-chapters.json`
 - `awakening-paths.json`
@@ -550,8 +551,9 @@ Why:
 ### Phase C: mission and mode-specific layers
 
 7. `panel-missions.json` [done]
-8. `dokkan-frontier-series.json` [done]
-9. `dokkan-frontier-chapters.json` [done]
+8. `event-missions.json` [done]
+9. `dokkan-frontier-series.json` [done]
+10. `dokkan-frontier-chapters.json` [done]
 
 Why:
 
@@ -560,10 +562,10 @@ Why:
 
 ### Phase D: reverse-lookup and polish datasets
 
-10. `awakening-paths.json` [done]
-11. `awakening-medals.json` [done]
-12. `categories.json` [done]
-13. `wallpapers.json` [done]
+11. `awakening-paths.json` [done]
+12. `awakening-medals.json` [done]
+13. `categories.json` [done]
+14. `wallpapers.json` [done]
 
 Why:
 
