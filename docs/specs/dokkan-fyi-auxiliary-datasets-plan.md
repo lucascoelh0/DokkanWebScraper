@@ -34,6 +34,8 @@ Already implemented in this scraper:
 - `panel-missions.json`
 - `dokkan-frontier-series.json`
 - `dokkan-frontier-chapters.json`
+- `awakening-paths.json`
+- `awakening-medals.json`
 - `categories.json`
 - `wallpapers.json`
 
@@ -558,8 +560,10 @@ Why:
 
 ### Phase D: reverse-lookup and polish datasets
 
-10. `categories.json` [done]
-11. `wallpapers.json` [done]
+10. `awakening-paths.json` [done]
+11. `awakening-medals.json` [done]
+12. `categories.json` [done]
+13. `wallpapers.json` [done]
 
 Why:
 
