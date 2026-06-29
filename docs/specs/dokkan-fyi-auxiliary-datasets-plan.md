@@ -37,13 +37,24 @@ Already implemented in this scraper:
 - `dokkan-frontier-chapters.json`
 - `awakening-paths.json`
 - `awakening-medals.json`
+- `acquisition.json`
 - `categories.json`
 - `wallpapers.json`
+
+Current `acquisition.json` scope:
+
+- event mission rewards
+- Z-Battle level and checkpoint rewards
+- awakening medal source normalization for:
+  - stage drops
+  - Z-Battles
+  - Baba Shop sales
+  - World Tournament rewards
 
 Still planned:
 
 - broader mission surfaces beyond panel missions
-- event / medal / acquisition datasets that will later power orb and awakening-source joins
+- later acquisition expansion for Frontier, shops and richer event joins
 
 ## Confirmed Dokkan.fyi surfaces
 
@@ -564,8 +575,9 @@ Why:
 
 11. `awakening-paths.json` [done]
 12. `awakening-medals.json` [done]
-13. `categories.json` [done]
-14. `wallpapers.json` [done]
+13. `acquisition.json` [done]
+14. `categories.json` [done]
+15. `wallpapers.json` [done]
 
 Why:
 

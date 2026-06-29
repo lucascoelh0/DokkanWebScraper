@@ -1,0 +1,365 @@
+import { mkdir, readFile } from "fs/promises";
+import { resolve } from "path";
+import { AcquisitionDataset, AcquisitionItem, AcquisitionSource } from "./acquisition";
+import { AwakeningMedal, AwakeningMedalDataset, AwakeningMedalStageSource, AwakeningMedalWorldTournamentSource } from "./awakening-path";
+import { EventMissionCategory, EventMissionDataset, EventMissionEntry, EventMissionReward } from "./event-mission";
+import { writeFormattedJson } from "./format-json";
+import { ZBattle, ZBattleDataset, ZBattleLevel, ZBattlePhase, ZBattleRewardCheckpoint, ZBattleRewardItem } from "./z-battle";
+
+interface AcquisitionBuildInput {
+    eventMissions: EventMissionDataset,
+    awakeningMedals: AwakeningMedalDataset,
+    zBattles: ZBattleDataset,
+}
+
+interface AcquisitionItemBuilder extends AcquisitionItem {
+    sourceKeys: Set<string>,
+}
+
+const DOKKAN_FYI_BASE_URL = "https://dokkan.fyi";
+
+export async function getDokkanFyiAcquisitionDataset(): Promise<AcquisitionDataset> {
+    const [eventMissions, awakeningMedals, zBattles] = await Promise.all([
+        readJsonFile<EventMissionDataset>("data/event-missions/latest/event-missions.json"),
+        readJsonFile<AwakeningMedalDataset>("data/awakening/latest/awakening-medals.json"),
+        readJsonFile<ZBattleDataset>("data/z-battles/latest/z-battles.json"),
+    ]);
+
+    return buildAcquisitionDataset({
+        eventMissions,
+        awakeningMedals,
+        zBattles,
+    });
+}
+
+export async function writeDokkanFyiAcquisitionDataset(): Promise<string> {
+    const dataset = await getDokkanFyiAcquisitionDataset();
+    const outputDir = resolve(__dirname, "data/acquisition/latest");
+    const outputPath = resolve(outputDir, "acquisition.json");
+
+    await mkdir(outputDir, { recursive: true });
+    await writeFormattedJson(outputPath, dataset);
+
+    return outputPath;
+}
+
+export function buildAcquisitionDataset(input: AcquisitionBuildInput): AcquisitionDataset {
+    const itemsByKey = new Map<string, AcquisitionItemBuilder>();
+
+    for (const medal of input.awakeningMedals.medals) {
+        addAwakeningMedalSources(itemsByKey, medal);
+    }
+
+    for (const category of input.eventMissions.categories) {
+        addEventMissionSources(itemsByKey, category);
+    }
+
+    for (const battle of input.zBattles.battles) {
+        addZBattleSources(itemsByKey, battle);
+    }
+
+    const items = [...itemsByKey.values()]
+        .map(({ sourceKeys: _sourceKeys, ...item }) => ({
+            ...item,
+            sources: [...item.sources].sort(compareSources),
+        }))
+        .sort(compareItems);
+
+    const sourceCount = items.reduce((count, item) => count + item.sources.length, 0);
+
+    return {
+        generatedAt: new Date().toISOString(),
+        source: "dokkan.fyi",
+        itemCount: items.length,
+        sourceCount,
+        items,
+    };
+}
+
+function addAwakeningMedalSources(itemsByKey: Map<string, AcquisitionItemBuilder>, medal: AwakeningMedal) {
+    for (const stage of medal.stages) {
+        upsertSource(
+            itemsByKey,
+            createItemIdentity("AwakeningMedal", medal.id, medal),
+            {
+                key: `awakening-medal-stage:${medal.id}:${stage.id}`,
+                kind: "awakening-medal-stage",
+                title: stage.quest?.name || medal.name,
+                subtitle: buildStageSubtitle(stage),
+                description: buildStageDescription(stage),
+                quantity: 1,
+                missionType: stage.quest?.area?.type,
+                areaId: stage.quest?.area?.id,
+                questId: stage.quest?.id,
+                stageId: stage.id,
+                difficulty: stage.difficulty,
+                imageUrl: stage.quest?.area?.images?.banner || stage.quest?.area?.images?.header || stage.quest?.area?.images?.button,
+            },
+        );
+    }
+
+    if (medal.zBattle?.id) {
+        upsertSource(
+            itemsByKey,
+            createItemIdentity("AwakeningMedal", medal.id, medal),
+            {
+                key: `awakening-medal-z-battle:${medal.id}:${medal.zBattle.id}`,
+                kind: "awakening-medal-z-battle",
+                title: medal.zBattle.name || medal.name,
+                subtitle: "Extreme Z-Battle",
+                quantity: 1,
+                zBattleId: medal.zBattle.id,
+                imageUrl: medal.zBattle.images?.banner || medal.zBattle.images?.header || medal.zBattle.images?.button,
+                sourcePath: `${DOKKAN_FYI_BASE_URL}/z-battles/${medal.zBattle.id}`,
+            },
+        );
+    }
+
+    for (const sale of medal.babaShopSales) {
+        upsertSource(
+            itemsByKey,
+            createItemIdentity("AwakeningMedal", medal.id, medal),
+            {
+                key: `awakening-medal-baba-shop:${medal.id}:${sale.id}`,
+                kind: "awakening-medal-baba-shop",
+                title: "Baba Shop",
+                subtitle: buildBabaShopSubtitle(sale),
+                quantity: sale.itemQuantity ?? 1,
+                saleId: sale.id,
+                currencyType: sale.currencyType,
+                currencyId: sale.currencyId,
+                price: sale.discountedPrice ?? sale.price,
+                buyableNum: sale.buyableNum,
+                startsAt: sale.startAt,
+                endsAt: sale.endAt,
+            },
+        );
+    }
+
+    for (const tournament of medal.worldTournaments) {
+        upsertSource(
+            itemsByKey,
+            createItemIdentity("AwakeningMedal", medal.id, medal),
+            {
+                key: `awakening-medal-world-tournament:${medal.id}:${tournament.id}`,
+                kind: "awakening-medal-world-tournament",
+                title: "World Tournament",
+                subtitle: tournament.budokaiRankingGiftSet?.ranking || tournament.description,
+                description: tournament.description,
+                quantity: tournament.quantity ?? 1,
+                tournamentId: tournament.budokaiRankingGiftSet?.budokaiId,
+                ranking: tournament.budokaiRankingGiftSet?.ranking,
+            },
+        );
+    }
+}
+
+function addEventMissionSources(itemsByKey: Map<string, AcquisitionItemBuilder>, category: EventMissionCategory) {
+    for (const mission of category.missions) {
+        for (const reward of mission.rewards) {
+            if (!reward.itemId || !reward.itemType) {
+                continue;
+            }
+
+            upsertSource(
+                itemsByKey,
+                createItemIdentity(reward.itemType, reward.itemId, reward),
+                {
+                    key: `event-mission:${category.id}:${mission.id}:${reward.id || reward.itemType}:${reward.itemId}`,
+                    kind: "event-mission",
+                    title: mission.name || "Event mission",
+                    subtitle: category.type,
+                    description: mission.description,
+                    quantity: reward.quantity,
+                    imageUrl: category.imageUrl,
+                    sourcePath: `${DOKKAN_FYI_BASE_URL}/missions/${category.id}`,
+                    startsAt: mission.startsAt,
+                    endsAt: mission.endsAt || category.endsAt,
+                    missionCategoryId: category.id,
+                    missionId: mission.id,
+                    missionType: mission.type,
+                },
+            );
+        }
+    }
+}
+
+function addZBattleSources(itemsByKey: Map<string, AcquisitionItemBuilder>, battle: ZBattle) {
+    for (const phase of battle.phases) {
+        for (const level of phase.levels) {
+            addZBattleLevelSources(itemsByKey, battle, phase, level);
+        }
+
+        for (const checkpoint of phase.rewardCheckpoints) {
+            addZBattleCheckpointSources(itemsByKey, battle, phase, checkpoint);
+        }
+    }
+}
+
+function addZBattleLevelSources(
+    itemsByKey: Map<string, AcquisitionItemBuilder>,
+    battle: ZBattle,
+    phase: ZBattlePhase,
+    level: ZBattleLevel,
+) {
+    for (const reward of level.firstRewards) {
+        if (!reward.itemId) {
+            continue;
+        }
+
+        upsertSource(
+            itemsByKey,
+            createItemIdentity(reward.itemType, reward.itemId, reward),
+            {
+                key: `z-battle-level:${battle.id}:${phase.id}:${level.level}:${reward.id || reward.itemType}:${reward.itemId}`,
+                kind: "z-battle-level",
+                title: `${battle.name} Lv. ${level.level}`,
+                subtitle: battle.nickname || phase.kind,
+                quantity: reward.quantity,
+                imageUrl: phase.images.bannerUrl || phase.images.buttonUrl,
+                sourcePath: `${DOKKAN_FYI_BASE_URL}/z-battles/${battle.id}`,
+                zBattleId: battle.id,
+                zBattlePhaseId: phase.id,
+                level: level.level,
+            },
+        );
+    }
+}
+
+function addZBattleCheckpointSources(
+    itemsByKey: Map<string, AcquisitionItemBuilder>,
+    battle: ZBattle,
+    phase: ZBattlePhase,
+    checkpoint: ZBattleRewardCheckpoint,
+) {
+    for (const reward of checkpoint.rewards) {
+        if (!reward.itemId) {
+            continue;
+        }
+
+        upsertSource(
+            itemsByKey,
+            createItemIdentity(reward.itemType, reward.itemId, reward),
+            {
+                key: `z-battle-checkpoint:${battle.id}:${phase.id}:${checkpoint.level}:${reward.id || reward.itemType}:${reward.itemId}`,
+                kind: "z-battle-checkpoint",
+                title: `${battle.name} reward checkpoint`,
+                subtitle: `Lv. ${checkpoint.level}`,
+                quantity: reward.quantity,
+                imageUrl: phase.images.bannerUrl || phase.images.buttonUrl,
+                sourcePath: `${DOKKAN_FYI_BASE_URL}/z-battles/${battle.id}`,
+                zBattleId: battle.id,
+                zBattlePhaseId: phase.id,
+                checkpointLevel: checkpoint.level,
+            },
+        );
+    }
+}
+
+function upsertSource(
+    itemsByKey: Map<string, AcquisitionItemBuilder>,
+    itemIdentity: Omit<AcquisitionItem, "sources">,
+    source: AcquisitionSource,
+) {
+    const item = ensureItem(itemsByKey, itemIdentity);
+
+    if (item.sourceKeys.has(source.key)) {
+        return;
+    }
+
+    item.sourceKeys.add(source.key);
+    item.sources.push(source);
+}
+
+function ensureItem(
+    itemsByKey: Map<string, AcquisitionItemBuilder>,
+    itemIdentity: Omit<AcquisitionItem, "sources">,
+): AcquisitionItemBuilder {
+    const existing = itemsByKey.get(itemIdentity.key);
+
+    if (existing) {
+        existing.name = existing.name || itemIdentity.name;
+        existing.description = existing.description || itemIdentity.description;
+        existing.rarity = existing.rarity ?? itemIdentity.rarity;
+        existing.zeni = existing.zeni ?? itemIdentity.zeni;
+        existing.tradePoints = existing.tradePoints ?? itemIdentity.tradePoints;
+        return existing;
+    }
+
+    const created: AcquisitionItemBuilder = {
+        ...itemIdentity,
+        sources: [],
+        sourceKeys: new Set<string>(),
+    };
+
+    itemsByKey.set(itemIdentity.key, created);
+    return created;
+}
+
+function createItemIdentity(
+    itemType: string,
+    itemId: string,
+    payload: {
+        name?: string,
+        description?: string,
+        rarity?: number,
+        zeni?: number,
+        tradePoints?: number,
+    },
+): Omit<AcquisitionItem, "sources"> {
+    return {
+        key: `${itemType}:${itemId}`,
+        itemType,
+        itemId,
+        name: payload.name,
+        description: payload.description,
+        rarity: payload.rarity,
+        zeni: payload.zeni,
+        tradePoints: payload.tradePoints,
+    };
+}
+
+function compareItems(left: AcquisitionItem, right: AcquisitionItem): number {
+    return (left.name || "").localeCompare(right.name || "") || left.key.localeCompare(right.key);
+}
+
+function compareSources(left: AcquisitionSource, right: AcquisitionSource): number {
+    return left.kind.localeCompare(right.kind)
+        || (left.title || "").localeCompare(right.title || "")
+        || (left.subtitle || "").localeCompare(right.subtitle || "")
+        || left.key.localeCompare(right.key);
+}
+
+function buildStageSubtitle(stage: AwakeningMedalStageSource): string | undefined {
+    const parts = [
+        stage.quest?.area?.name,
+        stage.difficulty,
+    ].filter(Boolean);
+
+    return parts.length > 0 ? parts.join(" - ") : undefined;
+}
+
+function buildStageDescription(stage: AwakeningMedalStageSource): string | undefined {
+    const parts = [
+        stage.requiredKeys ? `${stage.requiredKeys} key(s)` : undefined,
+        stage.stamina ? `${stage.stamina} STA` : undefined,
+    ].filter(Boolean);
+
+    return parts.length > 0 ? parts.join(" | ") : undefined;
+}
+
+function buildBabaShopSubtitle(sale: AwakeningMedal["babaShopSales"][number]): string | undefined {
+    const price = sale.discountedPrice ?? sale.price;
+    const parts = [
+        sale.currencyType,
+        price !== undefined ? `${price}` : undefined,
+    ].filter(Boolean);
+
+    return parts.length > 0 ? parts.join(" x ") : undefined;
+}
+
+async function readJsonFile<T>(relativePath: string): Promise<T> {
+    const filePath = resolve(__dirname, relativePath);
+    const raw = await readFile(filePath, { encoding: "utf8" });
+    return JSON.parse(raw) as T;
+}
