@@ -1,5 +1,6 @@
 import { mkdir, readFile } from "fs/promises";
 import { resolve } from "path";
+import { DokkanFrontierChapter, DokkanFrontierCharacterRef, DokkanFrontierChaptersDataset, DokkanFrontierMission, DokkanFrontierReward } from "./dokkan-frontier";
 import { EventMissionCategory, EventMissionCharacterRef, EventMissionDataset, EventMissionEntry, EventMissionReward, EventMissionRewardSkill } from "./event-mission";
 import {
     MissionCatalogCharacterRef,
@@ -15,17 +16,20 @@ import { writeFormattedJson } from "./format-json";
 interface MissionCatalogBuildInput {
     panelMissions: PanelMissionDataset,
     eventMissions: EventMissionDataset,
+    frontierChapters: DokkanFrontierChaptersDataset,
 }
 
 export async function getDokkanFyiMissionCatalog(): Promise<MissionCatalogDataset> {
-    const [panelMissions, eventMissions] = await Promise.all([
+    const [panelMissions, eventMissions, frontierChapters] = await Promise.all([
         readJsonFile<PanelMissionDataset>("data/panel-missions/latest/panel-missions.json"),
         readJsonFile<EventMissionDataset>("data/event-missions/latest/event-missions.json"),
+        readJsonFile<DokkanFrontierChaptersDataset>("data/dokkan-frontier/latest/dokkan-frontier-chapters.json"),
     ]);
 
     return buildMissionCatalog({
         panelMissions,
         eventMissions,
+        frontierChapters,
     });
 }
 
@@ -103,6 +107,54 @@ export function buildMissionCatalog(input: MissionCatalogBuildInput): MissionCat
         }
     }
 
+    for (const chapter of input.frontierChapters.chapters) {
+        const chapterGroupKey = frontierChapterGroupKey(chapter.id);
+
+        groups.push({
+            key: chapterGroupKey,
+            kind: "frontier-chapter",
+            id: chapter.id,
+            title: chapter.name,
+            imageUrl: chapter.bannerImagePath,
+            priority: chapter.priority,
+            seriesId: chapter.seriesId,
+            seriesName: chapter.seriesName,
+            missionsCount: chapter.chapterMissions.length,
+        });
+
+        for (const mission of chapter.chapterMissions) {
+            missions.push(mapFrontierMission(mission, chapterGroupKey, "frontier-chapter"));
+        }
+
+        for (const page of chapter.pages) {
+            for (const node of page.nodes) {
+                const nodeGroupKey = frontierNodeGroupKey(chapter.id, node.id);
+
+                groups.push({
+                    key: nodeGroupKey,
+                    kind: "frontier-node",
+                    id: node.id,
+                    title: `Node ${node.id}`,
+                    parentGroupKey: chapterGroupKey,
+                    seriesId: chapter.seriesId,
+                    seriesName: chapter.seriesName,
+                    pageId: page.id,
+                    pageNumber: page.pageNumber,
+                    stamina: node.stamina,
+                    userExp: node.userExp,
+                    zeni: node.zeni,
+                    autoEnabled: node.autoEnabled,
+                    isSpecialNode: node.isSpecialNode,
+                    missionsCount: node.missions.length,
+                });
+
+                for (const mission of node.missions) {
+                    missions.push(mapFrontierMission(mission, nodeGroupKey, "frontier-node"));
+                }
+            }
+        }
+    }
+
     const sortedGroups = [...groups].sort(compareGroups);
     const sortedMissions = [...missions].sort(compareMissions);
 
@@ -156,6 +208,28 @@ function mapEventMission(mission: EventMissionEntry, groupKey: string): MissionC
     };
 }
 
+function mapFrontierMission(
+    mission: DokkanFrontierMission,
+    groupKey: string,
+    kind: "frontier-chapter" | "frontier-node",
+): MissionCatalogMission {
+    return {
+        key: `${kind}:${mission.id}`,
+        kind,
+        id: mission.id,
+        groupKey,
+        type: mission.type,
+        title: mission.name,
+        description: mission.description,
+        priority: mission.priority,
+        startsAt: mission.startsAt,
+        endsAt: mission.endsAt,
+        categoryId: mission.categoryId,
+        rewards: mission.rewards.map(mapFrontierReward),
+        characters: mission.characters.map(mapFrontierCharacter),
+    };
+}
+
 function mapPanelReward(reward: PanelMissionReward): MissionCatalogReward {
     return {
         id: reward.id,
@@ -192,6 +266,24 @@ function mapEventReward(reward: EventMissionReward): MissionCatalogReward {
         isReusable: reward.isReusable,
         imageId: reward.imageId,
         skills: reward.skills.map(mapEventRewardSkill),
+    };
+}
+
+function mapFrontierReward(reward: DokkanFrontierReward): MissionCatalogReward {
+    return {
+        id: reward.id,
+        missionId: reward.missionId,
+        itemId: reward.itemId,
+        itemType: reward.itemType,
+        quantity: reward.quantity,
+        name: reward.name,
+        description: reward.description,
+        rarity: reward.rarity,
+        zeni: reward.zeni,
+        tradePoints: reward.tradePoints,
+        rewardType: reward.rewardType,
+        amount: reward.amount,
+        skills: [],
     };
 }
 
@@ -244,6 +336,26 @@ function mapEventCharacter(character: EventMissionCharacterRef): MissionCatalogC
     };
 }
 
+function mapFrontierCharacter(character: DokkanFrontierCharacterRef): MissionCatalogCharacterRef {
+    return {
+        id: character.id,
+        canonicalId: character.canonicalId,
+        baseCharacterId: character.baseCharacterId,
+        characterId: character.characterId,
+        name: character.name,
+        rarity: character.rarity,
+        type: character.type,
+        characterClass: character.characterClass,
+        thumbnailId: character.thumbnailId,
+        portraitUrl: character.portraitUrl,
+        latestReleaseType: character.latestReleaseType,
+        hasEza: character.hasEza,
+        hasSeza: character.hasSeza,
+        isReversiblyExchanged: character.isReversiblyExchanged,
+        isFreelyObtainable: character.isFreelyObtainable,
+    };
+}
+
 function panelCampaignGroupKey(campaignId: string): string {
     return `panel-campaign:${campaignId}`;
 }
@@ -254,6 +366,14 @@ function panelBoardGroupKey(boardId: string): string {
 
 function eventCategoryGroupKey(categoryId: string): string {
     return `event-category:${categoryId}`;
+}
+
+function frontierChapterGroupKey(chapterId: string): string {
+    return `frontier-chapter:${chapterId}`;
+}
+
+function frontierNodeGroupKey(chapterId: string, nodeId: string): string {
+    return `frontier-node:${chapterId}:${nodeId}`;
 }
 
 function compareGroups(left: MissionCatalogGroup, right: MissionCatalogGroup): number {

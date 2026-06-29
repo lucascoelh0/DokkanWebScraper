@@ -73,20 +73,22 @@ Current `category-context.json` scope:
 - normalized `supportMemory -> categoryIds/applicableCharacterIds`
 - normalized `character -> categoryIds/leaderOfCategoryIds/supportOfCategoryIds/applicableSupportMemoryIds`
 
-Still planned:
-
-- additional mission surfaces beyond panel/event
-- later acquisition expansion for Frontier, shops and richer event joins
-
 Current `mission-catalog.json` scope:
 
-- normalized `panel` and `event` mission entries under one shared contract
+- normalized `panel`, `event` and `frontier` mission entries under one shared contract
 - shared mission reward shape
 - shared mission character reference shape
 - group hierarchy coverage for:
   - panel campaigns
   - panel boards
   - event mission categories
+  - Frontier chapters
+  - Frontier nodes
+
+Still planned:
+
+- additional mission surfaces beyond panel/event/frontier
+- later acquisition expansion for Frontier, shops and richer event joins
 
 ## Confirmed Dokkan.fyi surfaces
 

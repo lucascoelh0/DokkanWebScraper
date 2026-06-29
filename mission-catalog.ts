@@ -3,11 +3,15 @@ import { Classes, Rarities, Types } from "./character";
 export type MissionCatalogGroupKind =
     | "panel-campaign"
     | "panel-board"
-    | "event-category";
+    | "event-category"
+    | "frontier-chapter"
+    | "frontier-node";
 
 export type MissionCatalogMissionKind =
     | "panel"
-    | "event";
+    | "event"
+    | "frontier-chapter"
+    | "frontier-node";
 
 export interface MissionCatalogDataset {
     generatedAt: string,
@@ -31,6 +35,15 @@ export interface MissionCatalogGroup {
     isIndefinite?: boolean,
     priority?: number,
     categoryIds?: string[],
+    seriesId?: string,
+    seriesName?: string,
+    pageId?: string,
+    pageNumber?: number,
+    stamina?: number,
+    userExp?: number,
+    zeni?: number,
+    autoEnabled?: boolean,
+    isSpecialNode?: boolean,
     missionsCount?: number,
     completedCount?: number,
     previewRewards?: MissionCatalogReward[],
