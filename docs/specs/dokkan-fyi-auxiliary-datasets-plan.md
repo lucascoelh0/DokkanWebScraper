@@ -38,6 +38,7 @@ Already implemented in this scraper:
 - `awakening-paths.json`
 - `awakening-medals.json`
 - `acquisition.json`
+- `acquisition-source-index.json`
 - `category-context.json`
 - `categories.json`
 - `wallpapers.json`
@@ -50,6 +51,18 @@ Current `acquisition.json` scope:
 - awakening medal source normalization for:
   - stage drops
   - Z-Battles
+  - Baba Shop sales
+  - World Tournament rewards
+
+Current `acquisition-source-index.json` scope:
+
+- normalized `source -> rewards[]`
+- derived `groupKey/groupKind` so the app can group atomic sources into bigger surfaces
+- current grouping coverage for:
+  - event mission categories
+  - Frontier chapters and nodes
+  - Z-Battles
+  - awakening stage quests/areas
   - Baba Shop sales
   - World Tournament rewards
 
@@ -584,9 +597,10 @@ Why:
 11. `awakening-paths.json` [done]
 12. `awakening-medals.json` [done]
 13. `acquisition.json` [done]
-14. `category-context.json` [done]
-15. `categories.json` [done]
-16. `wallpapers.json` [done]
+14. `acquisition-source-index.json` [done]
+15. `category-context.json` [done]
+16. `categories.json` [done]
+17. `wallpapers.json` [done]
 
 Why:
 
