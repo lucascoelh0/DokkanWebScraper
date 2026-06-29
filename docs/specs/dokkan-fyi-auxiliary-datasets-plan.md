@@ -33,6 +33,7 @@ Already implemented in this scraper:
 - `z-battles.json`
 - `panel-missions.json`
 - `event-missions.json`
+- `mission-catalog.json`
 - `dokkan-frontier-series.json`
 - `dokkan-frontier-chapters.json`
 - `awakening-paths.json`
@@ -74,8 +75,18 @@ Current `category-context.json` scope:
 
 Still planned:
 
-- broader mission surfaces beyond panel missions
+- additional mission surfaces beyond panel/event
 - later acquisition expansion for Frontier, shops and richer event joins
+
+Current `mission-catalog.json` scope:
+
+- normalized `panel` and `event` mission entries under one shared contract
+- shared mission reward shape
+- shared mission character reference shape
+- group hierarchy coverage for:
+  - panel campaigns
+  - panel boards
+  - event mission categories
 
 ## Confirmed Dokkan.fyi surfaces
 
@@ -584,8 +595,9 @@ Why:
 
 7. `panel-missions.json` [done]
 8. `event-missions.json` [done]
-9. `dokkan-frontier-series.json` [done]
-10. `dokkan-frontier-chapters.json` [done]
+9. `mission-catalog.json` [done]
+10. `dokkan-frontier-series.json` [done]
+11. `dokkan-frontier-chapters.json` [done]
 
 Why:
 
@@ -594,13 +606,13 @@ Why:
 
 ### Phase D: reverse-lookup and polish datasets
 
-11. `awakening-paths.json` [done]
-12. `awakening-medals.json` [done]
-13. `acquisition.json` [done]
-14. `acquisition-source-index.json` [done]
-15. `category-context.json` [done]
-16. `categories.json` [done]
-17. `wallpapers.json` [done]
+12. `awakening-paths.json` [done]
+13. `awakening-medals.json` [done]
+14. `acquisition.json` [done]
+15. `acquisition-source-index.json` [done]
+16. `category-context.json` [done]
+17. `categories.json` [done]
+18. `wallpapers.json` [done]
 
 Why:
 
