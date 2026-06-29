@@ -48,7 +48,6 @@ export function buildCategoryContextDataset(input: CategoryContextBuildInput): C
     const normalizedCategories = input.categories.categories.map(category => mapCategoryContextEntry(category, supportMemoryNameToId));
     const categoryNameToId = buildCategoryNameIndex(normalizedCategories);
     const categoryNameById = new Map(normalizedCategories.map(category => [category.id, category.name]));
-    const memberCategoryIdsByCharacterId = buildMemberCategoryIndex(input.categories.categories);
 
     const supportMemoryContextsById = new Map<string, SupportMemoryContextEntry>();
 
@@ -103,7 +102,6 @@ export function buildCategoryContextDataset(input: CategoryContextBuildInput): C
             categoryNameToId,
             categoryNameById,
             input.categories.categories,
-            memberCategoryIdsByCharacterId,
         ))
         .sort(compareCharacterContext);
 
@@ -165,14 +163,12 @@ function mapCharacterCategoryContextEntry(
     categoryNameToId: Map<string, string>,
     categoryNameById: Map<string, string>,
     categories: CategoryEntry[],
-    memberCategoryIdsByCharacterId: Map<string, string[]>,
 ): CharacterCategoryContextEntry {
-    const categoryIds = uniqueSortedIds([
-        ...(memberCategoryIdsByCharacterId.get(character.id) ?? []),
-        ...(character.categories ?? [])
+    const categoryIds = uniqueSortedIds(
+        (character.categories ?? [])
             .map(name => categoryNameToId.get(normalizeKey(name)))
             .filter(Boolean) as string[],
-    ]);
+    );
 
     const leaderOfCategoryIds = uniqueSortedIds(
         categories
@@ -233,22 +229,6 @@ function pushUnique(values: string[], value?: string) {
     }
 
     values.push(value);
-}
-
-function buildMemberCategoryIndex(categories: CategoryEntry[]): Map<string, string[]> {
-    const index = new Map<string, string[]>();
-
-    for (const category of categories) {
-        for (const member of category.members ?? []) {
-            const existing = index.get(member.id) ?? [];
-            existing.push(category.id);
-            index.set(member.id, existing);
-        }
-    }
-
-    return new Map(
-        [...index.entries()].map(([characterId, categoryIds]) => [characterId, uniqueSortedIds(categoryIds)]),
-    );
 }
 
 async function readCharacterDataset(): Promise<Character[]> {

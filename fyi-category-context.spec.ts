@@ -31,16 +31,6 @@ describe("buildCategoryContextDataset", () => {
                                 description: "\"Target: Goku\" Category allies' ATK & DEF +16%",
                             },
                         ],
-                        members: [
-                            {
-                                id: "c1",
-                                name: "Android 13",
-                            },
-                            {
-                                id: "c2",
-                                name: "Android 18",
-                            },
-                        ],
                     },
                     {
                         id: "2",
@@ -57,12 +47,6 @@ describe("buildCategoryContextDataset", () => {
                                 id: "m2",
                                 name: "Secret Feelings",
                                 description: "\"Majin Buu Saga\" or \"Defenders of Justice\" Category allies' Ki +3",
-                            },
-                        ],
-                        members: [
-                            {
-                                id: "c1",
-                                name: "Android 13",
                             },
                         ],
                     },
@@ -129,48 +113,5 @@ describe("buildCategoryContextDataset", () => {
         deepEqual(memory1?.categoryIds, ["1", "2"]);
         deepEqual(memory1?.applicableCharacterIds, ["c1", "c2"]);
         deepEqual(targetGoku?.supportMemoryIds, ["m1", "m2"]);
-    });
-
-    it("falls back to category members when the character payload has no category names", () => {
-        const dataset = buildCategoryContextDataset({
-            categories: {
-                generatedAt: "2026-01-01T00:00:00.000Z",
-                source: "dokkan.fyi",
-                count: 1,
-                categories: [
-                    {
-                        id: "80",
-                        name: "Accelerated Battle",
-                        leaders: [],
-                        support: [],
-                        supportMemories: [],
-                        members: [
-                            {
-                                id: "c80",
-                                name: "Vegeta + Nappa",
-                            },
-                        ],
-                    },
-                ],
-            },
-            supportMemories: {
-                generatedAt: "2026-01-01T00:00:00.000Z",
-                source: "dokkan.fyi",
-                count: 0,
-                films: [],
-                supportMemories: [],
-            },
-            characters: [
-                {
-                    id: "c80",
-                    name: "Vegeta + Nappa",
-                    title: "Saiyan Assault",
-                    categories: [],
-                },
-            ] as any,
-        });
-
-        deepEqual(dataset.characters[0].categoryIds, ["80"]);
-        deepEqual(dataset.characters[0].categoryNames, ["Accelerated Battle"]);
     });
 });

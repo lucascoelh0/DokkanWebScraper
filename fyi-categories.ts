@@ -1,11 +1,10 @@
-import { mkdir, readFile } from "fs/promises";
+import { mkdir } from "fs/promises";
 import { resolve } from "path";
 import { Classes, Rarities, Types } from "./character";
 import { CategoryCharacterRef, CategoryDataset, CategoryEntry, CategorySupportMemoryRef } from "./category";
 import { writeFormattedJson } from "./format-json";
 
 const DOKKAN_FYI_BASE_URL = "https://dokkan.fyi";
-const EXISTING_CATEGORY_DATASET_RELATIVE_PATH = "data/categories/latest/categories.json";
 
 interface FyiPaginated<T> {
     data: T[],
@@ -21,14 +20,6 @@ interface FyiCategoriesPagePayload {
     },
 }
 
-interface FyiCategoryShowPagePayload {
-    component: string,
-    props: {
-        category: FyiCategory,
-        characters: FyiPaginated<FyiCharacterSummary>,
-    },
-}
-
 interface FyiCategory {
     id: number,
     name?: string | null,
@@ -37,11 +28,6 @@ interface FyiCategory {
         support?: FyiCharacterSummary[] | null,
     } | null,
     support_memories?: FyiSupportMemorySummary[] | null,
-}
-
-interface FyiCategoryDetail {
-    category: FyiCategory,
-    members: FyiCharacterSummary[],
 }
 
 interface FyiCharacterSummary {
@@ -82,10 +68,7 @@ interface FyiSupportMemorySummary {
 }
 
 class DokkanFyiCategoryClient {
-    async fetchCategories(
-        limit?: number,
-        existingCategoriesById: Map<string, CategoryEntry> = new Map(),
-    ): Promise<CategoryEntry[]> {
+    async fetchCategories(limit?: number): Promise<FyiCategory[]> {
         const firstPage = await this.fetchCategoryPage(1);
         const categories = [...(firstPage.props.categories?.data ?? [])];
         const lastPage = toOptionalNumber(firstPage.props.categories?.meta?.last_page) ?? 1;
@@ -99,11 +82,7 @@ class DokkanFyiCategoryClient {
             }
         }
 
-        const limitedCategories = limit ? categories.slice(0, limit) : categories;
-
-        return mapWithConcurrency(limitedCategories, requestedCategoryDetailConcurrency(), async (category) =>
-            this.fetchCategoryDetailSafe(category, existingCategoriesById.get(category.id.toString())),
-        );
+        return limit ? categories.slice(0, limit) : categories;
     }
 
     private async fetchCategoryPage(page: number): Promise<FyiCategoriesPagePayload> {
@@ -111,54 +90,13 @@ class DokkanFyiCategoryClient {
         const html = await fetchDokkanFyiHtml(`${DOKKAN_FYI_BASE_URL}/categories?${query.toString()}`, `categories page ${page}`);
         return extractPagePayload<FyiCategoriesPagePayload>(html);
     }
-
-    private async fetchCategoryDetail(categoryId: number): Promise<FyiCategoryDetail> {
-        const firstPage = await this.fetchCategoryDetailPage(categoryId, 1);
-        const category = firstPage.props.category;
-        const members = [...(firstPage.props.characters?.data ?? [])];
-        const lastPage = toOptionalNumber(firstPage.props.characters?.meta?.last_page) ?? 1;
-
-        for (let page = 2; page <= lastPage; page++) {
-            const nextPage = await this.fetchCategoryDetailPage(categoryId, page);
-            members.push(...(nextPage.props.characters?.data ?? []));
-        }
-
-        return {
-            category,
-            members: uniqueCategoryMembers(members),
-        };
-    }
-
-    private async fetchCategoryDetailSafe(category: FyiCategory, existingCategory?: CategoryEntry): Promise<CategoryEntry> {
-        try {
-            const detail = await this.fetchCategoryDetail(category.id);
-            return mapCategoryFromFyi(detail);
-        } catch (error) {
-            console.warn(`Falling back to cached category roster for ${category.id} (${cleanInlineText(category.name) || category.id.toString()}): ${formatErrorMessage(error)}`);
-            return buildFallbackCategoryEntry(category, existingCategory);
-        }
-    }
-
-    private async fetchCategoryDetailPage(categoryId: number, page: number): Promise<FyiCategoryShowPagePayload> {
-        const query = page > 1 ? `?page=${page}` : "";
-        const html = await fetchDokkanFyiHtml(
-            `${DOKKAN_FYI_BASE_URL}/categories/${categoryId}${query}`,
-            `category ${categoryId} page ${page}`,
-        );
-
-        return extractPagePayload<FyiCategoryShowPagePayload>(html);
-    }
 }
 
 export async function getDokkanFyiCategories(): Promise<CategoryDataset> {
     const client = new DokkanFyiCategoryClient();
-    const existingDataset = await readExistingCategoryDataset();
-    const existingCategoriesById = new Map(
-        (existingDataset?.categories ?? []).map(category => [category.id, category]),
-    );
-    const categories = await client.fetchCategories(requestedCategoryLimit(), existingCategoriesById);
+    const categories = await client.fetchCategories(requestedCategoryLimit());
 
-    return buildCategoryDataset(categories);
+    return buildCategoryDataset(categories.map(mapCategoryFromFyi));
 }
 
 export async function writeDokkanFyiCategories(): Promise<string> {
@@ -181,27 +119,13 @@ export function buildCategoryDataset(categories: CategoryEntry[]): CategoryDatas
     };
 }
 
-export function mapCategoryFromFyi(input: FyiCategory | FyiCategoryDetail): CategoryEntry {
-    const category = "category" in input ? input.category : input;
-    const members = "members" in input ? input.members : [];
-
+export function mapCategoryFromFyi(category: FyiCategory): CategoryEntry {
     return {
         id: category.id.toString(),
         name: cleanInlineText(category.name),
         leaders: (category.characters?.leaders ?? []).map(mapCategoryCharacterRefFromFyi),
         support: (category.characters?.support ?? []).map(mapCategoryCharacterRefFromFyi),
         supportMemories: (category.support_memories ?? []).map(mapCategorySupportMemoryRefFromFyi),
-        members: members.map(mapCategoryCharacterRefFromFyi),
-    };
-}
-
-export function buildFallbackCategoryEntry(category: FyiCategory, existingCategory?: CategoryEntry): CategoryEntry {
-    const mapped = mapCategoryFromFyi(category);
-    const fallbackMembers = mergeFallbackMembers(existingCategory, mapped);
-
-    return {
-        ...mapped,
-        members: fallbackMembers,
     };
 }
 
@@ -244,11 +168,6 @@ function requestedCategoryLimit(): number | undefined {
     return Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
-function requestedCategoryDetailConcurrency(): number {
-    const value = parseInt(process.env.DOKKAN_FYI_CATEGORY_DETAIL_CONCURRENCY ?? "", 10);
-    return Number.isFinite(value) && value > 0 ? value : 4;
-}
-
 function extractPagePayload<T>(html: string): T {
     const match = html.match(/<script data-page="app" type="application\/json">([\s\S]*?)<\/script>/);
     if (!match?.[1]) {
@@ -284,17 +203,6 @@ async function fetchDokkanFyiHtml(url: string, label: string, retries = 3): Prom
     return response.text();
 }
 
-async function readExistingCategoryDataset(): Promise<CategoryDataset | undefined> {
-    const filePath = resolve(__dirname, EXISTING_CATEGORY_DATASET_RELATIVE_PATH);
-
-    try {
-        const raw = await readFile(filePath, { encoding: "utf8" });
-        return JSON.parse(raw) as CategoryDataset;
-    } catch (error) {
-        return undefined;
-    }
-}
-
 function isRetryableStatus(status: number): boolean {
     return status === 408 || status === 425 || status === 429 || status >= 500;
 }
@@ -305,63 +213,6 @@ function retryDelayMs(retriesRemaining: number): number {
 
 async function delay(ms: number): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function uniqueCategoryMembers(values: FyiCharacterSummary[]): FyiCharacterSummary[] {
-    const byId = new Map<string, FyiCharacterSummary>();
-
-    for (const value of values) {
-        byId.set(String(value.id), value);
-    }
-
-    return [...byId.values()];
-}
-
-function mergeFallbackMembers(existingCategory: CategoryEntry | undefined, mappedCategory: CategoryEntry): CategoryCharacterRef[] {
-    const values = [
-        ...(existingCategory?.members ?? []),
-        ...mappedCategory.leaders,
-        ...mappedCategory.support,
-    ];
-
-    const byId = new Map<string, CategoryCharacterRef>();
-
-    for (const value of values) {
-        byId.set(value.id, value);
-    }
-
-    return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
-}
-
-function formatErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-        return error.message;
-    }
-
-    return String(error);
-}
-
-async function mapWithConcurrency<T, U>(
-    items: T[],
-    concurrency: number,
-    mapper: (item: T, index: number) => Promise<U>,
-): Promise<U[]> {
-    const results = new Array<U>(items.length);
-    let nextIndex = 0;
-
-    async function worker() {
-        while (true) {
-            const currentIndex = nextIndex++;
-            if (currentIndex >= items.length) {
-                return;
-            }
-
-            results[currentIndex] = await mapper(items[currentIndex], currentIndex);
-        }
-    }
-
-    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
-    return results;
 }
 
 function portraitUrl(thumbnailId: number | null | undefined): string | undefined {

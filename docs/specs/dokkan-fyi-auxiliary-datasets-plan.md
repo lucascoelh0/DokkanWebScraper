@@ -90,7 +90,6 @@ Current `category-context.json` scope:
 - normalized `category -> leaderIds/supportIds/supportMemoryIds`
 - normalized `supportMemory -> categoryIds/applicableCharacterIds`
 - normalized `character -> categoryIds/leaderOfCategoryIds/supportOfCategoryIds/applicableSupportMemoryIds`
-- character category membership prefers category-detail roster data and falls back to character-page category names
 
 Current `team-context.json` scope:
 
@@ -132,7 +131,6 @@ Current `categories.json` scope:
   - leaders
   - support units
   - support memories
-  - full paginated member roster where available
 
 Current `mission-catalog.json` scope:
 
