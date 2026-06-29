@@ -38,6 +38,7 @@ Already implemented in this scraper:
 - `awakening-paths.json`
 - `awakening-medals.json`
 - `acquisition.json`
+- `category-context.json`
 - `categories.json`
 - `wallpapers.json`
 
@@ -51,6 +52,12 @@ Current `acquisition.json` scope:
   - Z-Battles
   - Baba Shop sales
   - World Tournament rewards
+
+Current `category-context.json` scope:
+
+- normalized `category -> leaderIds/supportIds/supportMemoryIds`
+- normalized `supportMemory -> categoryIds/applicableCharacterIds`
+- normalized `character -> categoryIds/leaderOfCategoryIds/supportOfCategoryIds/applicableSupportMemoryIds`
 
 Still planned:
 
@@ -577,8 +584,9 @@ Why:
 11. `awakening-paths.json` [done]
 12. `awakening-medals.json` [done]
 13. `acquisition.json` [done]
-14. `categories.json` [done]
-15. `wallpapers.json` [done]
+14. `category-context.json` [done]
+15. `categories.json` [done]
+16. `wallpapers.json` [done]
 
 Why:
 
