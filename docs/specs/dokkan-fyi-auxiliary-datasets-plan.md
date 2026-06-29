@@ -32,13 +32,13 @@ Already implemented in this scraper:
 - `event-stages.json`
 - `z-battles.json`
 - `panel-missions.json`
+- `dokkan-frontier-series.json`
+- `dokkan-frontier-chapters.json`
 - `categories.json`
 - `wallpapers.json`
 
 Still planned:
 
-- `dokkan-frontier-series.json`
-- `dokkan-frontier-chapters.json`
 - broader mission surfaces beyond panel missions
 - event / medal / acquisition datasets that will later power orb and awakening-source joins
 
@@ -548,8 +548,8 @@ Why:
 ### Phase C: mission and mode-specific layers
 
 7. `panel-missions.json` [done]
-8. `dokkan-frontier-series.json`
-9. `dokkan-frontier-chapters.json`
+8. `dokkan-frontier-series.json` [done]
+9. `dokkan-frontier-chapters.json` [done]
 
 Why:
 
