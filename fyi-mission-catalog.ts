@@ -12,6 +12,7 @@ import {
 } from "./mission-catalog";
 import { PanelMissionBoard, PanelMissionCampaign, PanelMissionCharacterRef, PanelMissionDataset, PanelMissionEntry, PanelMissionReward } from "./panel-mission";
 import { writeFormattedJson } from "./format-json";
+import { buildStableRewardItemKey } from "./reward-item-key";
 
 interface MissionCatalogBuildInput {
     panelMissions: PanelMissionDataset,
@@ -234,6 +235,10 @@ function mapPanelReward(reward: PanelMissionReward): MissionCatalogReward {
     return {
         id: reward.id,
         missionId: reward.missionId,
+        itemKey: buildStableRewardItemKey({
+            itemType: reward.itemType,
+            itemId: reward.itemId,
+        }),
         itemId: reward.itemId,
         itemType: reward.itemType,
         quantity: reward.quantity,
@@ -252,6 +257,10 @@ function mapEventReward(reward: EventMissionReward): MissionCatalogReward {
     return {
         id: reward.id,
         missionId: reward.missionId,
+        itemKey: buildStableRewardItemKey({
+            itemType: reward.itemType,
+            itemId: reward.itemId,
+        }),
         itemId: reward.itemId,
         itemType: reward.itemType,
         quantity: reward.quantity,
@@ -273,6 +282,14 @@ function mapFrontierReward(reward: DokkanFrontierReward): MissionCatalogReward {
     return {
         id: reward.id,
         missionId: reward.missionId,
+        itemKey: buildStableRewardItemKey({
+            itemType: reward.itemType,
+            itemId: reward.itemId,
+            cardId: reward.cardId,
+            step: reward.step,
+            linkTo: reward.linkTo,
+            bgmId: reward.bgmId,
+        }),
         itemId: reward.itemId,
         itemType: reward.itemType,
         quantity: reward.quantity,

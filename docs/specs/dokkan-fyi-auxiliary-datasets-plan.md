@@ -91,6 +91,7 @@ Current `mission-catalog.json` scope:
 
 - normalized `panel`, `event` and `frontier` mission entries under one shared contract
 - shared mission reward shape
+- stable reward `itemKey` values aligned with `acquisition.json` item keys when a reward can be joined
 - shared mission character reference shape
 - group hierarchy coverage for:
   - panel campaigns

@@ -5,6 +5,7 @@ import { AwakeningMedal, AwakeningMedalDataset, AwakeningMedalStageSource, Awake
 import { DokkanFrontierChapter, DokkanFrontierChaptersDataset, DokkanFrontierMission, DokkanFrontierNode, DokkanFrontierPage, DokkanFrontierReward } from "./dokkan-frontier";
 import { EventMissionCategory, EventMissionDataset, EventMissionEntry, EventMissionReward } from "./event-mission";
 import { writeFormattedJson } from "./format-json";
+import { buildStableRewardItemKey, resolveStableRewardItemId } from "./reward-item-key";
 import { ZBattle, ZBattleDataset, ZBattleLevel, ZBattlePhase, ZBattleRewardCheckpoint, ZBattleRewardItem } from "./z-battle";
 
 interface AcquisitionBuildInput {
@@ -374,8 +375,17 @@ function createItemIdentity(
         key?: string,
     },
 ): Omit<AcquisitionItem, "sources"> {
+    const stableKey = buildStableRewardItemKey({
+        itemType,
+        itemId,
+        cardId: payload.cardId,
+        step: payload.step,
+        linkTo: payload.linkTo,
+        bgmId: payload.bgmId,
+    });
+
     return {
-        key: payload.key || `${itemType}:${itemId}`,
+        key: payload.key || stableKey || `${itemType}:${itemId}`,
         itemType,
         itemId,
         name: payload.name,
@@ -397,14 +407,27 @@ function createFrontierRewardIdentity(reward: DokkanFrontierReward): Omit<Acquis
         return undefined;
     }
 
-    const stableItemId = resolveFrontierItemId(reward);
+    const stableItemId = resolveStableRewardItemId({
+        itemType: reward.itemType,
+        itemId: reward.itemId,
+        cardId: reward.cardId,
+        bgmId: reward.bgmId,
+    });
+    const stableKey = buildStableRewardItemKey({
+        itemType: reward.itemType,
+        itemId: reward.itemId,
+        cardId: reward.cardId,
+        step: reward.step,
+        linkTo: reward.linkTo,
+        bgmId: reward.bgmId,
+    });
 
-    if (!stableItemId) {
+    if (!stableItemId || !stableKey) {
         return undefined;
     }
 
     return createItemIdentity(itemType, stableItemId, {
-        key: buildFrontierItemKey(itemType, stableItemId, reward),
+        key: stableKey,
         name: reward.name,
         description: reward.description,
         rarity: reward.rarity,
@@ -454,23 +477,6 @@ function buildBabaShopSubtitle(sale: AwakeningMedal["babaShopSales"][number]): s
     ].filter(Boolean);
 
     return parts.length > 0 ? parts.join(" x ") : undefined;
-}
-
-function buildFrontierItemKey(itemType: string, stableItemId: string, reward: DokkanFrontierReward): string {
-    if (itemType !== "CardSkinItem") {
-        return `${itemType}:${stableItemId}`;
-    }
-
-    const parts = [
-        itemType,
-        stableItemId,
-        reward.cardId,
-        reward.step?.toString(),
-        reward.bgmId,
-        reward.linkTo,
-    ].filter(Boolean);
-
-    return parts.join(":");
 }
 
 function buildFrontierSourceKey(

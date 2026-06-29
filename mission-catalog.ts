@@ -69,6 +69,7 @@ export interface MissionCatalogMission {
 export interface MissionCatalogReward {
     id?: string,
     missionId?: string,
+    itemKey?: string,
     itemId?: string,
     itemType?: string,
     quantity: number,
