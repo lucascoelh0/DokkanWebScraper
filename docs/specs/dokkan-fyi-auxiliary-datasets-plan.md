@@ -73,6 +73,7 @@ Current `acquisition-navigation.json` scope:
 
 - normalized `sourceKey -> app navigation target`
 - mission-linked acquisition resolves into `mission-catalog` keys
+- stage-linked acquisition resolves into `stage-catalog` keys
 - current target coverage for:
   - event missions
   - Frontier chapter missions

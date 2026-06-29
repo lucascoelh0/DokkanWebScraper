@@ -3,10 +3,8 @@ import { AcquisitionSourceKind } from "./acquisition";
 export type AcquisitionNavigationTargetKind =
     | "mission-catalog-mission"
     | "mission-catalog-group"
-    | "z-battle-level"
-    | "z-battle-checkpoint"
-    | "awakening-stage-quest"
-    | "awakening-stage-area"
+    | "stage-catalog-entry"
+    | "stage-catalog-group"
     | "awakening-baba-shop-sale"
     | "awakening-world-tournament";
 
@@ -30,6 +28,8 @@ export interface AcquisitionNavigationTarget {
     sourcePath?: string,
     missionKey?: string,
     missionGroupKey?: string,
+    stageEntryKey?: string,
+    stageGroupKey?: string,
     zBattleId?: string,
     zBattlePhaseId?: string,
     level?: number,

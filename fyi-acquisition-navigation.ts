@@ -76,16 +76,24 @@ function mapNavigationTarget(source: AcquisitionSourceEntry): AcquisitionNavigat
             };
         case "z-battle-level":
             return {
-                kind: "z-battle-level",
+                kind: "stage-catalog-entry",
                 sourcePath: source.sourcePath,
+                stageEntryKey: source.zBattleId && source.zBattlePhaseId && source.level !== undefined
+                    ? `z-battle-level:${source.zBattleId}:${source.zBattlePhaseId}:${source.level}`
+                    : undefined,
+                stageGroupKey: source.zBattleId ? `z-battle:${source.zBattleId}` : undefined,
                 zBattleId: source.zBattleId,
                 zBattlePhaseId: source.zBattlePhaseId,
                 level: source.level,
             };
         case "z-battle-checkpoint":
             return {
-                kind: "z-battle-checkpoint",
+                kind: "stage-catalog-entry",
                 sourcePath: source.sourcePath,
+                stageEntryKey: source.zBattleId && source.zBattlePhaseId && source.checkpointLevel !== undefined
+                    ? `z-battle-checkpoint:${source.zBattleId}:${source.zBattlePhaseId}:${source.checkpointLevel}`
+                    : undefined,
+                stageGroupKey: source.zBattleId ? `z-battle:${source.zBattleId}` : undefined,
                 zBattleId: source.zBattleId,
                 zBattlePhaseId: source.zBattlePhaseId,
                 checkpointLevel: source.checkpointLevel,
@@ -93,22 +101,26 @@ function mapNavigationTarget(source: AcquisitionSourceEntry): AcquisitionNavigat
         case "awakening-medal-stage":
             if (source.questId) {
                 return {
-                    kind: "awakening-stage-quest",
+                    kind: "stage-catalog-entry",
                     sourcePath: source.sourcePath,
+                    stageEntryKey: buildAwakeningStageEntryKey(source),
+                    stageGroupKey: buildAwakeningStageGroupKey(source),
                     questId: source.questId,
                     areaId: source.areaId,
                 };
             }
 
             return {
-                kind: "awakening-stage-area",
+                kind: "stage-catalog-group",
                 sourcePath: source.sourcePath,
+                stageGroupKey: buildAwakeningStageGroupKey(source),
                 areaId: source.areaId,
             };
         case "awakening-medal-z-battle":
             return {
-                kind: "z-battle-level",
+                kind: "stage-catalog-group",
                 sourcePath: source.sourcePath,
+                stageGroupKey: source.zBattleId ? `z-battle:${source.zBattleId}` : undefined,
                 zBattleId: source.zBattleId,
             };
         case "awakening-medal-baba-shop":
@@ -124,6 +136,31 @@ function mapNavigationTarget(source: AcquisitionSourceEntry): AcquisitionNavigat
                 tournamentId: source.tournamentId,
             };
     }
+}
+
+function buildAwakeningStageGroupKey(source: AcquisitionSourceEntry): string | undefined {
+    if (!source.areaId) {
+        return undefined;
+    }
+
+    return isQuestStoryStageSource(source)
+        ? `quest-story-area:${source.areaId}`
+        : `event-area:${source.areaId}`;
+}
+
+function buildAwakeningStageEntryKey(source: AcquisitionSourceEntry): string | undefined {
+    if (!source.stageId) {
+        return undefined;
+    }
+
+    return isQuestStoryStageSource(source)
+        ? `quest-stage:${source.stageId}`
+        : `event-stage:${source.stageId}`;
+}
+
+function isQuestStoryStageSource(source: AcquisitionSourceEntry): boolean {
+    const normalizedType = (source.missionType ?? "").toLocaleLowerCase();
+    return normalizedType.includes("quest dokkan story");
 }
 
 function compareNavigationEntries(left: AcquisitionNavigationEntry, right: AcquisitionNavigationEntry): number {
