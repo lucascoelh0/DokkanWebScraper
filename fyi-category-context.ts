@@ -47,6 +47,8 @@ export function buildCategoryContextDataset(input: CategoryContextBuildInput): C
     );
     const normalizedCategories = input.categories.categories.map(category => mapCategoryContextEntry(category, supportMemoryNameToId));
     const categoryNameToId = buildCategoryNameIndex(normalizedCategories);
+    const categoryNameById = new Map(normalizedCategories.map(category => [category.id, category.name]));
+    const memberCategoryIdsByCharacterId = buildMemberCategoryIndex(input.categories.categories);
 
     const supportMemoryContextsById = new Map<string, SupportMemoryContextEntry>();
 
@@ -96,7 +98,13 @@ export function buildCategoryContextDataset(input: CategoryContextBuildInput): C
     }
 
     const characters = input.characters
-        .map(character => mapCharacterCategoryContextEntry(character, categoryNameToId, input.categories.categories))
+        .map(character => mapCharacterCategoryContextEntry(
+            character,
+            categoryNameToId,
+            categoryNameById,
+            input.categories.categories,
+            memberCategoryIdsByCharacterId,
+        ))
         .sort(compareCharacterContext);
 
     for (const character of characters) {
@@ -155,13 +163,16 @@ function mapCategoryContextEntry(
 function mapCharacterCategoryContextEntry(
     character: Character,
     categoryNameToId: Map<string, string>,
+    categoryNameById: Map<string, string>,
     categories: CategoryEntry[],
+    memberCategoryIdsByCharacterId: Map<string, string[]>,
 ): CharacterCategoryContextEntry {
-    const categoryIds = uniqueSortedIds(
-        (character.categories ?? [])
+    const categoryIds = uniqueSortedIds([
+        ...(memberCategoryIdsByCharacterId.get(character.id) ?? []),
+        ...(character.categories ?? [])
             .map(name => categoryNameToId.get(normalizeKey(name)))
             .filter(Boolean) as string[],
-    );
+    ]);
 
     const leaderOfCategoryIds = uniqueSortedIds(
         categories
@@ -180,7 +191,10 @@ function mapCharacterCategoryContextEntry(
         name: character.name,
         title: character.title,
         categoryIds,
-        categoryNames: [...(character.categories ?? [])].sort((left, right) => left.localeCompare(right)),
+        categoryNames: uniqueSortedNames([
+            ...categoryIds.map(id => categoryNameById.get(id)).filter(Boolean) as string[],
+            ...(character.categories ?? []),
+        ]),
         leaderOfCategoryIds,
         supportOfCategoryIds,
         applicableSupportMemoryIds: [],
@@ -199,6 +213,10 @@ function uniqueSortedIds(values: string[]): string[] {
     return [...new Set(values.filter(Boolean))].sort(compareIds);
 }
 
+function uniqueSortedNames(values: string[]): string[] {
+    return [...new Set(values.filter(Boolean))].sort((left, right) => left.localeCompare(right));
+}
+
 function compareIds(left: string, right: string): number {
     return left.localeCompare(right);
 }
@@ -215,6 +233,22 @@ function pushUnique(values: string[], value?: string) {
     }
 
     values.push(value);
+}
+
+function buildMemberCategoryIndex(categories: CategoryEntry[]): Map<string, string[]> {
+    const index = new Map<string, string[]>();
+
+    for (const category of categories) {
+        for (const member of category.members ?? []) {
+            const existing = index.get(member.id) ?? [];
+            existing.push(category.id);
+            index.set(member.id, existing);
+        }
+    }
+
+    return new Map(
+        [...index.entries()].map(([characterId, categoryIds]) => [characterId, uniqueSortedIds(categoryIds)]),
+    );
 }
 
 async function readCharacterDataset(): Promise<Character[]> {

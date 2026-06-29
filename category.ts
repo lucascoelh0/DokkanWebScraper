@@ -13,6 +13,7 @@ export interface CategoryEntry {
     leaders: CategoryCharacterRef[],
     support: CategoryCharacterRef[],
     supportMemories: CategorySupportMemoryRef[],
+    members?: CategoryCharacterRef[],
 }
 
 export interface CategoryCharacterRef {

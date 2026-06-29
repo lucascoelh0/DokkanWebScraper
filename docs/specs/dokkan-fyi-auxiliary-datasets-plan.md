@@ -90,6 +90,7 @@ Current `category-context.json` scope:
 - normalized `category -> leaderIds/supportIds/supportMemoryIds`
 - normalized `supportMemory -> categoryIds/applicableCharacterIds`
 - normalized `character -> categoryIds/leaderOfCategoryIds/supportOfCategoryIds/applicableSupportMemoryIds`
+- character category membership prefers category-detail roster data and falls back to character-page category names
 
 Current `team-context.json` scope:
 
@@ -123,6 +124,15 @@ Current `category-roster.json` scope:
   - latest release state inference (`initial` / `eza` / `seza`)
   - role flags for leader/support membership
   - reversible exchange and free-to-play flags
+
+Current `categories.json` scope:
+
+- reverse-lookup category dataset sourced from dokkan.fyi category pages
+- category coverage includes:
+  - leaders
+  - support units
+  - support memories
+  - full paginated member roster where available
 
 Current `mission-catalog.json` scope:
 

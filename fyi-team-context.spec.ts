@@ -26,6 +26,7 @@ describe("buildTeamContextDataset", () => {
                             },
                         ],
                         supportMemories: [],
+                        members: [],
                     },
                     {
                         id: "2",
@@ -33,6 +34,7 @@ describe("buildTeamContextDataset", () => {
                         leaders: [],
                         support: [],
                         supportMemories: [],
+                        members: [],
                     },
                 ],
             },

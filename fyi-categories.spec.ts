@@ -99,12 +99,22 @@ describe("mapCategoryFromFyi", function () {
                     unlock_quantity: 1,
                 },
             ],
+            members: [
+                {
+                    id: 1025511,
+                    name: "Gamma 1",
+                    rarity_text: "UR",
+                    type: 3,
+                    awakening_type_text: "Super",
+                },
+            ],
         } as any);
 
         equal(category.id, "21");
         equal(category.leaders.length, 1);
         equal(category.support.length, 1);
         equal(category.supportMemories.length, 1);
+        equal(category.members?.length, 1);
         equal(category.supportMemories[0].name, "First Friend Ever");
     });
 });
@@ -118,6 +128,7 @@ describe("buildCategoryDataset", function () {
                 leaders: [],
                 support: [],
                 supportMemories: [],
+                members: [],
             },
             {
                 id: "21",
@@ -125,6 +136,7 @@ describe("buildCategoryDataset", function () {
                 leaders: [],
                 support: [],
                 supportMemories: [],
+                members: [],
             },
         ]);
 
