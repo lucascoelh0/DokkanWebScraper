@@ -1,6 +1,7 @@
 import { deepEqual, equal } from "assert";
 import { describe, it } from "mocha";
 import {
+    buildFallbackCategoryEntry,
     buildCategoryDataset,
     mapCategoryCharacterRefFromFyi,
     mapCategoryFromFyi,
@@ -142,5 +143,48 @@ describe("buildCategoryDataset", function () {
 
         equal(dataset.count, 2);
         deepEqual(dataset.categories.map(category => category.name), ["Accelerated Battle", "Androids"]);
+    });
+});
+
+describe("buildFallbackCategoryEntry", function () {
+    it("reuses existing members and augments them with current leaders and support units", () => {
+        const category = buildFallbackCategoryEntry({
+            id: 80,
+            name: "Accelerated Battle",
+            characters: {
+                leaders: [
+                    {
+                        id: 1033551,
+                        name: "Vegeta + Nappa",
+                        rarity_text: "UR",
+                        type: 0,
+                        awakening_type_text: "Extreme",
+                    },
+                ],
+                support: [
+                    {
+                        id: 1029021,
+                        name: "Dyspo",
+                        rarity_text: "UR",
+                        type: 3,
+                        awakening_type_text: "Super",
+                    },
+                ],
+            },
+        } as any, {
+            id: "80",
+            name: "Accelerated Battle",
+            leaders: [],
+            support: [],
+            supportMemories: [],
+            members: [
+                {
+                    id: "1025511",
+                    name: "Gamma 1",
+                },
+            ],
+        });
+
+        deepEqual(category.members?.map(member => member.id), ["1029021", "1025511", "1033551"]);
     });
 });

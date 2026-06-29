@@ -1,10 +1,11 @@
-import { mkdir } from "fs/promises";
+import { mkdir, readFile } from "fs/promises";
 import { resolve } from "path";
 import { Classes, Rarities, Types } from "./character";
 import { CategoryCharacterRef, CategoryDataset, CategoryEntry, CategorySupportMemoryRef } from "./category";
 import { writeFormattedJson } from "./format-json";
 
 const DOKKAN_FYI_BASE_URL = "https://dokkan.fyi";
+const EXISTING_CATEGORY_DATASET_RELATIVE_PATH = "data/categories/latest/categories.json";
 
 interface FyiPaginated<T> {
     data: T[],
@@ -81,7 +82,10 @@ interface FyiSupportMemorySummary {
 }
 
 class DokkanFyiCategoryClient {
-    async fetchCategories(limit?: number): Promise<FyiCategoryDetail[]> {
+    async fetchCategories(
+        limit?: number,
+        existingCategoriesById: Map<string, CategoryEntry> = new Map(),
+    ): Promise<CategoryEntry[]> {
         const firstPage = await this.fetchCategoryPage(1);
         const categories = [...(firstPage.props.categories?.data ?? [])];
         const lastPage = toOptionalNumber(firstPage.props.categories?.meta?.last_page) ?? 1;
@@ -98,7 +102,7 @@ class DokkanFyiCategoryClient {
         const limitedCategories = limit ? categories.slice(0, limit) : categories;
 
         return mapWithConcurrency(limitedCategories, requestedCategoryDetailConcurrency(), async (category) =>
-            this.fetchCategoryDetail(category.id),
+            this.fetchCategoryDetailSafe(category, existingCategoriesById.get(category.id.toString())),
         );
     }
 
@@ -125,6 +129,16 @@ class DokkanFyiCategoryClient {
         };
     }
 
+    private async fetchCategoryDetailSafe(category: FyiCategory, existingCategory?: CategoryEntry): Promise<CategoryEntry> {
+        try {
+            const detail = await this.fetchCategoryDetail(category.id);
+            return mapCategoryFromFyi(detail);
+        } catch (error) {
+            console.warn(`Falling back to cached category roster for ${category.id} (${cleanInlineText(category.name) || category.id.toString()}): ${formatErrorMessage(error)}`);
+            return buildFallbackCategoryEntry(category, existingCategory);
+        }
+    }
+
     private async fetchCategoryDetailPage(categoryId: number, page: number): Promise<FyiCategoryShowPagePayload> {
         const query = page > 1 ? `?page=${page}` : "";
         const html = await fetchDokkanFyiHtml(
@@ -138,9 +152,13 @@ class DokkanFyiCategoryClient {
 
 export async function getDokkanFyiCategories(): Promise<CategoryDataset> {
     const client = new DokkanFyiCategoryClient();
-    const categories = await client.fetchCategories(requestedCategoryLimit());
+    const existingDataset = await readExistingCategoryDataset();
+    const existingCategoriesById = new Map(
+        (existingDataset?.categories ?? []).map(category => [category.id, category]),
+    );
+    const categories = await client.fetchCategories(requestedCategoryLimit(), existingCategoriesById);
 
-    return buildCategoryDataset(categories.map(mapCategoryFromFyi));
+    return buildCategoryDataset(categories);
 }
 
 export async function writeDokkanFyiCategories(): Promise<string> {
@@ -174,6 +192,16 @@ export function mapCategoryFromFyi(input: FyiCategory | FyiCategoryDetail): Cate
         support: (category.characters?.support ?? []).map(mapCategoryCharacterRefFromFyi),
         supportMemories: (category.support_memories ?? []).map(mapCategorySupportMemoryRefFromFyi),
         members: members.map(mapCategoryCharacterRefFromFyi),
+    };
+}
+
+export function buildFallbackCategoryEntry(category: FyiCategory, existingCategory?: CategoryEntry): CategoryEntry {
+    const mapped = mapCategoryFromFyi(category);
+    const fallbackMembers = mergeFallbackMembers(existingCategory, mapped);
+
+    return {
+        ...mapped,
+        members: fallbackMembers,
     };
 }
 
@@ -256,6 +284,17 @@ async function fetchDokkanFyiHtml(url: string, label: string, retries = 3): Prom
     return response.text();
 }
 
+async function readExistingCategoryDataset(): Promise<CategoryDataset | undefined> {
+    const filePath = resolve(__dirname, EXISTING_CATEGORY_DATASET_RELATIVE_PATH);
+
+    try {
+        const raw = await readFile(filePath, { encoding: "utf8" });
+        return JSON.parse(raw) as CategoryDataset;
+    } catch (error) {
+        return undefined;
+    }
+}
+
 function isRetryableStatus(status: number): boolean {
     return status === 408 || status === 425 || status === 429 || status >= 500;
 }
@@ -276,6 +315,30 @@ function uniqueCategoryMembers(values: FyiCharacterSummary[]): FyiCharacterSumma
     }
 
     return [...byId.values()];
+}
+
+function mergeFallbackMembers(existingCategory: CategoryEntry | undefined, mappedCategory: CategoryEntry): CategoryCharacterRef[] {
+    const values = [
+        ...(existingCategory?.members ?? []),
+        ...mappedCategory.leaders,
+        ...mappedCategory.support,
+    ];
+
+    const byId = new Map<string, CategoryCharacterRef>();
+
+    for (const value of values) {
+        byId.set(value.id, value);
+    }
+
+    return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+}
+
+function formatErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+
+    return String(error);
 }
 
 async function mapWithConcurrency<T, U>(
