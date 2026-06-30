@@ -1,8 +1,15 @@
-import { writeDokkanFyiCategories } from "./fyi-categories";
+import { getDokkanFyiCategories, writeDokkanFyiCategories } from "./fyi-categories";
 
 async function main() {
     const outputPath = await writeDokkanFyiCategories();
-    console.log(`Wrote dokkan.fyi categories dataset to ${outputPath}`);
+    const dataset = await getDokkanFyiCategories();
+
+    console.log(JSON.stringify({
+        outputPath,
+        categoryCount: dataset.count,
+        firstCategory: dataset.categories[0]?.name ?? null,
+        lastCategory: dataset.categories[dataset.categories.length - 1]?.name ?? null,
+    }, null, 2));
 }
 
 if (require.main === module) {
