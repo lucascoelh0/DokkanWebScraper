@@ -20,6 +20,15 @@ interface FyiCategoriesPagePayload {
     },
 }
 
+interface FyiCategoryShowPagePayload {
+    component: string,
+    props: {
+        category: FyiCategory,
+        characters: FyiPaginated<FyiCharacterSummary>,
+        supportOnly?: boolean | null,
+    },
+}
+
 interface FyiCategory {
     id: number,
     name?: string | null,
@@ -68,7 +77,7 @@ interface FyiSupportMemorySummary {
 }
 
 class DokkanFyiCategoryClient {
-    async fetchCategories(limit?: number): Promise<FyiCategory[]> {
+    async fetchCategories(limit?: number): Promise<CategoryEntry[]> {
         const firstPage = await this.fetchCategoryPage(1);
         const categories = [...(firstPage.props.categories?.data ?? [])];
         const lastPage = toOptionalNumber(firstPage.props.categories?.meta?.last_page) ?? 1;
@@ -82,7 +91,11 @@ class DokkanFyiCategoryClient {
             }
         }
 
-        return limit ? categories.slice(0, limit) : categories;
+        const limitedCategories = limit ? categories.slice(0, limit) : categories;
+
+        return mapWithConcurrency(limitedCategories, requestedSupportOnlyConcurrency(), async (category) =>
+            this.fetchCategoryWithSupport(category),
+        );
     }
 
     private async fetchCategoryPage(page: number): Promise<FyiCategoriesPagePayload> {
@@ -90,13 +103,51 @@ class DokkanFyiCategoryClient {
         const html = await fetchDokkanFyiHtml(`${DOKKAN_FYI_BASE_URL}/categories?${query.toString()}`, `categories page ${page}`);
         return extractPagePayload<FyiCategoriesPagePayload>(html);
     }
+
+    private async fetchCategoryWithSupport(category: FyiCategory): Promise<CategoryEntry> {
+        const mapped = mapCategoryFromFyi(category);
+
+        try {
+            const supportCharacters = await this.fetchSupportOnlyCharacters(category.id);
+            return mergeCategorySupportFromSupportOnly(mapped, supportCharacters);
+        } catch (error) {
+            console.warn(`Falling back to category-index support list for ${category.id} (${cleanInlineText(category.name) || category.id.toString()}): ${formatErrorMessage(error)}`);
+            return mapped;
+        }
+    }
+
+    private async fetchSupportOnlyCharacters(categoryId: number): Promise<FyiCharacterSummary[]> {
+        const firstPage = await this.fetchSupportOnlyPage(categoryId, 1);
+        const characters = [...(firstPage.props.characters?.data ?? [])];
+        const lastPage = toOptionalNumber(firstPage.props.characters?.meta?.last_page) ?? 1;
+
+        for (let page = 2; page <= lastPage; page++) {
+            const nextPage = await this.fetchSupportOnlyPage(categoryId, page);
+            characters.push(...(nextPage.props.characters?.data ?? []));
+        }
+
+        return uniqueCharacterSummaries(characters);
+    }
+
+    private async fetchSupportOnlyPage(categoryId: number, page: number): Promise<FyiCategoryShowPagePayload> {
+        const query = new URLSearchParams({
+            support_only: "1",
+            page: page.toString(),
+        });
+        const html = await fetchDokkanFyiHtml(
+            `${DOKKAN_FYI_BASE_URL}/categories/${categoryId}?${query.toString()}`,
+            `category ${categoryId} support-only page ${page}`,
+        );
+
+        return extractPagePayload<FyiCategoryShowPagePayload>(html);
+    }
 }
 
 export async function getDokkanFyiCategories(): Promise<CategoryDataset> {
     const client = new DokkanFyiCategoryClient();
     const categories = await client.fetchCategories(requestedCategoryLimit());
 
-    return buildCategoryDataset(categories.map(mapCategoryFromFyi));
+    return buildCategoryDataset(categories);
 }
 
 export async function writeDokkanFyiCategories(): Promise<string> {
@@ -126,6 +177,18 @@ export function mapCategoryFromFyi(category: FyiCategory): CategoryEntry {
         leaders: (category.characters?.leaders ?? []).map(mapCategoryCharacterRefFromFyi),
         support: (category.characters?.support ?? []).map(mapCategoryCharacterRefFromFyi),
         supportMemories: (category.support_memories ?? []).map(mapCategorySupportMemoryRefFromFyi),
+    };
+}
+
+export function mergeCategorySupportFromSupportOnly(
+    category: CategoryEntry,
+    supportCharacters: FyiCharacterSummary[],
+): CategoryEntry {
+    return {
+        ...category,
+        support: supportCharacters
+            .map(mapCategoryCharacterRefFromFyi)
+            .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)),
     };
 }
 
@@ -166,6 +229,11 @@ export function mapCategorySupportMemoryRefFromFyi(memory: FyiSupportMemorySumma
 function requestedCategoryLimit(): number | undefined {
     const value = parseInt(process.env.DOKKAN_FYI_CATEGORY_LIMIT ?? "", 10);
     return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function requestedSupportOnlyConcurrency(): number {
+    const value = parseInt(process.env.DOKKAN_FYI_CATEGORY_SUPPORT_CONCURRENCY ?? "", 10);
+    return Number.isFinite(value) && value > 0 ? value : 4;
 }
 
 function extractPagePayload<T>(html: string): T {
@@ -213,6 +281,47 @@ function retryDelayMs(retriesRemaining: number): number {
 
 async function delay(ms: number): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function uniqueCharacterSummaries(values: FyiCharacterSummary[]): FyiCharacterSummary[] {
+    const byId = new Map<string, FyiCharacterSummary>();
+
+    for (const value of values) {
+        byId.set(String(value.id), value);
+    }
+
+    return [...byId.values()];
+}
+
+function formatErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+
+    return String(error);
+}
+
+async function mapWithConcurrency<T, U>(
+    items: T[],
+    concurrency: number,
+    mapper: (item: T, index: number) => Promise<U>,
+): Promise<U[]> {
+    const results = new Array<U>(items.length);
+    let nextIndex = 0;
+
+    async function worker() {
+        while (true) {
+            const currentIndex = nextIndex++;
+            if (currentIndex >= items.length) {
+                return;
+            }
+
+            results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+        }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+    return results;
 }
 
 function portraitUrl(thumbnailId: number | null | undefined): string | undefined {

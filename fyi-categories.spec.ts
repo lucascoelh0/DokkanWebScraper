@@ -2,6 +2,7 @@ import { deepEqual, equal } from "assert";
 import { describe, it } from "mocha";
 import {
     buildCategoryDataset,
+    mergeCategorySupportFromSupportOnly,
     mapCategoryCharacterRefFromFyi,
     mapCategoryFromFyi,
     mapCategorySupportMemoryRefFromFyi,
@@ -130,5 +131,39 @@ describe("buildCategoryDataset", function () {
 
         equal(dataset.count, 2);
         deepEqual(dataset.categories.map(category => category.name), ["Accelerated Battle", "Androids"]);
+    });
+});
+
+describe("mergeCategorySupportFromSupportOnly", function () {
+    it("replaces the support list with the dedicated support-only surface", () => {
+        const category = mergeCategorySupportFromSupportOnly({
+            id: "21",
+            name: "Androids",
+            leaders: [],
+            support: [
+                {
+                    id: "legacy",
+                    name: "Legacy Support",
+                },
+            ],
+            supportMemories: [],
+        }, [
+            {
+                id: 1023361,
+                name: "Androids #17 (Future) & #18 (Future)",
+                rarity_text: "UR",
+                type: 1,
+                awakening_type_text: "Extreme",
+            },
+            {
+                id: 1017681,
+                name: "Android #18",
+                rarity_text: "UR",
+                type: 3,
+                awakening_type_text: "Super",
+            },
+        ] as any);
+
+        deepEqual(category.support.map(character => character.id), ["1017681", "1023361"]);
     });
 });
