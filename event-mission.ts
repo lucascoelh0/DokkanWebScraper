@@ -5,6 +5,7 @@ export interface EventMissionDataset {
     source: "dokkan.fyi",
     count: number,
     missionCount: number,
+    failedCategoryIds?: string[],
     categories: EventMissionCategory[],
 }
 

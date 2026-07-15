@@ -6,7 +6,8 @@ export type AcquisitionNavigationTargetKind =
     | "stage-catalog-entry"
     | "stage-catalog-group"
     | "awakening-baba-shop-sale"
-    | "awakening-world-tournament";
+    | "awakening-world-tournament"
+    | "dokkaninfo-event";
 
 export interface AcquisitionNavigationDataset {
     generatedAt: string,
@@ -38,4 +39,7 @@ export interface AcquisitionNavigationTarget {
     questId?: string,
     saleId?: string,
     tournamentId?: string,
+    eventType?: string,
+    eventId?: string,
+    eventStageId?: string,
 }

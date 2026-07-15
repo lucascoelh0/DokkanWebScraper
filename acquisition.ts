@@ -7,7 +7,8 @@ export type AcquisitionSourceKind =
     | "awakening-medal-stage"
     | "awakening-medal-z-battle"
     | "awakening-medal-baba-shop"
-    | "awakening-medal-world-tournament";
+    | "awakening-medal-world-tournament"
+    | "dokkaninfo-event-reward";
 
 export interface AcquisitionDataset {
     generatedAt: string,
@@ -66,4 +67,7 @@ export interface AcquisitionSource {
     buyableNum?: number,
     ranking?: string,
     tournamentId?: string,
+    eventType?: string,
+    eventId?: string,
+    eventStageId?: string,
 }

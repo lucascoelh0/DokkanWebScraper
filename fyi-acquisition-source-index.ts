@@ -139,6 +139,13 @@ function deriveSourceGrouping(source: AcquisitionSource): {
         };
     }
 
+    if (source.kind === "dokkaninfo-event-reward" && source.eventType && source.eventId) {
+        return {
+            groupKey: `dokkaninfo-event:${source.eventType}:${source.eventId}`,
+            groupKind: "dokkaninfo-event",
+        };
+    }
+
     return {
         groupKey: source.key,
         groupKind: "standalone",

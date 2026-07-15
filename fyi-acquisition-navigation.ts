@@ -135,6 +135,14 @@ function mapNavigationTarget(source: AcquisitionSourceEntry): AcquisitionNavigat
                 sourcePath: source.sourcePath,
                 tournamentId: source.tournamentId,
             };
+        case "dokkaninfo-event-reward":
+            return {
+                kind: "dokkaninfo-event",
+                sourcePath: source.sourcePath,
+                eventType: source.eventType,
+                eventId: source.eventId,
+                eventStageId: source.eventStageId,
+            };
     }
 }
 

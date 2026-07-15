@@ -1,10 +1,13 @@
-import { mkdir } from "fs/promises";
+import { mkdir, readFile, rename, writeFile } from "fs/promises";
 import { resolve } from "path";
 import { Classes, Rarities, Types } from "./character";
 import { EventMissionCategory, EventMissionCharacterRef, EventMissionDataset, EventMissionEntry, EventMissionReward, EventMissionRewardSkill } from "./event-mission";
 import { writeFormattedJson } from "./format-json";
 
 const DOKKAN_FYI_BASE_URL = "https://dokkan.fyi";
+const EVENT_MISSION_CACHE_DIR = "data/event-missions/cache";
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_CACHE_TTL_HOURS = 24;
 
 interface FyiPaginated<T> {
     data: T[],
@@ -129,6 +132,11 @@ interface FyiCharacterSummary {
     } | null,
 }
 
+interface CachedEventMissionPayload<T> {
+    fetchedAt: string,
+    payload: T,
+}
+
 class DokkanFyiEventMissionClient {
     async fetchCategories(limit?: number): Promise<FyiMissionCategorySummary[]> {
         const firstPage = await this.fetchCategoryPage(1);
@@ -148,43 +156,61 @@ class DokkanFyiEventMissionClient {
     }
 
     async fetchCategory(categoryId: number): Promise<FyiMissionCategoryDetail> {
-        const response = await fetch(`${DOKKAN_FYI_BASE_URL}/missions/${categoryId}`, {
-            headers: browserHeaders(),
-        });
-
-        if (!response.ok) {
-            throw new Error(`Could not fetch dokkan.fyi event mission category ${categoryId}: ${response.status}`);
+        const cached = await readCachedPayload<FyiMissionCategoryDetail>(`category-${categoryId}.json`);
+        if (cached) {
+            return cached;
         }
 
-        const html = await response.text();
-        return extractPagePayload<FyiMissionShowPagePayload>(html).props.category;
+        const html = await fetchDokkanFyiText(
+            `${DOKKAN_FYI_BASE_URL}/missions/${categoryId}`,
+            `event mission category ${categoryId}`,
+        );
+        const category = extractPagePayload<FyiMissionShowPagePayload>(html).props.category;
+        await writeCachedPayload(`category-${categoryId}.json`, category);
+        return category;
     }
 
     private async fetchCategoryPage(page: number): Promise<FyiMissionEventIndexPagePayload> {
-        const response = await fetch(`${DOKKAN_FYI_BASE_URL}/missions/event?page=${page}`, {
-            headers: browserHeaders(),
-        });
-
-        if (!response.ok) {
-            throw new Error(`Could not fetch dokkan.fyi event missions page ${page}: ${response.status}`);
+        const cacheFile = `index-page-${page}.json`;
+        const cached = await readCachedPayload<FyiMissionEventIndexPagePayload>(cacheFile);
+        if (cached) {
+            return cached;
         }
 
-        const html = await response.text();
-        return extractPagePayload<FyiMissionEventIndexPagePayload>(html);
+        const html = await fetchDokkanFyiText(
+            `${DOKKAN_FYI_BASE_URL}/missions/event?page=${page}`,
+            `event mission index page ${page}`,
+        );
+        const payload = extractPagePayload<FyiMissionEventIndexPagePayload>(html);
+        await writeCachedPayload(cacheFile, payload);
+        return payload;
     }
 }
 
 export async function getDokkanFyiEventMissions(): Promise<EventMissionDataset> {
     const client = new DokkanFyiEventMissionClient();
     const summaries = await client.fetchCategories(requestedEventMissionCategoryLimit());
-    const categories: EventMissionCategory[] = [];
+    let completedCategoryCount = 0;
+    const failedCategoryIds: string[] = [];
+    const categories = (
+        await mapWithConcurrency(summaries, requestedEventMissionConcurrency(), async summary => {
+            try {
+                const detail = await client.fetchCategory(summary.id);
+                return mapEventMissionCategoryFromFyi(detail, summary);
+            } catch (error) {
+                failedCategoryIds.push(summary.id.toString());
+                console.error(`[EVENT-MISSIONS] Failed category ${summary.id}: ${errorMessage(error)}`);
+                return undefined;
+            } finally {
+                completedCategoryCount += 1;
+                if (completedCategoryCount === 1 || completedCategoryCount % 25 === 0 || completedCategoryCount === summaries.length) {
+                    console.log(`[EVENT-MISSIONS] Categories ${completedCategoryCount}/${summaries.length}`);
+                }
+            }
+        })
+    ).filter((category): category is EventMissionCategory => Boolean(category));
 
-    for (const summary of summaries) {
-        const detail = await client.fetchCategory(summary.id);
-        categories.push(mapEventMissionCategoryFromFyi(detail, summary));
-    }
-
-    return buildEventMissionDataset(categories);
+    return buildEventMissionDataset(categories, failedCategoryIds);
 }
 
 export async function writeDokkanFyiEventMissions(): Promise<string> {
@@ -198,7 +224,7 @@ export async function writeDokkanFyiEventMissions(): Promise<string> {
     return outputPath;
 }
 
-export function buildEventMissionDataset(categories: EventMissionCategory[]): EventMissionDataset {
+export function buildEventMissionDataset(categories: EventMissionCategory[], failedCategoryIds: string[] = []): EventMissionDataset {
     const missionCount = categories.flatMap(category => category.missions).length;
 
     return {
@@ -206,6 +232,7 @@ export function buildEventMissionDataset(categories: EventMissionCategory[]): Ev
         source: "dokkan.fyi",
         count: categories.length,
         missionCount,
+        failedCategoryIds: failedCategoryIds.length ? [...new Set(failedCategoryIds)].sort() : undefined,
         categories: [...categories].sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0) || left.id.localeCompare(right.id)),
     };
 }
@@ -542,4 +569,141 @@ function toStringOrUndefined(value: number | string | null | undefined): string 
 
     const normalized = String(value).trim();
     return normalized ? normalized : undefined;
+}
+
+async function fetchDokkanFyiText(url: string, label: string, retries = requestedEventMissionRetries()): Promise<string> {
+    let response: Response;
+
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), requestedEventMissionTimeoutMs());
+
+        try {
+            response = await fetch(url, {
+                headers: browserHeaders(),
+                signal: controller.signal,
+            });
+        } finally {
+            clearTimeout(timeout);
+        }
+    } catch (error) {
+        if (retries > 1) {
+            await delay(500 + (requestedEventMissionRetries() - retries) * 500);
+            return fetchDokkanFyiText(url, label, retries - 1);
+        }
+
+        throw new Error(`Could not fetch dokkan.fyi ${label}: ${errorMessage(error)}`);
+    }
+
+    if (response.ok) {
+        return response.text();
+    }
+
+    if (retries > 1 && shouldRetryStatus(response.status)) {
+        await delay(500 + (requestedEventMissionRetries() - retries) * 500);
+        return fetchDokkanFyiText(url, label, retries - 1);
+    }
+
+    throw new Error(`Could not fetch dokkan.fyi ${label}: ${response.status}`);
+}
+
+async function readCachedPayload<T>(fileName: string): Promise<T | undefined> {
+    if (/^(1|true|yes)$/i.test(process.env.DOKKAN_FYI_EVENT_MISSION_REFRESH ?? "")) {
+        return undefined;
+    }
+
+    const cachePath = resolve(__dirname, EVENT_MISSION_CACHE_DIR, fileName);
+
+    try {
+        const raw = await readFile(cachePath, "utf8");
+        const entry = JSON.parse(raw) as CachedEventMissionPayload<T>;
+        const fetchedAt = Date.parse(entry.fetchedAt);
+
+        if (!entry.payload || !Number.isFinite(fetchedAt)) {
+            return undefined;
+        }
+
+        const ttlHours = parseFloat(process.env.DOKKAN_FYI_EVENT_MISSION_CACHE_TTL_HOURS ?? "");
+        const cacheTtlHours = Number.isFinite(ttlHours) && ttlHours >= 0 ? ttlHours : DEFAULT_CACHE_TTL_HOURS;
+        if (Date.now() - fetchedAt > cacheTtlHours * 60 * 60 * 1000) {
+            return undefined;
+        }
+
+        return entry.payload;
+    } catch {
+        return undefined;
+    }
+}
+
+async function writeCachedPayload<T>(fileName: string, payload: T): Promise<void> {
+    const cacheDir = resolve(__dirname, EVENT_MISSION_CACHE_DIR);
+    const cachePath = resolve(cacheDir, fileName);
+    const temporaryPath = `${cachePath}.tmp`;
+
+    await mkdir(cacheDir, { recursive: true });
+    await writeFile(
+        temporaryPath,
+        JSON.stringify({
+            fetchedAt: new Date().toISOString(),
+            payload,
+        } as CachedEventMissionPayload<T>),
+    );
+    await rename(temporaryPath, cachePath);
+}
+
+function requestedEventMissionConcurrency(): number {
+    const value = parseInt(process.env.DOKKAN_FYI_EVENT_MISSION_CONCURRENCY ?? "", 10);
+    return Number.isFinite(value) && value > 0 ? value : 4;
+}
+
+function requestedEventMissionTimeoutMs(): number {
+    const value = parseInt(process.env.DOKKAN_FYI_EVENT_MISSION_TIMEOUT_MS ?? "", 10);
+    return Number.isFinite(value) && value > 0 ? value : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+function requestedEventMissionRetries(): number {
+    const value = parseInt(process.env.DOKKAN_FYI_EVENT_MISSION_RETRIES ?? "", 10);
+    return Number.isFinite(value) && value > 0 ? value : 3;
+}
+
+function shouldRetryStatus(status: number): boolean {
+    return status === 409 || status === 429 || status >= 500;
+}
+
+function errorMessage(error: unknown): string {
+    if (error instanceof Error) {
+        return error.name === "AbortError"
+            ? `request timed out after ${requestedEventMissionTimeoutMs()}ms`
+            : error.message;
+    }
+
+    return String(error);
+}
+
+function delay(ms: number): Promise<void> {
+    return new Promise(resolveDelay => setTimeout(resolveDelay, ms));
+}
+
+async function mapWithConcurrency<TInput, TOutput>(
+    input: TInput[],
+    concurrency: number,
+    mapper: (value: TInput, index: number) => Promise<TOutput>,
+): Promise<TOutput[]> {
+    const results: TOutput[] = new Array(input.length);
+    let cursor = 0;
+
+    async function worker() {
+        while (true) {
+            const index = cursor++;
+            if (index >= input.length) {
+                return;
+            }
+
+            results[index] = await mapper(input[index], index);
+        }
+    }
+
+    const workerCount = Math.max(1, Math.min(concurrency, input.length || 1));
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    return results;
 }

@@ -3,6 +3,7 @@ import { resolve } from "path";
 import { AcquisitionDataset, AcquisitionItem, AcquisitionSource } from "./acquisition";
 import { AwakeningMedal, AwakeningMedalDataset, AwakeningMedalStageSource, AwakeningMedalWorldTournamentSource } from "./awakening-path";
 import { DokkanFrontierChapter, DokkanFrontierChaptersDataset, DokkanFrontierMission, DokkanFrontierNode, DokkanFrontierPage, DokkanFrontierReward } from "./dokkan-frontier";
+import { DokkanInfoEventRewardDataset } from "./dokkaninfo-event-reward";
 import { EventMissionCategory, EventMissionDataset, EventMissionEntry, EventMissionReward } from "./event-mission";
 import { writeFormattedJson } from "./format-json";
 import { buildStableRewardItemKey, resolveStableRewardItemId } from "./reward-item-key";
@@ -13,6 +14,7 @@ interface AcquisitionBuildInput {
     awakeningMedals: AwakeningMedalDataset,
     frontierChapters: DokkanFrontierChaptersDataset,
     zBattles: ZBattleDataset,
+    dokkanInfoEventRewards?: DokkanInfoEventRewardDataset,
 }
 
 interface AcquisitionItemBuilder extends AcquisitionItem {
@@ -22,11 +24,12 @@ interface AcquisitionItemBuilder extends AcquisitionItem {
 const DOKKAN_FYI_BASE_URL = "https://dokkan.fyi";
 
 export async function getDokkanFyiAcquisitionDataset(): Promise<AcquisitionDataset> {
-    const [eventMissions, awakeningMedals, frontierChapters, zBattles] = await Promise.all([
+    const [eventMissions, awakeningMedals, frontierChapters, zBattles, dokkanInfoEventRewards] = await Promise.all([
         readJsonFile<EventMissionDataset>("data/event-missions/latest/event-missions.json"),
         readJsonFile<AwakeningMedalDataset>("data/awakening/latest/awakening-medals.json"),
         readJsonFile<DokkanFrontierChaptersDataset>("data/dokkan-frontier/latest/dokkan-frontier-chapters.json"),
         readJsonFile<ZBattleDataset>("data/z-battles/latest/z-battles.json"),
+        readOptionalJsonFile<DokkanInfoEventRewardDataset>("data/dokkaninfo-events/latest/event-rewards.json"),
     ]);
 
     return buildAcquisitionDataset({
@@ -34,6 +37,7 @@ export async function getDokkanFyiAcquisitionDataset(): Promise<AcquisitionDatas
         awakeningMedals,
         frontierChapters,
         zBattles,
+        dokkanInfoEventRewards: dokkanInfoEventRewards ?? undefined,
     });
 }
 
@@ -67,6 +71,10 @@ export function buildAcquisitionDataset(input: AcquisitionBuildInput): Acquisiti
         addZBattleSources(itemsByKey, battle);
     }
 
+    if (input.dokkanInfoEventRewards) {
+        addDokkanInfoEventRewardSources(itemsByKey, input.dokkanInfoEventRewards);
+    }
+
     const items = [...itemsByKey.values()]
         .map(({ sourceKeys: _sourceKeys, ...item }) => ({
             ...item,
@@ -83,6 +91,38 @@ export function buildAcquisitionDataset(input: AcquisitionBuildInput): Acquisiti
         sourceCount,
         items,
     };
+}
+
+function addDokkanInfoEventRewardSources(
+    itemsByKey: Map<string, AcquisitionItemBuilder>,
+    dataset: DokkanInfoEventRewardDataset,
+) {
+    for (const event of dataset.events) {
+        for (const reward of event.rewards) {
+            upsertSource(
+                itemsByKey,
+                createItemIdentity(reward.itemType, reward.itemId, {
+                    name: reward.name,
+                    description: reward.description,
+                }),
+                {
+                    key: reward.key,
+                    kind: "dokkaninfo-event-reward",
+                    title: event.name,
+                    subtitle: reward.stageId ? `Stage ${reward.stageId}` : event.type,
+                    description: reward.description,
+                    quantity: reward.quantity,
+                    sourcePath: reward.stagePath || event.sourcePath,
+                    startsAt: event.startAt,
+                    endsAt: event.endAt,
+                    eventType: event.type,
+                    eventId: event.id,
+                    eventStageId: reward.stageId,
+                    stageId: reward.stageId,
+                },
+            );
+        }
+    }
 }
 
 function addAwakeningMedalSources(itemsByKey: Map<string, AcquisitionItemBuilder>, medal: AwakeningMedal) {
@@ -544,4 +584,12 @@ async function readJsonFile<T>(relativePath: string): Promise<T> {
     const filePath = resolve(__dirname, relativePath);
     const raw = await readFile(filePath, { encoding: "utf8" });
     return JSON.parse(raw) as T;
+}
+
+async function readOptionalJsonFile<T>(relativePath: string): Promise<T | undefined> {
+    try {
+        return await readJsonFile<T>(relativePath);
+    } catch {
+        return undefined;
+    }
 }

@@ -39,6 +39,7 @@ build/Release
 # Dependency directories
 node_modules/
 jspm_packages/
+.venv-sqlcipher/
 
 # TypeScript v1 declaration files
 typings/
@@ -101,3 +102,4 @@ __azurite_db*__.json
 .wrangler/
 
 data
+game-db/data

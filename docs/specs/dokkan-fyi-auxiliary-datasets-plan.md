@@ -26,6 +26,10 @@ Examples of those shared systems:
 Already implemented in this scraper:
 
 - `support-memories.json`
+- `support-memory-details.json`
+- `support-memory-dokkaninfo-enrichment.json`
+- `awakening-medal-dokkaninfo-enrichment.json`
+- `exclusive-skill-orb-details.json`
 - `summons-index.json`
 - `summons-details.json`
 - `quest-story-stages.json`
@@ -42,6 +46,7 @@ Already implemented in this scraper:
 - `acquisition.json`
 - `acquisition-source-index.json`
 - `acquisition-navigation.json`
+- `dokkaninfo-event-rewards.json`
 - `category-context.json`
 - `team-context.json`
 - `category-roster.json`
@@ -58,6 +63,9 @@ Current `acquisition.json` scope:
   - Z-Battles
   - Baba Shop sales
   - World Tournament rewards
+- DokkanInfo event/stage rewards for cards, awakening items, potential items,
+  training items, equipment skill orbs, support items, treasures, support
+  memories, and other event reward types
 
 Current `acquisition-source-index.json` scope:
 
@@ -84,12 +92,105 @@ Current `acquisition-navigation.json` scope:
   - awakening stage quest/area routes
   - Baba Shop sales
   - World Tournament rewards
+  - DokkanInfo event and stage reward pages
+
+Current `dokkaninfo-event-rewards.json` scope:
+
+- cached DokkanInfo event index and detail-page scraping
+- 897 configured event pages across bonus, challenge, DB Stories, growth,
+  limited, quest, story, Z-Battle, Dokkan Frontier, and Super Dragon Ball
+  Heroes surfaces
+- 40,345 reward rows and 4,851 distinct item identities in the 2026-07-15
+  full refresh
+- stage-aware source links when the event page exposes a concrete stage
+- event-level sources for pages such as Z-Battles whose reward rows are not
+  attached to a stage anchor
+- stable `dokkaninfo-event-reward:{eventType}:{eventId}:...` source keys
+- cache, bounded concurrency, timeout/retry controls, progress logging, and
+  `failedEventIds` for partial-run recovery
+
+This layer intentionally remains separate from the character contract. It is
+joined through normalized acquisition item keys, so the same event reward can
+serve awakening medals, equipment skill orbs, training items, support memories,
+and future item catalogs without copying event data into each feature.
 
 Current `category-context.json` scope:
 
 - normalized `category -> leaderIds/supportIds/supportMemoryIds`
 - normalized `supportMemory -> categoryIds/applicableCharacterIds`
 - normalized `character -> categoryIds/leaderOfCategoryIds/supportOfCategoryIds/applicableSupportMemoryIds`
+
+Current `support-memory-details.json` scope:
+
+- app-facing joined support memory catalog
+- support memory coverage includes:
+  - core support-memory identity/effect fields
+  - film metadata
+  - category ids/names
+  - applicable character ids
+- unlock resolution via `unlockMethod`
+- direct unlock acquisition refs via `SupportMemory:{id}`
+- film acquisition refs via `SupportFilm:{filmId}`
+- grouped acquisition rollups per source surface
+- navigation targets for each acquisition source when available
+- DokkanInfo enrichment joined directly onto each memory under `dokkanInfo`
+  - large art / complete art / film icon
+  - enhancement item refs
+  - local animation mirrors and availability status
+
+Current `support-memory-dokkaninfo-enrichment.json` scope:
+
+- DokkanInfo-only enrichment layer for support memories
+- intended to stay separate from the canonical dokkan.fyi support-memory contract
+- current coverage includes:
+  - large card art
+  - sepia "complete" art and required quantity
+  - required film icon / color code / quantity
+  - enhancement item icons / ids / quantities
+  - local animation mirroring when the individual page exposes an LWF support-memory animation
+- current animation strategy:
+  - `status: mirrored` when the `.lwf` and all referenced textures were mirrored locally
+  - `status: partial` when the `.lwf` exists but one or more referenced textures are missing upstream
+  - `status: unavailable` when the animation payload itself is not available from DokkanInfo
+
+Current `awakening-medal-dokkaninfo-enrichment.json` scope:
+
+- DokkanInfo-only enrichment layer for awakening medals
+- intended to stay separate from the canonical dokkan.fyi awakening-medal and acquisition layers
+- current coverage includes:
+  - DokkanInfo medal identity / description / rarity bucket / zeni / trade-point metadata
+  - `eventJumpable` flags from the DokkanInfo list payload
+  - local mirroring of DokkanInfo awakening-medal thumbs
+  - download the `.lwf` payload
+  - inspect it for external texture atlas references
+  - mirror the required texture atlas files locally beside the `.lwf`
+- intended app use:
+  - richer support-memory presentation without bloating `support-memories.json`
+  - future support-memory detail screens with locally packaged animation playback
+
+Current `exclusive-skill-orb-details.json` scope:
+
+- app-facing exclusive skill orb catalog
+- orb coverage includes:
+  - core orb identity/effect fields already exposed on the character contract
+  - owner character refs for the fully-awakened cards that surface the orb
+  - grouped acquisition rollups per source surface
+  - optional DokkanInfo equipment metadata joined by official orb ID
+  - local mirrored orb icon/background assets under `presentationAssets`
+- acquisition resolution prefers `EquipmentSkillItem:{id}` from `acquisition.json`
+- current fallback coverage keeps character-page shop / mission hints when the normalized acquisition layer does not yet include the orb
+- current fallback is especially useful for Baba-shop orb rotations that only expose treasure/pricing metadata on the character page
+- DokkanInfo equipment metadata is enrichment only; it does not change an `unknown` acquisition into a confirmed source
+- character-page responses are cached with a short configurable TTL so full refreshes can resume after transient source failures
+- individual unavailable character pages are recorded in `failedCharacterIds` instead of aborting the entire orb catalog
+
+As of 2026-07-15, the event-mission catalog was refreshed across all 463 index categories and joined again into the orb dataset. The subsequent DokkanInfo event-reward layer added normalized event/stage sources to the shared acquisition catalog. The current orb refresh reports 876 orbs with normalized acquisition items, 404 with character-page shop fallbacks, and 457 still without an explicit source. The remaining gap is now isolated to acquisition surfaces not yet modeled, rather than stale mission data or inference from F2P status.
+
+Event-mission scraping now has:
+
+- cached index/category payloads under `data/event-missions/cache/`
+- bounded concurrency, timeout and retry controls
+- progress logging and `failedCategoryIds` when a category remains unavailable
 
 Current `team-context.json` scope:
 
@@ -163,6 +264,41 @@ Still planned:
 
 - additional mission surfaces beyond panel/event/frontier
 - later acquisition expansion for Frontier, shops and richer event joins
+- additional DokkanInfo item catalogs after support-memory enrichment:
+  - `actitems`
+  - `awakeningitems`
+  - `equipment`
+  - `keys`
+  - `potentialitems`
+  - `specialitems`
+  - `stickers`
+  - `supportitems`
+  - `trainingfields`
+  - `trainingitems`
+  - `treasureitems`
+- likely best use of those DokkanInfo item pages:
+  - shared item art / naming normalization
+  - local asset mirrors for app rendering
+  - future acquisition and event/shop joins once those pages are scraped
+- additional DokkanInfo event and banner surfaces to evaluate next:
+  - `https://dokkaninfo.com/banners`
+  - `https://dokkaninfo.com/events/burstmode`
+  - `https://dokkaninfo.com/events/bonus`
+  - `https://dokkaninfo.com/events/challenge`
+  - `https://dokkaninfo.com/events/dbstories`
+  - `https://dokkaninfo.com/events/zbattle`
+  - `https://dokkaninfo.com/events/growth`
+  - `https://dokkaninfo.com/events/limited`
+  - `https://dokkaninfo.com/events/sdbattle`
+  - `https://dokkaninfo.com/events/quest`
+  - `https://dokkaninfo.com/events/story`
+  - `https://dokkaninfo.com/events/dokkanfrontier`
+  - `https://dokkaninfo.com/events/rmbattle`
+  - `https://dokkaninfo.com/events/worldtournament`
+- likely best use of those DokkanInfo event/banner pages:
+  - fill gaps where DokkanInfo exposes richer art or presentation metadata than dokkan.fyi
+  - add event-specific flavor/media that is useful for the app but not ideal for the core normalized stage contract
+  - compare DokkanInfo banner coverage against current dokkan.fyi summon coverage before deciding whether banners should stay fyi-only or become a merged enrichment layer
 
 ## Confirmed Dokkan.fyi surfaces
 
@@ -706,6 +842,8 @@ Near-term app usage that seems most compelling:
 - featured banners / current summons
 - event and Z-Battle browsing
 - later, acquisition links from skill orbs and awakening materials
+
+Now that `exclusive-skill-orb-details.json` exists, the app can also consume skill-orb acquisition/group metadata without bloating the core character contract.
 
 This suggests the first auxiliary dataset the app would actually benefit from is:
 

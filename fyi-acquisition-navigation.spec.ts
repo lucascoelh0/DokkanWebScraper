@@ -10,6 +10,19 @@ describe("buildAcquisitionNavigationDataset", () => {
             rewardCount: 5,
             sources: [
                 {
+                    key: "dokkaninfo-event-reward:story:133:1330010:0:AwakeningItem:100001",
+                    kind: "dokkaninfo-event-reward",
+                    groupKey: "dokkaninfo-event:story:133",
+                    groupKind: "dokkaninfo-event",
+                    title: "Adventure of Gratitude",
+                    eventType: "story",
+                    eventId: "133",
+                    eventStageId: "1330010",
+                    sourcePath: "https://dokkaninfo.com/events/story/133/1330010",
+                    rewards: [],
+                    rewardCount: 0,
+                },
+                {
                     key: "event-mission:796:24832:1:11",
                     kind: "event-mission",
                     groupKey: "event-mission-category:796",
@@ -70,8 +83,9 @@ describe("buildAcquisitionNavigationDataset", () => {
             ],
         } as any);
 
-        equal(dataset.sourceCount, 5);
+        equal(dataset.sourceCount, 6);
 
+        const dokkanInfoEvent = dataset.entries.find(entry => entry.sourceKind === "dokkaninfo-event-reward");
         const eventMission = dataset.entries.find(entry => entry.sourceKind === "event-mission");
         const frontierNodeMission = dataset.entries.find(entry => entry.sourceKind === "frontier-node-mission");
         const zBattleLevel = dataset.entries.find(entry => entry.sourceKind === "z-battle-level");
@@ -82,6 +96,10 @@ describe("buildAcquisitionNavigationDataset", () => {
             {
                 eventMissionKey: eventMission?.target.missionKey,
                 eventGroupKey: eventMission?.target.missionGroupKey,
+                dokkanInfoEventKind: dokkanInfoEvent?.target.kind,
+                dokkanInfoEventType: dokkanInfoEvent?.target.eventType,
+                dokkanInfoEventId: dokkanInfoEvent?.target.eventId,
+                dokkanInfoEventStageId: dokkanInfoEvent?.target.eventStageId,
                 frontierMissionKey: frontierNodeMission?.target.missionKey,
                 frontierGroupKey: frontierNodeMission?.target.missionGroupKey,
                 zBattleKind: zBattleLevel?.target.kind,
@@ -95,6 +113,10 @@ describe("buildAcquisitionNavigationDataset", () => {
             {
                 eventMissionKey: "event:24832",
                 eventGroupKey: "event-category:796",
+                dokkanInfoEventKind: "dokkaninfo-event",
+                dokkanInfoEventType: "story",
+                dokkanInfoEventId: "133",
+                dokkanInfoEventStageId: "1330010",
                 frontierMissionKey: "frontier-node:55289",
                 frontierGroupKey: "frontier-node:2001:20010102",
                 zBattleKind: "stage-catalog-entry",

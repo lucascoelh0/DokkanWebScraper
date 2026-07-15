@@ -164,18 +164,20 @@ describe("buildEventMissionDataset", () => {
                     },
                 ],
             },
-        ]);
+        ], ["902", "901", "902"]);
 
         deepEqual(
             {
                 count: dataset.count,
                 missionCount: dataset.missionCount,
                 firstCategory: dataset.categories[0].id,
+                failedCategoryIds: dataset.failedCategoryIds,
             },
             {
                 count: 1,
                 missionCount: 1,
                 firstCategory: "796",
+                failedCategoryIds: ["901", "902"],
             },
         );
     });

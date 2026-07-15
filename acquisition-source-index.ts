@@ -9,6 +9,7 @@ export type AcquisitionSourceGroupKind =
     | "awakening-stage-area"
     | "awakening-baba-shop"
     | "awakening-world-tournament"
+    | "dokkaninfo-event"
     | "standalone";
 
 export interface AcquisitionSourceIndexDataset {
@@ -53,6 +54,9 @@ export interface AcquisitionSourceEntry {
     buyableNum?: number,
     ranking?: string,
     tournamentId?: string,
+    eventType?: string,
+    eventId?: string,
+    eventStageId?: string,
     rewardCount: number,
     rewards: AcquisitionSourceRewardRef[],
 }
