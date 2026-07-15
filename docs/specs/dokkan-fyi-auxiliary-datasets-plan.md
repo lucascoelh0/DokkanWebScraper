@@ -29,6 +29,7 @@ Already implemented in this scraper:
 - `support-memory-details.json`
 - `support-memory-dokkaninfo-enrichment.json`
 - `awakening-medal-dokkaninfo-enrichment.json`
+- `item-catalog.json`
 - `exclusive-skill-orb-details.json`
 - `summons-index.json`
 - `summons-details.json`
@@ -184,6 +185,22 @@ Current `exclusive-skill-orb-details.json` scope:
 - character-page responses are cached with a short configurable TTL so full refreshes can resume after transient source failures
 - individual unavailable character pages are recorded in `failedCharacterIds` instead of aborting the entire orb catalog
 
+Current `item-catalog.json` scope:
+
+- 994 DokkanInfo items across act items, keys, potential items, special items,
+  stickers, support items, training fields, training items, and treasure items
+- stable `itemType:id` keys aligned with the reward/acquisition layer where the
+  same item type is exposed
+- normalized names, descriptions, training EXP values, and source paths
+- local icon mirrors for all 994 entries and local background mirrors when the
+  source page exposes a layered icon
+- cached category pages, bounded page/asset concurrency, and
+  `failedCategorySlugs` for partial-run recovery
+- equipment and awakening medals intentionally remain specialized datasets,
+  since their contracts already include restrictions, awakening metadata,
+  rarity, exchange values, and other fields that do not belong in this generic
+  catalog
+
 As of 2026-07-15, the event-mission catalog was refreshed across all 463 index categories and joined again into the orb dataset. The subsequent DokkanInfo event-reward layer added normalized event/stage sources to the shared acquisition catalog. The current orb refresh reports 876 orbs with normalized acquisition items, 404 with character-page shop fallbacks, and 457 still without an explicit source. The remaining gap is now isolated to acquisition surfaces not yet modeled, rather than stale mission data or inference from F2P status.
 
 Event-mission scraping now has:
@@ -264,18 +281,8 @@ Still planned:
 
 - additional mission surfaces beyond panel/event/frontier
 - later acquisition expansion for Frontier, shops and richer event joins
-- additional DokkanInfo item catalogs after support-memory enrichment:
-  - `actitems`
-  - `awakeningitems`
-  - `equipment`
-  - `keys`
-  - `potentialitems`
-  - `specialitems`
-  - `stickers`
-  - `supportitems`
-  - `trainingfields`
-  - `trainingitems`
-  - `treasureitems`
+- remaining DokkanInfo item work is now limited to richer detail joins for
+  equipment and awakening medals, which stay on their specialized pipelines
 - likely best use of those DokkanInfo item pages:
   - shared item art / naming normalization
   - local asset mirrors for app rendering
@@ -829,6 +836,8 @@ Why:
 20. `category-roster.json` [done]
 21. `categories.json` [done]
 22. `wallpapers.json` [done]
+23. `dokkaninfo-event-rewards.json` [done]
+24. `item-catalog.json` [done]
 
 Why:
 

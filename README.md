@@ -141,6 +141,39 @@ Notable awakening-medal enrichment fields:
 - `eventJumpable`: whether the site flags the medal as event-jumpable
 - `thumbnailAsset.localPath`: local mirror of the medal thumb used on DokkanInfo
 
+### DokkanInfo item catalog
+
+```powershell
+npm run run:dokkaninfo-item-catalog
+```
+
+This writes:
+
+- `./data/dokkaninfo-items/latest/item-catalog.json`
+- local item assets under `./data/dokkaninfo-items/assets/`
+
+The catalog currently covers act items, keys, potential items, special items,
+stickers, support items, training fields, training items, and treasure items.
+Each entry has a stable `itemType:id` key, normalized name/description, an
+optional training value, source path, and local icon/background references.
+Equipment and awakening medals remain on their specialized pipelines because
+they have richer contracts and extra metadata already implemented.
+
+Useful overrides:
+
+```powershell
+$env:DOKKANINFO_ITEM_CATEGORIES="supportitems,trainingitems"
+$env:DOKKANINFO_ITEM_LIMIT="10"
+$env:DOKKANINFO_ITEM_DOWNLOAD_ASSETS="false"
+npm run run:dokkaninfo-item-catalog
+```
+
+The page cache lives under `./data/dokkaninfo-items/cache/`. Use
+`DOKKANINFO_ITEM_REFRESH=true` to bypass it. `DOKKANINFO_ITEM_CONCURRENCY`,
+`DOKKANINFO_ITEM_ASSET_CONCURRENCY`, and
+`DOKKANINFO_ITEM_CACHE_TTL_HOURS` tune the pipeline. Failed categories are
+recorded in `failedCategorySlugs` while the remaining catalog continues.
+
 ### Exclusive skill orb details
 
 ```powershell
