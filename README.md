@@ -147,18 +147,18 @@ Notable awakening-medal enrichment fields:
 npm run run:dokkaninfo-item-catalog
 ```
 
-  This writes:
-  
-  - `./data/dokkaninfo-items/latest/item-catalog.json`
-  - `./data/dokkaninfo-items/latest/item-catalog-manifest.json`
-  - local item assets under `./data/dokkaninfo-items/assets/`
+This writes:
+
+- `./data/dokkaninfo-items/latest/item-catalog.json`
+- `./data/dokkaninfo-items/latest/item-catalog-manifest.json`
+- local item assets under `./data/dokkaninfo-items/assets/`
 
 The catalog currently covers act items, keys, potential items, special items,
 stickers, support items, training fields, training items, and treasure items.
-  Each entry has a stable `itemType:id` key, normalized name/description, an
-  optional training value, source path, and local icon/background references.
-  The manifest contains the immutable file hash and catalog counts used by the
-  Android cache to update this dataset independently from the character database.
+Each entry has a stable `itemType:id` key, normalized name/description, an
+optional training value, source path, and local icon/background references.
+The manifest contains the immutable file hash and catalog counts used by the
+Android cache to update this dataset independently from the character database.
 Equipment and awakening medals remain on their specialized pipelines because
 they have richer contracts and extra metadata already implemented.
 
@@ -176,6 +176,18 @@ The page cache lives under `./data/dokkaninfo-items/cache/`. Use
 `DOKKANINFO_ITEM_ASSET_CONCURRENCY`, and
 `DOKKANINFO_ITEM_CACHE_TTL_HOURS` tune the pipeline. Failed categories are
 recorded in `failedCategorySlugs` while the remaining catalog continues.
+
+Publish only the catalog and its manifest to the production R2 bucket:
+
+```powershell
+npm run publish:dokkaninfo-items-r2 -- --dry-run
+npm run publish:dokkaninfo-items-r2
+```
+
+The publisher validates the manifest hash and size, uploads the catalog before
+the `no-store` manifest, never deletes objects, and refuses payloads above
+50 MB by default. Item images are not uploaded by this command; the catalog
+keeps their DokkanInfo URLs until the app's asset mirror is implemented.
 
 ### Exclusive skill orb details
 
