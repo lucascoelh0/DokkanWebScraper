@@ -13,6 +13,7 @@ import {
     SupportMemoryDokkanInfoEnhancementItem,
     SupportMemoryDokkanInfoLevelDescription,
     SupportMemoryDokkanInfoRequiredFilmRef,
+    supportMemoryAssetObjectKey,
     supportMemoryEnhancementItemKey,
 } from "./support-memory-dokkaninfo-enrichment";
 
@@ -112,15 +113,24 @@ async function downloadSupportMemoryAssets(entries: SupportMemoryDokkanInfoEnric
         await mkdir(memoryDir, { recursive: true });
 
         if (entry.largeAsset) {
-            entry.largeAsset.localPath = await downloadAsset(entry.largeAsset.remoteUrl, resolve(memoryDir, "large.png"), entry.detailUrl);
+            setLocalAssetPath(
+                entry.largeAsset,
+                await downloadAsset(entry.largeAsset.remoteUrl, resolve(memoryDir, "large.png"), entry.detailUrl),
+            );
         }
 
         if (entry.completeAsset) {
-            entry.completeAsset.localPath = await downloadAsset(entry.completeAsset.remoteUrl, resolve(memoryDir, "complete.png"), entry.detailUrl);
+            setLocalAssetPath(
+                entry.completeAsset,
+                await downloadAsset(entry.completeAsset.remoteUrl, resolve(memoryDir, "complete.png"), entry.detailUrl),
+            );
         }
 
         if (entry.requiredFilm) {
-            entry.requiredFilm.localPath = await downloadAsset(entry.requiredFilm.remoteUrl, resolve(memoryDir, "film.png"), entry.detailUrl);
+            setLocalAssetPath(
+                entry.requiredFilm,
+                await downloadAsset(entry.requiredFilm.remoteUrl, resolve(memoryDir, "film.png"), entry.detailUrl),
+            );
         }
 
         if (entry.enhancementItems.length > 0) {
@@ -128,10 +138,13 @@ async function downloadSupportMemoryAssets(entries: SupportMemoryDokkanInfoEnric
             await mkdir(enhancementDir, { recursive: true });
 
             for (const item of entry.enhancementItems) {
-                item.asset.localPath = await downloadAsset(
-                    item.asset.remoteUrl,
-                    resolve(enhancementDir, `${item.id}.png`),
-                    entry.detailUrl,
+                setLocalAssetPath(
+                    item.asset,
+                    await downloadAsset(
+                        item.asset.remoteUrl,
+                        resolve(enhancementDir, `${item.id}.png`),
+                        entry.detailUrl,
+                    ),
                 );
             }
         }
@@ -145,6 +158,7 @@ async function downloadSupportMemoryAssets(entries: SupportMemoryDokkanInfoEnric
                 entry.animation.failureReason = (error as Error).message;
                 entry.animation.localDirectory = undefined;
                 entry.animation.lwf.localPath = undefined;
+                entry.animation.lwf.objectKey = undefined;
                 entry.animation.textures = [];
             }
         }
@@ -159,7 +173,10 @@ async function downloadAnimationAssets(
     await mkdir(animationDir, { recursive: true });
 
     const lwfAbsolutePath = resolve(animationDir, `support_memory_${entry.id}.lwf`);
-    animation.lwf.localPath = await downloadAsset(animation.lwf.remoteUrl, lwfAbsolutePath, entry.detailUrl, true);
+    setLocalAssetPath(
+        animation.lwf,
+        await downloadAsset(animation.lwf.remoteUrl, lwfAbsolutePath, entry.detailUrl, true),
+    );
 
     const lwfBuffer = await readFile(lwfAbsolutePath);
     const textureFileNames = resolveAnimationTextureFileNames(entry.id, extractLwfTextureFileNames(lwfBuffer));
@@ -175,10 +192,12 @@ async function downloadAnimationAssets(
                 entry.detailUrl,
                 true,
             );
-            animation.textures.push({
+            const texture: SupportMemoryDokkanInfoAssetRef = {
                 remoteUrl,
                 localPath,
-            });
+            };
+            texture.objectKey = supportMemoryAssetObjectKey(localPath);
+            animation.textures.push(texture);
         } catch (error) {
             failedTextures.push(`${textureFileName}: ${(error as Error).message}`);
         }
@@ -189,6 +208,11 @@ async function downloadAnimationAssets(
         ? `Could not mirror ${failedTextures.length} texture(s): ${failedTextures.join("; ")}`
         : undefined;
     animation.localDirectory = toProjectRelativePath(animationDir);
+}
+
+function setLocalAssetPath(asset: SupportMemoryDokkanInfoAssetRef, localPath: string): void {
+    asset.localPath = localPath;
+    asset.objectKey = supportMemoryAssetObjectKey(localPath);
 }
 
 function resolveAnimationTextureFileNames(memoryId: string, fileNames: string[]): string[] {

@@ -151,10 +151,21 @@ Current `support-memory-dokkaninfo-enrichment.json` scope:
   - stable `SupportMemoryEnhancementItem:{id}` keys for the separate
     support-memory material namespace
   - local animation mirroring when the individual page exposes an LWF support-memory animation
+  - stable `objectKey` values for local assets under `support-memories/assets/`
 - current animation strategy:
   - `status: mirrored` when the `.lwf` and all referenced textures were mirrored locally
   - `status: partial` when the `.lwf` exists but one or more referenced textures are missing upstream
   - `status: unavailable` when the animation payload itself is not available from DokkanInfo
+
+Current support-memory dataset publishing scope:
+
+- `support-memory-details.json` is accompanied by `support-memory-manifest.json`
+- the manifest covers the joined JSON hash/size and the complete local asset mirror size/count
+- local assets are published under the bounded `support-memories/assets/` prefix
+- the R2 publisher uploads only changed assets and deletes only stale keys present
+  in its own previous publish state
+- the publisher enforces a 1 GB per-dataset budget to keep the support-memory
+  mirror comfortably below the account's free storage allowance
 
 Current `awakening-medal-dokkaninfo-enrichment.json` scope:
 

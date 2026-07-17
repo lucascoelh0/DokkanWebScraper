@@ -9,6 +9,7 @@ import { MissionCatalogDataset, MissionCatalogGroup, MissionCatalogMission } fro
 import { StageCatalogDataset, StageCatalogGroup } from "./stage-catalog";
 import { SupportMemoryDataset } from "./support-memory";
 import { SupportMemoryDokkanInfoEnrichmentDataset, SupportMemoryDokkanInfoEnrichmentEntry } from "./support-memory-dokkaninfo-enrichment";
+import { writeSupportMemoryDatasetManifest } from "./support-memory-dataset-artifacts";
 import {
     SupportMemoryAcquisitionGroupEntry,
     SupportMemoryAcquisitionSourceEntry,
@@ -59,9 +60,11 @@ export async function writeDokkanFyiSupportMemoryDetails(
     const resolvedDataset = dataset ?? await getDokkanFyiSupportMemoryDetails();
     const outputDir = resolve(__dirname, "data/support-memories/latest");
     const outputPath = resolve(outputDir, "support-memory-details.json");
+    const manifestPath = resolve(outputDir, "support-memory-manifest.json");
 
     await mkdir(outputDir, { recursive: true });
     await writeFormattedJson(outputPath, resolvedDataset);
+    await writeSupportMemoryDatasetManifest(resolvedDataset, outputPath, manifestPath);
 
     return outputPath;
 }

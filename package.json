@@ -27,6 +27,7 @@
     "run:dokkaninfo-event-rewards": "npx ts-node dokkaninfo-event-rewards-run.ts",
     "run:dokkaninfo-item-catalog": "npx ts-node dokkaninfo-item-catalog-run.ts",
     "publish:dokkaninfo-items-r2": "npx ts-node publish-dokkaninfo-items-r2.ts",
+    "publish:support-memory-r2": "npx ts-node publish-support-memory-r2.ts",
     "run:fyi-exclusive-skill-orb-details": "npx ts-node fyi-exclusive-skill-orb-details-run.ts",
     "publish:r2": "npx ts-node publish-r2.ts",
     "run:fyi-contract-sample": "npx ts-node fyi-contract-sample.ts",

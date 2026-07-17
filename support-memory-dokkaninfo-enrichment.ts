@@ -25,6 +25,7 @@ export interface SupportMemoryDokkanInfoLevelDescription {
 export interface SupportMemoryDokkanInfoAssetRef {
     remoteUrl: string,
     localPath?: string,
+    objectKey?: string,
 }
 
 export interface SupportMemoryDokkanInfoAssetQuantityRef extends SupportMemoryDokkanInfoAssetRef {
@@ -45,6 +46,16 @@ export interface SupportMemoryDokkanInfoEnhancementItem {
 
 export function supportMemoryEnhancementItemKey(id: string): string {
     return `SupportMemoryEnhancementItem:${id.trim()}`;
+}
+
+export function supportMemoryAssetObjectKey(localPath?: string): string | undefined {
+    const normalizedPath = localPath?.replace(/\\/g, "/");
+    const assetPrefix = "data/support-memories/assets/dokkaninfo/";
+    if (!normalizedPath?.startsWith(assetPrefix)) {
+        return undefined;
+    }
+
+    return `support-memories/assets/${normalizedPath.slice(assetPrefix.length)}`;
 }
 
 export interface SupportMemoryDokkanInfoAnimationAssetSet {

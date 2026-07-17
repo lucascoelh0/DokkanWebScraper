@@ -66,6 +66,7 @@ npm run run:fyi-support-memory-details
 This writes:
 
 - `./data/support-memories/latest/support-memory-details.json`
+- `./data/support-memories/latest/support-memory-manifest.json`
 
 Notable support-memory details fields:
 
@@ -111,6 +112,20 @@ Notable DokkanInfo enrichment fields:
 - `animation`: local mirrored LWF payload plus texture atlas files when the page exposes an in-game animation
   - `status` can be `mirrored`, `partial`, or `unavailable`
   - `partial` means the `.lwf` payload was mirrored but one or more referenced textures were missing upstream
+  - locally mirrored assets expose a stable `objectKey` under `support-memories/assets/`
+
+Publish the joined support-memory dataset and its local DokkanInfo assets to R2:
+
+```powershell
+npm run publish:support-memory-r2 -- --dry-run
+npm run publish:support-memory-r2
+```
+
+The publisher uploads the JSON before the `no-store` manifest, uploads only
+changed assets, removes only stale asset keys recorded in its own state, and
+refuses datasets above 1 GB by default. Its state is kept at:
+
+- `./data/support-memories/latest/support-memory-r2-publish-state.json`
 
 DokkanInfo enrichment for awakening-medal metadata and thumbs:
 
