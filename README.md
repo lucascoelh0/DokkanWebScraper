@@ -106,7 +106,8 @@ Notable DokkanInfo enrichment fields:
 - `largeAsset.localPath`: local mirror of the support-memory card art
 - `completeAsset`: local mirror of the unlock/complete image plus quantity
 - `requiredFilm`: local mirror of the required film icon plus quantity and film code
-- `enhancementItems`: local mirrors of support-memory enhancement medals
+- `enhancementItems`: local mirrors of support-memory enhancement materials,
+  each with a stable `SupportMemoryEnhancementItem:{id}` key
 - `animation`: local mirrored LWF payload plus texture atlas files when the page exposes an in-game animation
   - `status` can be `mirrored`, `partial`, or `unavailable`
   - `partial` means the `.lwf` payload was mirrored but one or more referenced textures were missing upstream

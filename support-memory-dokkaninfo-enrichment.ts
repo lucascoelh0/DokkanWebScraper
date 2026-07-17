@@ -36,9 +36,15 @@ export interface SupportMemoryDokkanInfoRequiredFilmRef extends SupportMemoryDok
 }
 
 export interface SupportMemoryDokkanInfoEnhancementItem {
+    itemType: "SupportMemoryEnhancementItem",
+    itemKey: string,
     id: string,
     quantity?: number,
     asset: SupportMemoryDokkanInfoAssetRef,
+}
+
+export function supportMemoryEnhancementItemKey(id: string): string {
+    return `SupportMemoryEnhancementItem:${id.trim()}`;
 }
 
 export interface SupportMemoryDokkanInfoAnimationAssetSet {

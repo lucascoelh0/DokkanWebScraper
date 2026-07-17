@@ -148,6 +148,8 @@ Current `support-memory-dokkaninfo-enrichment.json` scope:
   - sepia "complete" art and required quantity
   - required film icon / color code / quantity
   - enhancement item icons / ids / quantities
+  - stable `SupportMemoryEnhancementItem:{id}` keys for the separate
+    support-memory material namespace
   - local animation mirroring when the individual page exposes an LWF support-memory animation
 - current animation strategy:
   - `status: mirrored` when the `.lwf` and all referenced textures were mirrored locally

@@ -212,6 +212,8 @@ describe("buildSupportMemoryDetailsDataset", function () {
                         },
                         enhancementItems: [
                             {
+                                itemType: "SupportMemoryEnhancementItem",
+                                itemKey: "SupportMemoryEnhancementItem:100011",
                                 id: "100011",
                                 quantity: 15,
                                 asset: {

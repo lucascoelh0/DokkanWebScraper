@@ -13,6 +13,7 @@ import {
     SupportMemoryDokkanInfoEnhancementItem,
     SupportMemoryDokkanInfoLevelDescription,
     SupportMemoryDokkanInfoRequiredFilmRef,
+    supportMemoryEnhancementItemKey,
 } from "./support-memory-dokkaninfo-enrichment";
 
 const DOKKAN_INFO_BASE_URL = "https://dokkaninfo.com";
@@ -359,6 +360,8 @@ function parseEnhancementItems(container: Element | undefined): SupportMemoryDok
             }
 
             return {
+                itemType: "SupportMemoryEnhancementItem",
+                itemKey: supportMemoryEnhancementItemKey(id),
                 id,
                 quantity: parseTrailingQuantity(column.textContent),
                 asset,

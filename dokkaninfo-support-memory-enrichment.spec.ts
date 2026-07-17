@@ -45,16 +45,22 @@ describe("dokkaninfo support memory enrichment", function () {
             },
         ]);
         deepEqual(entry.enhancementItems.map(item => ({
+            itemType: item.itemType,
+            itemKey: item.itemKey,
             id: item.id,
             quantity: item.quantity,
             remoteUrl: item.asset.remoteUrl,
         })), [
             {
+                itemType: "SupportMemoryEnhancementItem",
+                itemKey: "SupportMemoryEnhancementItem:100011",
                 id: "100011",
                 quantity: 15,
                 remoteUrl: "https://dokkaninfo.com/assets/global/en/item/support_memory_enhancement/100011/100011.png",
             },
             {
+                itemType: "SupportMemoryEnhancementItem",
+                itemKey: "SupportMemoryEnhancementItem:100012",
                 id: "100012",
                 quantity: 20,
                 remoteUrl: "https://dokkaninfo.com/assets/global/en/item/support_memory_enhancement/100012/100012.png",
