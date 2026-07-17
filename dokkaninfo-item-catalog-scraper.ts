@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { execFile } from "child_process";
 import { access, mkdir, readFile, writeFile } from "fs/promises";
 import { JSDOM } from "jsdom";
@@ -10,12 +11,15 @@ import {
     DokkanInfoItemCategory,
     DokkanInfoItemCategorySlug,
     DokkanInfoItemCatalogDataset,
+    DokkanInfoItemCatalogManifest,
     DokkanInfoItemType,
 } from "./dokkaninfo-item-catalog";
 import { writeFormattedJson } from "./format-json";
 
 const DOKKAN_INFO_BASE_URL = "https://dokkaninfo.com";
 const OUTPUT_DIR = "data/dokkaninfo-items/latest";
+const ITEM_CATALOG_FILE_NAME = "item-catalog.json";
+const ITEM_CATALOG_MANIFEST_FILE_NAME = "item-catalog-manifest.json";
 const CACHE_DIR = "data/dokkaninfo-items/cache";
 const ASSET_DIR = "data/dokkaninfo-items/assets";
 const DEFAULT_CACHE_TTL_HOURS = 24;
@@ -83,11 +87,32 @@ export async function writeDokkanInfoItemCatalog(
 ): Promise<string> {
     const resolvedDataset = dataset ?? await getDokkanInfoItemCatalog();
     const outputDir = resolve(__dirname, OUTPUT_DIR);
-    const outputPath = resolve(outputDir, "item-catalog.json");
+    const outputPath = resolve(outputDir, ITEM_CATALOG_FILE_NAME);
+    const manifestPath = resolve(outputDir, ITEM_CATALOG_MANIFEST_FILE_NAME);
 
     await mkdir(outputDir, { recursive: true });
     await writeFormattedJson(outputPath, resolvedDataset);
+    const catalogBuffer = await readFile(outputPath);
+    const manifest = buildDokkanInfoItemCatalogManifest(resolvedDataset, catalogBuffer);
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     return outputPath;
+}
+
+export function buildDokkanInfoItemCatalogManifest(
+    dataset: DokkanInfoItemCatalogDataset,
+    catalogBuffer: Buffer,
+): DokkanInfoItemCatalogManifest {
+    return {
+        schemaVersion: 1,
+        datasetVersion: dataset.generatedAt,
+        generatedAt: dataset.generatedAt,
+        fileName: ITEM_CATALOG_FILE_NAME,
+        compression: "none",
+        sha256: createHash("sha256").update(catalogBuffer).digest("hex"),
+        sizeBytes: catalogBuffer.byteLength,
+        itemCount: dataset.itemCount,
+        categoryCount: dataset.categoryCount,
+    };
 }
 
 export function parseDokkanInfoItemCategory(

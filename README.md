@@ -147,15 +147,18 @@ Notable awakening-medal enrichment fields:
 npm run run:dokkaninfo-item-catalog
 ```
 
-This writes:
-
-- `./data/dokkaninfo-items/latest/item-catalog.json`
-- local item assets under `./data/dokkaninfo-items/assets/`
+  This writes:
+  
+  - `./data/dokkaninfo-items/latest/item-catalog.json`
+  - `./data/dokkaninfo-items/latest/item-catalog-manifest.json`
+  - local item assets under `./data/dokkaninfo-items/assets/`
 
 The catalog currently covers act items, keys, potential items, special items,
 stickers, support items, training fields, training items, and treasure items.
-Each entry has a stable `itemType:id` key, normalized name/description, an
-optional training value, source path, and local icon/background references.
+  Each entry has a stable `itemType:id` key, normalized name/description, an
+  optional training value, source path, and local icon/background references.
+  The manifest contains the immutable file hash and catalog counts used by the
+  Android cache to update this dataset independently from the character database.
 Equipment and awakening medals remain on their specialized pipelines because
 they have richer contracts and extra metadata already implemented.
 

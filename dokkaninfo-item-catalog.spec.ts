@@ -1,7 +1,35 @@
 import { deepEqual, equal } from "assert";
-import { DEFAULT_ITEM_CATEGORIES, parseDokkanInfoItemCategory } from "./dokkaninfo-item-catalog-scraper";
+import {
+    buildDokkanInfoItemCatalogManifest,
+    DEFAULT_ITEM_CATEGORIES,
+    parseDokkanInfoItemCategory,
+} from "./dokkaninfo-item-catalog-scraper";
 
 describe("DokkanInfo item catalog parser", () => {
+    it("builds a versioned manifest from the exact catalog bytes", () => {
+        const catalog = {
+            generatedAt: "2026-07-17T12:00:00.000Z",
+            source: "dokkaninfo" as const,
+            categoryCount: 1,
+            itemCount: 1,
+            failedCategorySlugs: [],
+            categories: [],
+        };
+        const payload = Buffer.from('{"catalog":true}\n', "utf8");
+
+        deepEqual(buildDokkanInfoItemCatalogManifest(catalog, payload), {
+            schemaVersion: 1,
+            datasetVersion: "2026-07-17T12:00:00.000Z",
+            generatedAt: "2026-07-17T12:00:00.000Z",
+            fileName: "item-catalog.json",
+            compression: "none",
+            sha256: "90b988c2b18aa39f9b5d7a0e27cc4311b15cdceb391e7c3791d3686e0dcaff12",
+            sizeBytes: payload.byteLength,
+            itemCount: 1,
+            categoryCount: 1,
+        });
+    });
+
     it("maps layered icon rows into stable item keys and localizable assets", () => {
         const category = parseDokkanInfoItemCategory(`
             <div class="row align-items-center">

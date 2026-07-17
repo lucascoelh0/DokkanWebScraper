@@ -55,3 +55,15 @@ export interface DokkanInfoItemCatalogDataset {
     failedCategorySlugs: DokkanInfoItemCategorySlug[],
     categories: DokkanInfoItemCategory[],
 }
+
+export interface DokkanInfoItemCatalogManifest {
+    schemaVersion: number,
+    datasetVersion: string,
+    generatedAt: string,
+    fileName: string,
+    compression: "none",
+    sha256: string,
+    sizeBytes: number,
+    itemCount: number,
+    categoryCount: number,
+}
