@@ -2,6 +2,20 @@
 
 Workspace focused on the `dokkan.fyi` scraping pipeline for Dokkanpanion.
 
+The current production cutover plan for the main character dataset is in
+[`docs/character-dataset-cutover-plan.md`](docs/character-dataset-cutover-plan.md).
+
+The first migration step is the paginated character catalog:
+
+```powershell
+npm run run:fyi-character-catalog
+```
+
+It writes `./data/fyi-character-catalog/latest/character-catalog.json` and
+keeps page responses cached under `./data/fyi-character-catalog/cache/`.
+Use `DOKKAN_FYI_CHARACTER_CATALOG_PAGE_LIMIT=1` for a smoke run; limited runs
+are marked `isComplete: false` and must not be published.
+
 The newer first-party game-database backend work now lives separately in:
 
 - `./game-db/`
