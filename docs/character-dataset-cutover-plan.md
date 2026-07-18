@@ -15,8 +15,10 @@ until the character contract is stable.
 - The paginated `dokkan.fyi` character catalog is now implemented and has been
   verified against the live source: 15 pages, 1,432 candidates, 1,416
   awakening lines and no failed pages in the latest run.
-- The `dokkan.fyi` character mapper is still an experiment driven by a curated
-  list of sample character IDs.
+- The `dokkan.fyi` character mapper now has persistent page/result caching,
+  bounded concurrency and per-card failure reporting.
+- The first complete staging run produced 1,432 mapped cards with no failed,
+  missing or duplicate IDs. The gzip bundle is still isolated from production.
 - The production `index.ts` still generates the legacy DokkanInfo character
   dataset and its `characters.json.gz` bundle.
 - The auxiliary datasets are sufficiently advanced for the first app release:
@@ -79,7 +81,7 @@ pages with no failed pages and writes a cached catalog artifact marked
 
 ### Phase 2: harden the character mapper
 
-Status: **next**
+Status: **complete**
 
 - Apply the latest initial/EZA/SEZA selection per awakening line.
 - Preserve transformation-path references and fetch deferred state payloads.
@@ -92,12 +94,14 @@ Status: **next**
 - Add tests for empty, partial and unusual payloads instead of relying only on
   happy-path cards.
 
-Exit criterion: all curated golden cards map without losing a mechanic or
-creating an invalid transformation link.
+Exit criterion met: the curated mechanics and the complete catalog map without
+losing a mechanic or creating duplicate output IDs. The latest coverage report
+includes 14 standby cards, 14 finish-skill cards, 15 reversible exchanges and
+191 transformation states.
 
 ### Phase 3: build the production character runner
 
-Status: **pending**
+Status: **in progress**
 
 - Add a dedicated full-run entrypoint instead of overloading the 20-card
   experiment runner.
@@ -109,12 +113,13 @@ Status: **pending**
 - Make the run fail closed when required coverage thresholds are not met.
 - Keep the legacy DokkanInfo output untouched as a rollback source.
 
-Exit criterion: a complete local run produces a publishable, deterministic
-character artifact and a machine-readable run report.
+Current result: the runner produces a publishable staging bundle and a
+machine-readable report. Portrait generation and final publication wiring are
+still pending.
 
 ### Phase 4: validate the complete dataset
 
-Status: **pending**
+Status: **in progress**
 
 - Run the full catalog scrape.
 - Compare card counts, IDs, rarities and latest-state choices against the
@@ -137,8 +142,9 @@ Status: **pending**
 - Repeat the run to confirm stable counts and hashes where source data has not
   changed.
 
-Exit criterion: no unexplained missing playable cards, no critical mechanic
-losses and no portrait/manifest failures.
+Current result: full catalog and golden-card validation passed with no missing
+or duplicate cards. Remaining gate: compare against the legacy dataset and
+validate every referenced portrait before publication.
 
 ### Phase 5: cut over publication and Android consumption
 

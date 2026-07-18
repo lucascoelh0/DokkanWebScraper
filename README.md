@@ -16,6 +16,19 @@ keeps page responses cached under `./data/fyi-character-catalog/cache/`.
 Use `DOKKAN_FYI_CHARACTER_CATALOG_PAGE_LIMIT=1` for a smoke run; limited runs
 are marked `isComplete: false` and must not be published.
 
+The production character mapper runs against the complete catalog but writes
+to a staging directory until validation is complete:
+
+```powershell
+npm run run:fyi-character-dataset
+```
+
+This writes `./data/fyi-characters/latest/characters.json.gz`, its manifest
+and `run-report.json`. Use `DOKKAN_FYI_CHARACTER_DATASET_LIMIT=2` for a local
+smoke run; the report will mark that result as non-publishable. Character pages
+are cached for 24 hours under `./data/fyi-characters/cache/` and can be
+refreshed with `DOKKAN_FYI_CHARACTER_REFRESH=true`.
+
 The newer first-party game-database backend work now lives separately in:
 
 - `./game-db/`

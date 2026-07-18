@@ -1,4 +1,4 @@
-import { mkdir } from "fs/promises";
+import { mkdir, readFile, writeFile } from "fs/promises";
 import { resolve } from "path";
 import {
     AttackTypes,
@@ -287,6 +287,7 @@ interface CurrentState {
 }
 
 interface CachedFyiPage {
+    fetchedAt?: string,
     payload: FyiPagePayload,
     version: string,
 }
@@ -341,6 +342,17 @@ export interface DokkanFyiContractReferenceSample {
 
 class DokkanFyiClient {
     private readonly pageCache = new Map<number, Promise<CachedFyiPage>>();
+    private readonly diskCacheDir = resolve(__dirname, "data/fyi-characters/cache");
+    private readonly refresh = process.env.DOKKAN_FYI_CHARACTER_REFRESH === "true";
+    private readonly cacheTtlMs = cacheTtlMsFromEnvironment();
+
+    get shouldRefresh(): boolean {
+        return this.refresh;
+    }
+
+    get cacheTtlMsValue(): number {
+        return this.cacheTtlMs;
+    }
 
     async fetchCharacterPage(characterId: number): Promise<CachedFyiPage> {
         const cached = this.pageCache.get(characterId);
@@ -354,14 +366,18 @@ class DokkanFyiClient {
     }
 
     private async fetchCharacterPageUncached(characterId: number): Promise<CachedFyiPage> {
-        const response = await fetch(`${DOKKAN_FYI_BASE_URL}/characters/${characterId}`, {
-            headers: browserHeaders(),
-        });
-
-        if (!response.ok) {
-            throw new Error(`Could not fetch dokkan.fyi character page ${characterId}: ${response.status}`);
+        const cachePath = resolve(this.diskCacheDir, `character-${characterId}.json`);
+        if (!this.refresh) {
+            const cached = await readCachedFyiPage(cachePath, this.cacheTtlMs);
+            if (cached) {
+                return cached;
+            }
         }
 
+        const url = `${DOKKAN_FYI_BASE_URL}/characters/${characterId}`;
+        const response = await fetchDokkanFyiResponse(url, {
+            headers: browserHeaders(),
+        }, `character page ${characterId}`);
         const html = await response.text();
         const payload = extractPagePayload(html);
         const version = payload.version ?? "";
@@ -372,14 +388,19 @@ class DokkanFyiClient {
             payload.props.transformationPath = [];
         }
 
-        return {
+        const page = {
+            fetchedAt: new Date().toISOString(),
             payload,
             version,
         };
+
+        await mkdir(this.diskCacheDir, { recursive: true });
+        await writeFile(cachePath, JSON.stringify(page), "utf8");
+        return page;
     }
 
     private async fetchTransformationPath(characterId: number, version: string): Promise<FyiTransformationPathEntry[]> {
-        const response = await fetch(`${DOKKAN_FYI_BASE_URL}/characters/${characterId}`, {
+        const response = await fetchDokkanFyiResponse(`${DOKKAN_FYI_BASE_URL}/characters/${characterId}`, {
             headers: {
                 ...browserHeaders(),
                 "Accept": "application/json",
@@ -390,11 +411,7 @@ class DokkanFyiClient {
                 "X-Inertia-Partial-Component": "Character/CharacterShow",
                 "X-Inertia-Partial-Data": "transformationPath",
             },
-        });
-
-        if (!response.ok) {
-            throw new Error(`Could not fetch dokkan.fyi transformation path ${characterId}: ${response.status}`);
-        }
+        }, `transformation path ${characterId}`);
 
         const payload = await response.json() as FyiPagePayload;
         return payload.props.transformationPath ?? [];
@@ -402,17 +419,58 @@ class DokkanFyiClient {
 }
 
 export async function getDokkanFyiData(characterIds?: number[]): Promise<Character[]> {
-    const ids = characterIds?.length ? characterIds : defaultDokkanFyiCharacterIds();
-    const client = new DokkanFyiClient();
-    const characters: Character[] = [];
-
-    for (const characterId of ids) {
-        console.log(`[FYI] ${characterId}`);
-        const page = await client.fetchCharacterPage(characterId);
-        characters.push(await mapDokkanFyiCharacter(page, client));
+    const result = await getDokkanFyiDataWithReport(characterIds);
+    if (result.failedCharacterIds.length > 0) {
+        throw new Error(`Could not map ${result.failedCharacterIds.length} dokkan.fyi characters: ${result.failedCharacterIds.join(", ")}`);
     }
 
-    return characters;
+    return result.characters;
+}
+
+export async function getDokkanFyiDataWithReport(characterIds?: number[]): Promise<{
+    characters: Character[],
+    failedCharacterIds: string[],
+}> {
+    const ids = characterIds?.length ? characterIds : defaultDokkanFyiCharacterIds();
+    const client = new DokkanFyiClient();
+    const results = await mapWithConcurrency(ids, requestedCharacterConcurrency(), async characterId => {
+        const mappedCachePath = resolve(__dirname, "data/fyi-characters/cache", `mapped-character-${characterId}.json`);
+        if (!client.shouldRefresh) {
+            const cachedCharacter = await readCachedMappedCharacter(mappedCachePath, client.cacheTtlMsValue);
+            if (cachedCharacter) {
+                return {
+                    id: characterId.toString(),
+                    character: cachedCharacter,
+                };
+            }
+        }
+
+        console.log(`[FYI] ${characterId}`);
+        try {
+            const page = await client.fetchCharacterPage(characterId);
+            const character = await mapDokkanFyiCharacter(page, client);
+            await writeCachedMappedCharacter(mappedCachePath, character);
+            return {
+                id: characterId.toString(),
+                character,
+            };
+        } catch (error) {
+            console.error(`[FYI] failed ${characterId}: ${formatErrorMessage(error)}`);
+            return {
+                id: characterId.toString(),
+                error,
+            };
+        }
+    });
+
+    return {
+        characters: results
+            .filter((result): result is { id: string, character: Character } => "character" in result)
+            .map(result => result.character),
+        failedCharacterIds: results
+            .filter((result): result is { id: string, error: unknown } => "error" in result)
+            .map(result => result.id),
+    };
 }
 
 export async function runDokkanFyiExperiment(characterIds?: number[]): Promise<{
@@ -1234,6 +1292,145 @@ function browserHeaders(): Record<string, string> {
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
     };
+}
+
+async function readCachedFyiPage(path: string, ttlMs: number): Promise<CachedFyiPage | undefined> {
+    try {
+        const cached = JSON.parse(await readFile(path, "utf8")) as CachedFyiPage;
+        const fetchedAt = Date.parse(cached.fetchedAt ?? "");
+        if (!cached.payload?.props?.character || !Number.isFinite(fetchedAt) || Date.now() - fetchedAt > ttlMs) {
+            return undefined;
+        }
+
+        return cached;
+    } catch {
+        return undefined;
+    }
+}
+
+async function readCachedMappedCharacter(path: string, ttlMs: number): Promise<Character | undefined> {
+    try {
+        const cached = JSON.parse(await readFile(path, "utf8")) as {
+            fetchedAt?: string,
+            character?: Character,
+        };
+        const fetchedAt = Date.parse(cached.fetchedAt ?? "");
+        if (!cached.character || !Number.isFinite(fetchedAt) || Date.now() - fetchedAt > ttlMs) {
+            return undefined;
+        }
+
+        return cached.character;
+    } catch {
+        return undefined;
+    }
+}
+
+async function writeCachedMappedCharacter(path: string, character: Character): Promise<void> {
+    await mkdir(resolve(path, ".."), { recursive: true });
+    await writeFile(path, JSON.stringify({
+        fetchedAt: new Date().toISOString(),
+        character,
+    }), "utf8");
+}
+
+async function fetchDokkanFyiResponse(
+    url: string,
+    init: RequestInit,
+    label: string,
+    retries = requestedCharacterRetries(),
+): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), requestedCharacterTimeoutMs());
+    let response: Response;
+
+    try {
+        try {
+            response = await fetch(url, {
+                ...init,
+                signal: controller.signal,
+            });
+        } catch (error) {
+            if (retries > 0) {
+                await delay(retryDelayMs(retries));
+                return fetchDokkanFyiResponse(url, init, label, retries - 1);
+            }
+
+            throw error;
+        }
+
+        if (!response.ok) {
+            if (retries > 0 && isRetryableStatus(response.status)) {
+                await delay(retryDelayMs(retries));
+                return fetchDokkanFyiResponse(url, init, label, retries - 1);
+            }
+
+            throw new Error(`Could not fetch dokkan.fyi ${label}: ${response.status}`);
+        }
+
+        return response;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+function isRetryableStatus(status: number): boolean {
+    return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function retryDelayMs(retriesRemaining: number): number {
+    return (4 - retriesRemaining) * 1500;
+}
+
+function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function requestedCharacterConcurrency(): number {
+    return positiveIntegerFromEnvironment("DOKKAN_FYI_CHARACTER_CONCURRENCY", 4);
+}
+
+function requestedCharacterRetries(): number {
+    return positiveIntegerFromEnvironment("DOKKAN_FYI_CHARACTER_RETRIES", 3);
+}
+
+function requestedCharacterTimeoutMs(): number {
+    return positiveIntegerFromEnvironment("DOKKAN_FYI_CHARACTER_TIMEOUT_MS", 30000);
+}
+
+function cacheTtlMsFromEnvironment(): number {
+    return positiveIntegerFromEnvironment("DOKKAN_FYI_CHARACTER_CACHE_TTL_HOURS", 24) * 60 * 60 * 1000;
+}
+
+function positiveIntegerFromEnvironment(name: string, fallback: number): number {
+    const value = Number.parseInt(process.env[name] ?? "", 10);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+async function mapWithConcurrency<T, U>(
+    items: T[],
+    concurrency: number,
+    mapper: (item: T, index: number) => Promise<U>,
+): Promise<U[]> {
+    const results = new Array<U>(items.length);
+    let nextIndex = 0;
+
+    async function worker() {
+        while (true) {
+            const currentIndex = nextIndex++;
+            if (currentIndex >= items.length) {
+                return;
+            }
+
+            results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+        }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+    return results;
+}
+
+function formatErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }
 
 function defaultDokkanFyiCharacterIds(): number[] {
