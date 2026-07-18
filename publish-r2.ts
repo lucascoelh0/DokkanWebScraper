@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { execFile } from "child_process";
-import { existsSync } from "fs";
+import { existsSync, statSync } from "fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { dirname, resolve } from "path";
@@ -14,6 +14,7 @@ const DEFAULT_DATASET_PATH = "data/latest/characters.json.gz";
 const DEFAULT_MANIFEST_PATH = "data/latest/characters-manifest.json";
 const DEFAULT_STATE_PATH = "data/latest/r2-publish-state.json";
 const DEFAULT_CONCURRENCY = 6;
+const DEFAULT_MAX_TOTAL_BYTES = 10_000_000_000;
 
 export interface DatasetPublishState {
     schemaVersion: 1,
@@ -50,6 +51,7 @@ interface PublishCliOptions {
     skipRemoteManifestCheck: boolean,
     target: "remote" | "local",
     concurrency: number,
+    maxTotalBytes: number,
 }
 
 interface PublishSummary {
@@ -57,6 +59,7 @@ interface PublishSummary {
     portraitUploadCount: number,
     portraitDeleteCount: number,
     skippedBecauseRemoteMatches: boolean,
+    projectedTotalBytes: number,
 }
 
 function datasetVersionSlug(datasetVersion: string): string {
@@ -337,6 +340,14 @@ function parseArgs(argv: string[]): PublishCliOptions {
         throw new Error(`Invalid --concurrency value: ${concurrencyRaw}`);
     }
 
+    const maxTotalBytesRaw = values.get("--max-total-bytes");
+    const maxTotalBytes = maxTotalBytesRaw
+        ? Number.parseInt(maxTotalBytesRaw, 10)
+        : DEFAULT_MAX_TOTAL_BYTES;
+    if (!Number.isFinite(maxTotalBytes) || maxTotalBytes < 1) {
+        throw new Error(`Invalid --max-total-bytes value: ${maxTotalBytesRaw}`);
+    }
+
     return {
         bucket,
         dataRoot: resolve(values.get("--data-root") ?? DEFAULT_DATA_ROOT),
@@ -350,6 +361,7 @@ function parseArgs(argv: string[]): PublishCliOptions {
         skipRemoteManifestCheck: flags.has("--skip-remote-manifest-check"),
         target: localFlag ? "local" : "remote",
         concurrency,
+        maxTotalBytes,
     };
 }
 
@@ -395,6 +407,16 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     const portraitPlan = options.skipPortraits
         ? { toUpload: [], toDelete: [] }
         : buildPortraitPublishPlan(portraitEntries, previousState, { forcePortraits: options.forcePortraits });
+    const projectedTotalBytes = statSync(options.datasetPath).size
+        + manifestByteSize(remoteManifest)
+        + portraitEntries.reduce((total, entry) => total + statSync(entry.filePath).size, 0);
+
+    if (projectedTotalBytes > options.maxTotalBytes) {
+        throw new Error(
+            `Projected R2 dataset size ${projectedTotalBytes} bytes exceeds the configured limit of ${options.maxTotalBytes} bytes. `
+            + "Reduce the dataset or raise the limit explicitly after checking the bucket budget.",
+        );
+    }
 
     console.log(`Dataset version: ${remoteManifest.datasetVersion}`);
     console.log(`Dataset object key: ${remoteDatasetObjectKey}`);
@@ -402,6 +424,7 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     console.log(`Portraits referenced: ${portraitKeys.length}`);
     console.log(`Portraits to upload: ${portraitPlan.toUpload.length}`);
     console.log(`Portraits to delete: ${portraitPlan.toDelete.length}`);
+    console.log(`Projected managed size: ${projectedTotalBytes}/${options.maxTotalBytes} bytes`);
 
     if (options.dryRun) {
         return {
@@ -409,6 +432,7 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
             portraitUploadCount: portraitPlan.toUpload.length,
             portraitDeleteCount: portraitPlan.toDelete.length,
             skippedBecauseRemoteMatches,
+            projectedTotalBytes,
         };
     }
 
@@ -501,7 +525,12 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         portraitUploadCount: portraitPlan.toUpload.length,
         portraitDeleteCount: portraitPlan.toDelete.length,
         skippedBecauseRemoteMatches,
+        projectedTotalBytes,
     };
+}
+
+function manifestByteSize(manifest: DatasetManifest): number {
+    return Buffer.byteLength(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 }
 
 async function main(): Promise<void> {

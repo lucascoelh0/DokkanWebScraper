@@ -403,12 +403,25 @@ Portraits are stored in:
 npm run publish:r2 -- --bucket dokkanpanion-data
 ```
 
+Before publishing the FYI staging bundle, validate it with:
+
+```powershell
+npm run validate:fyi-character-dataset -- --legacy-dataset data/latest/characters.json.gz
+```
+
+The validation gate checks the manifest and gzip hash, character IDs and
+enum values, the complete-run report, every referenced portrait and the
+expected ID delta against the legacy dataset. The legacy-only cards are
+reported for review because the FYI contract intentionally keeps only the
+latest relevant awakening state per card line.
+
 Useful flags:
 
 - `--dry-run`
 - `--force-portraits`
 - `--skip-portraits`
 - `--local`
+- `--max-total-bytes` (defaults to `10000000000`, the configured R2 budget)
 
 The script stores publish state in:
 

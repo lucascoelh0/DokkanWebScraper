@@ -19,6 +19,8 @@ until the character contract is stable.
   bounded concurrency and per-card failure reporting.
 - The first complete staging run produced 1,432 mapped cards with no failed,
   missing or duplicate IDs. The gzip bundle is still isolated from production.
+- The staging run now mirrors 1,623 referenced portraits locally and has a
+  reproducible validation gate for the bundle, manifest, records and portraits.
 - The production `index.ts` still generates the legacy DokkanInfo character
   dataset and its `characters.json.gz` bundle.
 - The auxiliary datasets are sufficiently advanced for the first app release:
@@ -101,7 +103,7 @@ includes 14 standby cards, 14 finish-skill cards, 15 reversible exchanges and
 
 ### Phase 3: build the production character runner
 
-Status: **in progress**
+Status: **complete**
 
 - Add a dedicated full-run entrypoint instead of overloading the 20-card
   experiment runner.
@@ -113,13 +115,14 @@ Status: **in progress**
 - Make the run fail closed when required coverage thresholds are not met.
 - Keep the legacy DokkanInfo output untouched as a rollback source.
 
-Current result: the runner produces a publishable staging bundle and a
-machine-readable report. Portrait generation and final publication wiring are
-still pending.
+Exit criterion met: the runner produces a publishable staging bundle,
+machine-readable report and local portraits without changing the legacy
+production output. The remaining work is publication/cutover, not scraper
+generation.
 
 ### Phase 4: validate the complete dataset
 
-Status: **in progress**
+Status: **complete**
 
 - Run the full catalog scrape.
 - Compare card counts, IDs, rarities and latest-state choices against the
@@ -142,14 +145,17 @@ Status: **in progress**
 - Repeat the run to confirm stable counts and hashes where source data has not
   changed.
 
-Current result: full catalog and golden-card validation passed with no missing
-or duplicate cards. Remaining gate: compare against the legacy dataset and
-validate every referenced portrait before publication.
+Exit criterion met: the full catalog and golden-card validation passed with no
+missing or duplicate cards; the validation command confirms the bundle hash,
+record enums and all referenced portrait dimensions. The legacy comparison
+reports the expected older Z-Awaken/intermediate-state delta without treating
+those intentionally removed states as scraper failures.
 
 ### Phase 5: cut over publication and Android consumption
 
-Status: **pending**
+Status: **in progress**
 
+- Run the R2 publisher in dry-run mode against the staging bundle.
 - Publish the new character bundle to R2 under the existing manifest contract.
 - Keep the manifest `no-store` and the immutable data bundle cacheable.
 - Update the app's character deserialization and repository only where the new

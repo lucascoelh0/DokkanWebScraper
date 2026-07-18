@@ -2,6 +2,7 @@ import { mkdir } from "fs/promises";
 import { resolve } from "path";
 import { Character } from "./character";
 import { buildCharacterDatasetArtifact, writeCharacterDatasetBundle } from "./dataset-artifacts";
+import { localizeCharacterPortraitUrls, mirrorFyiPortraits } from "./fyi-character-portraits";
 import {
     getDokkanFyiDataWithReport,
 } from "./fyi-scraper";
@@ -48,6 +49,10 @@ export async function runDokkanFyiCharacterDataset(): Promise<{
     datasetPath: string,
     manifestPath: string,
     reportPath: string,
+    portraitSummary: {
+        targetCount: number,
+        downloadedCount: number,
+    },
 }> {
     const catalog = await getDokkanFyiCharacterCatalog();
     const requestedIds = requestedCharacterIds(catalog);
@@ -66,8 +71,13 @@ export async function runDokkanFyiCharacterDataset(): Promise<{
         throw new Error(`Character scrape has ${report.failedCharacterIds.length} failed cards. See run-report.json.`);
     }
 
+    const portraitSummary = await mirrorFyiPortraits(
+        characters,
+        resolve(__dirname, "data/fyi-characters"),
+    );
+    const localizedCharacters = localizeCharacterPortraitUrls(characters);
     const generatedAt = report.generatedAt;
-    const artifact = buildCharacterDatasetArtifact(characters, {
+    const artifact = buildCharacterDatasetArtifact(localizedCharacters, {
         datasetVersion: generatedAt,
         generatedAt,
         fileName: "characters.json.gz",
@@ -77,9 +87,10 @@ export async function runDokkanFyiCharacterDataset(): Promise<{
     });
 
     return {
-        characters,
+        characters: localizedCharacters,
         catalog,
         report,
+        portraitSummary,
         datasetPath: resolve(OUTPUT_DIR, artifact.manifest.fileName),
         manifestPath: resolve(OUTPUT_DIR, "characters-manifest.json"),
         reportPath,

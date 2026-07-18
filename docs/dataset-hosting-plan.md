@@ -44,14 +44,18 @@ We do not want to exceed the Cloudflare R2 free tier.
 Current practical rules:
 
 1. use the bucket only for app datasets
-2. do not upload portraits or large media there
+2. upload only portraits referenced by the current character manifest; do not
+   keep unrelated or orphaned media there
 3. keep only:
    - current dataset
+   - portraits referenced by the current dataset
    - optional previous dataset for rollback
 4. delete older versioned datasets during publish
 5. keep storage class on Standard
 
-With the current dataset size, this should stay comfortably below the free storage limit as long as old versions are cleaned up.
+With the current dataset size, this should stay comfortably below the free storage limit as long as old versions are cleaned up. The publisher also
+enforces a 10,000,000,000-byte managed-output budget by default; lower it with
+`--max-total-bytes` when sharing the bucket with other data.
 
 ## No-domain interim option
 
