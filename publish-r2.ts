@@ -448,16 +448,6 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         );
     }
 
-    if (portraitPlan.toDelete.length > 0) {
-        console.log("Deleting stale portraits from R2...");
-        await runWithConcurrency(portraitPlan.toDelete, options.concurrency, async (objectKey, index) => {
-            await deleteObject(options.bucket, objectKey, options.target);
-            if ((index + 1) % 25 === 0 || index + 1 === portraitPlan.toDelete.length) {
-                console.log(`Deleted ${index + 1}/${portraitPlan.toDelete.length} stale portrait(s)`);
-            }
-        });
-    }
-
     if (portraitPlan.toUpload.length > 0) {
         console.log("Uploading portraits...");
         await runWithConcurrency(portraitPlan.toUpload, options.concurrency, async (entry, index) => {
@@ -490,6 +480,17 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
             options.target,
         );
         await rm(manifestTempDirectory, { recursive: true, force: true });
+    }
+
+    // Keep old assets available until the new manifest is live.
+    if (portraitPlan.toDelete.length > 0) {
+        console.log("Deleting stale portraits from R2...");
+        await runWithConcurrency(portraitPlan.toDelete, options.concurrency, async (objectKey, index) => {
+            await deleteObject(options.bucket, objectKey, options.target);
+            if ((index + 1) % 25 === 0 || index + 1 === portraitPlan.toDelete.length) {
+                console.log(`Deleted ${index + 1}/${portraitPlan.toDelete.length} stale portrait(s)`);
+            }
+        });
     }
 
     if (
