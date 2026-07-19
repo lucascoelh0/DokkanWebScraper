@@ -166,6 +166,12 @@ Status: **in progress**
 - Mark the `dokkan.fyi` character runner as the production path only after the
   Android smoke tests pass.
 
+Current result: the FYI bundle is published at the remote manifest with 1,432
+characters and a verified SHA-256 match against the local staging artifact.
+The publisher uploaded 1,623 portraits, removed 1,264 obsolete portraits and
+deleted the previous character release. Android consumption is the remaining
+cutover work.
+
 Exit criterion: a clean install downloads and renders the new dataset, and an
 existing install updates it without losing usable cached data.
 
