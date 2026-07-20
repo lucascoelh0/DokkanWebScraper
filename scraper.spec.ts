@@ -116,6 +116,13 @@ describe("parseLeaderSkillDetails", function () {
     equal(details?.clauses[1].stackGroup, "secondary");
   });
 
+  it("does not expose flat stat boosts as percentage leader boosts", () => {
+    const details = parseLeaderSkillDetails(`All Types ATK +2500`);
+
+    equal(details?.displayBoost, 0);
+    equal(details?.clauses[0].boostForm, "flat");
+  });
+
   it("captures team-wide class and type conditions without polluting per-character targets", () => {
     const details = parseLeaderSkillDetails(`All allies' Ki +2, HP +150% and ATK & DEF +100% when team includes Super & Extreme Classes, plus an additional Ki +1 and HP, ATK & DEF +70% when team includes all five Types`);
 

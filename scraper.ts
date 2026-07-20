@@ -1552,28 +1552,48 @@ function extractLeaderSkillKi(segment: string): number | undefined {
     return kiBoost ? parseInt(kiBoost, 10) : undefined;
 }
 
-function calculateLeaderSkillDisplayBoost(parsedLeaderSkills: Pick<LeaderSkillClause, 'hp' | 'atk' | 'def' | 'boostForm'>[]): number {
-    let totalBoost = 0;
-    let endLoop = false;
-
-    parsedLeaderSkills.forEach(leaderSkill => {
-        if (endLoop) {
-            return;
+function calculateLeaderSkillDisplayBoost(
+    parsedLeaderSkills: Pick<LeaderSkillClause, 'stackGroup' | 'hp' | 'atk' | 'def' | 'boostForm'>[],
+): number {
+    const percentageBoost = (leaderSkill: Pick<LeaderSkillClause, 'hp' | 'atk' | 'def' | 'boostForm'>): number | undefined => {
+        if (leaderSkill.boostForm !== 'percentage') {
+            return undefined;
         }
 
-        const boost = leaderSkill.boostForm === 'percentage'
-            ? (leaderSkill.hp + leaderSkill.atk + leaderSkill.def) / 3
-            : leaderSkill.atk;
+        return (leaderSkill.hp + leaderSkill.atk + leaderSkill.def) / 3;
+    };
+
+    // Primary and secondary clauses are alternatives introduced by "or". Only
+    // explicitly additional clauses can stack with the strongest base clause.
+    const baseBoost = Math.max(
+        0,
+        ...parsedLeaderSkills
+            .filter(leaderSkill => leaderSkill.stackGroup !== 'additional')
+            .map(percentageBoost)
+            .filter((boost): boost is number => boost !== undefined),
+    );
+
+    if (baseBoost === 0) {
+        return 0;
+    }
+
+    let totalBoost = baseBoost;
+    for (const leaderSkill of parsedLeaderSkills.filter(skill => skill.stackGroup === 'additional')) {
+        const boost = percentageBoost(leaderSkill);
+        if (boost === undefined) {
+            continue;
+        }
 
         if (boost < 40 && totalBoost > 0 && totalBoost < 200) {
             totalBoost += boost;
-            endLoop = true;
-        } else if (totalBoost === 0 && boost > totalBoost) {
-            totalBoost = boost;
-        } else if (totalBoost !== 200 && totalBoost > 170 && totalBoost < 230 && boost <= 50) {
-            totalBoost += boost;
+            break;
         }
-    });
+
+        if (totalBoost !== 200 && totalBoost > 170 && totalBoost < 230 && boost <= 50) {
+            totalBoost += boost;
+            break;
+        }
+    }
 
     return totalBoost;
 }
