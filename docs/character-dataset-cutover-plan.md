@@ -21,6 +21,10 @@ until the character contract is stable.
   missing or duplicate IDs. The gzip bundle is still isolated from production.
 - The staging run now mirrors 1,623 referenced portraits locally and has a
   reproducible validation gate for the bundle, manifest, records and portraits.
+- The published character bundle contains all portraits required by the
+  current Android UI. `artURL` remains a remote FYI CDN reference for 1,623
+  card-art/cut-in assets; those images are not currently consumed by the app
+  and are intentionally outside the current publication gate.
 - The production `index.ts` still generates the legacy DokkanInfo character
   dataset and its `characters.json.gz` bundle.
 - The auxiliary datasets are sufficiently advanced for the first app release:

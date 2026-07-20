@@ -2,7 +2,7 @@
 
 ## Status
 
-Production hosting is intentionally postponed for now because we do not want to pay for a custom domain yet.
+Production hosting is active on Cloudflare R2 behind `assets.dkbcompanion.com`.
 
 The scraper and app are already prepared for the long-term shape:
 
@@ -16,17 +16,18 @@ The scraper and app are already prepared for the long-term shape:
 
 ## Recommended long-term setup
 
-When we are ready to publish this properly, use:
+The current production setup uses:
 
 - Cloudflare R2
 - custom domain
 - stable manifest URL
 - versioned dataset file path
 
-Suggested structure:
+Current structure:
 
-- `https://assets.<domain>/characters/characters-manifest.json`
-- `https://assets.<domain>/characters/releases/<datasetVersion>/characters.json.gz`
+- `https://assets.dkbcompanion.com/characters-manifest.json`
+- `https://assets.dkbcompanion.com/releases/<datasetVersion>/characters.json.gz`
+- `https://assets.dkbcompanion.com/images/portrait_<id>.png`
 
 The manifest should point `fileName` at the versioned release path, not just `characters.json.gz`.
 
@@ -57,28 +58,11 @@ With the current dataset size, this should stay comfortably below the free stora
 enforces a 10,000,000,000-byte managed-output budget by default; lower it with
 `--max-total-bytes` when sharing the bucket with other data.
 
-## No-domain interim option
-
-If we want to test remote delivery before buying a domain:
-
-- use the R2 public dev URL temporarily
-- treat it as a short-term validation path only
-
-Do not consider that the final production setup.
-
-## Next implementation step when we resume this
-
-Build a scraper publish flow that:
-
-1. uploads `characters/releases/<datasetVersion>/characters.json.gz`
-2. uploads `characters/characters-manifest.json`
-3. prunes older releases beyond the retention limit
-4. keeps the app configured with a single `characterDatasetBaseUrl`
-
 ## Current recommendation
 
-Until we buy a domain, the best next work is inside the product/data pipeline itself, not hosting:
+The hosting pipeline is no longer a blocker. The best next work is inside the
+product/data pipeline and Android integration:
 
-- improve dataset correctness
-- improve bootstrap UX
-- continue reducing legacy parsing in the app
+- validate a fresh-install Android smoke test
+- keep the character dataset on the FYI source
+- mirror additional media only when the app has a feature that consumes it
