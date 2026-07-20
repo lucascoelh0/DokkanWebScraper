@@ -97,7 +97,7 @@ Team-condition rules:
 - per-character targeting and team requirements are separate concepts in the contract
 
 - `portraitURL` must point to the locally composed portrait image:
-  `images/portrait_{id}.png`
+  `images/v2/portrait_{id}.png`
 - `portraitSpec` must preserve the data needed to rebuild the DokkanInfo `card-icon` portrait locally:
   - `iconId`: thumb asset id used in `/character/thumb/card_{iconId}_thumb/...`
   - `frameColorId`: frame/background color id used in `cha_base_0{frameColorId}_0{rarityNumber}.png`

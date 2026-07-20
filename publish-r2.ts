@@ -15,6 +15,7 @@ const DEFAULT_MANIFEST_PATH = "data/latest/characters-manifest.json";
 const DEFAULT_STATE_PATH = "data/latest/r2-publish-state.json";
 const DEFAULT_CONCURRENCY = 6;
 const DEFAULT_MAX_TOTAL_BYTES = 10_000_000_000;
+const WRANGLER_ENTRYPOINT = resolve(__dirname, "node_modules", "wrangler", "bin", "wrangler.js");
 
 export interface DatasetPublishState {
     schemaVersion: 1,
@@ -198,12 +199,7 @@ async function execFileAsync(command: string, args: string[]): Promise<{ stdout:
 }
 
 async function runWranglerCommand(args: string[]): Promise<void> {
-    if (process.platform === "win32") {
-        await execFileAsync("cmd.exe", ["/d", "/s", "/c", "npx", "wrangler", ...args]);
-        return;
-    }
-
-    await execFileAsync("npx", ["wrangler", ...args]);
+    await execFileAsync(process.execPath, [WRANGLER_ENTRYPOINT, ...args]);
 }
 
 async function tryReadRemoteManifest(

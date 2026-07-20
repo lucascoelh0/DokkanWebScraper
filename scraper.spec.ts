@@ -107,6 +107,15 @@ describe("parseLeaderSkillDetails", function () {
     });
   });
 
+  it("does not add mutually exclusive category and type alternatives", () => {
+    const details = parseLeaderSkillDetails(`"Kamehameha" Category Ki +3 and HP, ATK & DEF +120%; or INT & PHY Types Ki +3 and HP, ATK & DEF +90%`);
+
+    equal(details?.displayBoost, 120);
+    equal(details?.clauses.length, 2);
+    equal(details?.clauses[0].stackGroup, "primary");
+    equal(details?.clauses[1].stackGroup, "secondary");
+  });
+
   it("captures team-wide class and type conditions without polluting per-character targets", () => {
     const details = parseLeaderSkillDetails(`All allies' Ki +2, HP +150% and ATK & DEF +100% when team includes Super & Extreme Classes, plus an additional Ki +1 and HP, ATK & DEF +70% when team includes all five Types`);
 

@@ -5,6 +5,7 @@ import * as sharp from "sharp";
 import { Classes, PortraitSpec, Rarities } from "../character";
 
 const DOKKAN_INFO_ASSET_BASE_URL = "https://dokkaninfo.com/assets/global/en";
+const sharedPortraitAssetCache = new Map<string, Promise<Buffer>>();
 
 export function normalizeAssetId(cardId: number): number {
     return Math.floor(cardId / 10) * 10;
@@ -91,6 +92,17 @@ async function fetchImageBuffer(url: string): Promise<Buffer> {
     return Buffer.from(arrayBuffer);
 }
 
+function fetchSharedImageBuffer(url: string): Promise<Buffer> {
+    const cached = sharedPortraitAssetCache.get(url);
+    if (cached) {
+        return cached;
+    }
+
+    const request = fetchImageBuffer(url);
+    sharedPortraitAssetCache.set(url, request);
+    return request;
+}
+
 async function isCurrentPortrait(path: string): Promise<boolean> {
     if (!existsSync(path)) {
         return false;
@@ -104,19 +116,20 @@ export async function savePortraitFile(
     portraitFilename: string,
     portraitSpec: PortraitSpec,
     outputDir = resolve(__dirname, "..", "data", "images"),
+    force = false,
 ): Promise<void> {
     await mkdir(outputDir, { recursive: true });
     const outputPath = resolve(outputDir, `${portraitFilename}.png`);
-    if (await isCurrentPortrait(outputPath)) {
+    if (!force && await isCurrentPortrait(outputPath)) {
         return;
     }
 
     const portraitAssets = portraitAssetUrls(portraitSpec);
     const [background, icon, rarity, type] = await Promise.all([
-        fetchImageBuffer(portraitAssets.backgroundURL),
+        fetchSharedImageBuffer(portraitAssets.backgroundURL),
         fetchImageBuffer(portraitAssets.iconURL),
-        fetchImageBuffer(portraitAssets.rarityURL),
-        fetchImageBuffer(portraitAssets.typeURL),
+        fetchSharedImageBuffer(portraitAssets.rarityURL),
+        fetchSharedImageBuffer(portraitAssets.typeURL),
     ]);
 
     const backgroundLayer = await sharp(background).resize({ height: 120 }).png().toBuffer();

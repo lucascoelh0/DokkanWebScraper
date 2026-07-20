@@ -111,7 +111,7 @@ Dates are saved as UTC ISO strings.
 
 Leader, passive, links, categories, stats, ki meter and art URL keep the existing fields where possible.
 
-`portraitURL` now points to a locally composed file in `data/images`, for example `images/portrait_1033830.png`.
+`portraitURL` now points to a locally composed file in `data/fyi-characters/images/v2`, for example `images/v2/portrait_1033830.png`.
 
 `portraitSpec` is the app-facing contract for rebuilding the same portrait locally without storing raw layer URLs in JSON:
 

@@ -22,7 +22,7 @@ until the character contract is stable.
 - The staging run now mirrors 1,623 referenced portraits locally and has a
   reproducible validation gate for the bundle, manifest, records and portraits.
 - The published character bundle contains all portraits required by the
-  current Android UI. `artURL` remains a remote FYI CDN reference for 1,623
+  current Android UI under the versioned `images/v2/` path. `artURL` remains a remote FYI CDN reference for 1,623
   card-art/cut-in assets; those images are not currently consumed by the app
   and are intentionally outside the current publication gate.
 - The production `index.ts` still generates the legacy DokkanInfo character
@@ -172,9 +172,10 @@ Status: **in progress**
 
 Current result: the FYI bundle is published at the remote manifest with 1,432
 characters and a verified SHA-256 match against the local staging artifact.
-The publisher uploaded 1,623 portraits, removed 1,264 obsolete portraits and
-deleted the previous character release. Android consumption is the remaining
-cutover work.
+The publisher uploaded 1,623 complete card portraits under `images/v2/`,
+removed the 1,623 obsolete cutout portrait keys and deleted the previous
+character release. Android consumption and the final smoke test remain for
+cutover completion.
 
 Exit criterion: a clean install downloads and renders the new dataset, and an
 existing install updates it without losing usable cached data.

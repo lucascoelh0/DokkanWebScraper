@@ -27,7 +27,7 @@ Current structure:
 
 - `https://assets.dkbcompanion.com/characters-manifest.json`
 - `https://assets.dkbcompanion.com/releases/<datasetVersion>/characters.json.gz`
-- `https://assets.dkbcompanion.com/images/portrait_<id>.png`
+- `https://assets.dkbcompanion.com/images/v2/portrait_<id>.png`
 
 The manifest should point `fileName` at the versioned release path, not just `characters.json.gz`.
 
