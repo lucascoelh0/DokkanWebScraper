@@ -123,6 +123,29 @@ describe("parseLeaderSkillDetails", function () {
     equal(details?.clauses[0].boostForm, "flat");
   });
 
+  it("parses percentage leader skills that boost only one stat", () => {
+    const details = parseLeaderSkillDetails(`All Types ATK +15%`);
+
+    equal(details?.displayBoost, 15);
+    deepEqual(details?.clauses[0], {
+      rawText: `All Types ATK +15%`,
+      stackGroup: "primary",
+      targetMode: "base",
+      types: ["All"],
+      atk: 15,
+      hp: 0,
+      def: 0,
+      boostForm: "percentage",
+    });
+  });
+
+  it("accepts spacing between the plus sign and percentage value", () => {
+    const details = parseLeaderSkillDetails(`INT Type ATK + 30%`);
+
+    equal(details?.displayBoost, 30);
+    equal(details?.clauses[0].atk, 30);
+  });
+
   it("captures team-wide class and type conditions without polluting per-character targets", () => {
     const details = parseLeaderSkillDetails(`All allies' Ki +2, HP +150% and ATK & DEF +100% when team includes Super & Extreme Classes, plus an additional Ki +1 and HP, ATK & DEF +70% when team includes all five Types`);
 

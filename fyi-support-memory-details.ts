@@ -391,7 +391,7 @@ function mapAcquisitionSourceEntry(
         groupKey: indexedSource?.groupKey || source.key,
         groupKind: indexedSource?.groupKind || "standalone",
         title: source.title,
-        subtitle: source.subtitle,
+        subtitle: cleanAcquisitionText(source.subtitle),
         description: source.description,
         quantity: source.quantity,
         imageUrl: source.imageUrl,
@@ -414,7 +414,7 @@ function mapMissionFallbackSourceEntry(
         groupKey: mission.categoryId ? `event-mission-category:${mission.categoryId}` : mission.groupKey,
         groupKind: "event-mission-category",
         title: mission.title,
-        subtitle: group?.title,
+        subtitle: cleanAcquisitionText(group?.title),
         description: mission.description,
         quantity: 1,
         sourcePath,
@@ -427,6 +427,15 @@ function mapMissionFallbackSourceEntry(
             missionGroupKey: mission.groupKey,
         },
     };
+}
+
+function cleanAcquisitionText(value: string | undefined): string | undefined {
+    const normalized = value?.replace(/\s+/g, " ").trim();
+    if (!normalized || /^MissionCategory::/i.test(normalized)) {
+        return undefined;
+    }
+
+    return normalized;
 }
 
 function findSupportMemoryUnlockMissionFallbacks(

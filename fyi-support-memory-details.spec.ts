@@ -96,6 +96,7 @@ describe("buildSupportMemoryDetailsDataset", function () {
                                 key: "event-mission:unlock",
                                 kind: "event-mission",
                                 title: "Complete the specified Support Memory.",
+                                subtitle: "MissionCategory::ExtraMissionCategory",
                                 missionCategoryId: "924",
                                 missionId: "21146",
                                 quantity: 1,
@@ -260,6 +261,7 @@ describe("buildSupportMemoryDetailsDataset", function () {
         equal(memory.unlockAcquisition?.groups[0].totalQuantity, 1);
         equal(memory.unlockAcquisition?.groups[0].satisfiesRequiredQuantity, true);
         equal(memory.unlockAcquisition?.requiredQuantity, 1);
+        equal(memory.unlockAcquisition?.sources[0].subtitle, undefined);
         equal(memory.unlockAcquisition?.sources[0].navigationTarget?.missionKey, "event:21146");
         equal(memory.filmAcquisition?.itemKey, "SupportFilm:1");
         equal(memory.filmAcquisition?.sourceModel, "acquisition-item");

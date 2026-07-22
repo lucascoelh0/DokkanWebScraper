@@ -1407,10 +1407,10 @@ function parseLeaderSkillBoostValues(segment: string): LeaderSkillBoostValues {
 }
 
 function parsePercentageLeaderSkillSummary(segment: string): LeaderSkillBoostValues {
-    const separatedBoostPattern1 = /(HP|ATK|DEF) & (HP|ATK|DEF) \+(\d+)% and (HP|ATK|DEF) \+(\d+)%/i;
-    const separatedBoostPattern2 = /HP \+(\d+)% and ATK & DEF \+(\d+)%/i;
-    const combinedBoostPattern = /HP, ATK (?:&|and) DEF \+(\d+)%/i;
-    const separateStatBoostPattern = /(HP|DEF) & (DEF|HP) \+(\d+)%, (ATK) \+(\d+)%/i;
+    const separatedBoostPattern1 = /(HP|ATK|DEF) & (HP|ATK|DEF) \+\s*(\d+)% and (HP|ATK|DEF) \+\s*(\d+)%/i;
+    const separatedBoostPattern2 = /HP \+\s*(\d+)% and ATK & DEF \+\s*(\d+)%/i;
+    const combinedBoostPattern = /HP, ATK (?:&|and) DEF \+\s*(\d+)%/i;
+    const separateStatBoostPattern = /(HP|DEF) & (DEF|HP) \+\s*(\d+)%, (ATK) \+\s*(\d+)%/i;
 
     const separatedBoostMatch1 = segment.match(separatedBoostPattern1);
     const separatedBoostMatch2 = segment.match(separatedBoostPattern2);
@@ -1453,6 +1453,31 @@ function parsePercentageLeaderSkillSummary(segment: string): LeaderSkillBoostVal
         def = atk;
     }
 
+    // Keep single-stat and pair-stat leader skills accurate as well. The
+    // combined patterns above cover the common 3-stat forms, but skills such
+    // as "ATK +15%" or "ATK & DEF +30%" otherwise look like zero boosts.
+    const pairStatMatches = Array.from(
+        segment.matchAll(/\b(HP|ATK|DEF)\s*&\s*(HP|ATK|DEF)\s*\+\s*(\d+)%/gi),
+    );
+    for (const match of pairStatMatches) {
+        const value = parseFloat(match[3] ?? '0');
+        for (const stat of [match[1], match[2]]) {
+            if (stat?.toUpperCase() === 'HP') hp = value;
+            if (stat?.toUpperCase() === 'ATK') atk = value;
+            if (stat?.toUpperCase() === 'DEF') def = value;
+        }
+    }
+
+    const singleStatMatches = Array.from(
+        segment.matchAll(/\b(HP|ATK|DEF)\s*\+\s*(\d+)%/gi),
+    );
+    for (const match of singleStatMatches) {
+        const value = parseFloat(match[2] ?? '0');
+        if (match[1]?.toUpperCase() === 'HP') hp = value;
+        if (match[1]?.toUpperCase() === 'ATK') atk = value;
+        if (match[1]?.toUpperCase() === 'DEF') def = value;
+    }
+
     return {
         hp,
         atk,
@@ -1462,7 +1487,7 @@ function parsePercentageLeaderSkillSummary(segment: string): LeaderSkillBoostVal
 }
 
 function parseFlatLeaderSkillSummary(segment: string): LeaderSkillBoostValues {
-    const flatBoostPattern = /(HP|ATK|DEF) \+(\d+)/gi;
+    const flatBoostPattern = /(HP|ATK|DEF) \+\s*(\d+)/gi;
     const matches = Array.from(segment.matchAll(flatBoostPattern));
 
     const flatBoostMap = new Map(matches.map(match => [match[1], parseFloat(match[2] ?? '0')]));
@@ -1484,11 +1509,11 @@ function extractLeaderSkillCategories(segment: string): string[] | undefined {
 }
 
 function extractLeaderSkillTypes(segment: string): string[] | undefined {
-    if (!/\bType\b/i.test(segment)) {
+    if (!/\bTypes?\b/i.test(segment)) {
         return undefined;
     }
 
-    if (/\bAll Type\b|\bAll Types\b/i.test(segment)) {
+    if (/\bAll Types?\b/i.test(segment)) {
         return ['All'];
     }
 
@@ -1548,7 +1573,7 @@ function toTitleCase(value: string): string {
 }
 
 function extractLeaderSkillKi(segment: string): number | undefined {
-    const kiBoost = segment.match(/Ki \+(\d+)/i)?.[1];
+    const kiBoost = segment.match(/Ki \+\s*(\d+)/i)?.[1];
     return kiBoost ? parseInt(kiBoost, 10) : undefined;
 }
 
@@ -1560,7 +1585,12 @@ function calculateLeaderSkillDisplayBoost(
             return undefined;
         }
 
-        return (leaderSkill.hp + leaderSkill.atk + leaderSkill.def) / 3;
+        const positiveStats = [leaderSkill.hp, leaderSkill.atk, leaderSkill.def]
+            .filter(value => value > 0);
+
+        return positiveStats.length > 0
+            ? positiveStats.reduce((sum, value) => sum + value, 0) / positiveStats.length
+            : 0;
     };
 
     // Primary and secondary clauses are alternatives introduced by "or". Only
