@@ -1,4 +1,4 @@
-import { AcquisitionSourceKind } from "./acquisition";
+import { AcquisitionSourceKind, AcquisitionStageReference } from "./acquisition";
 
 export type AcquisitionSourceGroupKind =
     | "event-mission-category"
@@ -57,6 +57,7 @@ export interface AcquisitionSourceEntry {
     eventType?: string,
     eventId?: string,
     eventStageId?: string,
+    stageReferences?: AcquisitionStageReference[],
     rewardCount: number,
     rewards: AcquisitionSourceRewardRef[],
 }

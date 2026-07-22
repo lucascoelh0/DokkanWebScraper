@@ -1,7 +1,13 @@
 import { mkdir, readFile, rename, writeFile } from "fs/promises";
 import { resolve } from "path";
 import { fetchFromWeb } from "./scraper";
-import { DokkanInfoEventReward, DokkanInfoEventRewardDataset, DokkanInfoEventRewardEvent } from "./dokkaninfo-event-reward";
+import {
+    DokkanInfoEventMissionReference,
+    DokkanInfoEventReward,
+    DokkanInfoEventRewardDataset,
+    DokkanInfoEventRewardEvent,
+    DokkanInfoEventStage,
+} from "./dokkaninfo-event-reward";
 import { writeFormattedJson } from "./format-json";
 
 const DOKKAN_INFO_BASE_URL = "https://dokkaninfo.com";
@@ -105,6 +111,8 @@ export function buildDokkanInfoEventRewardDataset(
     const normalizedEvents = events
         .map(event => ({
             ...event,
+            stages: [...(event.stages ?? [])].sort(compareStages),
+            missions: [...(event.missions ?? [])].sort(compareMissionReferences),
             rewards: [...event.rewards].sort(compareRewards),
         }))
         .sort((left, right) => left.type.localeCompare(right.type) || left.id.localeCompare(right.id));
@@ -197,6 +205,8 @@ async function fetchAndMapEvent(summary: DokkanInfoEventSummary): Promise<Dokkan
         startAt: summary.startAt,
         endAt: summary.endAt,
         imagePath: summary.imagePath,
+        stages: mapEventStages(document, summary),
+        missions: mapEventMissionReferences(document),
         rewards: mapEventRewards(document, summary, eventName, sourcePath),
     };
 
@@ -267,6 +277,53 @@ function mapEventRewards(
     return [...unique.values()];
 }
 
+export function mapEventStages(document: Document, summary: DokkanInfoEventSummary): DokkanInfoEventStage[] {
+    const stages = Array.from(document.querySelectorAll("a[href]"))
+        .map((anchor): DokkanInfoEventStage | undefined => {
+            const href = cleanText(anchor.getAttribute("href"));
+            const match = href.match(new RegExp(`(?:https?://[^/]+)?/events/${escapeRegExp(summary.type)}/${escapeRegExp(summary.id)}/(\\d+)$`));
+            if (!match) {
+                return undefined;
+            }
+
+            const stageContainer = anchor.closest(".col-sm") || anchor.parentElement;
+            const heading = cleanText(stageContainer?.querySelector(".font-size-1_5")?.textContent);
+            const title = heading || `Stage ${match[1]}`;
+            const levelMatch = title.match(/\bLevel\s+(\d+)\s*:/i);
+            const difficulty = cleanText(anchor.textContent).match(/\b(SUPER\s*\d*|Z-HARD|HARD|NORMAL)\b/i)?.[1];
+
+            return {
+                id: match[1],
+                title,
+                level: levelMatch ? Number(levelMatch[1]) : undefined,
+                difficulty: difficulty ? cleanText(difficulty) : undefined,
+                sourcePath: href.startsWith("http") ? href : `${DOKKAN_INFO_BASE_URL}${href}`,
+            };
+        })
+        .filter((stage): stage is DokkanInfoEventStage => Boolean(stage));
+
+    return [...new Map(stages.map(stage => [stage.id, stage])).values()]
+        .sort((left, right) => (left.level ?? Number.MAX_SAFE_INTEGER) - (right.level ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id));
+}
+
+export function mapEventMissionReferences(document: Document): DokkanInfoEventMissionReference[] {
+    const category = document.querySelector("mission-category");
+    const payload = parseJsonAttribute<{ missions?: Array<{ id?: number | string | null, conditions?: string | null }> }>(
+        category?.getAttribute("v-bind:missioncategory"),
+    );
+
+    return (payload?.missions ?? [])
+        .map(mission => {
+            const conditions = parseJsonAttribute<{ sugoroku_map_ids?: Array<number | string | null> }>(mission.conditions);
+            const stageIds = (conditions?.sugoroku_map_ids ?? [])
+                .map(toString)
+                .filter(Boolean);
+            const id = toString(mission.id);
+            return id && stageIds.length ? { id, stageIds } : undefined;
+        })
+        .filter((mission): mission is DokkanInfoEventMissionReference => Boolean(mission));
+}
+
 function stageContext(element: Element, type: string, eventId: string): { id: string, path: string } | undefined {
     const href = cleanText(element.closest("a")?.getAttribute("href"));
     const match = href.match(new RegExp(`(?:https?://[^/]+)?/events/${escapeRegExp(type)}/${escapeRegExp(eventId)}/(\\d+)$`));
@@ -290,7 +347,7 @@ async function readCachedEvent(fileName: string): Promise<DokkanInfoEventRewardE
         const entry = JSON.parse(raw) as CachedEventEntry;
         const ttlHours = parseFloat(process.env.DOKKANINFO_EVENT_REWARD_CACHE_TTL_HOURS ?? "");
         const ttl = Number.isFinite(ttlHours) && ttlHours >= 0 ? ttlHours : 24;
-        if (!entry.event || Date.now() - Date.parse(entry.fetchedAt) > ttl * 60 * 60 * 1000) {
+        if (!entry.event || Date.now() - Date.parse(entry.fetchedAt) > ttl * 60 * 60 * 1000 || !hasStageMetadata(entry.event)) {
             return undefined;
         }
 
@@ -298,6 +355,10 @@ async function readCachedEvent(fileName: string): Promise<DokkanInfoEventRewardE
     } catch {
         return undefined;
     }
+}
+
+function hasStageMetadata(event: DokkanInfoEventRewardEvent): boolean {
+    return Array.isArray(event.stages) && Array.isArray(event.missions);
 }
 
 async function writeCachedEvent(fileName: string, event: DokkanInfoEventRewardEvent): Promise<void> {
@@ -333,6 +394,15 @@ function compareRewards(left: DokkanInfoEventReward, right: DokkanInfoEventRewar
     return left.itemType.localeCompare(right.itemType)
         || left.itemId.localeCompare(right.itemId)
         || left.key.localeCompare(right.key);
+}
+
+function compareStages(left: DokkanInfoEventStage, right: DokkanInfoEventStage): number {
+    return (left.level ?? Number.MAX_SAFE_INTEGER) - (right.level ?? Number.MAX_SAFE_INTEGER)
+        || left.id.localeCompare(right.id);
+}
+
+function compareMissionReferences(left: DokkanInfoEventMissionReference, right: DokkanInfoEventMissionReference): number {
+    return left.id.localeCompare(right.id);
 }
 
 function parseJsonAttribute<T>(value: string | null | undefined): T | undefined {

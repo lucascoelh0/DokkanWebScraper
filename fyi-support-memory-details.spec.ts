@@ -101,6 +101,18 @@ describe("buildSupportMemoryDetailsDataset", function () {
                                 missionId: "21146",
                                 quantity: 1,
                                 sourcePath: "https://dokkan.fyi/missions/924",
+                                stageReferences: [
+                                    {
+                                        id: "9240010",
+                                        title: "Level 1: Support Memory Stage 1",
+                                        level: 1,
+                                        difficulty: "SUPER",
+                                        sourcePath: "https://dokkaninfo.com/events/challenge/924/9240010",
+                                        eventType: "challenge",
+                                        eventId: "924",
+                                        eventName: "Support Memory Event",
+                                    },
+                                ],
                             },
                         ],
                     },
@@ -263,6 +275,8 @@ describe("buildSupportMemoryDetailsDataset", function () {
         equal(memory.unlockAcquisition?.requiredQuantity, 1);
         equal(memory.unlockAcquisition?.sources[0].subtitle, undefined);
         equal(memory.unlockAcquisition?.sources[0].navigationTarget?.missionKey, "event:21146");
+        equal(memory.unlockAcquisition?.sources[0].stageReferences?.[0].id, "9240010");
+        equal(memory.unlockAcquisition?.sources[0].stageReferences?.[0].eventName, "Support Memory Event");
         equal(memory.filmAcquisition?.itemKey, "SupportFilm:1");
         equal(memory.filmAcquisition?.sourceModel, "acquisition-item");
         equal(memory.filmAcquisition?.groupCount, 1);

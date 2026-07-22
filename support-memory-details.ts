@@ -1,5 +1,5 @@
 import { AcquisitionNavigationTarget } from "./acquisition-navigation";
-import { AcquisitionSourceKind } from "./acquisition";
+import { AcquisitionSourceKind, AcquisitionStageReference } from "./acquisition";
 import { AcquisitionSourceGroupKind } from "./acquisition-source-index";
 import { SupportMemory } from "./support-memory";
 import {
@@ -87,4 +87,5 @@ export interface SupportMemoryAcquisitionSourceEntry {
     startsAt?: string,
     endsAt?: string,
     navigationTarget?: AcquisitionNavigationTarget,
+    stageReferences?: AcquisitionStageReference[],
 }

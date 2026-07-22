@@ -15,7 +15,22 @@ export interface DokkanInfoEventRewardEvent {
     startAt?: string,
     endAt?: string,
     imagePath?: string,
+    stages?: DokkanInfoEventStage[],
+    missions?: DokkanInfoEventMissionReference[],
     rewards: DokkanInfoEventReward[];
+}
+
+export interface DokkanInfoEventStage {
+    id: string,
+    title: string,
+    level?: number,
+    difficulty?: string,
+    sourcePath: string,
+}
+
+export interface DokkanInfoEventMissionReference {
+    id: string,
+    stageIds: string[],
 }
 
 export interface DokkanInfoEventReward {

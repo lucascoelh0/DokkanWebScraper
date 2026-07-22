@@ -399,6 +399,7 @@ function mapAcquisitionSourceEntry(
         startsAt: source.startsAt,
         endsAt: source.endsAt,
         navigationTarget,
+        stageReferences: source.stageReferences,
     };
 }
 

@@ -211,9 +211,31 @@ describe("buildAcquisitionDataset", () => {
             dokkanInfoEventRewards: {
                 generatedAt: "2026-01-01T00:00:00.000Z",
                 source: "dokkaninfo",
-                eventCount: 1,
+                eventCount: 2,
                 rewardCount: 1,
                 events: [
+                    {
+                        id: "796",
+                        type: "challenge",
+                        name: "Mission Event",
+                        sourcePath: "https://dokkaninfo.com/events/challenge/796",
+                        stages: [
+                            {
+                                id: "7960010",
+                                title: "Level 3: Mission Event Stage 3",
+                                level: 3,
+                                difficulty: "SUPER",
+                                sourcePath: "https://dokkaninfo.com/events/challenge/796/7960010",
+                            },
+                        ],
+                        missions: [
+                            {
+                                id: "24832",
+                                stageIds: ["7960010"],
+                            },
+                        ],
+                        rewards: [],
+                    },
                     {
                         id: "133",
                         type: "story",
@@ -272,5 +294,21 @@ describe("buildAcquisitionDataset", () => {
         const orb = dataset.items.find(item => item.key === "EquipmentSkillItem:9000");
         equal(orb?.sources[0].kind, "dokkaninfo-event-reward");
         equal(orb?.sources[0].eventStageId, "1330010");
+
+        deepEqual(
+            stone?.sources.find(source => source.kind === "event-mission")?.stageReferences,
+            [
+                {
+                    id: "7960010",
+                    title: "Level 3: Mission Event Stage 3",
+                    level: 3,
+                    difficulty: "SUPER",
+                    sourcePath: "https://dokkaninfo.com/events/challenge/796/7960010",
+                    eventType: "challenge",
+                    eventId: "796",
+                    eventName: "Mission Event",
+                },
+            ],
+        );
     });
 });

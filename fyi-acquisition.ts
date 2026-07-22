@@ -1,9 +1,9 @@
 import { mkdir, readFile } from "fs/promises";
 import { resolve } from "path";
-import { AcquisitionDataset, AcquisitionItem, AcquisitionSource } from "./acquisition";
+import { AcquisitionDataset, AcquisitionItem, AcquisitionSource, AcquisitionStageReference } from "./acquisition";
 import { AwakeningMedal, AwakeningMedalDataset, AwakeningMedalStageSource, AwakeningMedalWorldTournamentSource } from "./awakening-path";
 import { DokkanFrontierChapter, DokkanFrontierChaptersDataset, DokkanFrontierMission, DokkanFrontierNode, DokkanFrontierPage, DokkanFrontierReward } from "./dokkan-frontier";
-import { DokkanInfoEventRewardDataset } from "./dokkaninfo-event-reward";
+import { DokkanInfoEventRewardDataset, DokkanInfoEventStage } from "./dokkaninfo-event-reward";
 import { EventMissionCategory, EventMissionDataset, EventMissionEntry, EventMissionReward } from "./event-mission";
 import { writeFormattedJson } from "./format-json";
 import { buildStableRewardItemKey, resolveStableRewardItemId } from "./reward-item-key";
@@ -54,13 +54,15 @@ export async function writeDokkanFyiAcquisitionDataset(): Promise<string> {
 
 export function buildAcquisitionDataset(input: AcquisitionBuildInput): AcquisitionDataset {
     const itemsByKey = new Map<string, AcquisitionItemBuilder>();
+    const dokkanInfoStageById = buildDokkanInfoStageIndex(input.dokkanInfoEventRewards);
+    const dokkanInfoMissionStageIdsByKey = buildDokkanInfoMissionStageIndex(input.dokkanInfoEventRewards);
 
     for (const medal of input.awakeningMedals.medals) {
         addAwakeningMedalSources(itemsByKey, medal);
     }
 
     for (const category of input.eventMissions.categories) {
-        addEventMissionSources(itemsByKey, category);
+        addEventMissionSources(itemsByKey, category, dokkanInfoMissionStageIdsByKey, dokkanInfoStageById);
     }
 
     for (const chapter of input.frontierChapters.chapters) {
@@ -203,7 +205,12 @@ function addAwakeningMedalSources(itemsByKey: Map<string, AcquisitionItemBuilder
     }
 }
 
-function addEventMissionSources(itemsByKey: Map<string, AcquisitionItemBuilder>, category: EventMissionCategory) {
+function addEventMissionSources(
+    itemsByKey: Map<string, AcquisitionItemBuilder>,
+    category: EventMissionCategory,
+    dokkanInfoMissionStageIdsByKey: Map<string, string[]>,
+    dokkanInfoStageById: Map<string, AcquisitionStageReference>,
+) {
     for (const mission of category.missions) {
         for (const reward of mission.rewards) {
             if (!reward.itemId || !reward.itemType) {
@@ -227,10 +234,78 @@ function addEventMissionSources(itemsByKey: Map<string, AcquisitionItemBuilder>,
                     missionCategoryId: category.id,
                     missionId: mission.id,
                     missionType: mission.type,
+                    stageReferences: resolveMissionStageReferences(
+                        category.id,
+                        mission.id,
+                        dokkanInfoMissionStageIdsByKey,
+                        dokkanInfoStageById,
+                    ),
                 },
             );
         }
     }
+}
+
+function buildDokkanInfoStageIndex(
+    dataset: DokkanInfoEventRewardDataset | undefined,
+): Map<string, AcquisitionStageReference> {
+    const stages = new Map<string, AcquisitionStageReference>();
+
+    for (const event of dataset?.events ?? []) {
+        for (const stage of event.stages ?? []) {
+            stages.set(stage.id, mapDokkanInfoStageReference(event, stage));
+        }
+    }
+
+    return stages;
+}
+
+function buildDokkanInfoMissionStageIndex(
+    dataset: DokkanInfoEventRewardDataset | undefined,
+): Map<string, string[]> {
+    const missionStageIds = new Map<string, string[]>();
+
+    for (const event of dataset?.events ?? []) {
+        for (const mission of event.missions ?? []) {
+            missionStageIds.set(`${event.id}:${mission.id}`, [...new Set(mission.stageIds)]);
+        }
+    }
+
+    return missionStageIds;
+}
+
+function resolveMissionStageReferences(
+    categoryId: string,
+    missionId: string,
+    missionStageIdsByKey: Map<string, string[]>,
+    stagesById: Map<string, AcquisitionStageReference>,
+): AcquisitionStageReference[] | undefined {
+    const stageIds = missionStageIdsByKey.get(`${categoryId}:${missionId}`);
+    if (!stageIds?.length) {
+        return undefined;
+    }
+
+    const references = stageIds
+        .map(stageId => stagesById.get(stageId))
+        .filter((stage): stage is AcquisitionStageReference => Boolean(stage));
+
+    return references.length ? references : undefined;
+}
+
+function mapDokkanInfoStageReference(
+    event: NonNullable<DokkanInfoEventRewardDataset["events"]>[number],
+    stage: DokkanInfoEventStage,
+): AcquisitionStageReference {
+    return {
+        id: stage.id,
+        title: stage.title,
+        level: stage.level,
+        difficulty: stage.difficulty,
+        sourcePath: stage.sourcePath,
+        eventType: event.type,
+        eventId: event.id,
+        eventName: event.name,
+    };
 }
 
 function addFrontierSources(itemsByKey: Map<string, AcquisitionItemBuilder>, chapter: DokkanFrontierChapter) {

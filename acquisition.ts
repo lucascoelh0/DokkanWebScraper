@@ -70,4 +70,16 @@ export interface AcquisitionSource {
     eventType?: string,
     eventId?: string,
     eventStageId?: string,
+    stageReferences?: AcquisitionStageReference[],
+}
+
+export interface AcquisitionStageReference {
+    id: string,
+    title: string,
+    level?: number,
+    difficulty?: string,
+    sourcePath: string,
+    eventType: string,
+    eventId: string,
+    eventName: string,
 }

@@ -104,6 +104,7 @@ Current `dokkaninfo-event-rewards.json` scope:
 - 40,345 reward rows and 4,851 distinct item identities in the 2026-07-15
   full refresh
 - stage-aware source links when the event page exposes a concrete stage
+- event stage catalogs and mission-to-stage references from DokkanInfo `sugoroku_map_ids`
 - event-level sources for pages such as Z-Battles whose reward rows are not
   attached to a stage anchor
 - stable `dokkaninfo-event-reward:{eventType}:{eventId}:...` source keys
@@ -134,6 +135,7 @@ Current `support-memory-details.json` scope:
 - film acquisition refs via `SupportFilm:{filmId}`
 - grouped acquisition rollups per source surface
 - navigation targets for each acquisition source when available
+- mission stage references with DokkanInfo level titles, difficulty, and direct stage paths when available
 - DokkanInfo enrichment joined directly onto each memory under `dokkanInfo`
   - large art / complete art / film icon
   - enhancement item refs

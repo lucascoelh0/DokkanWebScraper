@@ -101,6 +101,7 @@ Notable support-memory details fields:
 - `unlockAcquisition`: exact unlock sources when the site exposes them directly or via mission fallback
 - `filmAcquisition`: acquisition sources for the required film color
 - `unlockAcquisition.groups` / `filmAcquisition.groups`: grouped source summaries with total quantities per event/stage surface
+- `unlockAcquisition.sources[].stageReferences`: DokkanInfo stage IDs, level titles, difficulty, and direct stage paths when a mission exposes `sugoroku_map_ids`
 - `dokkanInfo`: optional DokkanInfo enrichment block already joined by support-memory id
   - card art / complete art / film icon
   - enhancement item icons
