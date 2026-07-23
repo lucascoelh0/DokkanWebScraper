@@ -237,6 +237,7 @@ function addEventMissionSources(
                     stageReferences: resolveMissionStageReferences(
                         category.id,
                         mission.id,
+                        mission.name,
                         dokkanInfoMissionStageIdsByKey,
                         dokkanInfoStageById,
                     ),
@@ -274,9 +275,39 @@ function buildDokkanInfoMissionStageIndex(
     return missionStageIds;
 }
 
-function resolveMissionStageReferences(
+export function parseMissionStageLevels(missionName: string): Set<number> | undefined {
+    const stageSelectorMatch = missionName
+        .replace(/\s+/g, " ")
+        .match(/clear\s+stages?\s+(.+?)(?:\.|$)/i);
+
+    if (!stageSelectorMatch) {
+        return undefined;
+    }
+
+    const selector = stageSelectorMatch[1]
+        .split(/\s+(?:of|times?)\b/i)[0]
+        .trim();
+    const rangeMatch = selector.match(/^(\d+)\s*(?:to|[-~])\s*(\d+)$/i);
+
+    if (rangeMatch) {
+        const start = Number.parseInt(rangeMatch[1], 10);
+        const end = Number.parseInt(rangeMatch[2], 10);
+        const lower = Math.min(start, end);
+        const upper = Math.max(start, end);
+        return new Set(Array.from({ length: upper - lower + 1 }, (_, index) => lower + index));
+    }
+
+    const levels = [...selector.matchAll(/\d+/g)]
+        .map(match => Number.parseInt(match[0], 10))
+        .filter(level => Number.isFinite(level));
+
+    return levels.length ? new Set(levels) : undefined;
+}
+
+export function resolveMissionStageReferences(
     categoryId: string,
     missionId: string,
+    missionName: string,
     missionStageIdsByKey: Map<string, string[]>,
     stagesById: Map<string, AcquisitionStageReference>,
 ): AcquisitionStageReference[] | undefined {
@@ -288,8 +319,14 @@ function resolveMissionStageReferences(
     const references = stageIds
         .map(stageId => stagesById.get(stageId))
         .filter((stage): stage is AcquisitionStageReference => Boolean(stage));
+    const currentEventReferences = references.filter(reference => reference.eventId === categoryId);
+    const candidateReferences = currentEventReferences.length > 0 ? currentEventReferences : references;
+    const requestedLevels = parseMissionStageLevels(missionName);
+    const filteredReferences = requestedLevels
+        ? candidateReferences.filter(reference => reference.level !== undefined && requestedLevels.has(reference.level))
+        : candidateReferences;
 
-    return references.length ? references : undefined;
+    return filteredReferences.length ? filteredReferences : candidateReferences.length ? candidateReferences : undefined;
 }
 
 function mapDokkanInfoStageReference(

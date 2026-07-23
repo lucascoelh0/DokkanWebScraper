@@ -1,7 +1,53 @@
 import { deepEqual, equal } from "assert";
-import { buildAcquisitionDataset } from "./fyi-acquisition";
+import { buildAcquisitionDataset, parseMissionStageLevels, resolveMissionStageReferences } from "./fyi-acquisition";
 
 describe("buildAcquisitionDataset", () => {
+    it("limits historical stage references to the current mission range", () => {
+        deepEqual([...parseMissionStageLevels("Clear Stages 22 to 27.")!], [22, 23, 24, 25, 26, 27]);
+        deepEqual([...parseMissionStageLevels("Clear Stages 1, 3, 5, 7 and 9.")!], [1, 3, 5, 7, 9]);
+
+        const stages = new Map([
+            ["17010015", {
+                id: "17010015",
+                title: "Level 1: Old Edition Stage 1",
+                level: 1,
+                sourcePath: "https://dokkaninfo.com/events/challenge/1701/17010015",
+                eventType: "challenge",
+                eventId: "1701",
+                eventName: "Old Edition",
+            }],
+            ["17380223", {
+                id: "17380223",
+                title: "Level 22: Current Edition Stage 1",
+                level: 22,
+                sourcePath: "https://dokkaninfo.com/events/challenge/1738/17380223",
+                eventType: "challenge",
+                eventId: "1738",
+                eventName: "Current Edition",
+            }],
+            ["17380274", {
+                id: "17380274",
+                title: "Level 27: Current Edition Stage 6",
+                level: 27,
+                sourcePath: "https://dokkaninfo.com/events/challenge/1738/17380274",
+                eventType: "challenge",
+                eventId: "1738",
+                eventName: "Current Edition",
+            }],
+        ]);
+
+        deepEqual(
+            resolveMissionStageReferences(
+                "1738",
+                "27667",
+                "Clear Stages 22 to 27.",
+                new Map([["1738:27667", ["17010015", "17380223", "17380274"]]]),
+                stages,
+            )?.map(stage => stage.id),
+            ["17380223", "17380274"],
+        );
+    });
+
     it("groups multiple source types under a stable item key", () => {
         const dataset = buildAcquisitionDataset({
             eventMissions: {
