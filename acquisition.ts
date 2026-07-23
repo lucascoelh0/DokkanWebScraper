@@ -79,6 +79,7 @@ export interface AcquisitionStageReference {
     level?: number,
     difficulty?: string,
     sourcePath: string,
+    fyiSourcePath?: string,
     eventType: string,
     eventId: string,
     eventName: string,

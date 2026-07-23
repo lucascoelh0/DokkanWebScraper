@@ -339,6 +339,7 @@ function mapDokkanInfoStageReference(
         level: stage.level,
         difficulty: stage.difficulty,
         sourcePath: stage.sourcePath,
+        fyiSourcePath: `${DOKKAN_FYI_BASE_URL}/stages/${stage.id}`,
         eventType: event.type,
         eventId: event.id,
         eventName: event.name,
