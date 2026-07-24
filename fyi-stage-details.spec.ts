@@ -1,7 +1,15 @@
 import { deepEqual, equal } from "assert";
-import { collectStageDetailAssets, localizeStageDetailAssets, mapStageDetailFromFyi, removeUnmirroredStageDetailAssets } from "./fyi-stage-details";
+import { collectStageDetailAssets, collectStageDetailIds, localizeStageDetailAssets, mapStageDetailFromFyi, removeUnmirroredStageDetailAssets } from "./fyi-stage-details";
 
 describe("dokkan.fyi stage details", () => {
+    it("merges stage ids from events, quest story, and support-memory acquisitions", () => {
+        deepEqual(collectStageDetailIds({
+            eventStageIds: ["17380223", "17380223"],
+            questStageIds: [10000, "10001"],
+            supportMemoryStageIds: ["17380223", "9230012", "invalid"],
+        }), ["17380223", "10000", "10001", "9230012"]);
+    });
+
     it("normalizes stage metadata, enemies, skills, and image sources", () => {
         const stage = mapStageDetailFromFyi({
             id: 17380223,

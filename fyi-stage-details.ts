@@ -1,6 +1,8 @@
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { resolve } from "path";
+import { SupportMemoryDetailsDataset } from "./support-memory-details";
+import { EventStagesDataset, QuestStoryStagesDataset } from "./stage";
 import { StageDetail, StageDetailAsset, StageDetailEnemy, StageDetailImages, StageDetailSkill, StageDetailsDataset } from "./stage-detail";
 import { writeFormattedJson } from "./format-json";
 
@@ -15,6 +17,12 @@ const DEFAULT_STAGE_IDS = [
     "17380264",
     "17380274",
 ];
+
+export interface StageDetailIdSources {
+    eventStageIds?: Array<string | number>,
+    questStageIds?: Array<string | number>,
+    supportMemoryStageIds?: Array<string | number>,
+}
 
 export interface FyiStageDetailPagePayload {
     component: string,
@@ -101,6 +109,31 @@ export async function getDokkanFyiStageDetails(stageIds = requestedStageIds()): 
         count: entries.length,
         entries: entries.sort((left, right) => left.id.localeCompare(right.id)),
     };
+}
+
+export function collectStageDetailIds(sources: StageDetailIdSources): string[] {
+    return uniqueStageIds([
+        ...(sources.eventStageIds ?? []),
+        ...(sources.questStageIds ?? []),
+        ...(sources.supportMemoryStageIds ?? []),
+    ].map(String));
+}
+
+export function discoverStageDetailIds(projectRoot = process.cwd()): string[] {
+    const eventStages = readJsonOrUndefined<EventStagesDataset>(resolve(projectRoot, "data/stages/latest/event-stages.json"));
+    const questStoryStages = readJsonOrUndefined<QuestStoryStagesDataset>(resolve(projectRoot, "data/stages/latest/quest-story-stages.json"));
+    const supportMemoryDetails = readJsonOrUndefined<SupportMemoryDetailsDataset>(resolve(projectRoot, "data/support-memories/latest/support-memory-details.json"));
+
+    return collectStageDetailIds({
+        eventStageIds: eventStages?.areas.flatMap(area => area.quests.flatMap(quest => quest.stages.map(stage => stage.id))),
+        questStageIds: questStoryStages?.chapters.flatMap(chapter => chapter.areas.flatMap(area => area.quests.flatMap(quest => quest.stages.map(stage => stage.id)))),
+        supportMemoryStageIds: supportMemoryDetails?.entries.flatMap(entry =>
+            [entry.unlockAcquisition, entry.filmAcquisition]
+                .flatMap(acquisition => acquisition?.sources ?? [])
+                .flatMap(source => source.stageReferences ?? [])
+                .map(reference => reference.id),
+        ),
+    });
 }
 
 export async function writeDokkanFyiStageDetails(dataset: StageDetailsDataset): Promise<string> {
@@ -323,7 +356,11 @@ function portraitPath(thumbnailId: string): string {
 
 function requestedStageIds(): string[] {
     const configured = process.env.DOKKAN_FYI_STAGE_DETAIL_IDS;
-    return configured ? uniqueStageIds(configured.split(/[\s,]+/)) : DEFAULT_STAGE_IDS;
+    const ids = configured
+        ? uniqueStageIds(configured.split(/[\s,]+/))
+        : discoverStageDetailIds().sort((left, right) => left.localeCompare(right));
+    const limit = positiveIntegerOrUndefined(process.env.DOKKAN_FYI_STAGE_DETAIL_LIMIT);
+    return (ids.length > 0 ? ids : DEFAULT_STAGE_IDS).slice(0, limit);
 }
 
 function requestedStageDetailConcurrency(): number {
@@ -339,8 +376,19 @@ function positiveInteger(value: string | undefined, fallback: number): number {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function positiveIntegerOrUndefined(value: string | undefined): number | undefined {
+    if (!value) return undefined;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function uniqueStageIds(ids: string[]): string[] {
     return [...new Set(ids.map(id => id.trim()).filter(id => /^\d+$/.test(id)))];
+}
+
+function readJsonOrUndefined<T>(path: string): T | undefined {
+    if (!existsSync(path)) return undefined;
+    return JSON.parse(readFileSync(path, "utf8")) as T;
 }
 
 function cleanText(value: string | number | null | undefined): string {

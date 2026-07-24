@@ -155,11 +155,11 @@ refuses datasets above 1 GB by default. Its state is kept at:
 
 - `./data/support-memories/latest/support-memory-r2-publish-state.json`
 
-### Stage details pilot
+### Stage details
 
-The current pilot scrapes the six stages used by the support-memory smoke test,
-including enemy stats, stage skills, quest metadata, and downloadable enemy
-portraits:
+The stage-details flow discovers stage IDs from the generated event/quest
+stage datasets and support-memory acquisition references. It includes enemy
+stats, stage skills, quest metadata, and downloadable enemy portraits:
 
 ```powershell
 npm run run:fyi-stage-details
@@ -167,11 +167,14 @@ npm run publish:stage-details-r2 -- --dry-run
 npm run publish:stage-details-r2
 ```
 
+Use `DOKKAN_FYI_STAGE_DETAIL_LIMIT=10` for a small smoke run or
+`DOKKAN_FYI_STAGE_DETAIL_IDS="17380223,17380233"` for explicit IDs.
+
 The generated files are written under `./data/stage-details/latest/` and the
 mirrored images under `./data/stage-details/assets/`. Enemy portraits are
 mirrored to R2 under `stage-details/assets/`; area banners are retained as
 optional source URLs when the CDN refuses mirroring. The publisher enforces a
-512 MiB pilot budget and uploads only changed assets when its local state is
+512 MiB dataset budget and uploads only changed assets when its local state is
 available.
 
 DokkanInfo enrichment for awakening-medal metadata and thumbs:
