@@ -10,6 +10,12 @@ describe("dokkan.fyi stage details", () => {
         }), ["17380223", "10000", "10001", "9230012"]);
     });
 
+    it("keeps stage ids from support-memory navigation targets", () => {
+        deepEqual(collectStageDetailIds({
+            supportMemoryStageIds: ["3710090", "3710092"],
+        }), ["3710090", "3710092"]);
+    });
+
     it("normalizes stage metadata, enemies, skills, and image sources", () => {
         const stage = mapStageDetailFromFyi({
             id: 17380223,

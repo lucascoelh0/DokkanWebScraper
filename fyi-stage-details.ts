@@ -129,9 +129,17 @@ export function discoverStageDetailIds(projectRoot = process.cwd()): string[] {
         questStageIds: questStoryStages?.chapters.flatMap(chapter => chapter.areas.flatMap(area => area.quests.flatMap(quest => quest.stages.map(stage => stage.id)))),
         supportMemoryStageIds: supportMemoryDetails?.entries.flatMap(entry =>
             [entry.unlockAcquisition, entry.filmAcquisition]
-                .flatMap(acquisition => acquisition?.sources ?? [])
-                .flatMap(source => source.stageReferences ?? [])
-                .map(reference => reference.id),
+                .flatMap(acquisition => [
+                    ...(acquisition?.groups ?? [])
+                        .map(group => group.navigationTarget?.eventStageId)
+                        .filter((stageId): stageId is string => Boolean(stageId)),
+                    ...(acquisition?.sources ?? [])
+                        .flatMap(source => [
+                            ...(source.stageReferences ?? []).map(reference => reference.id),
+                            source.navigationTarget?.eventStageId,
+                        ])
+                        .filter((stageId): stageId is string => Boolean(stageId)),
+                ]),
         ),
     });
 }
