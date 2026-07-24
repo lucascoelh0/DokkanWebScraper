@@ -38,6 +38,8 @@
     "run:fyi-experiment": "npx ts-node fyi-experiment.ts",
     "run:fyi-summons": "npx ts-node fyi-summons-run.ts",
     "run:fyi-stages": "npx ts-node fyi-stages-run.ts",
+    "run:fyi-stage-details": "npx ts-node fyi-stage-details-run.ts",
+    "publish:stage-details-r2": "npx ts-node publish-stage-details-r2.ts",
     "run:fyi-z-battles": "npx ts-node fyi-z-battles-run.ts",
     "run:fyi-wallpapers": "npx ts-node fyi-wallpapers-run.ts",
     "watch": "tsc -w",
