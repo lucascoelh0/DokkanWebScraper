@@ -103,3 +103,4 @@ __azurite_db*__.json
 
 data
 game-db/data
+.agent-logs/
