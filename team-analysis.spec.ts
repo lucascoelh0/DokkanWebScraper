@@ -95,23 +95,26 @@ interface GateA11Fixture {
   }>;
 }
 
-type GateA2ConditionShape =
+type GoldenConditionShape =
   | { op: "always" }
   | { op: "unknown"; sourceText: string }
-  | { op: "not"; child: GateA2ConditionShape }
-  | { op: "all" | "any"; children: GateA2ConditionShape[] }
+  | { op: "not"; child: GoldenConditionShape }
+  | { op: "all" | "any"; children: GoldenConditionShape[] }
   | {
     op: "predicate";
     kind: string;
     scope: string;
     selfInclusion?: string;
     comparator?: string;
+    value?: number;
+    maxValue?: number;
     count?: number;
     categories?: string[];
     names?: string[];
     classes?: string[];
     types?: string[];
     slots?: number[];
+    evaluationMoment?: string;
   };
 
 interface GateA2Fixture {
@@ -121,13 +124,26 @@ interface GateA2Fixture {
     rawText: string;
     expectedStatus: string;
     conditionStatus?: string;
-    condition: GateA2ConditionShape;
+    condition: GoldenConditionShape;
     target?: {
       scope: string;
       selfInclusion?: string;
       classes?: string[];
       types?: string[];
     };
+  }>;
+}
+
+interface GateA3Fixture {
+  cases: Array<{
+    name: string;
+    source: "real" | "synthetic";
+    rawText: string;
+    expectedStatus: string;
+    conditionStatus?: string;
+    condition: GoldenConditionShape;
+    effectDuration?: { kind: string; turns?: number };
+    expectNoEffectDuration?: boolean;
   }>;
 }
 
@@ -155,6 +171,12 @@ const gateA2Path = existsSync(sourceGateA2Path)
   ? sourceGateA2Path
   : resolve(__dirname, "..", gateA2RelativePath);
 const gateA2Fixture = JSON.parse(readFileSync(gateA2Path, "utf8")) as GateA2Fixture;
+const gateA3RelativePath = "fixtures/team-analysis/gate-a3-golden.json";
+const sourceGateA3Path = resolve(__dirname, gateA3RelativePath);
+const gateA3Path = existsSync(sourceGateA3Path)
+  ? sourceGateA3Path
+  : resolve(__dirname, "..", gateA3RelativePath);
+const gateA3Fixture = JSON.parse(readFileSync(gateA3Path, "utf8")) as GateA3Fixture;
 
 const options = {
   generatedAt: "2026-08-03T12:00:00.000Z",
@@ -298,7 +320,10 @@ describe("team-analysis Gate A1 passive parser", function () {
       equal(rule.condition.op, fixtureCase.expected.conditionOp);
       deepEqual(predicates.map(predicate => predicate.kind), fixtureCase.expected.predicateKinds);
       deepEqual(predicates.map(predicate => predicate.scope), fixtureCase.expected.scopes);
-      deepEqual(predicates.map(predicate => predicate.selfInclusion), fixtureCase.expected.selfInclusions);
+      deepEqual(
+        predicates.map(predicate => predicate.selfInclusion).filter(value => value !== undefined),
+        fixtureCase.expected.selfInclusions,
+      );
       deepEqual(unique(predicates.flatMap(predicate => predicate.names ?? [])), fixtureCase.expected.names ?? []);
       deepEqual(categories, fixtureCase.expected.categories ?? []);
       deepEqual(predicates.flatMap(predicate => predicate.count ?? []), fixtureCase.expected.counts ?? []);
@@ -682,6 +707,39 @@ describe("team-analysis Gate A2 class, type, slot, and boolean parser", function
   });
 });
 
+describe("team-analysis Gate A3 HP and battle-time parser", function () {
+  for (const fixtureCase of gateA3Fixture.cases) {
+    it(`matches Gate A3 golden case: ${fixtureCase.name}`, () => {
+      const passive = parsePassive(`gate-a3:${fixtureCase.name}:initial`, fixtureCase.name, fixtureCase.rawText);
+      const rule = passive.rules[0];
+
+      equal(passive.parseStatus, fixtureCase.expectedStatus);
+      equal(rule.conditionStatus, fixtureCase.conditionStatus ?? "supported");
+      deepEqual(conditionShape(rule.condition), fixtureCase.condition);
+      if (fixtureCase.effectDuration) {
+        const typedEffect = rule.effects.find(effect => effect.kind !== "unknown");
+        ok(typedEffect);
+        deepEqual(typedEffect.duration, fixtureCase.effectDuration);
+      }
+      if (fixtureCase.expectNoEffectDuration) {
+        equal(rule.effects.some(effect => effect.duration !== undefined), false);
+      }
+    });
+  }
+
+  it("reconstructs every Gate A3 source token in original order", () => {
+    for (const fixtureCase of gateA3Fixture.cases) {
+      const passive = parsePassive("gate-a3:tokens:initial", undefined, fixtureCase.rawText);
+      const fragments = uniqueFragments([
+        ...passive.rules.flatMap(rule => rule.source),
+        ...passive.unparsedFragments,
+      ]);
+      const reconstructed = fragments.map(fragment => fragment.text).join("\n").replace(/\s/g, "");
+      equal(reconstructed, fixtureCase.rawText.replace(/\s/g, ""), fixtureCase.name);
+    }
+  });
+});
+
 describe("team-analysis validation and artifacts", function () {
   it("reports coverage by passive/rule status and supported effect", () => {
     const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
@@ -693,6 +751,52 @@ describe("team-analysis validation and artifacts", function () {
     ok(coverage.ruleStatusCounts.unknown > 0);
     ok(coverage.supportedEffectCounts.atk > 0);
     ok(coverage.unknownFragmentCount > 0);
+  });
+
+  it("separates scenario-containing rules from fully scenario-evaluable rules", () => {
+    const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
+    const baseline = buildTeamAnalysisCoverageReport(dataset);
+    const rule = dataset.states[0].passive?.rules[0];
+    ok(rule);
+    rule.condition = {
+      op: "all",
+      children: [
+        {
+          op: "predicate",
+          predicate: {
+            kind: "hp_percent",
+            scope: "team",
+            comparator: "lte",
+            value: 50,
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "battle_slot",
+            scope: "self",
+            slots: [2],
+            sourceText: "Basic effect(s)",
+          },
+        },
+      ],
+    };
+    rule.conditionStatus = "supported";
+    rule.parseStatus = rule.effectStatus === "supported" ? "supported" : "partial";
+
+    const supported = buildTeamAnalysisCoverageReport(dataset);
+    equal(supported.scenarioRuleCount, baseline.scenarioRuleCount + 1);
+    equal(supported.scenarioEvaluableRuleCount, baseline.scenarioEvaluableRuleCount + 1);
+    equal(supported.placementEvaluableRuleCount, baseline.placementEvaluableRuleCount);
+    equal(supported.teamEvaluableRuleCount, baseline.teamEvaluableRuleCount - 1);
+
+    rule.condition = { op: "all", children: [rule.condition, { op: "unknown", sourceText: "enemy state" }] };
+    rule.conditionStatus = "partial";
+    rule.parseStatus = "partial";
+    const partial = buildTeamAnalysisCoverageReport(dataset);
+    equal(partial.scenarioRuleCount, baseline.scenarioRuleCount + 1);
+    equal(partial.scenarioEvaluableRuleCount, baseline.scenarioEvaluableRuleCount);
   });
 
   it("detects duplicate keys, broken references, unstable IDs, and invalid fragments", () => {
@@ -838,6 +942,92 @@ describe("team-analysis validation and artifacts", function () {
     ok(codes.includes("target-types"));
   });
 
+  it("rejects invalid HP, battle-turn, entry-turn, phase, and window payloads", () => {
+    const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
+    const broken = JSON.parse(JSON.stringify(dataset)) as typeof dataset;
+    const rule = broken.states[0].passive?.rules[0];
+    ok(rule);
+    rule.condition = JSON.parse(JSON.stringify({
+      op: "all",
+      children: [
+        {
+          op: "predicate",
+          predicate: {
+            kind: "hp_percent",
+            scope: "self",
+            comparator: "between",
+            value: 101,
+            maxValue: 120,
+            evaluationMoment: "mid_turn",
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "battle_turn",
+            scope: "self",
+            comparator: "gte",
+            value: 0,
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "hp_percent",
+            scope: "team",
+            comparator: "lte",
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "turn_from_entry",
+            scope: "battle",
+            comparator: "lte",
+            value: 0.5,
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "battle_turn",
+            scope: "battle",
+            comparator: "gte",
+            value: 6,
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "battle_turn",
+            scope: "battle",
+            comparator: "lte",
+            value: 3,
+            sourceText: "Basic effect(s)",
+          },
+        },
+      ],
+    })) as typeof rule.condition;
+
+    const codes = validateTeamAnalysisDataset(broken, fixture.characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(codes.includes("scenario-comparator"));
+    ok(codes.includes("scenario-value"));
+    ok(codes.includes("scenario-max-value"));
+    ok(codes.includes("hp-scope"));
+    ok(codes.includes("hp-range"));
+    ok(codes.includes("evaluation-moment"));
+    ok(codes.includes("battle-turn-scope"));
+    ok(codes.includes("entry-turn-scope"));
+    ok(codes.includes("turn-index"));
+    ok(codes.includes("condition-window-range"));
+  });
+
   it("rejects PassiveDetails text that cannot be mapped back to raw offsets", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
     ok(characters[0].passiveDetails?.lines);
@@ -862,7 +1052,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.2\.0/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.3\.0/);
   });
 });
 
@@ -885,7 +1075,7 @@ function flattenPredicates(condition: ConditionExpression): PassivePredicate[] {
   return [];
 }
 
-function conditionShape(condition: ConditionExpression): GateA2ConditionShape {
+function conditionShape(condition: ConditionExpression): GoldenConditionShape {
   if (condition.op === "always") {
     return { op: "always" };
   }
@@ -905,12 +1095,15 @@ function conditionShape(condition: ConditionExpression): GateA2ConditionShape {
     scope: predicate.scope,
     ...(predicate.selfInclusion ? { selfInclusion: predicate.selfInclusion } : {}),
     ...(predicate.comparator ? { comparator: predicate.comparator } : {}),
+    ...(predicate.value !== undefined ? { value: predicate.value } : {}),
+    ...(predicate.maxValue !== undefined ? { maxValue: predicate.maxValue } : {}),
     ...(predicate.count !== undefined ? { count: predicate.count } : {}),
     ...(predicate.categories ? { categories: predicate.categories } : {}),
     ...(predicate.names ? { names: predicate.names } : {}),
     ...(predicate.classes ? { classes: predicate.classes } : {}),
     ...(predicate.types ? { types: predicate.types } : {}),
     ...(predicate.slots ? { slots: predicate.slots } : {}),
+    ...(predicate.evaluationMoment ? { evaluationMoment: predicate.evaluationMoment } : {}),
   };
 }
 

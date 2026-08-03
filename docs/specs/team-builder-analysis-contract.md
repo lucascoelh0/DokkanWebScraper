@@ -151,11 +151,16 @@ export interface PassivePredicate {
   types?: TeamAnalysisType[];
   slots?: number[];
   kiSphereTypes?: string[];
+  evaluationMoment?: PassiveEvaluationMoment;
   sourceText: string;
 }
 
 export type TeamAnalysisClass = "Super" | "Extreme";
 export type TeamAnalysisType = "AGL" | "TEQ" | "INT" | "STR" | "PHY";
+export type PassiveEvaluationMoment =
+  | "start_of_turn"
+  | "entry_turn"
+  | "end_of_turn";
 ```
 
 Every ally-related predicate must declare `selfInclusion`. `another ally` and
@@ -218,8 +223,8 @@ qualifier surrounding it stays as a separate unknown child until a later gate.
 ### Optional scenario
 
 - `hp_percent`
-- `turn_number`
-- `turns_from_entry`
+- `battle_turn`
+- `turn_from_entry`
 - `enemy_count`
 - `enemy_category`
 - `enemy_name`
@@ -230,6 +235,50 @@ qualifier surrounding it stays as a separate unknown child until a later gate.
 - `standby_active`
 - `active_skill_used`
 - `revive_triggered`
+
+Gate A3 defines the three implemented scenario predicates as follows:
+
+- `hp_percent` is the team's shared HP percentage, always with `scope: "team"`;
+- `battle_turn` is the global turn index since battle start, with
+  `scope: "battle"`;
+- `turn_from_entry` is the index relative to this character's first appearance,
+  with `scope: "self"`.
+
+The older TypeScript literals `turn_number` and `turns_from_entry` remain
+deprecated type-only aliases for source compatibility, but the generator has
+never serialized them and Gate A3 does not emit them.
+
+Both turn indexes are 1-based. The entry turn itself is
+`turnFromEntry = 1`; battle start is `battleTurn = 1`. Source ordinals are
+stored without incrementing or decrementing them. `starting from the 3rd turn`
+therefore maps directly to `gte 3`, not 4. `on the 4th turn` maps to `eq 4`,
+and `up to the 6th turn` maps to `lte 6`.
+
+Closed HP and turn windows are `all` ASTs of scalar lower and upper bounds.
+For example, `For 5 turns from the character's entry turn` is exactly
+`turn_from_entry >= 1 AND turn_from_entry <= 5`. Open-ended wording emits only
+the bound stated by the source. This keeps point conditions distinct from
+windows and avoids hidden off-by-one conversion.
+
+`evaluationMoment` is present only when the source states when a scenario value
+is sampled. `start_of_turn`, `entry_turn`, and `end_of_turn` are distinct. An
+absent value means that the source did not constrain the phase; it does not
+authorize the consumer to invent one. `entry_turn` means the character's first
+appearance, not every attacking turn.
+
+The minimum future evaluator context is:
+
+```ts
+interface TeamAnalysisScenarioContext {
+  hpPercent?: number;       // shared team HP, 0..100
+  battleTurn?: number;      // 1-based
+  turnFromEntry?: number;   // 1-based, absent before/when entry is unknown
+  evaluationMoment?: PassiveEvaluationMoment;
+}
+```
+
+If a predicate requires a missing value or a different explicit evaluation
+moment, its future result is `Unknown`, never false.
 
 ### Runtime/battle dependent
 
@@ -316,6 +365,12 @@ numeric percentage, and makes the rule's independent `effectStatus` `partial`.
 `duration` and `stackCap` modify the corresponding typed effect. They are not
 emitted as standalone unknown effects when their association is unambiguous.
 Unrecognized intervening qualifiers remain separate `unknown` effects.
+
+A temporal window that decides whether a rule is active belongs to the
+condition AST, including an inline suffix such as `ATK +X% for 5 turns from the
+character's entry turn`. An effect-local phrase such as `ATK +X% for 3 turns`
+remains `PassiveDuration { kind: "turns", turns: 3 }`. Gate A3 does not move or
+reinterpret `PassiveDuration` as a condition.
 
 Initial effect taxonomy:
 
@@ -413,9 +468,11 @@ parser.
 4. Parse boolean connectors (`and`, `or`, `when`, `if`, `for every`, `plus an
    additional`) into an AST.
 5. Parse predicates and effects independently.
-6. Associate effects with the narrowest preceding condition scope.
-7. Preserve every unsupported fragment explicitly.
-8. Generate a coverage report by predicate/effect/status.
+6. Extract an unambiguous inline HP/turn activation window into the condition
+   channel while leaving effect duration in `PassiveDuration`.
+7. Associate effects with the narrowest preceding condition scope.
+8. Preserve every unsupported fragment explicitly.
+9. Generate a coverage report by predicate/effect/status.
 
 Effect parsing is target-independent: first recognize source-neutral effect
 atoms, then apply the target resolved from the source prefix (`self`, all
@@ -469,7 +526,8 @@ No global percentage alone is sufficient. Coverage reports must separate:
 - supported effects;
 - partial rules;
 - unknown fragments;
-- team-evaluable versus scenario/runtime-only rules.
+- team-evaluable versus scenario/runtime-only rules;
+- scenario-containing versus fully scenario-evaluable rules.
 
 ## 9. Validation and fixtures
 
@@ -523,19 +581,20 @@ Suggested manifest:
   "uncompressedSizeBytes": 0,
   "stateCount": 0,
   "rulesVersion": "1",
-  "parserVersion": "1.2.0",
+  "parserVersion": "1.3.0",
   "sourceCharacterDatasetVersion": "...",
   "sourceCharacterPayloadSha256": "..."
 }
 ```
 
-Gate A2 keeps `schemaVersion` at `1`. It adds optional selector fields and new
-predicate/target enum values but does not remove or reinterpret any Gate A1/A1.1
-field. Consumers that treat Team Analysis as optional enrichment and ignore
-unrecognized predicates/targets remain compatible; `parserVersion` advances to
-`1.2.0` so consumers can feature-detect the richer semantics. A schema bump is
-reserved for a change that makes previously valid payloads invalid or changes
-the meaning of an existing field.
+Gate A3 keeps `schemaVersion` at `1`. It adds an optional
+`evaluationMoment`, emits new predicate enum values that had no Gate A2 payload
+instances, and adds `scenarioEvaluableRuleCount` to coverage. It does not remove
+or reinterpret a serialized Gate A1/A1.1/A2 field. Consumers that treat Team
+Analysis as optional enrichment and ignore unrecognized predicates remain
+compatible; `parserVersion` advances to `1.3.0` so consumers can feature-detect
+the scenario semantics. A schema bump is reserved for a change that makes
+previously valid payloads invalid or changes an existing serialized meaning.
 
 - Upload immutable payload before mutable manifest.
 - Run publisher dry-run and report projected new bytes before upload.

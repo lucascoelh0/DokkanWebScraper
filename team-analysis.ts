@@ -9,7 +9,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.2.0";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.3.0";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
 export type ReleaseState = "initial" | "eza" | "seza";
@@ -17,6 +17,7 @@ export type SelfInclusion = "included" | "excluded" | "unknown";
 export type PassiveEffectClassification = "support";
 export type TeamAnalysisClass = "Super" | "Extreme";
 export type TeamAnalysisType = "AGL" | "TEQ" | "INT" | "STR" | "PHY";
+export type PassiveEvaluationMoment = "start_of_turn" | "entry_turn" | "end_of_turn";
 export type ProbabilitySource =
     | "explicit_text"
     | "first_party_game_db"
@@ -47,7 +48,11 @@ export type PassivePredicateKind =
     | "rotation_partner_present"
     | "floater_assignment"
     | "hp_percent"
+    | "battle_turn"
+    | "turn_from_entry"
+    /** @deprecated Never emitted; use battle_turn. */
     | "turn_number"
+    /** @deprecated Never emitted; use turn_from_entry. */
     | "turns_from_entry"
     | "enemy_count"
     | "enemy_category"
@@ -189,6 +194,7 @@ export interface PassivePredicate {
     types?: TeamAnalysisType[],
     slots?: number[],
     kiSphereTypes?: string[],
+    evaluationMoment?: PassiveEvaluationMoment,
     sourceText: string,
 }
 
@@ -264,6 +270,7 @@ export interface TeamAnalysisCoverageReport {
     teamEvaluableRuleCount: number,
     placementEvaluableRuleCount: number,
     scenarioRuleCount: number,
+    scenarioEvaluableRuleCount: number,
     runtimeOnlyRuleCount: number,
     identity: {
         variantGroupAssignedStateCount: number,
@@ -508,10 +515,14 @@ export function parsePassive(
             continue;
         }
 
-        const conditionResult = currentCondition
+        const headerConditionResult = currentCondition
             ? parseCondition(currentCondition.text)
             : { condition: { op: "always" } as ConditionExpression, status: "supported" as ParseStatus };
-        const effectResult = parseEffects(block.text, {
+        const inlineTemporal = splitInlineTemporalCondition(block.text);
+        const conditionResult = inlineTemporal
+            ? combineConditionResults(headerConditionResult, parseCondition(inlineTemporal.conditionText))
+            : headerConditionResult;
+        const effectResult = parseEffects(inlineTemporal?.effectText ?? block.text, {
             stateKey,
             rawText,
             ruleLineIndex: block.source[0]?.lineIndex ?? -1,
@@ -548,6 +559,34 @@ export function parsePassive(
         rules,
         unparsedFragments: uniqueOrderedFragments(unparsedFragments),
     };
+}
+
+function combineConditionResults(
+    left: ParsedConditionResult,
+    right: ParsedConditionResult,
+): ParsedConditionResult {
+    if (left.condition.op === "always") {
+        return right;
+    }
+    if (right.condition.op === "always") {
+        return left;
+    }
+    const condition: ConditionExpression = { op: "all", children: [left.condition, right.condition] };
+    return { condition, status: conditionExpressionStatus(condition) };
+}
+
+function splitInlineTemporalCondition(sourceText: string): {
+    effectText: string,
+    conditionText: string,
+} | undefined {
+    const temporalSuffix = /\s+((?:starting from the \d+(?:st|nd|rd|th) turn|for \d+ turn(?:s|\(s\))?) from (?:the start of battle|the character['â€™]s entry turn))$/i.exec(sourceText);
+    if (!temporalSuffix || temporalSuffix.index === undefined) {
+        return undefined;
+    }
+    const effectText = sourceText.slice(0, temporalSuffix.index).trim();
+    return effectText
+        ? { effectText, conditionText: temporalSuffix[1] }
+        : undefined;
 }
 
 export function mapPassiveDetailsToSource(
@@ -701,7 +740,10 @@ function logicalText(kind: "condition" | "effect", source: SourceFragment[]): st
 }
 
 function isLogicalHeaderStart(text: string): boolean {
-    return /^(?:Activates the Entrance Animation|Basic effect\(s\)|When\b|If\b|Per\b|For\b|Starting\b|As the\b|After\b|Before\b|At the\b|With\b|Without\b|While\b|The less\b|The more\b|Upon\b|Once\b|Every\b|\d+ or more\b)/i.test(text.trim());
+    const trimmed = text.trim();
+    return /^(?:Activates the Entrance Animation|Basic effect\(s\)|When\b|If\b|Per\b|As the\b|After\b|Before\b|At the\b|With\b|Without\b|While\b|The less\b|The more\b|Upon\b|Once\b|Every\b|\d+ or more\b)/i.test(trimmed)
+        || /^(?:For|Starting)\b/.test(trimmed)
+        || /^(?:On the \d+(?:st|nd|rd|th)|Up to the \d+(?:st|nd|rd|th)|From the \d+(?:st|nd|rd|th) (?:through|to) the \d+(?:st|nd|rd|th))\b/.test(trimmed);
 }
 
 function isAlwaysHeader(text: string): boolean {
@@ -736,10 +778,25 @@ function parseBooleanCondition(sourceText: string): ConditionExpression {
         }
     }
 
+    const temporalSuffix = parseTemporalSuffixCondition(text);
+    if (temporalSuffix) {
+        return temporalSuffix;
+    }
+
     return parsePartialSlotCondition(text) ?? { op: "unknown", sourceText: original };
 }
 
 function parseExactConditionClause(text: string, sourceText: string): ConditionExpression | undefined {
+    const hp = parseExactHpCondition(text, sourceText);
+    if (hp) {
+        return hp;
+    }
+
+    const temporal = parseExactTemporalCondition(text, sourceText);
+    if (temporal) {
+        return temporal;
+    }
+
     const slot = parseExactSlotCondition(text, sourceText);
     if (slot) {
         return slot;
@@ -823,6 +880,235 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
     }
 
     return parseAllyConditionClause(text, sourceText);
+}
+
+function parseExactHpCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    let body = text.trim();
+    let evaluationMoment: PassiveEvaluationMoment | undefined;
+
+    const startPrefix = /^at the start of (?:the )?turn,?\s+(?:when\s+)?/i.exec(body);
+    if (startPrefix) {
+        evaluationMoment = "start_of_turn";
+        body = body.slice(startPrefix[0].length).trim();
+    }
+
+    const entryAtMatch = /^upon entering the attacking turn with HP at\s+(.+)$/i.exec(body);
+    const entryValueMatch = /^upon entering the attacking turn with\s+(\d+)% HP(?:\s+(or more|or less|or above|or below))?$/i.exec(body);
+    if (entryAtMatch) {
+        evaluationMoment = "entry_turn";
+        body = `HP is ${entryAtMatch[1]}`;
+    } else if (entryValueMatch) {
+        evaluationMoment = "entry_turn";
+        body = `HP is ${entryValueMatch[1]}%${entryValueMatch[2] ? ` ${entryValueMatch[2]}` : ""}`;
+    }
+
+    const momentSuffixes: Array<{ pattern: RegExp, moment: PassiveEvaluationMoment }> = [
+        { pattern: /\s+at the start of the character['â€™]s attacking turn$/i, moment: "start_of_turn" },
+        { pattern: /\s+at the start of (?:the )?turn$/i, moment: "start_of_turn" },
+        { pattern: /\s+at the end of (?:the )?turn$/i, moment: "end_of_turn" },
+    ];
+    for (const suffix of momentSuffixes) {
+        const match = suffix.pattern.exec(body);
+        if (match) {
+            evaluationMoment = suffix.moment;
+            body = body.slice(0, match.index).trim();
+            break;
+        }
+    }
+
+    const interval = /^HP is between\s+(\d+)%\s+and\s+(\d+)%$/i.exec(body);
+    if (interval) {
+        const minimum = Number(interval[1]);
+        const maximum = Number(interval[2]);
+        if (!isHpPercent(minimum) || !isHpPercent(maximum) || minimum > maximum) {
+            return undefined;
+        }
+        return {
+            op: "all",
+            children: [
+                hpPredicate("gte", minimum, sourceText, evaluationMoment),
+                hpPredicate("lte", maximum, sourceText, evaluationMoment),
+            ],
+        };
+    }
+
+    const exact = /^HP is exactly\s+(\d+)%$/i.exec(body);
+    if (exact) {
+        return hpPredicateIfValid("eq", Number(exact[1]), sourceText, evaluationMoment);
+    }
+
+    const strict = /^HP is\s+(above|below)\s+(\d+)%$/i.exec(body);
+    if (strict) {
+        return hpPredicateIfValid(
+            strict[1].toLowerCase() === "above" ? "gt" : "lt",
+            Number(strict[2]),
+            sourceText,
+            evaluationMoment,
+        );
+    }
+
+    const qualified = /^HP is\s+(\d+)%\s+or\s+(more|less|above|below)$/i.exec(body);
+    if (qualified) {
+        const qualifier = qualified[2].toLowerCase();
+        return hpPredicateIfValid(
+            qualifier === "more" || qualifier === "above" ? "gte" : "lte",
+            Number(qualified[1]),
+            sourceText,
+            evaluationMoment,
+        );
+    }
+
+    const plain = /^HP is\s+(\d+)%$/i.exec(body);
+    return plain
+        ? hpPredicateIfValid("eq", Number(plain[1]), sourceText, evaluationMoment)
+        : undefined;
+}
+
+function hpPredicateIfValid(
+    comparator: "lt" | "lte" | "eq" | "gte" | "gt",
+    value: number,
+    sourceText: string,
+    evaluationMoment?: PassiveEvaluationMoment,
+): ConditionExpression | undefined {
+    return isHpPercent(value) ? hpPredicate(comparator, value, sourceText, evaluationMoment) : undefined;
+}
+
+function hpPredicate(
+    comparator: "lt" | "lte" | "eq" | "gte" | "gt",
+    value: number,
+    sourceText: string,
+    evaluationMoment?: PassiveEvaluationMoment,
+): ConditionExpression {
+    return predicateExpression({
+        kind: "hp_percent",
+        scope: "team",
+        comparator,
+        value,
+        ...(evaluationMoment ? { evaluationMoment } : {}),
+        sourceText,
+    });
+}
+
+function isHpPercent(value: number): boolean {
+    return Number.isFinite(value) && value >= 0 && value <= 100;
+}
+
+function parseExactTemporalCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    const starting = /^starting from the (\d+)(?:st|nd|rd|th) turn from (the start of battle|the character['â€™]s entry turn)$/i.exec(text);
+    if (starting) {
+        return temporalPredicateIfValid(starting[2], "gte", Number(starting[1]), sourceText);
+    }
+
+    const point = /^on the (\d+)(?:st|nd|rd|th) turn(?: from (the start of battle|the character['â€™]s entry turn))?$/i.exec(text);
+    if (point) {
+        return temporalPredicateIfValid(point[2] ?? "the start of battle", "eq", Number(point[1]), sourceText);
+    }
+
+    const pointList = /^on the (.+?) turns from (the start of battle|the character['â€™]s entry turn)$/i.exec(text);
+    if (pointList) {
+        const values = parseOrdinalValues(pointList[1]);
+        if (values) {
+            return {
+                op: "any",
+                children: values.map(value => temporalPredicate(pointList[2], "eq", value, sourceText)),
+            };
+        }
+    }
+
+    const upper = /^up to the (\d+)(?:st|nd|rd|th) turn(?: from (the start of battle|the character['â€™]s entry turn))?$/i.exec(text);
+    if (upper) {
+        return temporalPredicateIfValid(upper[2] ?? "the start of battle", "lte", Number(upper[1]), sourceText);
+    }
+
+    const durationWindow = /^for (\d+) turn(?:s|\(s\))? from (the start of battle|the character['â€™]s entry turn)$/i.exec(text);
+    if (durationWindow) {
+        const end = Number(durationWindow[1]);
+        return temporalWindowIfValid(durationWindow[2], 1, end, sourceText);
+    }
+
+    const explicitWindow = /^from the (\d+)(?:st|nd|rd|th) (?:through|to) the (\d+)(?:st|nd|rd|th) turn from (the start of battle|the character['â€™]s entry turn)$/i.exec(text);
+    if (explicitWindow) {
+        return temporalWindowIfValid(
+            explicitWindow[3],
+            Number(explicitWindow[1]),
+            Number(explicitWindow[2]),
+            sourceText,
+        );
+    }
+    return undefined;
+}
+
+function temporalWindowIfValid(
+    origin: string,
+    start: number,
+    end: number,
+    sourceText: string,
+): ConditionExpression | undefined {
+    if (!isTurnIndex(start) || !isTurnIndex(end) || start > end) {
+        return undefined;
+    }
+    return {
+        op: "all",
+        children: [
+            temporalPredicate(origin, "gte", start, sourceText),
+            temporalPredicate(origin, "lte", end, sourceText),
+        ],
+    };
+}
+
+function temporalPredicateIfValid(
+    origin: string,
+    comparator: "eq" | "gte" | "lte",
+    value: number,
+    sourceText: string,
+): ConditionExpression | undefined {
+    return isTurnIndex(value) ? temporalPredicate(origin, comparator, value, sourceText) : undefined;
+}
+
+function temporalPredicate(
+    origin: string,
+    comparator: "eq" | "gte" | "lte",
+    value: number,
+    sourceText: string,
+): ConditionExpression {
+    const fromEntry = /character['â€™]s entry turn/i.test(origin);
+    return predicateExpression({
+        kind: fromEntry ? "turn_from_entry" : "battle_turn",
+        scope: fromEntry ? "self" : "battle",
+        comparator,
+        value,
+        sourceText,
+    });
+}
+
+function isTurnIndex(value: number): boolean {
+    return Number.isInteger(value) && value >= 1;
+}
+
+function parseOrdinalValues(sourceText: string): number[] | undefined {
+    const values = [...sourceText.matchAll(/\b(\d+)(?:st|nd|rd|th)\b/gi)].map(match => Number(match[1]));
+    const separators = sourceText.replace(/\b\d+(?:st|nd|rd|th)\b/gi, "#").trim();
+    if (values.length === 0
+        || values.some(value => !isTurnIndex(value))
+        || !/^#(?:\s*(?:,|&|and|or)\s*#)*$/i.test(separators)) {
+        return undefined;
+    }
+    return values;
+}
+
+function parseTemporalSuffixCondition(text: string): ConditionExpression | undefined {
+    const suffix = /^(.*?)\s+(starting from the \d+(?:st|nd|rd|th) turn from (?:the start of battle|the character['â€™]s entry turn))$/i.exec(text);
+    if (!suffix || !suffix[1].trim()) {
+        return undefined;
+    }
+    const temporal = parseExactTemporalCondition(suffix[2], suffix[2]);
+    if (!temporal) {
+        return undefined;
+    }
+    return {
+        op: "all",
+        children: [parseBooleanCondition(suffix[1]), temporal],
+    };
 }
 
 function parseAllyConditionClause(sourceBody: string, sourceText: string): ConditionExpression | undefined {
@@ -1119,7 +1405,7 @@ function splitTopLevelCondition(sourceText: string, connector: "and" | "or"): st
             continue;
         }
         const right = sourceText.slice(index + match[0].length).trim();
-        if (!/^(?:when|if|as|attacking|there|all|the\s+(?:team|character)|this\s+character|another|no|\()/i.test(right)) {
+        if (!/^(?:when|if|as|attacking|there|all|the\s+(?:team|character)|this\s+character|another|no|for\b|starting\b|on the\b|up to the\b|from the\b|HP\b|facing\b|\()/i.test(right)) {
             continue;
         }
         parts.push(sourceText.slice(lastIndex, index).replace(/[\s,]+$/g, "").trim());
@@ -1952,6 +2238,7 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
     let teamEvaluableRuleCount = 0;
     let placementEvaluableRuleCount = 0;
     let scenarioRuleCount = 0;
+    let scenarioEvaluableRuleCount = 0;
     let runtimeOnlyRuleCount = 0;
 
     for (const state of dataset.states) {
@@ -1968,16 +2255,23 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
             effectStatusCounts[rule.effectStatus] += 1;
             const conditionKind = classifyCondition(rule.condition);
             conditionCounts[conditionKind] += 1;
-            if (rule.conditionStatus === "supported" && hasPlacementPredicate(rule.condition)) {
-                placementEvaluableRuleCount += 1;
-            } else if (rule.conditionStatus === "supported"
-                && !hasScenarioPredicate(rule.condition)
-                && !hasRuntimePredicate(rule.condition)) {
-                    teamEvaluableRuleCount += 1;
-            } else if (hasScenarioPredicate(rule.condition)) {
+            const hasScenario = hasScenarioPredicate(rule.condition);
+            const hasRuntime = hasRuntimePredicate(rule.condition);
+            const hasPlacement = hasPlacementPredicate(rule.condition);
+            if (hasScenario) {
                 scenarioRuleCount += 1;
-            } else if (hasRuntimePredicate(rule.condition)) {
+            }
+            if (hasRuntime) {
                 runtimeOnlyRuleCount += 1;
+            }
+            if (rule.conditionStatus === "supported" && !hasRuntime) {
+                if (hasScenario) {
+                    scenarioEvaluableRuleCount += 1;
+                } else if (hasPlacement) {
+                    placementEvaluableRuleCount += 1;
+                } else {
+                    teamEvaluableRuleCount += 1;
+                }
             }
             collectPredicates(rule.condition, supportedPredicateCounts);
             for (const effect of rule.effects) {
@@ -2023,6 +2317,7 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         teamEvaluableRuleCount,
         placementEvaluableRuleCount,
         scenarioRuleCount,
+        scenarioEvaluableRuleCount,
         runtimeOnlyRuleCount,
         identity: {
             variantGroupAssignedStateCount: dataset.states.filter(state => Boolean(state.variantGroupId)).length,
@@ -2040,7 +2335,8 @@ function classifyCondition(condition: ConditionExpression): "always" | "predicat
 }
 
 const SCENARIO_PREDICATES = new Set<PassivePredicateKind>([
-    "hp_percent", "turn_number", "turns_from_entry", "enemy_count", "enemy_category",
+    "hp_percent", "battle_turn", "turn_from_entry", "turn_number", "turns_from_entry",
+    "enemy_count", "enemy_category",
     "enemy_name", "enemy_class", "enemy_type", "enemy_status", "domain_active",
     "standby_active", "active_skill_used", "revive_triggered",
 ]);
@@ -2525,6 +2821,9 @@ function validateCondition(
             issues.push({ code: "empty-ast", message: `${condition.op} condition has no children.`, stateKey: state.stateKey, ruleId: rule.id });
         }
         condition.children.forEach(child => validateCondition(child, depth + 1, state, rule, issues));
+        if (condition.op === "all") {
+            validateScenarioWindow(condition.children, state, rule, issues);
+        }
     } else if (condition.op === "not") {
         validateCondition(condition.child, depth + 1, state, rule, issues);
     } else if (condition.op === "predicate") {
@@ -2553,6 +2852,7 @@ function validateCondition(
             issues.push({ code: "condition-types", message: `Type condition must name at least one type.`, stateKey: state.stateKey, ruleId: rule.id });
         }
         validateClassAndTypeValues(condition.predicate.classes, condition.predicate.types, state, rule, issues);
+        validateScenarioPredicate(condition.predicate, state, rule, issues);
         if (condition.predicate.kind === "battle_slot" && condition.predicate.scope !== "self") {
             issues.push({ code: "slot-scope", message: `Battle slot must describe the current character.`, stateKey: state.stateKey, ruleId: rule.id });
         }
@@ -2563,6 +2863,79 @@ function validateCondition(
             if (!Number.isInteger(slot) || slot < 1 || slot > 3) {
                 issues.push({ code: "slot-range", message: `Battle slot must be 1, 2, or 3.`, stateKey: state.stateKey, ruleId: rule.id });
             }
+        }
+    }
+}
+
+function validateScenarioPredicate(
+    predicate: PassivePredicate,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const scenarioKinds: PassivePredicateKind[] = ["hp_percent", "battle_turn", "turn_from_entry"];
+    const isScenario = scenarioKinds.includes(predicate.kind);
+    const comparatorAllowed = ["lt", "lte", "eq", "gte", "gt"].includes(predicate.comparator ?? "");
+    if (isScenario && !comparatorAllowed) {
+        issues.push({ code: "scenario-comparator", message: `HP and turn predicates require an explicit scalar comparator.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (isScenario && predicate.value === undefined) {
+        issues.push({ code: "scenario-value", message: `HP and turn predicates require a scalar value.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (isScenario && predicate.maxValue !== undefined) {
+        issues.push({ code: "scenario-max-value", message: `Scenario intervals must use an all AST of scalar bounds.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+
+    if (predicate.kind === "hp_percent") {
+        if (predicate.scope !== "team") {
+            issues.push({ code: "hp-scope", message: `HP is shared team HP and must use team scope.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (predicate.value !== undefined && (!Number.isFinite(predicate.value) || predicate.value < 0 || predicate.value > 100)) {
+            issues.push({ code: "hp-range", message: `HP percent must be within 0..100.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+    }
+    if (predicate.kind === "battle_turn" && predicate.scope !== "battle") {
+        issues.push({ code: "battle-turn-scope", message: `Battle turn must use battle scope.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.kind === "turn_from_entry" && predicate.scope !== "self") {
+        issues.push({ code: "entry-turn-scope", message: `Turn from entry must use self scope.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (["battle_turn", "turn_from_entry"].includes(predicate.kind)
+        && predicate.value !== undefined
+        && (!Number.isInteger(predicate.value) || predicate.value < 1)) {
+        issues.push({ code: "turn-index", message: `Turn indexes are 1-based positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+
+    const knownMoments: PassiveEvaluationMoment[] = ["start_of_turn", "entry_turn", "end_of_turn"];
+    if (predicate.evaluationMoment !== undefined && !knownMoments.includes(predicate.evaluationMoment)) {
+        issues.push({ code: "evaluation-moment", message: `Evaluation moment is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.evaluationMoment !== undefined && !isScenario) {
+        issues.push({ code: "evaluation-moment-kind", message: `Evaluation moment is valid only on scenario predicates.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+}
+
+function validateScenarioWindow(
+    children: ConditionExpression[],
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    for (const kind of ["hp_percent", "battle_turn", "turn_from_entry"] as const) {
+        const predicates = children
+            .filter((child): child is Extract<ConditionExpression, { op: "predicate" }> => child.op === "predicate")
+            .map(child => child.predicate)
+            .filter(predicate => predicate.kind === kind && predicate.value !== undefined);
+        const lowerValues = predicates
+            .filter(predicate => predicate.comparator === "gte" || predicate.comparator === "gt")
+            .map(predicate => predicate.value as number);
+        const upperValues = predicates
+            .filter(predicate => predicate.comparator === "lte" || predicate.comparator === "lt")
+            .map(predicate => predicate.value as number);
+        const lower = lowerValues.length > 0 ? Math.max(...lowerValues) : undefined;
+        const upper = upperValues.length > 0 ? Math.min(...upperValues) : undefined;
+        if (lower !== undefined && upper !== undefined && lower > upper) {
+            issues.push({ code: "condition-window-range", message: `Scenario window lower bound exceeds its upper bound.`, stateKey: state.stateKey, ruleId: rule.id });
         }
     }
 }

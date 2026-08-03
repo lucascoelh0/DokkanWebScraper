@@ -167,16 +167,16 @@
       }
     },
     {
-      "name": "known OR unknown remains partial",
+      "name": "known Class OR HP condition",
       "source": "synthetic",
       "rawText": "When there is an Extreme Class ally on the team or when HP is 50% or less\n- ATK 20%",
-      "expectedStatus": "partial",
-      "conditionStatus": "partial",
+      "expectedStatus": "supported",
+      "conditionStatus": "supported",
       "condition": {
         "op": "any",
         "children": [
           { "op": "predicate", "kind": "ally_class_present", "scope": "team", "selfInclusion": "included", "classes": ["Extreme"] },
-          { "op": "unknown", "sourceText": "when HP is 50% or less" }
+          { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "lte", "value": 50 }
         ]
       }
     },

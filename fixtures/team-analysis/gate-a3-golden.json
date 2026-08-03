@@ -1,0 +1,315 @@
+{
+  "cases": [
+    {
+      "name": "HP inclusive lower bound",
+      "source": "real",
+      "rawText": "When HP is 50% or more\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "gte", "value": 50 }
+    },
+    {
+      "name": "HP strict lower bound",
+      "source": "synthetic",
+      "rawText": "When HP is above 50%\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "gt", "value": 50 }
+    },
+    {
+      "name": "HP inclusive upper bound",
+      "source": "real",
+      "rawText": "When HP is 50% or less\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "lte", "value": 50 }
+    },
+    {
+      "name": "HP strict upper bound",
+      "source": "synthetic",
+      "rawText": "When HP is below 50%\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "lt", "value": 50 }
+    },
+    {
+      "name": "HP exact",
+      "source": "synthetic",
+      "rawText": "When HP is exactly 50%\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "eq", "value": 50 }
+    },
+    {
+      "name": "HP inclusive interval",
+      "source": "synthetic",
+      "rawText": "When HP is between 30% and 70%\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "gte", "value": 30 },
+          { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "lte", "value": 70 }
+        ]
+      }
+    },
+    {
+      "name": "HP zero boundary",
+      "source": "synthetic",
+      "rawText": "When HP is exactly 0%\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "eq", "value": 0 }
+    },
+    {
+      "name": "HP one hundred boundary",
+      "source": "synthetic",
+      "rawText": "When HP is exactly 100%\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "eq", "value": 100 }
+    },
+    {
+      "name": "HP at start of turn suffix",
+      "source": "real",
+      "rawText": "When HP is 50% or less at the start of turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "lte", "value": 50, "evaluationMoment": "start_of_turn" }
+    },
+    {
+      "name": "HP at start of turn prefix",
+      "source": "synthetic",
+      "rawText": "At the start of turn, when HP is 80% or more\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "gte", "value": 80, "evaluationMoment": "start_of_turn" }
+    },
+    {
+      "name": "HP on character entry turn",
+      "source": "synthetic",
+      "rawText": "Upon entering the attacking turn with HP at 70% or more\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "gte", "value": 70, "evaluationMoment": "entry_turn" }
+    },
+    {
+      "name": "HP at end of turn",
+      "source": "real",
+      "rawText": "If HP is 30% or less at the end of turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "lte", "value": 30, "evaluationMoment": "end_of_turn" }
+    },
+    {
+      "name": "global turn open lower window",
+      "source": "real",
+      "rawText": "Starting from the 3rd turn from the start of battle\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "gte", "value": 3 }
+    },
+    {
+      "name": "entry-relative turn open lower window",
+      "source": "real",
+      "rawText": "Starting from the 5th turn from the character's entry turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "gte", "value": 5 }
+    },
+    {
+      "name": "global point turn",
+      "source": "synthetic",
+      "rawText": "On the 4th turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "eq", "value": 4 }
+    },
+    {
+      "name": "entry-relative explicit point list",
+      "source": "real",
+      "rawText": "On the 1st, 3rd, 5th, 7th & 9th turns from the character's\nentry turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "any",
+        "children": [
+          { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "eq", "value": 1 },
+          { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "eq", "value": 3 },
+          { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "eq", "value": 5 },
+          { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "eq", "value": 7 },
+          { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "eq", "value": 9 }
+        ]
+      }
+    },
+    {
+      "name": "global open upper window",
+      "source": "synthetic",
+      "rawText": "Up to the 6th turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "lte", "value": 6 }
+    },
+    {
+      "name": "global closed duration window",
+      "source": "synthetic",
+      "rawText": "For 3 turns from the start of battle\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "gte", "value": 1 },
+          { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "lte", "value": 3 }
+        ]
+      }
+    },
+    {
+      "name": "entry-relative closed duration window",
+      "source": "real",
+      "rawText": "For 5 turns from the character's entry turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "gte", "value": 1 },
+          { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "lte", "value": 5 }
+        ]
+      }
+    },
+    {
+      "name": "global explicit closed window",
+      "source": "synthetic",
+      "rawText": "From the 3rd through the 6th turn from the start of battle\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "gte", "value": 3 },
+          { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "lte", "value": 6 }
+        ]
+      }
+    },
+    {
+      "name": "entry-relative explicit closed window",
+      "source": "synthetic",
+      "rawText": "From the 2nd through the 5th turn from the character's entry turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "gte", "value": 2 },
+          { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "lte", "value": 5 }
+        ]
+      }
+    },
+    {
+      "name": "HP with global turn suffix and wrapped source",
+      "source": "real",
+      "rawText": "When HP is 50% or less starting from the 4th turn from the\nstart of battle\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "lte", "value": 50 },
+          { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "gte", "value": 4 }
+        ]
+      }
+    },
+    {
+      "name": "HP or entry-relative window",
+      "source": "real",
+      "rawText": "When HP is 58% or more, or for 1 turn from the character's entry turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "any",
+        "children": [
+          { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "gte", "value": 58 },
+          {
+            "op": "all",
+            "children": [
+              { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "gte", "value": 1 },
+              { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "lte", "value": 1 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "nested HP turn Class and slot composition",
+      "source": "synthetic",
+      "rawText": "When HP is 50% or less and (when there is a Super Class ally on the team or when attacking in the 2nd slot) starting from the 3rd turn from the start of battle\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "lte", "value": 50 },
+          {
+            "op": "all",
+            "children": [
+              {
+                "op": "any",
+                "children": [
+                  { "op": "predicate", "kind": "ally_class_present", "scope": "team", "selfInclusion": "included", "classes": ["Super"] },
+                  { "op": "predicate", "kind": "battle_slot", "scope": "self", "slots": [2] }
+                ]
+              },
+              { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "gte", "value": 3 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "temporal condition and effect duration remain separate",
+      "source": "synthetic",
+      "rawText": "Starting from the 3rd turn from the start of battle\n- ATK 20% for 3 turns",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "gte", "value": 3 },
+      "effectDuration": { "kind": "turns", "turns": 3 }
+    },
+    {
+      "name": "inline entry window belongs to condition",
+      "source": "real",
+      "rawText": "Basic effect(s)\n- High chance of nullifying it for 10 turns from the character's entry turn",
+      "expectedStatus": "partial",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "gte", "value": 1 },
+          { "op": "predicate", "kind": "turn_from_entry", "scope": "self", "comparator": "lte", "value": 10 }
+        ]
+      },
+      "expectNoEffectDuration": true
+    },
+    {
+      "name": "inline battle lower bound belongs to condition",
+      "source": "synthetic",
+      "rawText": "Basic effect(s)\n- ATK 20% starting from the 3rd turn from the start of battle",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "gte", "value": 3 },
+      "expectNoEffectDuration": true
+    },
+    {
+      "name": "known turn OR enemy branch stays partial",
+      "source": "synthetic",
+      "rawText": "Starting from the 3rd turn from the start of battle or when facing only 1 enemy\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": {
+        "op": "any",
+        "children": [
+          { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "gte", "value": 3 },
+          { "op": "unknown", "sourceText": "when facing only 1 enemy" }
+        ]
+      }
+    },
+    {
+      "name": "HP proportional scaling stays unknown",
+      "source": "real",
+      "rawText": "The less HP remaining\n- The greater the ATK boost",
+      "expectedStatus": "unknown",
+      "conditionStatus": "unknown",
+      "condition": { "op": "unknown", "sourceText": "The less HP remaining" }
+    },
+    {
+      "name": "HP after receiving attack stays unknown",
+      "source": "synthetic",
+      "rawText": "When HP is 50% or less after receiving an attack\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "unknown",
+      "condition": { "op": "unknown", "sourceText": "When HP is 50% or less after receiving an attack" }
+    },
+    {
+      "name": "ambiguous temporal quantity stays unknown",
+      "source": "synthetic",
+      "rawText": "For several turns from the character's entry turn\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "unknown",
+      "condition": { "op": "unknown", "sourceText": "For several turns from the character's entry turn" }
+    }
+  ]
+}

@@ -287,30 +287,30 @@
       }
     },
     {
-      "name": "unknown condition known effect",
+      "name": "HP condition known effect",
       "rawText": "When HP is 50% or more\n- All allies' Ki +2 and ATK & DEF 30%",
       "expected": {
-        "parseStatus": "partial",
-        "conditionStatus": "unknown",
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
         "effectStatus": "supported",
-        "conditionOp": "unknown",
-        "predicateKinds": [],
-        "scopes": [],
+        "conditionOp": "predicate",
+        "predicateKinds": ["hp_percent"],
+        "scopes": ["team"],
         "selfInclusions": [],
         "effectKinds": ["ki", "atk", "def"],
         "effectTarget": "team_allies"
       }
     },
     {
-      "name": "fully unknown remains unknown",
+      "name": "known HP condition unknown effect remains partial",
       "rawText": "When HP is 50% or more\n- Performs a mysterious action",
       "expected": {
-        "parseStatus": "unknown",
-        "conditionStatus": "unknown",
+        "parseStatus": "partial",
+        "conditionStatus": "supported",
         "effectStatus": "unknown",
-        "conditionOp": "unknown",
-        "predicateKinds": [],
-        "scopes": [],
+        "conditionOp": "predicate",
+        "predicateKinds": ["hp_percent"],
+        "scopes": ["team"],
         "selfInclusions": [],
         "effectKinds": ["unknown"],
         "effectTarget": "self"
