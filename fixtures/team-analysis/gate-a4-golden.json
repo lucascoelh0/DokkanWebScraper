@@ -1,0 +1,403 @@
+{
+  "cases": [
+    {
+      "name": "enemy count exactly one",
+      "source": "real",
+      "rawText": "When facing only 1 enemy\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "eq", "value": 1 }
+    },
+    {
+      "name": "enemy count lower bound",
+      "source": "real",
+      "rawText": "When facing 2 or more enemies\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "gte", "value": 2 }
+    },
+    {
+      "name": "enemy count there is one",
+      "source": "synthetic",
+      "rawText": "When there is 1 enemy\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "eq", "value": 1 }
+    },
+    {
+      "name": "multiple enemies documented cardinality",
+      "source": "synthetic",
+      "rawText": "When facing multiple enemies\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "gte", "value": 2 }
+    },
+    {
+      "name": "no enemies",
+      "source": "synthetic",
+      "rawText": "When there are no enemies\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "eq", "value": 0 }
+    },
+    {
+      "name": "any enemy class",
+      "source": "real",
+      "rawText": "When there is an Extreme Class enemy\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_class", "scope": "enemy", "enemySelection": "any_enemy", "classes": ["Extreme"] }
+    },
+    {
+      "name": "all enemies class",
+      "source": "synthetic",
+      "rawText": "When all enemies are Super Class\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_class", "scope": "enemy", "enemySelection": "all_enemies", "classes": ["Super"] }
+    },
+    {
+      "name": "current target class",
+      "source": "real",
+      "rawText": "When attacking a Super Class enemy\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_class", "scope": "enemy", "enemySelection": "current_target", "classes": ["Super"] }
+    },
+    {
+      "name": "only enemy class",
+      "source": "synthetic",
+      "rawText": "When the only enemy is Extreme Class\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_class", "scope": "enemy", "enemySelection": "only_enemy", "classes": ["Extreme"] }
+    },
+    {
+      "name": "ambiguous enemy selection",
+      "source": "synthetic",
+      "rawText": "When the enemy is Extreme Class\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": { "op": "predicate", "kind": "enemy_class", "scope": "enemy", "enemySelection": "unknown", "classes": ["Extreme"] }
+    },
+    {
+      "name": "enemy type",
+      "source": "real",
+      "rawText": "When there is a TEQ Type enemy\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_type", "scope": "enemy", "enemySelection": "any_enemy", "types": ["TEQ"] }
+    },
+    {
+      "name": "enemy class and type",
+      "source": "synthetic",
+      "rawText": "When attacking an Extreme PHY Type enemy\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_class_type", "scope": "enemy", "enemySelection": "current_target", "classes": ["Extreme"], "types": ["PHY"] }
+    },
+    {
+      "name": "enemy category alternatives",
+      "source": "real",
+      "rawText": "When there is a \"Pure Saiyans\" or \"Hybrid Saiyans\" Category enemy\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "any",
+        "children": [
+          { "op": "predicate", "kind": "enemy_category", "scope": "enemy", "enemySelection": "any_enemy", "categories": ["Pure Saiyans"] },
+          { "op": "predicate", "kind": "enemy_category", "scope": "enemy", "enemySelection": "any_enemy", "categories": ["Hybrid Saiyans"] }
+        ]
+      }
+    },
+    {
+      "name": "enemy category absence",
+      "source": "real",
+      "rawText": "When there are no \"Realm of Gods\" Category enemies\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "not", "child": { "op": "predicate", "kind": "enemy_category", "scope": "enemy", "enemySelection": "any_enemy", "categories": ["Realm of Gods"] } }
+    },
+    {
+      "name": "enemy name includes alternatives",
+      "source": "real",
+      "rawText": "When there is an enemy whose name includes \"Zamasu\" or \"Goku Black\"\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "any",
+        "children": [
+          { "op": "predicate", "kind": "enemy_name", "scope": "enemy", "enemySelection": "any_enemy", "names": ["Zamasu"], "nameMatch": "includes" },
+          { "op": "predicate", "kind": "enemy_name", "scope": "enemy", "enemySelection": "any_enemy", "names": ["Goku Black"], "nameMatch": "includes" }
+        ]
+      }
+    },
+    {
+      "name": "enemy exact name",
+      "source": "synthetic",
+      "rawText": "When the target enemy's name is \"Goku\"\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_name", "scope": "enemy", "enemySelection": "current_target", "names": ["Goku"], "nameMatch": "exact" }
+    },
+    {
+      "name": "enemy name structural exclusion",
+      "source": "synthetic",
+      "rawText": "When there is an enemy whose name includes \"Goku\", excluding \"Goku Black\"\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_name", "scope": "enemy", "enemySelection": "any_enemy", "names": ["Goku"], "nameMatch": "includes", "excludedNames": ["Goku Black"], "excludedNameMatch": "includes" }
+    },
+    {
+      "name": "enemy name prose exclusion residual",
+      "source": "real",
+      "rawText": "When there is an enemy whose name includes \"Goku\" (Youth, Captain Ginyu, Jr., etc. excluded)\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "enemy_name", "scope": "enemy", "enemySelection": "any_enemy", "names": ["Goku"], "nameMatch": "includes" },
+          { "op": "unknown", "sourceText": "(Youth, Captain Ginyu, Jr., etc. excluded)" }
+        ]
+      }
+    },
+    {
+      "name": "current target enemy HP",
+      "source": "real",
+      "rawText": "If the target enemy's HP is 80% or less when attacking\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "current_target", "comparator": "lte", "value": 80, "evaluationMoment": "when_attacking" }
+    },
+    {
+      "name": "only enemy HP with count",
+      "source": "real",
+      "rawText": "When facing only 1 enemy and that enemy's HP is 50% or more\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "eq", "value": 1 },
+          { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "only_enemy", "enemyReference": "that_enemy", "comparator": "gte", "value": 50 }
+        ]
+      }
+    },
+    {
+      "name": "isolated that enemy HP remains unresolved",
+      "source": "synthetic",
+      "rawText": "When that enemy's HP is 50% or more\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "unknown", "enemyReference": "that_enemy", "comparator": "gte", "value": 50 }
+    },
+    {
+      "name": "that enemy binds through nested conjunctive temporal suffix",
+      "source": "real",
+      "rawText": "When facing only 1 enemy and that enemy's HP is 50% or more starting from the 3rd turn from the start of battle\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "eq", "value": 1 },
+          {
+            "op": "all",
+            "children": [
+              { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "only_enemy", "enemyReference": "that_enemy", "comparator": "gte", "value": 50 },
+              { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "gte", "value": 3 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "that enemy is not bound by plural enemy count",
+      "source": "synthetic",
+      "rawText": "When facing 2 or more enemies and that enemy's HP is 50% or more\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "gte", "value": 2 },
+          { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "unknown", "enemyReference": "that_enemy", "comparator": "gte", "value": 50 }
+        ]
+      }
+    },
+    {
+      "name": "that enemy is not bound across OR",
+      "source": "synthetic",
+      "rawText": "When facing only 1 enemy or that enemy's HP is 50% or more\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": {
+        "op": "any",
+        "children": [
+          { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "eq", "value": 1 },
+          { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "unknown", "enemyReference": "that_enemy", "comparator": "gte", "value": 50 }
+        ]
+      }
+    },
+    {
+      "name": "that enemy binds inside its nested conjunctive branch",
+      "source": "synthetic",
+      "rawText": "When (facing only 1 enemy and that enemy's HP is 50% or more) or there is a Super Class enemy\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "any",
+        "children": [
+          {
+            "op": "all",
+            "children": [
+              { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "eq", "value": 1 },
+              { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "only_enemy", "enemyReference": "that_enemy", "comparator": "gte", "value": 50 }
+            ]
+          },
+          { "op": "predicate", "kind": "enemy_class", "scope": "enemy", "enemySelection": "any_enemy", "classes": ["Super"] }
+        ]
+      }
+    },
+    {
+      "name": "that enemy does not bind through nested OR",
+      "source": "synthetic",
+      "rawText": "When facing only 1 enemy and (that enemy's HP is 50% or more or there is a Super Class enemy)\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "eq", "value": 1 },
+          {
+            "op": "any",
+            "children": [
+              { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "unknown", "enemyReference": "that_enemy", "comparator": "gte", "value": 50 },
+              { "op": "predicate", "kind": "enemy_class", "scope": "enemy", "enemySelection": "any_enemy", "classes": ["Super"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "existential enemy does not bind that enemy",
+      "source": "synthetic",
+      "rawText": "When there is an Extreme Class enemy and that enemy's HP is 50% or more\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "enemy_class", "scope": "enemy", "enemySelection": "any_enemy", "classes": ["Extreme"] },
+          { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "unknown", "enemyReference": "that_enemy", "comparator": "gte", "value": 50 }
+        ]
+      }
+    },
+    {
+      "name": "any enemy HP",
+      "source": "synthetic",
+      "rawText": "When facing an enemy with 70% or above HP\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "any_enemy", "comparator": "gte", "value": 70 }
+    },
+    {
+      "name": "enemy HP before attack",
+      "source": "real",
+      "rawText": "Before attacking an enemy whose HP is 40% or less\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "current_target", "comparator": "lte", "value": 40, "evaluationMoment": "before_attack" }
+    },
+    {
+      "name": "ambiguous enemy HP selection",
+      "source": "real",
+      "rawText": "When the enemy's HP is 60% or more\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "unknown", "comparator": "gte", "value": 60 }
+    },
+    {
+      "name": "current target stunned",
+      "source": "synthetic",
+      "rawText": "When the target enemy is stunned\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["stunned"] }
+    },
+    {
+      "name": "all enemies Super Attack sealed",
+      "source": "synthetic",
+      "rawText": "When all enemies are Super Attack sealed\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "all_enemies", "enemyStatuses": ["super_attack_sealed"] }
+    },
+    {
+      "name": "any enemy ATK Down",
+      "source": "synthetic",
+      "rawText": "When there is an ATK Down enemy\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "any_enemy", "enemyStatuses": ["atk_down"] }
+    },
+    {
+      "name": "negated current DEF Down",
+      "source": "synthetic",
+      "rawText": "When the target enemy is not DEF Down\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "not", "child": { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["def_down"] } }
+    },
+    {
+      "name": "sealed target possessive",
+      "source": "synthetic",
+      "rawText": "When the target enemy's Super Attack is sealed\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["super_attack_sealed"] }
+    },
+    {
+      "name": "enemy composed with HP turn and slot",
+      "source": "synthetic",
+      "rawText": "When (HP is 50% or more and there is an Extreme Class enemy) or (attacking in the 2nd slot and starting from the 3rd turn from the start of battle)\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "any",
+        "children": [
+          {
+            "op": "all",
+            "children": [
+              { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "gte", "value": 50 },
+              { "op": "predicate", "kind": "enemy_class", "scope": "enemy", "enemySelection": "any_enemy", "classes": ["Extreme"] }
+            ]
+          },
+          {
+            "op": "all",
+            "children": [
+              { "op": "predicate", "kind": "battle_slot", "scope": "self", "slots": [2] },
+              { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "gte", "value": 3 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ally category or enemy category",
+      "source": "real",
+      "rawText": "When there is a \"Hybrid Saiyans\" Category ally on the team or a \"Hybrid Saiyans\" Category enemy\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "any",
+        "children": [
+          { "op": "predicate", "kind": "ally_category_present", "scope": "team", "selfInclusion": "included", "categories": ["Hybrid Saiyans"] },
+          { "op": "predicate", "kind": "enemy_category", "scope": "enemy", "enemySelection": "any_enemy", "categories": ["Hybrid Saiyans"] }
+        ]
+      }
+    },
+    {
+      "name": "missing source status stays unknown",
+      "source": "real",
+      "rawText": "When the target enemy is in the following status:\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "unknown",
+      "condition": { "op": "unknown", "sourceText": "When the target enemy is in the following status:" }
+    },
+    {
+      "name": "missing status preserves independent enemy HP",
+      "source": "real",
+      "rawText": "When the target enemy is in the following status: HP is 40% or less\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "unknown", "sourceText": "the target enemy is in the following status:" },
+          { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "current_target", "comparator": "lte", "value": 40 }
+        ]
+      }
+    },
+    {
+      "name": "proportional enemy HP stays unknown",
+      "source": "synthetic",
+      "rawText": "The less HP the enemy has, the greater the ATK boost\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "unknown",
+      "condition": { "op": "unknown", "sourceText": "The less HP the enemy has, the greater the ATK boost" }
+    }
+  ]
+}

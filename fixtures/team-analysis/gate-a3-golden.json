@@ -274,16 +274,16 @@
       "expectNoEffectDuration": true
     },
     {
-      "name": "known turn OR enemy branch stays partial",
+      "name": "known turn OR enemy branch is supported after Gate A4",
       "source": "synthetic",
       "rawText": "Starting from the 3rd turn from the start of battle or when facing only 1 enemy\n- ATK 20%",
-      "expectedStatus": "partial",
-      "conditionStatus": "partial",
+      "expectedStatus": "supported",
+      "conditionStatus": "supported",
       "condition": {
         "op": "any",
         "children": [
           { "op": "predicate", "kind": "battle_turn", "scope": "battle", "comparator": "gte", "value": 3 },
-          { "op": "unknown", "sourceText": "when facing only 1 enemy" }
+          { "op": "predicate", "kind": "enemy_count", "scope": "battle", "comparator": "eq", "value": 1 }
         ]
       }
     },

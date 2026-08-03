@@ -152,6 +152,12 @@ export interface PassivePredicate {
   slots?: number[];
   kiSphereTypes?: string[];
   evaluationMoment?: PassiveEvaluationMoment;
+  enemySelection?: EnemySelection;
+  enemyStatuses?: EnemyStatus[];
+  nameMatch?: EnemyNameMatch;
+  excludedNames?: string[];
+  excludedNameMatch?: EnemyNameMatch;
+  enemyReference?: EnemyReference;
   sourceText: string;
 }
 
@@ -160,7 +166,22 @@ export type TeamAnalysisType = "AGL" | "TEQ" | "INT" | "STR" | "PHY";
 export type PassiveEvaluationMoment =
   | "start_of_turn"
   | "entry_turn"
-  | "end_of_turn";
+  | "end_of_turn"
+  | "before_attack"
+  | "when_attacking";
+export type EnemySelection =
+  | "any_enemy"
+  | "all_enemies"
+  | "current_target"
+  | "only_enemy"
+  | "unknown";
+export type EnemyStatus =
+  | "atk_down"
+  | "def_down"
+  | "stunned"
+  | "super_attack_sealed";
+export type EnemyNameMatch = "exact" | "includes";
+export type EnemyReference = "that_enemy";
 ```
 
 Every ally-related predicate must declare `selfInclusion`. `another ally` and
@@ -230,6 +251,8 @@ qualifier surrounding it stays as a separate unknown child until a later gate.
 - `enemy_name`
 - `enemy_class`
 - `enemy_type`
+- `enemy_class_type`
+- `enemy_hp_percent`
 - `enemy_status`
 - `domain_active`
 - `standby_active`
@@ -261,10 +284,10 @@ the bound stated by the source. This keeps point conditions distinct from
 windows and avoids hidden off-by-one conversion.
 
 `evaluationMoment` is present only when the source states when a scenario value
-is sampled. `start_of_turn`, `entry_turn`, and `end_of_turn` are distinct. An
-absent value means that the source did not constrain the phase; it does not
-authorize the consumer to invent one. `entry_turn` means the character's first
-appearance, not every attacking turn.
+is sampled. `start_of_turn`, `entry_turn`, `end_of_turn`, `before_attack`, and
+`when_attacking` are distinct. An absent value means that the source did not
+constrain the phase; it does not authorize the consumer to invent one.
+`entry_turn` means the character's first appearance, not every attacking turn.
 
 The minimum future evaluator context is:
 
@@ -279,6 +302,84 @@ interface TeamAnalysisScenarioContext {
 
 If a predicate requires a missing value or a different explicit evaluation
 moment, its future result is `Unknown`, never false.
+
+Gate A4 defines enemy predicates as follows:
+
+- `enemy_count` describes the total battle enemy count, has `scope: "battle"`,
+  uses a non-negative integer scalar value, and never declares
+  `enemySelection`;
+- `enemy_class`, `enemy_type`, `enemy_class_type`, `enemy_category`,
+  `enemy_name`, `enemy_hp_percent`, and `enemy_status` describe an enemy or set
+  of enemies, have `scope: "enemy"`, and always declare `enemySelection`;
+- `enemy_hp_percent` is separate from `hp_percent`: the former is the selected
+  enemy's HP while the latter remains shared team HP.
+
+`enemySelection` preserves the source quantifier/reference:
+
+- `any_enemy`: an existential condition such as `there is an ... enemy`;
+- `all_enemies`: every battle enemy must match;
+- `current_target`: the enemy selected/attacked by the character;
+- `only_enemy`: the sole enemy, stated explicitly by the source or proven by a
+  sibling `enemy_count == 1` in the same conjunctive branch;
+- `unknown`: the source says, for example, `the enemy` without identifying
+  which enemy. The typed predicate is retained but its condition status is
+  `partial` and a future evaluator returns `Unknown`.
+
+`multiple enemies` has the documented cardinal meaning “more than one” and is
+normalized to `enemy_count >= 2`. No other qualitative count word receives a
+numeric value. A comparator plus `count` on an enemy attribute predicate means
+the number of enemies matching that exact attribute predicate, while
+`enemy_count` always means total battle count.
+
+Class and Type on `enemy_class_type` constrain the same selected enemy.
+Category values and name values connected by OR remain alternatives; explicit
+AND creates separate AST children. `enemy_name` distinguishes exact name from
+`whose name includes` through `nameMatch`. A structurally explicit exclusion
+uses `excludedNames` and `excludedNameMatch` on the same predicate so it cannot
+accidentally refer to a different enemy. Prose exclusions that cannot be
+normalized losslessly remain a sibling unknown branch.
+
+The initial controlled enemy-status enum contains only `atk_down`, `def_down`,
+`stunned`, and `super_attack_sealed`. A numerical ATK/DEF reduction is an
+effect, not evidence that the target currently has the corresponding status.
+Negated status conditions use the normal `not` AST node.
+
+For enemy HP, `before_attack`, `when_attacking`, and `start_of_turn` are emitted
+only when stated by the source. Scaling by remaining HP, HP after an attack,
+and damage-derived HP remain unknown.
+
+The minimum future enemy scenario context is additive to the Gate A3 context:
+
+```ts
+interface TeamAnalysisEnemyContext {
+  enemyCount?: number;
+  enemies?: Array<{
+    class?: TeamAnalysisClass;
+    type?: TeamAnalysisType;
+    categories?: string[];
+    name?: string;
+    hpPercent?: number;
+    statuses?: EnemyStatus[];
+  }>;
+  currentTargetIndex?: number;
+}
+```
+
+The evaluator must use tri-state logic. A missing list, missing enemy field,
+inconsistent count, absent current target, or `enemySelection: "unknown"`
+evaluates to `Unknown`, never false.
+
+Anaphoric wording such as `that enemy` is preserved as
+`enemyReference: "that_enemy"`. It starts with `enemySelection: "unknown"` and
+is refined to `only_enemy` only when the same AND-connected component contains
+a sibling `enemy_count` with `comparator: "eq"` and `value: 1`. Nested `all`
+nodes are logically associative for this proof but retain their serialized
+grouping. Resolution does not cross `any`, `not`, or an `enemy_count >= 2`
+predicate. An
+existential predicate such as `there is an enemy` is not a binding identifier;
+without a source-neutral enemy ID/binding construct, a following `that enemy`
+remains unresolved. Validators reject a serialized resolved anaphora without
+the required sibling proof.
 
 ### Runtime/battle dependent
 
@@ -581,7 +682,7 @@ Suggested manifest:
   "uncompressedSizeBytes": 0,
   "stateCount": 0,
   "rulesVersion": "1",
-  "parserVersion": "1.3.0",
+  "parserVersion": "1.4.0",
   "sourceCharacterDatasetVersion": "...",
   "sourceCharacterPayloadSha256": "..."
 }
@@ -595,6 +696,12 @@ Analysis as optional enrichment and ignore unrecognized predicates remain
 compatible; `parserVersion` advances to `1.3.0` so consumers can feature-detect
 the scenario semantics. A schema bump is reserved for a change that makes
 previously valid payloads invalid or changes an existing serialized meaning.
+
+Gate A4 also keeps `schemaVersion` at `1`. Enemy selection/name/status fields,
+enemy predicates, evaluation moments, and the enemy-selection coverage map are
+additive; no existing serialized meaning changes. Consumers already required
+to tolerate unknown optional enrichment may ignore these values.
+`parserVersion` advances to `1.4.0` for feature detection.
 
 - Upload immutable payload before mutable manifest.
 - Run publisher dry-run and report projected new bytes before upload.

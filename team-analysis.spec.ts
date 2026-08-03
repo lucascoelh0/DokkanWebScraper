@@ -115,6 +115,12 @@ type GoldenConditionShape =
     types?: string[];
     slots?: number[];
     evaluationMoment?: string;
+    enemySelection?: string;
+    enemyStatuses?: string[];
+    nameMatch?: string;
+    excludedNames?: string[];
+    excludedNameMatch?: string;
+    enemyReference?: string;
   };
 
 interface GateA2Fixture {
@@ -144,6 +150,17 @@ interface GateA3Fixture {
     condition: GoldenConditionShape;
     effectDuration?: { kind: string; turns?: number };
     expectNoEffectDuration?: boolean;
+  }>;
+}
+
+interface GateA4Fixture {
+  cases: Array<{
+    name: string;
+    source: "real" | "synthetic";
+    rawText: string;
+    expectedStatus: string;
+    conditionStatus?: string;
+    condition: GoldenConditionShape;
   }>;
 }
 
@@ -177,6 +194,12 @@ const gateA3Path = existsSync(sourceGateA3Path)
   ? sourceGateA3Path
   : resolve(__dirname, "..", gateA3RelativePath);
 const gateA3Fixture = JSON.parse(readFileSync(gateA3Path, "utf8")) as GateA3Fixture;
+const gateA4RelativePath = "fixtures/team-analysis/gate-a4-golden.json";
+const sourceGateA4Path = resolve(__dirname, gateA4RelativePath);
+const gateA4Path = existsSync(sourceGateA4Path)
+  ? sourceGateA4Path
+  : resolve(__dirname, "..", gateA4RelativePath);
+const gateA4Fixture = JSON.parse(readFileSync(gateA4Path, "utf8")) as GateA4Fixture;
 
 const options = {
   generatedAt: "2026-08-03T12:00:00.000Z",
@@ -740,6 +763,32 @@ describe("team-analysis Gate A3 HP and battle-time parser", function () {
   });
 });
 
+describe("team-analysis Gate A4 enemy scenario parser", function () {
+  for (const fixtureCase of gateA4Fixture.cases) {
+    it(`matches Gate A4 golden case: ${fixtureCase.name}`, () => {
+      const passive = parsePassive(`gate-a4:${fixtureCase.name}:initial`, fixtureCase.name, fixtureCase.rawText);
+      const rule = passive.rules[0];
+
+      equal(passive.parseStatus, fixtureCase.expectedStatus);
+      equal(rule.conditionStatus, fixtureCase.conditionStatus ?? "supported");
+      deepEqual(conditionShape(rule.condition), fixtureCase.condition);
+      equal(rule.effects.some(effect => (effect.kind as string) === "support"), false);
+    });
+  }
+
+  it("reconstructs every Gate A4 source token in original order", () => {
+    for (const fixtureCase of gateA4Fixture.cases) {
+      const passive = parsePassive("gate-a4:tokens:initial", undefined, fixtureCase.rawText);
+      const fragments = uniqueFragments([
+        ...passive.rules.flatMap(rule => rule.source),
+        ...passive.unparsedFragments,
+      ]);
+      const reconstructed = fragments.map(fragment => fragment.text).join("\n").replace(/\s/g, "");
+      equal(reconstructed, fixtureCase.rawText.replace(/\s/g, ""), fixtureCase.name);
+    }
+  });
+});
+
 describe("team-analysis validation and artifacts", function () {
   it("reports coverage by passive/rule status and supported effect", () => {
     const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
@@ -1028,6 +1077,128 @@ describe("team-analysis validation and artifacts", function () {
     ok(codes.includes("condition-window-range"));
   });
 
+  it("rejects invalid enemy scope, selection, HP, count, name, and status payloads", () => {
+    const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
+    const broken = JSON.parse(JSON.stringify(dataset)) as typeof dataset;
+    const rule = broken.states[0].passive?.rules[0];
+    ok(rule);
+    rule.condition = JSON.parse(JSON.stringify({
+      op: "all",
+      children: [
+        {
+          op: "predicate",
+          predicate: {
+            kind: "enemy_count",
+            scope: "enemy",
+            comparator: "gte",
+            value: -1,
+            enemySelection: "any_enemy",
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "enemy_hp_percent",
+            scope: "team",
+            comparator: "lte",
+            value: 101,
+            enemySelection: "nearest_enemy",
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "enemy_status",
+            scope: "enemy",
+            enemyStatuses: ["poisoned"],
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "enemy_name",
+            scope: "enemy",
+            enemySelection: "any_enemy",
+            names: ["Goku"],
+            nameMatch: "fuzzy",
+            excludedNameMatch: "includes",
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "enemy_hp_percent",
+            scope: "enemy",
+            comparator: "gte",
+            value: 50,
+            enemySelection: "only_enemy",
+            enemyReference: "that_enemy",
+            sourceText: "Basic effect(s)",
+          },
+        },
+      ],
+    })) as typeof rule.condition;
+
+    const codes = validateTeamAnalysisDataset(broken, fixture.characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(codes.includes("enemy-count-scope"));
+    ok(codes.includes("enemy-count-range"));
+    ok(codes.includes("enemy-selection-kind"));
+    ok(codes.includes("enemy-scope"));
+    ok(codes.includes("enemy-selection-value"));
+    ok(codes.includes("enemy-selection"));
+    ok(codes.includes("enemy-hp-range"));
+    ok(codes.includes("enemy-status-value"));
+    ok(codes.includes("enemy-name-match"));
+    ok(codes.includes("enemy-excluded-names"));
+    ok(codes.includes("enemy-reference-binding"));
+  });
+
+  it("rejects a that-enemy binding proved only inside NOT", () => {
+    const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
+    const broken = JSON.parse(JSON.stringify(dataset)) as typeof dataset;
+    const rule = broken.states[0].passive?.rules[0];
+    ok(rule);
+    rule.condition = {
+      op: "not",
+      child: {
+        op: "all",
+        children: [
+          {
+            op: "predicate",
+            predicate: {
+              kind: "enemy_count",
+              scope: "battle",
+              comparator: "eq",
+              value: 1,
+              sourceText: "Basic effect(s)",
+            },
+          },
+          {
+            op: "predicate",
+            predicate: {
+              kind: "enemy_hp_percent",
+              scope: "enemy",
+              comparator: "gte",
+              value: 50,
+              enemySelection: "only_enemy",
+              enemyReference: "that_enemy",
+              sourceText: "Basic effect(s)",
+            },
+          },
+        ],
+      },
+    };
+
+    const codes = validateTeamAnalysisDataset(broken, fixture.characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(codes.includes("enemy-reference-binding"));
+  });
+
   it("rejects PassiveDetails text that cannot be mapped back to raw offsets", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
     ok(characters[0].passiveDetails?.lines);
@@ -1052,7 +1223,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.3\.0/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.4\.0/);
   });
 });
 
@@ -1104,6 +1275,12 @@ function conditionShape(condition: ConditionExpression): GoldenConditionShape {
     ...(predicate.types ? { types: predicate.types } : {}),
     ...(predicate.slots ? { slots: predicate.slots } : {}),
     ...(predicate.evaluationMoment ? { evaluationMoment: predicate.evaluationMoment } : {}),
+    ...(predicate.enemySelection ? { enemySelection: predicate.enemySelection } : {}),
+    ...(predicate.enemyStatuses ? { enemyStatuses: predicate.enemyStatuses } : {}),
+    ...(predicate.nameMatch ? { nameMatch: predicate.nameMatch } : {}),
+    ...(predicate.excludedNames ? { excludedNames: predicate.excludedNames } : {}),
+    ...(predicate.excludedNameMatch ? { excludedNameMatch: predicate.excludedNameMatch } : {}),
+    ...(predicate.enemyReference ? { enemyReference: predicate.enemyReference } : {}),
   };
 }
 

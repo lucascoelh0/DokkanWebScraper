@@ -9,7 +9,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.3.0";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.4.0";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
 export type ReleaseState = "initial" | "eza" | "seza";
@@ -17,7 +17,21 @@ export type SelfInclusion = "included" | "excluded" | "unknown";
 export type PassiveEffectClassification = "support";
 export type TeamAnalysisClass = "Super" | "Extreme";
 export type TeamAnalysisType = "AGL" | "TEQ" | "INT" | "STR" | "PHY";
-export type PassiveEvaluationMoment = "start_of_turn" | "entry_turn" | "end_of_turn";
+export type PassiveEvaluationMoment =
+    | "start_of_turn"
+    | "entry_turn"
+    | "end_of_turn"
+    | "before_attack"
+    | "when_attacking";
+export type EnemySelection =
+    | "any_enemy"
+    | "all_enemies"
+    | "current_target"
+    | "only_enemy"
+    | "unknown";
+export type EnemyStatus = "atk_down" | "def_down" | "stunned" | "super_attack_sealed";
+export type EnemyNameMatch = "exact" | "includes";
+export type EnemyReference = "that_enemy";
 export type ProbabilitySource =
     | "explicit_text"
     | "first_party_game_db"
@@ -59,6 +73,8 @@ export type PassivePredicateKind =
     | "enemy_name"
     | "enemy_class"
     | "enemy_type"
+    | "enemy_class_type"
+    | "enemy_hp_percent"
     | "enemy_status"
     | "domain_active"
     | "standby_active"
@@ -195,6 +211,12 @@ export interface PassivePredicate {
     slots?: number[],
     kiSphereTypes?: string[],
     evaluationMoment?: PassiveEvaluationMoment,
+    enemySelection?: EnemySelection,
+    enemyStatuses?: EnemyStatus[],
+    nameMatch?: EnemyNameMatch,
+    excludedNames?: string[],
+    excludedNameMatch?: EnemyNameMatch,
+    enemyReference?: EnemyReference,
     sourceText: string,
 }
 
@@ -271,6 +293,7 @@ export interface TeamAnalysisCoverageReport {
     placementEvaluableRuleCount: number,
     scenarioRuleCount: number,
     scenarioEvaluableRuleCount: number,
+    enemySelectionCounts: Record<string, number>,
     runtimeOnlyRuleCount: number,
     identity: {
         variantGroupAssignedStateCount: number,
@@ -571,7 +594,10 @@ function combineConditionResults(
     if (right.condition.op === "always") {
         return left;
     }
-    const condition: ConditionExpression = { op: "all", children: [left.condition, right.condition] };
+    const condition = resolveThatEnemyReferences({
+        op: "all",
+        children: [left.condition, right.condition],
+    });
     return { condition, status: conditionExpressionStatus(condition) };
 }
 
@@ -755,8 +781,62 @@ function parseCondition(sourceText: string): ParsedConditionResult {
     if (isAlwaysHeader(text)) {
         return { condition: { op: "always" }, status: "supported" };
     }
-    const condition = parseBooleanCondition(text);
+    const condition = resolveThatEnemyReferences(parseBooleanCondition(text));
     return { condition, status: conditionExpressionStatus(condition) };
+}
+
+function resolveThatEnemyReferences(condition: ConditionExpression): ConditionExpression {
+    if (condition.op === "not") {
+        return condition;
+    }
+    if (condition.op === "any") {
+        return {
+            op: "any",
+            children: condition.children.map(resolveThatEnemyReferences),
+        };
+    }
+    if (condition.op !== "all") {
+        return condition;
+    }
+    return resolveThatEnemyReferencesInConjunction(
+        condition,
+        conjunctiveComponentProvesSingleEnemy(condition),
+    );
+}
+
+function conjunctiveComponentProvesSingleEnemy(condition: ConditionExpression): boolean {
+    if (condition.op === "predicate") {
+        return condition.predicate.kind === "enemy_count"
+            && condition.predicate.comparator === "eq"
+            && condition.predicate.value === 1;
+    }
+    return condition.op === "all" && condition.children.some(conjunctiveComponentProvesSingleEnemy);
+}
+
+function resolveThatEnemyReferencesInConjunction(
+    condition: ConditionExpression,
+    provesSingleEnemy: boolean,
+): ConditionExpression {
+    if (condition.op === "predicate") {
+        if (!provesSingleEnemy
+            || condition.predicate.enemyReference !== "that_enemy"
+            || condition.predicate.enemySelection !== "unknown") {
+            return condition;
+        }
+        return predicateExpression({
+            ...condition.predicate,
+            enemySelection: "only_enemy",
+        });
+    }
+    if (condition.op === "all") {
+        return {
+            op: "all",
+            children: condition.children.map(child => child.op === "all" || child.op === "predicate"
+                ? resolveThatEnemyReferencesInConjunction(child, provesSingleEnemy)
+                : resolveThatEnemyReferences(child)),
+        };
+    }
+    return resolveThatEnemyReferences(condition);
 }
 
 function parseBooleanCondition(sourceText: string): ConditionExpression {
@@ -787,6 +867,11 @@ function parseBooleanCondition(sourceText: string): ConditionExpression {
 }
 
 function parseExactConditionClause(text: string, sourceText: string): ConditionExpression | undefined {
+    const enemy = parseExactEnemyCondition(text, sourceText);
+    if (enemy) {
+        return enemy;
+    }
+
     const hp = parseExactHpCondition(text, sourceText);
     if (hp) {
         return hp;
@@ -880,6 +965,509 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
     }
 
     return parseAllyConditionClause(text, sourceText);
+}
+
+function parseExactEnemyCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    const exact = parseEnemyCountCondition(text, sourceText)
+        ?? parseEnemyHpCondition(text, sourceText)
+        ?? parseEnemyStatusCondition(text, sourceText)
+        ?? parseEnemyNameCondition(text, sourceText)
+        ?? parseEnemyAttributeCondition(text, sourceText);
+    if (exact) {
+        return exact;
+    }
+
+    const missingStatusWithHp = /^((?:the )?(?:target|attacked|selected) enemy is in the following status:)\s+HP is\s+(.+?)(\s*,.*)?$/i.exec(text);
+    if (missingStatusWithHp) {
+        const hp = parseEnemyHpComparison(
+            missingStatusWithHp[2],
+            sourceText,
+            "current_target",
+        );
+        if (hp) {
+            return {
+                op: "all",
+                children: [
+                    { op: "unknown", sourceText: missingStatusWithHp[1] },
+                    hp,
+                    ...(missingStatusWithHp[3]
+                        ? [{ op: "unknown" as const, sourceText: missingStatusWithHp[3].trim() }]
+                        : []),
+                ],
+            };
+        }
+    }
+
+    const excludedQualifier = /^(.*?)\s+(\([^)]*\bexcluded\))$/i.exec(text);
+    if (excludedQualifier) {
+        const known = parseEnemyNameCondition(excludedQualifier[1], sourceText);
+        if (known) {
+            return {
+                op: "all",
+                children: [known, { op: "unknown", sourceText: excludedQualifier[2] }],
+            };
+        }
+    }
+    return undefined;
+}
+
+function parseEnemyCountCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    const matchingClassCount = /^facing\s+(\d+)\s+or more\s+(Super|Extreme) Class enemies$/i.exec(text);
+    if (matchingClassCount && Number(matchingClassCount[1]) > 0) {
+        return predicateExpression({
+            kind: "enemy_class",
+            scope: "enemy",
+            enemySelection: "any_enemy",
+            comparator: "gte",
+            count: Number(matchingClassCount[1]),
+            classes: [normalizeClass(matchingClassCount[2])],
+            sourceText,
+        });
+    }
+    if (/^(?:facing|there (?:is|are))\s+multiple enemies$/i.test(text)) {
+        return enemyCountPredicate("gte", 2, sourceText);
+    }
+    if (/^(?:facing|there (?:is|are))\s+no enemies$/i.test(text)) {
+        return enemyCountPredicate("eq", 0, sourceText);
+    }
+
+    const only = /^(?:facing|there (?:is|are))\s+only\s+(\d+)\s+enem(?:y|ies)$/i.exec(text);
+    if (only) {
+        return enemyCountPredicateIfValid("eq", Number(only[1]), sourceText);
+    }
+    const qualified = /^(?:facing|there (?:is|are))\s+(\d+)\s+or\s+(more|less)\s+enemies$/i.exec(text)
+        ?? /^(\d+)\s+or\s+(more|less)\s+enemies$/i.exec(text);
+    if (qualified) {
+        return enemyCountPredicateIfValid(
+            qualified[2].toLowerCase() === "more" ? "gte" : "lte",
+            Number(qualified[1]),
+            sourceText,
+        );
+    }
+    const exact = /^(?:facing|there (?:is|are))\s+(\d+)\s+enem(?:y|ies)$/i.exec(text);
+    return exact ? enemyCountPredicateIfValid("eq", Number(exact[1]), sourceText) : undefined;
+}
+
+function enemyCountPredicateIfValid(
+    comparator: "eq" | "lte" | "gte",
+    value: number,
+    sourceText: string,
+): ConditionExpression | undefined {
+    return isEnemyCount(value) ? enemyCountPredicate(comparator, value, sourceText) : undefined;
+}
+
+function enemyCountPredicate(
+    comparator: "eq" | "lte" | "gte",
+    value: number,
+    sourceText: string,
+): ConditionExpression {
+    return predicateExpression({
+        kind: "enemy_count",
+        scope: "battle",
+        comparator,
+        value,
+        sourceText,
+    });
+}
+
+function isEnemyCount(value: number): boolean {
+    return Number.isInteger(value) && value >= 0;
+}
+
+function parseEnemyHpCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    let body = text.trim();
+    let evaluationMoment: PassiveEvaluationMoment | undefined;
+
+    const beforeAttack = /^before attacking\s+/i.exec(body);
+    if (beforeAttack) {
+        evaluationMoment = "before_attack";
+        body = body.slice(beforeAttack[0].length).trim();
+    }
+    const momentSuffixes: Array<{ pattern: RegExp, moment: PassiveEvaluationMoment }> = [
+        { pattern: /\s+at the start of (?:the )?turn$/i, moment: "start_of_turn" },
+        { pattern: /\s+when attacking$/i, moment: "when_attacking" },
+    ];
+    for (const suffix of momentSuffixes) {
+        const match = suffix.pattern.exec(body);
+        if (match) {
+            evaluationMoment = suffix.moment;
+            body = body.slice(0, match.index).trim();
+            break;
+        }
+    }
+
+    let enemySelection: EnemySelection;
+    let comparisonText: string;
+    const selected = /^(?:(?:the )?(?:target|attacked|selected) enemy|an? enemy being attacked)['’]s HP is\s+(.+)$/i.exec(body);
+    const whose = /^an? enemy whose HP is\s+(.+)$/i.exec(body);
+    const withHp = /^facing an? enemy with\s+(.+)\s+HP$/i.exec(body);
+    const only = /^that enemy['’]s HP is\s+(.+)$/i.exec(body);
+    const ambiguous = /^(?:the )?enemy['’]s HP is\s+(.+)$/i.exec(body);
+    if (selected) {
+        enemySelection = "current_target";
+        comparisonText = selected[1];
+    } else if (whose) {
+        enemySelection = evaluationMoment === "before_attack" ? "current_target" : "any_enemy";
+        comparisonText = whose[1];
+    } else if (withHp) {
+        enemySelection = "any_enemy";
+        comparisonText = withHp[1];
+    } else if (only) {
+        enemySelection = "unknown";
+        comparisonText = only[1];
+    } else if (ambiguous) {
+        enemySelection = "unknown";
+        comparisonText = ambiguous[1];
+    } else {
+        return undefined;
+    }
+    const condition = parseEnemyHpComparison(comparisonText, sourceText, enemySelection, evaluationMoment);
+    if (!only || !condition) {
+        return condition;
+    }
+    return mapConditionPredicates(condition, predicate => ({
+        ...predicate,
+        enemyReference: "that_enemy",
+    }));
+}
+
+function mapConditionPredicates(
+    condition: ConditionExpression,
+    transform: (predicate: PassivePredicate) => PassivePredicate,
+): ConditionExpression {
+    if (condition.op === "predicate") {
+        return predicateExpression(transform(condition.predicate));
+    }
+    if (condition.op === "all" || condition.op === "any") {
+        return { op: condition.op, children: condition.children.map(child => mapConditionPredicates(child, transform)) };
+    }
+    if (condition.op === "not") {
+        return { op: "not", child: mapConditionPredicates(condition.child, transform) };
+    }
+    return condition;
+}
+
+function parseEnemyHpComparison(
+    comparisonText: string,
+    sourceText: string,
+    enemySelection: EnemySelection,
+    evaluationMoment?: PassiveEvaluationMoment,
+): ConditionExpression | undefined {
+    const interval = /^between\s+(\d+)%\s+and\s+(\d+)%$/i.exec(comparisonText);
+    if (interval) {
+        const minimum = Number(interval[1]);
+        const maximum = Number(interval[2]);
+        if (!isHpPercent(minimum) || !isHpPercent(maximum) || minimum > maximum) {
+            return undefined;
+        }
+        return {
+            op: "all",
+            children: [
+                enemyHpPredicate("gte", minimum, sourceText, enemySelection, evaluationMoment),
+                enemyHpPredicate("lte", maximum, sourceText, enemySelection, evaluationMoment),
+            ],
+        };
+    }
+    const exact = /^exactly\s+(\d+)%$/i.exec(comparisonText);
+    if (exact) {
+        return enemyHpPredicateIfValid("eq", Number(exact[1]), sourceText, enemySelection, evaluationMoment);
+    }
+    const strict = /^(above|below)\s+(\d+)%$/i.exec(comparisonText);
+    if (strict) {
+        return enemyHpPredicateIfValid(
+            strict[1].toLowerCase() === "above" ? "gt" : "lt",
+            Number(strict[2]),
+            sourceText,
+            enemySelection,
+            evaluationMoment,
+        );
+    }
+    const qualified = /^(\d+)%\s+or\s+(more|less|above|below)$/i.exec(comparisonText);
+    if (qualified) {
+        const qualifier = qualified[2].toLowerCase();
+        return enemyHpPredicateIfValid(
+            qualifier === "more" || qualifier === "above" ? "gte" : "lte",
+            Number(qualified[1]),
+            sourceText,
+            enemySelection,
+            evaluationMoment,
+        );
+    }
+    const plain = /^(\d+)%$/i.exec(comparisonText);
+    return plain
+        ? enemyHpPredicateIfValid("eq", Number(plain[1]), sourceText, enemySelection, evaluationMoment)
+        : undefined;
+}
+
+function enemyHpPredicateIfValid(
+    comparator: "lt" | "lte" | "eq" | "gte" | "gt",
+    value: number,
+    sourceText: string,
+    enemySelection: EnemySelection,
+    evaluationMoment?: PassiveEvaluationMoment,
+): ConditionExpression | undefined {
+    return isHpPercent(value)
+        ? enemyHpPredicate(comparator, value, sourceText, enemySelection, evaluationMoment)
+        : undefined;
+}
+
+function enemyHpPredicate(
+    comparator: "lt" | "lte" | "eq" | "gte" | "gt",
+    value: number,
+    sourceText: string,
+    enemySelection: EnemySelection,
+    evaluationMoment?: PassiveEvaluationMoment,
+): ConditionExpression {
+    return predicateExpression({
+        kind: "enemy_hp_percent",
+        scope: "enemy",
+        comparator,
+        value,
+        enemySelection,
+        ...(evaluationMoment ? { evaluationMoment } : {}),
+        sourceText,
+    });
+}
+
+function parseEnemyStatusCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    const header = /^(?:the )?(target|attacked|selected) enemy is in the following status:\s*(.+)$/i.exec(text);
+    if (header) {
+        return parseEnemyStatusValues(header[2], "current_target", sourceText);
+    }
+
+    const possessiveSeal = /^(?:the )?(target|attacked|selected) enemy['’]s Super Attack is (not )?sealed$/i.exec(text);
+    if (possessiveSeal) {
+        const predicate = enemyStatusPredicate("super_attack_sealed", "current_target", sourceText);
+        return possessiveSeal[2] ? { op: "not", child: predicate } : predicate;
+    }
+
+    const forms: Array<{ pattern: RegExp, selection: EnemySelection }> = [
+        { pattern: /^there (?:is|are) an? (.+?) enem(?:y|ies)$/i, selection: "any_enemy" },
+        { pattern: /^all enemies are (.+)$/i, selection: "all_enemies" },
+        { pattern: /^(?:the )?(?:target|attacked|selected) enemy (?:is|has) (.+)$/i, selection: "current_target" },
+        { pattern: /^the only enemy (?:is|has) (.+)$/i, selection: "only_enemy" },
+        { pattern: /^the enemy (?:is|has) (.+)$/i, selection: "unknown" },
+    ];
+    for (const form of forms) {
+        const match = form.pattern.exec(text);
+        if (!match) {
+            continue;
+        }
+        let value = match[1].trim();
+        let negated = false;
+        if (/^not\s+/i.test(value)) {
+            negated = true;
+            value = value.replace(/^not\s+/i, "");
+        }
+        const status = parseEnemyStatusTerm(value);
+        if (status) {
+            const predicate = enemyStatusPredicate(status, form.selection, sourceText);
+            return negated ? { op: "not", child: predicate } : predicate;
+        }
+    }
+
+    const noStatus = /^there are no\s+(.+?)\s+enemies$/i.exec(text);
+    if (noStatus) {
+        const status = parseEnemyStatusTerm(noStatus[1]);
+        return status
+            ? { op: "not", child: enemyStatusPredicate(status, "any_enemy", sourceText) }
+            : undefined;
+    }
+    return undefined;
+}
+
+function parseEnemyStatusValues(
+    sourceText: string,
+    selection: EnemySelection,
+    predicateSourceText: string,
+): ConditionExpression | undefined {
+    const matches = [...sourceText.matchAll(/ATK Down|DEF Down|stunned|Super Attack sealed/gi)];
+    if (matches.length === 0) {
+        return undefined;
+    }
+    const residual = sourceText.replace(/ATK Down|DEF Down|stunned|Super Attack sealed/gi, "#").trim();
+    if (!/^#(?:\s*(?:,|and|or)\s*#)*$/i.test(residual)) {
+        return undefined;
+    }
+    const children = matches.map(match => enemyStatusPredicate(
+        parseEnemyStatusTerm(match[0]) as EnemyStatus,
+        selection,
+        predicateSourceText,
+    ));
+    if (children.length === 1) {
+        return children[0];
+    }
+    return { op: /\band\b/i.test(residual) ? "all" : "any", children };
+}
+
+function parseEnemyStatusTerm(sourceText: string): EnemyStatus | undefined {
+    const normalized = sourceText.trim().toLowerCase();
+    if (normalized === "atk down") return "atk_down";
+    if (normalized === "def down") return "def_down";
+    if (normalized === "stunned") return "stunned";
+    if (normalized === "super attack sealed") return "super_attack_sealed";
+    return undefined;
+}
+
+function enemyStatusPredicate(
+    status: EnemyStatus,
+    enemySelection: EnemySelection,
+    sourceText: string,
+): ConditionExpression {
+    return predicateExpression({
+        kind: "enemy_status",
+        scope: "enemy",
+        enemySelection,
+        enemyStatuses: [status],
+        sourceText,
+    });
+}
+
+function parseEnemyNameCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    const includesForms: Array<{ pattern: RegExp, selection: EnemySelection }> = [
+        { pattern: /^there (?:is|are) an? enem(?:y|ies) whose name includes\s+(.+)$/i, selection: "any_enemy" },
+        { pattern: /^attacking an? enemy whose name includes\s+(.+)$/i, selection: "current_target" },
+        { pattern: /^(?:the )?(?:target|attacked|selected) enemy['’]s name includes\s+(.+)$/i, selection: "current_target" },
+        { pattern: /^the only enemy['’]s name includes\s+(.+)$/i, selection: "only_enemy" },
+        { pattern: /^the enemy['’]s name includes\s+(.+)$/i, selection: "unknown" },
+    ];
+    for (const form of includesForms) {
+        const match = form.pattern.exec(text);
+        if (match) {
+            return buildEnemyNameExpression(match[1], "includes", form.selection, sourceText);
+        }
+    }
+
+    const noIncludes = /^there (?:is|are) no enem(?:y|ies) whose name includes\s+(.+)$/i.exec(text);
+    if (noIncludes) {
+        const expression = buildEnemyNameExpression(noIncludes[1], "includes", "any_enemy", sourceText);
+        return expression ? { op: "not", child: expression } : undefined;
+    }
+
+    const exactForms: Array<{ pattern: RegExp, selection: EnemySelection }> = [
+        { pattern: /^(.+) is an enemy$/i, selection: "any_enemy" },
+        { pattern: /^(?:the )?(?:target|attacked|selected) enemy['’]s name is\s+(.+)$/i, selection: "current_target" },
+        { pattern: /^the only enemy['’]s name is\s+(.+)$/i, selection: "only_enemy" },
+        { pattern: /^the enemy['’]s name is\s+(.+)$/i, selection: "unknown" },
+    ];
+    for (const form of exactForms) {
+        const match = form.pattern.exec(text);
+        if (match) {
+            return buildEnemyNameExpression(match[1], "exact", form.selection, sourceText);
+        }
+    }
+    return undefined;
+}
+
+function buildEnemyNameExpression(
+    sourceValues: string,
+    nameMatch: EnemyNameMatch,
+    enemySelection: EnemySelection,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const exclusion = /^(.*?)\s*,?\s+excluding\s+(.+)$/i.exec(sourceValues);
+    const includedText = exclusion?.[1] ?? sourceValues;
+    const included = parseQuotedValues(includedText);
+    if (!included) {
+        return undefined;
+    }
+    const excluded = exclusion ? parseQuotedValues(exclusion[2]) : undefined;
+    if (exclusion && !excluded) {
+        return undefined;
+    }
+    const children = included.values.map(name => predicateExpression({
+        kind: "enemy_name",
+        scope: "enemy",
+        enemySelection,
+        names: [name],
+        nameMatch,
+        ...(excluded ? { excludedNames: excluded.values, excludedNameMatch: nameMatch } : {}),
+        sourceText,
+    }));
+    return children.length === 1
+        ? children[0]
+        : { op: included.connector === "and" ? "all" : "any", children };
+}
+
+function parseEnemyAttributeCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    const forms: Array<{ pattern: RegExp, selection: EnemySelection, negated?: boolean }> = [
+        { pattern: /^there (?:is|are) no\s+(.+?)\s+enemies$/i, selection: "any_enemy", negated: true },
+        { pattern: /^there (?:is|are)\s+(?:an?\s+)?(.+?)\s+enem(?:y|ies)$/i, selection: "any_enemy" },
+        { pattern: /^an?\s+(.+?)\s+enemy$/i, selection: "any_enemy" },
+        { pattern: /^attacking\s+(?:an?\s+)?(.+?)\s+enemy$/i, selection: "current_target" },
+        { pattern: /^all enemies are\s+(.+)$/i, selection: "all_enemies" },
+        { pattern: /^the only enemy is\s+(.+)$/i, selection: "only_enemy" },
+        { pattern: /^(?:the )?(?:target|attacked|selected) enemy is\s+(.+)$/i, selection: "current_target" },
+        { pattern: /^the enemy is\s+(.+)$/i, selection: "unknown" },
+    ];
+    for (const form of forms) {
+        const match = form.pattern.exec(text);
+        if (!match) {
+            continue;
+        }
+        const expression = parseEnemyAttribute(match[1], form.selection, sourceText);
+        if (expression) {
+            return form.negated ? { op: "not", child: expression } : expression;
+        }
+    }
+    return undefined;
+}
+
+function parseEnemyAttribute(
+    sourceText: string,
+    enemySelection: EnemySelection,
+    predicateSourceText: string,
+): ConditionExpression | undefined {
+    const classType = /^(Super|Extreme)(?: Class)?\s+(AGL|TEQ|INT|STR|PHY)(?: Type)?$/i.exec(sourceText);
+    if (classType) {
+        return predicateExpression({
+            kind: "enemy_class_type",
+            scope: "enemy",
+            enemySelection,
+            classes: [normalizeClass(classType[1])],
+            types: [normalizeType(classType[2])],
+            sourceText: predicateSourceText,
+        });
+    }
+    const classMatch = /^(Super|Extreme) Class$/i.exec(sourceText);
+    if (classMatch) {
+        return predicateExpression({
+            kind: "enemy_class",
+            scope: "enemy",
+            enemySelection,
+            classes: [normalizeClass(classMatch[1])],
+            sourceText: predicateSourceText,
+        });
+    }
+    const typeMatch = /^(AGL|TEQ|INT|STR|PHY) Type$/i.exec(sourceText);
+    if (typeMatch) {
+        return predicateExpression({
+            kind: "enemy_type",
+            scope: "enemy",
+            enemySelection,
+            types: [normalizeType(typeMatch[1])],
+            sourceText: predicateSourceText,
+        });
+    }
+    const categoryMatch = /^(.+?) Category$/i.exec(sourceText);
+    if (categoryMatch) {
+        const categories = parseQuotedValues(categoryMatch[1]);
+        if (!categories) {
+            return undefined;
+        }
+        const children = categories.values.map(category => predicateExpression({
+            kind: "enemy_category",
+            scope: "enemy",
+            enemySelection,
+            categories: [category],
+            sourceText: predicateSourceText,
+        }));
+        return children.length === 1
+            ? children[0]
+            : { op: categories.connector === "and" ? "all" : "any", children };
+    }
+    const status = parseEnemyStatusTerm(sourceText);
+    return status ? enemyStatusPredicate(status, enemySelection, predicateSourceText) : undefined;
 }
 
 function parseExactHpCondition(text: string, sourceText: string): ConditionExpression | undefined {
@@ -1405,7 +1993,7 @@ function splitTopLevelCondition(sourceText: string, connector: "and" | "or"): st
             continue;
         }
         const right = sourceText.slice(index + match[0].length).trim();
-        if (!/^(?:when|if|as|attacking|there|all|the\s+(?:team|character)|this\s+character|another|no|for\b|starting\b|on the\b|up to the\b|from the\b|HP\b|facing\b|\()/i.test(right)) {
+        if (!/^(?:when|if|as|attacking|there|all|the\s+(?:team|character|enemy|target|attacked|selected|only)|this\s+character|that\s+enemy|an?\s+(?:enemy|["']|(?:Super|Extreme|AGL|TEQ|INT|STR|PHY)\b)|another|no|for\b|starting\b|on the\b|up to the\b|from the\b|HP\b|facing\b|\()/i.test(right)) {
             continue;
         }
         parts.push(sourceText.slice(lastIndex, index).replace(/[\s,]+$/g, "").trim());
@@ -2230,6 +2818,7 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         unresolved: 0,
     };
     const conditionCounts = { always: 0, predicate: 0, unknown: 0, composite: 0 };
+    const enemySelectionCounts: Record<string, number> = {};
     let passiveStateCount = 0;
     let unknownEffectCount = 0;
     let unresolvedProbabilityEffectCount = 0;
@@ -2274,6 +2863,7 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
                 }
             }
             collectPredicates(rule.condition, supportedPredicateCounts);
+            collectEnemySelections(rule.condition, enemySelectionCounts);
             for (const effect of rule.effects) {
                 if (effect.kind === "unknown") {
                     unknownEffectCount += 1;
@@ -2318,6 +2908,7 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         placementEvaluableRuleCount,
         scenarioRuleCount,
         scenarioEvaluableRuleCount,
+        enemySelectionCounts: sortedRecord(enemySelectionCounts),
         runtimeOnlyRuleCount,
         identity: {
             variantGroupAssignedStateCount: dataset.states.filter(state => Boolean(state.variantGroupId)).length,
@@ -2337,7 +2928,8 @@ function classifyCondition(condition: ConditionExpression): "always" | "predicat
 const SCENARIO_PREDICATES = new Set<PassivePredicateKind>([
     "hp_percent", "battle_turn", "turn_from_entry", "turn_number", "turns_from_entry",
     "enemy_count", "enemy_category",
-    "enemy_name", "enemy_class", "enemy_type", "enemy_status", "domain_active",
+    "enemy_name", "enemy_class", "enemy_type", "enemy_class_type", "enemy_hp_percent",
+    "enemy_status", "domain_active",
     "standby_active", "active_skill_used", "revive_triggered",
 ]);
 
@@ -2390,6 +2982,22 @@ function collectPredicates(condition: ConditionExpression, counts: Record<string
     }
     if (condition.op === "all" || condition.op === "any") {
         condition.children.forEach(child => collectPredicates(child, counts));
+    }
+}
+
+function collectEnemySelections(condition: ConditionExpression, counts: Record<string, number>): void {
+    if (condition.op === "predicate") {
+        if (condition.predicate.enemySelection) {
+            counts[condition.predicate.enemySelection] = (counts[condition.predicate.enemySelection] ?? 0) + 1;
+        }
+        return;
+    }
+    if (condition.op === "not") {
+        collectEnemySelections(condition.child, counts);
+        return;
+    }
+    if (condition.op === "all" || condition.op === "any") {
+        condition.children.forEach(child => collectEnemySelections(child, counts));
     }
 }
 
@@ -2627,7 +3235,10 @@ function conditionExpressionStatus(condition: ConditionExpression): ParseStatus 
         return "unknown";
     }
     if (condition.op === "predicate") {
-        return condition.predicate.kind === "unknown" ? "unknown" : "supported";
+        if (condition.predicate.kind === "unknown") {
+            return "unknown";
+        }
+        return condition.predicate.enemySelection === "unknown" ? "partial" : "supported";
     }
     if (condition.op === "not") {
         return conditionExpressionStatus(condition.child);
@@ -2698,6 +3309,11 @@ const ALLY_PREDICATE_KINDS = new Set<PassivePredicateKind>([
     "rotation_partner_category", "rotation_partner_name", "ally_class_present",
     "ally_type_present", "ally_class_type_present", "ally_category_class_present",
     "all_rotation_allies_class",
+]);
+
+const ENEMY_PREDICATE_KINDS = new Set<PassivePredicateKind>([
+    "enemy_category", "enemy_name", "enemy_class", "enemy_type", "enemy_class_type",
+    "enemy_hp_percent", "enemy_status",
 ]);
 
 const ALLY_TARGET_SCOPES = new Set<PassiveTarget["scope"]>([
@@ -2812,6 +3428,9 @@ function validateCondition(
     rule: PassiveRule,
     issues: TeamAnalysisValidationIssue[],
 ): void {
+    if (depth === 1) {
+        validateEnemyReferenceBindings(condition, state, rule, issues);
+    }
     if (depth > 16) {
         issues.push({ code: "ast-depth", message: `Condition AST exceeds depth 16.`, stateKey: state.stateKey, ruleId: rule.id });
         return;
@@ -2835,22 +3454,23 @@ function validateCondition(
             && (!Number.isInteger(condition.predicate.count) || condition.predicate.count <= 0)) {
             issues.push({ code: "condition-count", message: `Ally count must be a positive integer.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (["ally_category_present", "ally_category_class_present", "all_rotation_allies_category", "rotation_partner_category"].includes(condition.predicate.kind)
+        if (["ally_category_present", "ally_category_class_present", "all_rotation_allies_category", "rotation_partner_category", "enemy_category"].includes(condition.predicate.kind)
             && (condition.predicate.categories?.length ?? 0) === 0) {
             issues.push({ code: "condition-categories", message: `Category condition must name at least one category.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (["ally_name_present", "rotation_partner_name"].includes(condition.predicate.kind)
+        if (["ally_name_present", "rotation_partner_name", "enemy_name"].includes(condition.predicate.kind)
             && (condition.predicate.names?.length ?? 0) === 0) {
             issues.push({ code: "condition-names", message: `Name condition must name at least one character.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (["ally_class_present", "ally_class_type_present", "ally_category_class_present", "all_rotation_allies_class", "character_class"].includes(condition.predicate.kind)
+        if (["ally_class_present", "ally_class_type_present", "ally_category_class_present", "all_rotation_allies_class", "character_class", "enemy_class", "enemy_class_type"].includes(condition.predicate.kind)
             && (condition.predicate.classes?.length ?? 0) === 0) {
             issues.push({ code: "condition-classes", message: `Class condition must name at least one class.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (["ally_type_present", "ally_class_type_present", "character_type"].includes(condition.predicate.kind)
+        if (["ally_type_present", "ally_class_type_present", "character_type", "enemy_type", "enemy_class_type"].includes(condition.predicate.kind)
             && (condition.predicate.types?.length ?? 0) === 0) {
             issues.push({ code: "condition-types", message: `Type condition must name at least one type.`, stateKey: state.stateKey, ruleId: rule.id });
         }
+        validateEnemyPredicate(condition.predicate, state, rule, issues);
         validateClassAndTypeValues(condition.predicate.classes, condition.predicate.types, state, rule, issues);
         validateScenarioPredicate(condition.predicate, state, rule, issues);
         if (condition.predicate.kind === "battle_slot" && condition.predicate.scope !== "self") {
@@ -2867,22 +3487,166 @@ function validateCondition(
     }
 }
 
+function validateEnemyPredicate(
+    predicate: PassivePredicate,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const enemySelections: EnemySelection[] = [
+        "any_enemy", "all_enemies", "current_target", "only_enemy", "unknown",
+    ];
+    const enemyStatuses: EnemyStatus[] = ["atk_down", "def_down", "stunned", "super_attack_sealed"];
+    const nameMatches: EnemyNameMatch[] = ["exact", "includes"];
+    const isEnemyPredicate = ENEMY_PREDICATE_KINDS.has(predicate.kind);
+
+    if (isEnemyPredicate && predicate.scope !== "enemy") {
+        issues.push({ code: "enemy-scope", message: `Enemy attribute predicates must use enemy scope.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (isEnemyPredicate && predicate.enemySelection === undefined) {
+        issues.push({ code: "enemy-selection", message: `Enemy attribute predicates must declare enemy selection.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.enemySelection !== undefined && !enemySelections.includes(predicate.enemySelection)) {
+        issues.push({ code: "enemy-selection-value", message: `Enemy selection is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (!isEnemyPredicate && predicate.enemySelection !== undefined) {
+        issues.push({ code: "enemy-selection-kind", message: `Enemy selection is valid only on enemy attribute predicates.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.enemyReference !== undefined && predicate.enemyReference !== "that_enemy") {
+        issues.push({ code: "enemy-reference-value", message: `Enemy reference is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.enemyReference !== undefined && !isEnemyPredicate) {
+        issues.push({ code: "enemy-reference-kind", message: `Enemy references are valid only on enemy attribute predicates.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.enemyReference === "that_enemy"
+        && predicate.enemySelection !== "unknown"
+        && predicate.enemySelection !== "only_enemy") {
+        issues.push({ code: "enemy-reference-selection", message: `That-enemy references must be unresolved or bound to the only enemy.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.kind === "enemy_status"
+        && ((predicate.enemyStatuses?.length ?? 0) === 0
+            || (predicate.enemyStatuses ?? []).some(status => !enemyStatuses.includes(status)))) {
+        issues.push({ code: "enemy-status-value", message: `Enemy status must use a recognized non-empty value.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.kind === "enemy_name") {
+        if (predicate.nameMatch === undefined || !nameMatches.includes(predicate.nameMatch)) {
+            issues.push({ code: "enemy-name-match", message: `Enemy name predicates require a recognized match mode.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if ((predicate.excludedNames?.length ?? 0) > 0
+            && (predicate.excludedNameMatch === undefined || !nameMatches.includes(predicate.excludedNameMatch))) {
+            issues.push({ code: "enemy-excluded-name-match", message: `Excluded enemy names require a recognized match mode.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (predicate.excludedNameMatch !== undefined && (predicate.excludedNames?.length ?? 0) === 0) {
+            issues.push({ code: "enemy-excluded-names", message: `Excluded enemy name match mode requires excluded names.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+    }
+}
+
+function validateEnemyReferenceBindings(
+    condition: ConditionExpression,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    if (condition.op === "not") {
+        rejectBoundEnemyReferences(condition.child, state, rule, issues);
+        return;
+    }
+    if (condition.op === "any") {
+        condition.children.forEach(child => validateEnemyReferenceBindings(child, state, rule, issues));
+        return;
+    }
+    if (condition.op === "all") {
+        validateEnemyReferencesInConjunction(
+            condition,
+            conjunctiveComponentProvesSingleEnemy(condition),
+            state,
+            rule,
+            issues,
+        );
+        return;
+    }
+    rejectBoundEnemyReferences(condition, state, rule, issues);
+}
+
+function validateEnemyReferencesInConjunction(
+    condition: ConditionExpression,
+    provesSingleEnemy: boolean,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    if (condition.op === "predicate") {
+        if (condition.predicate.enemyReference === "that_enemy"
+            && condition.predicate.enemySelection === "only_enemy"
+            && !provesSingleEnemy) {
+            enemyReferenceBindingIssue(state, rule, issues);
+        }
+        return;
+    }
+    if (condition.op === "all") {
+        condition.children.forEach(child => {
+            if (child.op === "all" || child.op === "predicate") {
+                validateEnemyReferencesInConjunction(child, provesSingleEnemy, state, rule, issues);
+            } else {
+                validateEnemyReferenceBindings(child, state, rule, issues);
+            }
+        });
+    }
+}
+
+function rejectBoundEnemyReferences(
+    condition: ConditionExpression,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    if (condition.op === "predicate") {
+        if (condition.predicate.enemyReference === "that_enemy"
+            && condition.predicate.enemySelection === "only_enemy") {
+            enemyReferenceBindingIssue(state, rule, issues);
+        }
+        return;
+    }
+    if (condition.op === "not") {
+        rejectBoundEnemyReferences(condition.child, state, rule, issues);
+    } else if (condition.op === "all" || condition.op === "any") {
+        condition.children.forEach(child => rejectBoundEnemyReferences(child, state, rule, issues));
+    }
+}
+
+function enemyReferenceBindingIssue(
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    issues.push({
+        code: "enemy-reference-binding",
+        message: `That-enemy reference is bound without an enemy_count eq 1 proof in the same conjunctive branch.`,
+        stateKey: state.stateKey,
+        ruleId: rule.id,
+    });
+}
+
 function validateScenarioPredicate(
     predicate: PassivePredicate,
     state: CharacterStateAnalysis,
     rule: PassiveRule,
     issues: TeamAnalysisValidationIssue[],
 ): void {
-    const scenarioKinds: PassivePredicateKind[] = ["hp_percent", "battle_turn", "turn_from_entry"];
-    const isScenario = scenarioKinds.includes(predicate.kind);
+    const scalarScenarioKinds: PassivePredicateKind[] = [
+        "hp_percent", "battle_turn", "turn_from_entry", "enemy_count", "enemy_hp_percent",
+    ];
+    const isScalarScenario = scalarScenarioKinds.includes(predicate.kind);
+    const isScenario = SCENARIO_PREDICATES.has(predicate.kind);
     const comparatorAllowed = ["lt", "lte", "eq", "gte", "gt"].includes(predicate.comparator ?? "");
-    if (isScenario && !comparatorAllowed) {
+    if (isScalarScenario && !comparatorAllowed) {
         issues.push({ code: "scenario-comparator", message: `HP and turn predicates require an explicit scalar comparator.`, stateKey: state.stateKey, ruleId: rule.id });
     }
-    if (isScenario && predicate.value === undefined) {
+    if (isScalarScenario && predicate.value === undefined) {
         issues.push({ code: "scenario-value", message: `HP and turn predicates require a scalar value.`, stateKey: state.stateKey, ruleId: rule.id });
     }
-    if (isScenario && predicate.maxValue !== undefined) {
+    if (isScalarScenario && predicate.maxValue !== undefined) {
         issues.push({ code: "scenario-max-value", message: `Scenario intervals must use an all AST of scalar bounds.`, stateKey: state.stateKey, ruleId: rule.id });
     }
 
@@ -2892,6 +3656,19 @@ function validateScenarioPredicate(
         }
         if (predicate.value !== undefined && (!Number.isFinite(predicate.value) || predicate.value < 0 || predicate.value > 100)) {
             issues.push({ code: "hp-range", message: `HP percent must be within 0..100.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+    }
+    if (predicate.kind === "enemy_hp_percent"
+        && predicate.value !== undefined
+        && (!Number.isFinite(predicate.value) || predicate.value < 0 || predicate.value > 100)) {
+        issues.push({ code: "enemy-hp-range", message: `Enemy HP percent must be within 0..100.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.kind === "enemy_count") {
+        if (predicate.scope !== "battle") {
+            issues.push({ code: "enemy-count-scope", message: `Enemy count must use battle scope.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (predicate.value !== undefined && !isEnemyCount(predicate.value)) {
+            issues.push({ code: "enemy-count-range", message: `Enemy count must be a non-negative integer.`, stateKey: state.stateKey, ruleId: rule.id });
         }
     }
     if (predicate.kind === "battle_turn" && predicate.scope !== "battle") {
@@ -2906,7 +3683,9 @@ function validateScenarioPredicate(
         issues.push({ code: "turn-index", message: `Turn indexes are 1-based positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
     }
 
-    const knownMoments: PassiveEvaluationMoment[] = ["start_of_turn", "entry_turn", "end_of_turn"];
+    const knownMoments: PassiveEvaluationMoment[] = [
+        "start_of_turn", "entry_turn", "end_of_turn", "before_attack", "when_attacking",
+    ];
     if (predicate.evaluationMoment !== undefined && !knownMoments.includes(predicate.evaluationMoment)) {
         issues.push({ code: "evaluation-moment", message: `Evaluation moment is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
     }
@@ -2921,7 +3700,7 @@ function validateScenarioWindow(
     rule: PassiveRule,
     issues: TeamAnalysisValidationIssue[],
 ): void {
-    for (const kind of ["hp_percent", "battle_turn", "turn_from_entry"] as const) {
+    for (const kind of ["hp_percent", "enemy_hp_percent", "battle_turn", "turn_from_entry"] as const) {
         const predicates = children
             .filter((child): child is Extract<ConditionExpression, { op: "predicate" }> => child.op === "predicate")
             .map(child => child.predicate)
