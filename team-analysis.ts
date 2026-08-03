@@ -1,4 +1,10 @@
-import { Character, PassiveDetails, Transformation } from "./character";
+import { createHash } from "crypto";
+import {
+    Character,
+    PassiveConditionEvidence,
+    PassiveDetails,
+    Transformation,
+} from "./character";
 import { FyiCharacterCatalogEntry } from "./fyi-character-catalog";
 import {
     ChanceSemantic,
@@ -9,7 +15,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.4.0";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.4.1";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
 export type ReleaseState = "initial" | "eza" | "seza";
@@ -149,6 +155,7 @@ export interface ParsedPassive {
     parseStatus: ParseStatus,
     rules: PassiveRule[],
     unparsedFragments: SourceFragment[],
+    conditionEvidence?: PassiveConditionEvidence[],
 }
 
 export interface PassiveRule {
@@ -294,6 +301,16 @@ export interface TeamAnalysisCoverageReport {
     scenarioRuleCount: number,
     scenarioEvaluableRuleCount: number,
     enemySelectionCounts: Record<string, number>,
+    enemyStatusEvidence: {
+        stateCount: number,
+        evidenceCount: number,
+        fullyRecoveredStateCount: number,
+        partialStateCount: number,
+        unresolvedStateCount: number,
+        resolutionCounts: Record<"supported" | "partial" | "unresolved", number>,
+        statusCounts: Record<string, number>,
+        sourceCounts: Record<string, number>,
+    },
     runtimeOnlyRuleCount: number,
     identity: {
         variantGroupAssignedStateCount: number,
@@ -409,7 +426,17 @@ function buildCharacterStates(
         const identity = resolveIdentity(character, form, catalogEntry, releaseSource.releaseState);
         const stateKey = buildStateKey(identity.characterId, identity.formId, identity.releaseState);
         const passive = releaseSource.passiveText
-            ? parsePassive(stateKey, releaseSource.passiveName, releaseSource.passiveText, releaseSource.passiveDetails)
+            ? parsePassive(
+                stateKey,
+                releaseSource.passiveName,
+                releaseSource.passiveText,
+                releaseSource.passiveDetails,
+                {
+                    characterId: identity.characterId,
+                    formId: identity.formId,
+                    releaseState: identity.releaseState,
+                },
+            )
             : undefined;
 
         return {
@@ -509,13 +536,27 @@ interface ParsedEffectResult {
     status: ParseStatus,
 }
 
+export interface PassiveParseContext {
+    characterId: string,
+    formId: string,
+    releaseState: ReleaseState,
+}
+
 export function parsePassive(
     stateKey: string,
     name: string | undefined,
     rawText: string,
     passiveDetails?: PassiveDetails,
+    context?: PassiveParseContext,
 ): ParsedPassive {
     const sourceMap = mapPassiveDetailsToSource(rawText, passiveDetails);
+    const conditionEvidence = validConditionEvidence(
+        stateKey,
+        rawText,
+        sourceMap.sourceFragments,
+        passiveDetails?.conditionEvidence ?? [],
+        context,
+    );
     const blocks = buildLogicalPassiveBlocks(sourceMap.sourceFragments);
     const rules: PassiveRule[] = [];
     const unparsedFragments: SourceFragment[] = [];
@@ -539,7 +580,10 @@ export function parsePassive(
         }
 
         const headerConditionResult = currentCondition
-            ? parseCondition(currentCondition.text)
+            ? parseCondition(
+                currentCondition.text,
+                enrichedConditionText(currentCondition, conditionEvidence),
+            )
             : { condition: { op: "always" } as ConditionExpression, status: "supported" as ParseStatus };
         const inlineTemporal = splitInlineTemporalCondition(block.text);
         const conditionResult = inlineTemporal
@@ -581,7 +625,183 @@ export function parsePassive(
         parseStatus: aggregatePassiveStatus(rules),
         rules,
         unparsedFragments: uniqueOrderedFragments(unparsedFragments),
+        ...(conditionEvidence.length > 0 ? { conditionEvidence } : {}),
     };
+}
+
+function validConditionEvidence(
+    stateKey: string,
+    rawText: string,
+    sourceFragments: SourceFragment[],
+    evidenceEntries: PassiveConditionEvidence[],
+    context?: PassiveParseContext,
+): PassiveConditionEvidence[] {
+    if (!context || evidenceEntries.length === 0) {
+        return [];
+    }
+    const passiveTextSha256 = createHash("sha256").update(rawText, "utf8").digest("hex");
+    const fragmentsByLine = new Map(sourceFragments.map(fragment => [fragment.lineIndex, fragment]));
+    const seenLines = new Set<number>();
+    return evidenceEntries.filter(evidence => {
+        const endLineIndex = evidence.anchor?.endLineIndex ?? evidence.anchor?.lineIndex;
+        const anchorLineIndexes = Number.isInteger(evidence.anchor?.lineIndex)
+            && Number.isInteger(endLineIndex)
+            && endLineIndex >= evidence.anchor.lineIndex
+            ? Array.from(
+                { length: endLineIndex - evidence.anchor.lineIndex + 1 },
+                (_value, index) => evidence.anchor.lineIndex + index,
+            )
+            : [];
+        if (evidence.kind !== "enemy_status"
+            || evidence.stateKey !== stateKey
+            || evidence.characterId !== context.characterId
+            || evidence.formId !== context.formId
+            || evidence.releaseState !== context.releaseState
+            || evidence.passiveTextSha256 !== passiveTextSha256
+            || evidence.provenance?.source !== "dokkan_fyi_payload"
+            || evidence.provenance.markerSyntax !== "passiveImg"
+            || !evidence.provenance.sourceVersion
+            || anchorLineIndexes.length === 0
+            || anchorLineIndexes.some(lineIndex => seenLines.has(lineIndex))) {
+            return false;
+        }
+        const expectedPayloadField = context.releaseState === "initial"
+            ? "props.character.passive_skill.description"
+            : "props.character.extreme_z_awakening.passive_skill.description";
+        const anchorFragments = anchorLineIndexes
+            .map(lineIndex => fragmentsByLine.get(lineIndex))
+            .filter((fragment): fragment is SourceFragment => fragment !== undefined);
+        const normalizedAnchorText = logicalText("condition", anchorFragments);
+        if (anchorFragments.length !== anchorLineIndexes.length
+            || evidence.provenance.payloadField !== expectedPayloadField
+            || normalizedAnchorText !== evidence.anchor.normalizedText
+            || stripPassiveMarkers(evidence.anchor.structuralText).replace(/\s+/g, " ")
+                !== evidence.anchor.normalizedText) {
+            return false;
+        }
+        const statusSource = evidence.anchor.structuralText.slice(
+            evidence.anchor.structuralText.toLowerCase().indexOf("following status:")
+                + "following status:".length,
+        );
+        const sourceTokens = [...statusSource.matchAll(/\{passiveImg:([^}]+)\}/g)]
+            .map(match => match[1]);
+        if (sourceTokens.length !== evidence.statuses.length
+            || evidence.statuses.some((status, order) => status.order !== order
+                || status.sourceToken !== sourceTokens[order]
+                || status.status !== enemyStatusFromEvidenceMarker(status.sourceToken)
+                || status.resolution !== (status.status ? "supported" : "unresolved"))) {
+            return false;
+        }
+        const expectedConnector = evidenceConnector(evidence.anchor.structuralText, sourceTokens.length);
+        if (evidence.connector !== expectedConnector
+            || evidence.resolution !== evidenceResolution(evidence.statuses, expectedConnector)) {
+            return false;
+        }
+        anchorLineIndexes.forEach(lineIndex => seenLines.add(lineIndex));
+        return true;
+    }).sort((left, right) => left.anchor.lineIndex - right.anchor.lineIndex);
+}
+
+function stripPassiveMarkers(sourceText: string): string {
+    return sourceText.replace(/\{[^}]+\}/g, "").trim();
+}
+
+function evidenceConnector(
+    structuralText: string,
+    markerCount: number,
+): "and" | "or" | undefined {
+    if (markerCount < 2) {
+        return undefined;
+    }
+    const statusSource = structuralText.slice(
+        structuralText.toLowerCase().indexOf("following status:") + "following status:".length,
+    );
+    const firstMarkerIndex = statusSource.search(/\{passiveImg:[^}]+\}/);
+    const lastMarkerIndex = statusSource.lastIndexOf("{passiveImg:");
+    const lastMarkerEnd = lastMarkerIndex >= 0 ? statusSource.indexOf("}", lastMarkerIndex) + 1 : -1;
+    if (firstMarkerIndex < 0 || lastMarkerEnd <= firstMarkerIndex) {
+        return undefined;
+    }
+    const markerList = statusSource.slice(firstMarkerIndex, lastMarkerEnd)
+        .replace(/\{passiveImg:[^}]+\}/g, "#");
+    const hasAnd = /\band\b/i.test(markerList);
+    const hasOr = /\bor\b/i.test(markerList);
+    if (hasAnd === hasOr) {
+        return undefined;
+    }
+    return hasAnd ? "and" : "or";
+}
+
+function evidenceResolution(
+    statuses: PassiveConditionEvidence["statuses"],
+    connector: "and" | "or" | undefined,
+): "supported" | "partial" | "unresolved" {
+    if (statuses.length === 0) {
+        return "unresolved";
+    }
+    return statuses.some(status => !status.status) || (statuses.length > 1 && !connector)
+        ? "partial"
+        : "supported";
+}
+
+function enemyStatusFromEvidenceMarker(sourceToken: string): EnemyStatus | undefined {
+    if (sourceToken === "atk_down") return "atk_down";
+    if (sourceToken === "def_down") return "def_down";
+    if (sourceToken === "stun") return "stunned";
+    if (sourceToken === "astute") return "super_attack_sealed";
+    return undefined;
+}
+
+function enrichedConditionText(
+    block: LogicalPassiveBlock,
+    evidenceEntries: PassiveConditionEvidence[],
+): string {
+    const evidenceByLine = new Map<number, PassiveConditionEvidence>();
+    evidenceEntries.forEach(evidence => {
+        const endLineIndex = evidence.anchor.endLineIndex ?? evidence.anchor.lineIndex;
+        for (let lineIndex = evidence.anchor.lineIndex; lineIndex <= endLineIndex; lineIndex += 1) {
+            evidenceByLine.set(lineIndex, evidence);
+        }
+    });
+    if (!block.source.some(fragment => evidenceByLine.has(fragment.lineIndex))) {
+        return block.text;
+    }
+    const enrichedSource = block.source.map(fragment => {
+        const evidence = evidenceByLine.get(fragment.lineIndex);
+        if (!evidence) {
+            return fragment;
+        }
+        return {
+            ...fragment,
+            text: fragment.lineIndex === evidence.anchor.lineIndex
+                ? semanticEvidenceText(evidence)
+                : "",
+        };
+    });
+    return logicalText(block.kind, enrichedSource);
+}
+
+function semanticEvidenceText(evidence: PassiveConditionEvidence): string {
+    let order = 0;
+    const statusOffset = evidence.anchor.structuralText.toLowerCase().indexOf("following status:")
+        + "following status:".length;
+    return evidence.anchor.structuralText.replace(/\{passiveImg:([^}]+)\}/g, (
+        _match,
+        sourceToken: string,
+        offset: number,
+    ) => {
+        if (offset < statusOffset) {
+            return "";
+        }
+        const item = evidence.statuses[order++];
+        if (!item || item.sourceToken !== sourceToken || !item.status) {
+            return "unresolved enemy status";
+        }
+        if (item.status === "atk_down") return "ATK Down";
+        if (item.status === "def_down") return "DEF Down";
+        if (item.status === "stunned") return "stunned";
+        return "Super Attack sealed";
+    });
 }
 
 function combineConditionResults(
@@ -748,6 +968,12 @@ function buildLogicalPassiveBlocks(sourceFragments: SourceFragment[]): LogicalPa
             current = { kind: "condition", source: [fragment] };
             continue;
         }
+        if (current.kind === "condition"
+            && /^When the target enemy is in the following status:/i.test(fragment.text)) {
+            flush();
+            current = { kind: "condition", source: [fragment] };
+            continue;
+        }
         current.source.push(fragment);
     }
     flush();
@@ -776,13 +1002,38 @@ function isAlwaysHeader(text: string): boolean {
     return /^\*?Basic effect\(s\)\*?:?$/i.test(text.trim());
 }
 
-function parseCondition(sourceText: string): ParsedConditionResult {
+function parseCondition(sourceText: string, semanticText = sourceText): ParsedConditionResult {
     const text = sourceText.trim();
     if (isAlwaysHeader(text)) {
         return { condition: { op: "always" }, status: "supported" };
     }
-    const condition = resolveThatEnemyReferences(parseBooleanCondition(text));
+    const parsed = parseBooleanCondition(semanticText.trim());
+    const condition = resolveThatEnemyReferences(
+        semanticText === sourceText ? parsed : rewriteConditionSourceText(parsed, sourceText),
+    );
     return { condition, status: conditionExpressionStatus(condition) };
+}
+
+function rewriteConditionSourceText(
+    condition: ConditionExpression,
+    sourceText: string,
+): ConditionExpression {
+    if (condition.op === "predicate") {
+        return predicateExpression({ ...condition.predicate, sourceText });
+    }
+    if (condition.op === "unknown") {
+        return { op: "unknown", sourceText };
+    }
+    if (condition.op === "not") {
+        return { op: "not", child: rewriteConditionSourceText(condition.child, sourceText) };
+    }
+    if (condition.op === "all" || condition.op === "any") {
+        return {
+            op: condition.op,
+            children: condition.children.map(child => rewriteConditionSourceText(child, sourceText)),
+        };
+    }
+    return condition;
 }
 
 function resolveThatEnemyReferences(condition: ConditionExpression): ConditionExpression {
@@ -975,6 +1226,20 @@ function parseExactEnemyCondition(text: string, sourceText: string): ConditionEx
         ?? parseEnemyAttributeCondition(text, sourceText);
     if (exact) {
         return exact;
+    }
+
+    const qualifiedStatus = /^(.*?)\s+if\s+((?:the )?(?:target|attacked|selected) enemy is in the following status:\s*.+)$/i.exec(text);
+    if (qualifiedStatus) {
+        const status = parseEnemyStatusCondition(qualifiedStatus[2], sourceText);
+        if (status) {
+            return {
+                op: "all",
+                children: [
+                    { op: "unknown", sourceText: qualifiedStatus[1].trim() },
+                    status,
+                ],
+            };
+        }
     }
 
     const missingStatusWithHp = /^((?:the )?(?:target|attacked|selected) enemy is in the following status:)\s+HP is\s+(.+?)(\s*,.*)?$/i.exec(text);
@@ -1281,23 +1546,90 @@ function parseEnemyStatusValues(
     selection: EnemySelection,
     predicateSourceText: string,
 ): ConditionExpression | undefined {
-    const matches = [...sourceText.matchAll(/ATK Down|DEF Down|stunned|Super Attack sealed/gi)];
-    if (matches.length === 0) {
+    const atomPattern = /ATK Down|DEF Down|stunned|Super Attack sealed|unresolved enemy status|HP is (?:between\s+\d+%\s+and\s+\d+%|exactly\s+\d+%|(?:above|below)\s+\d+%|\d+%(?:\s+or\s+(?:more|less|above|below))?)/gi;
+    const matches = [...sourceText.matchAll(atomPattern)];
+    const hasStatusAtom = matches.some(match => !/^HP is /i.test(match[0]));
+    if (!hasStatusAtom || matches.some(match => match.index === undefined)) {
         return undefined;
     }
-    const residual = sourceText.replace(/ATK Down|DEF Down|stunned|Super Attack sealed/gi, "#").trim();
-    if (!/^#(?:\s*(?:,|and|or)\s*#)*$/i.test(residual)) {
+    const separators: string[] = [];
+    let cursor = 0;
+    for (const match of matches) {
+        const separator = sourceText.slice(cursor, match.index).trim();
+        if (cursor === 0) {
+            if (separator) return undefined;
+        } else {
+            if (!/^(?:,|and|or|,\s*(?:and|or))$/i.test(separator)) return undefined;
+            separators.push(separator.toLowerCase());
+        }
+        cursor = (match.index ?? 0) + match[0].length;
+    }
+    const trailing = sourceText.slice(cursor).trim();
+    if (trailing && trailing !== ",") {
         return undefined;
     }
-    const children = matches.map(match => enemyStatusPredicate(
-        parseEnemyStatusTerm(match[0]) as EnemyStatus,
-        selection,
-        predicateSourceText,
-    ));
+    const children: ConditionExpression[] = matches.map(match => {
+        if (/^unresolved enemy status$/i.test(match[0])) {
+            return { op: "unknown", sourceText: predicateSourceText } as ConditionExpression;
+        }
+        if (/^HP is /i.test(match[0])) {
+            return parseEnemyHpComparison(
+                match[0].replace(/^HP is\s+/i, ""),
+                predicateSourceText,
+                selection,
+            ) ?? { op: "unknown" as const, sourceText: predicateSourceText };
+        }
+        return enemyStatusPredicate(
+            parseEnemyStatusTerm(match[0]) as EnemyStatus,
+            selection,
+            predicateSourceText,
+        );
+    });
     if (children.length === 1) {
-        return children[0];
+        return trailing
+            ? { op: "all", children: [children[0], { op: "unknown", sourceText: predicateSourceText }] }
+            : children[0];
     }
-    return { op: /\band\b/i.test(residual) ? "all" : "any", children };
+    const hasAnd = separators.some(separator => /\band\b/.test(separator));
+    const hasOr = separators.some(separator => /\bor\b/.test(separator));
+    if (!hasAnd && !hasOr) {
+        return { op: "unknown", sourceText: predicateSourceText };
+    }
+    if (hasAnd && hasOr) {
+        return combineStatusAtomsWithPrecedence(children, separators, predicateSourceText, trailing === ",");
+    }
+    const condition: ConditionExpression = {
+        op: hasAnd ? "all" : "any",
+        children,
+    };
+    return trailing
+        ? { op: "all", children: [condition, { op: "unknown", sourceText: predicateSourceText }] }
+        : condition;
+}
+
+function combineStatusAtomsWithPrecedence(
+    children: ConditionExpression[],
+    separators: string[],
+    sourceText: string,
+    hasTrailingResidual: boolean,
+): ConditionExpression {
+    const groups: ConditionExpression[][] = [[children[0]]];
+    separators.forEach((separator, index) => {
+        if (/\bor\b/.test(separator)) {
+            groups.push([children[index + 1]]);
+        } else {
+            groups[groups.length - 1].push(children[index + 1]);
+        }
+    });
+    const condition: ConditionExpression = groups.length === 1
+        ? { op: "all", children: groups[0] }
+        : {
+            op: "any",
+            children: groups.map(group => group.length === 1 ? group[0] : { op: "all", children: group }),
+        };
+    return hasTrailingResidual
+        ? { op: "all", children: [condition, { op: "unknown", sourceText }] }
+        : condition;
 }
 
 function parseEnemyStatusTerm(sourceText: string): EnemyStatus | undefined {
@@ -2819,6 +3151,14 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
     };
     const conditionCounts = { always: 0, predicate: 0, unknown: 0, composite: 0 };
     const enemySelectionCounts: Record<string, number> = {};
+    const enemyStatusEvidenceResolutionCounts = { supported: 0, partial: 0, unresolved: 0 };
+    const enemyStatusEvidenceStatusCounts: Record<string, number> = {};
+    const enemyStatusEvidenceSourceCounts: Record<string, number> = {};
+    let enemyStatusEvidenceStateCount = 0;
+    let fullyRecoveredEnemyStatusStateCount = 0;
+    let partialEnemyStatusStateCount = 0;
+    let unresolvedEnemyStatusStateCount = 0;
+    let enemyStatusEvidenceCount = 0;
     let passiveStateCount = 0;
     let unknownEffectCount = 0;
     let unresolvedProbabilityEffectCount = 0;
@@ -2837,6 +3177,29 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         passiveStateCount += 1;
         passiveStatusCounts[state.passive.parseStatus] += 1;
         unknownFragmentCount += state.passive.unparsedFragments.length;
+        const statusEvidence = state.passive.conditionEvidence ?? [];
+        if (statusEvidence.length > 0) {
+            enemyStatusEvidenceStateCount += 1;
+            enemyStatusEvidenceCount += statusEvidence.length;
+            statusEvidence.forEach(evidence => {
+                enemyStatusEvidenceResolutionCounts[evidence.resolution] += 1;
+                enemyStatusEvidenceSourceCounts[evidence.provenance.source] =
+                    (enemyStatusEvidenceSourceCounts[evidence.provenance.source] ?? 0) + 1;
+                evidence.statuses.forEach(status => {
+                    if (status.status) {
+                        enemyStatusEvidenceStatusCounts[status.status] =
+                            (enemyStatusEvidenceStatusCounts[status.status] ?? 0) + 1;
+                    }
+                });
+            });
+            if (statusEvidence.every(evidence => evidence.resolution === "supported")) {
+                fullyRecoveredEnemyStatusStateCount += 1;
+            } else if (statusEvidence.every(evidence => evidence.resolution === "unresolved")) {
+                unresolvedEnemyStatusStateCount += 1;
+            } else {
+                partialEnemyStatusStateCount += 1;
+            }
+        }
 
         for (const rule of state.passive.rules) {
             ruleStatusCounts[rule.parseStatus] += 1;
@@ -2909,6 +3272,16 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         scenarioRuleCount,
         scenarioEvaluableRuleCount,
         enemySelectionCounts: sortedRecord(enemySelectionCounts),
+        enemyStatusEvidence: {
+            stateCount: enemyStatusEvidenceStateCount,
+            evidenceCount: enemyStatusEvidenceCount,
+            fullyRecoveredStateCount: fullyRecoveredEnemyStatusStateCount,
+            partialStateCount: partialEnemyStatusStateCount,
+            unresolvedStateCount: unresolvedEnemyStatusStateCount,
+            resolutionCounts: enemyStatusEvidenceResolutionCounts,
+            statusCounts: sortedRecord(enemyStatusEvidenceStatusCounts),
+            sourceCounts: sortedRecord(enemyStatusEvidenceSourceCounts),
+        },
         runtimeOnlyRuleCount,
         identity: {
             variantGroupAssignedStateCount: dataset.states.filter(state => Boolean(state.variantGroupId)).length,
@@ -3143,6 +3516,32 @@ function validateStateSource(
                 issues.push({
                     code: "passive-details-source-map",
                     message: `${sourceMap.unmappedTexts.length} PassiveDetails text(s) do not map to rawText offsets.`,
+                    stateKey: state.stateKey,
+                });
+            }
+            const sourceEvidence = expected.passiveDetails.conditionEvidence ?? [];
+            const validEvidence = validConditionEvidence(
+                state.stateKey,
+                expected.passiveText,
+                sourceMap.sourceFragments,
+                sourceEvidence,
+                {
+                    characterId: state.characterId,
+                    formId: state.formId,
+                    releaseState: state.releaseState,
+                },
+            );
+            if (validEvidence.length !== sourceEvidence.length) {
+                issues.push({
+                    code: "condition-evidence-source",
+                    message: `${sourceEvidence.length - validEvidence.length} condition evidence record(s) failed source validation.`,
+                    stateKey: state.stateKey,
+                });
+            }
+            if (JSON.stringify(state.passive?.conditionEvidence ?? []) !== JSON.stringify(validEvidence)) {
+                issues.push({
+                    code: "condition-evidence-output",
+                    message: `Serialized condition evidence does not match the validated PassiveDetails evidence.`,
                     stateKey: state.stateKey,
                 });
             }

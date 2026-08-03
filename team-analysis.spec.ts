@@ -26,6 +26,7 @@ import {
   resolveFirstPartyProbability,
 } from "./team-analysis-first-party-probabilities";
 import { readGameDbTable } from "./game-db/game-db-source";
+import { passiveDetailsFromSkill } from "./fyi-scraper";
 
 interface FoundationFixture {
   characters: Character[];
@@ -164,6 +165,17 @@ interface GateA4Fixture {
   }>;
 }
 
+interface GateA41Fixture {
+  cases: Array<{
+    name: string;
+    source: "real" | "synthetic";
+    description: string;
+    expectedStatus: string;
+    conditionStatus?: string;
+    condition: GoldenConditionShape;
+  }>;
+}
+
 const fixtureRelativePath = "fixtures/team-analysis/foundation-golden.json";
 const sourceFixturePath = resolve(__dirname, fixtureRelativePath);
 const fixturePath = existsSync(sourceFixturePath)
@@ -200,6 +212,12 @@ const gateA4Path = existsSync(sourceGateA4Path)
   ? sourceGateA4Path
   : resolve(__dirname, "..", gateA4RelativePath);
 const gateA4Fixture = JSON.parse(readFileSync(gateA4Path, "utf8")) as GateA4Fixture;
+const gateA41RelativePath = "fixtures/team-analysis/gate-a41-golden.json";
+const sourceGateA41Path = resolve(__dirname, gateA41RelativePath);
+const gateA41Path = existsSync(sourceGateA41Path)
+  ? sourceGateA41Path
+  : resolve(__dirname, "..", gateA41RelativePath);
+const gateA41Fixture = JSON.parse(readFileSync(gateA41Path, "utf8")) as GateA41Fixture;
 
 const options = {
   generatedAt: "2026-08-03T12:00:00.000Z",
@@ -789,7 +807,133 @@ describe("team-analysis Gate A4 enemy scenario parser", function () {
   });
 });
 
+describe("team-analysis Gate A4.1 structural enemy-status evidence", function () {
+  for (const [index, fixtureCase] of gateA41Fixture.cases.entries()) {
+    it(`matches Gate A4.1 golden case: ${fixtureCase.name}`, () => {
+      const context = {
+        characterId: `a41-${index}`,
+        formId: `a41-${index}`,
+        releaseState: "initial" as const,
+        sourceVersion: "fyi-fixture-v1",
+        payloadField: "props.character.passive_skill.description" as const,
+      };
+      const details = passiveDetailsFromSkill({
+        id: 4100 + index,
+        name: fixtureCase.name,
+        description: fixtureCase.description,
+      }, context);
+      ok(details?.text);
+      const stateKey = `${context.characterId}:${context.formId}:${context.releaseState}`;
+      const passive = parsePassive(stateKey, fixtureCase.name, details.text, details, context);
+      const rule = passive.rules[0];
+
+      equal(passive.rawText, details.text);
+      equal(passive.rawText.includes("passiveImg"), false);
+      equal(passive.parseStatus, fixtureCase.expectedStatus);
+      equal(rule.conditionStatus, fixtureCase.conditionStatus ?? "supported");
+      deepEqual(conditionShape(rule.condition), fixtureCase.condition);
+      equal(passive.conditionEvidence?.[0]?.stateKey, stateKey);
+      equal(passive.conditionEvidence?.[0]?.provenance.sourceVersion, "fyi-fixture-v1");
+    });
+  }
+
+  it("ignores evidence when hash, state, release, anchor, or order diverges", () => {
+    const context = {
+      characterId: "a41-validation",
+      formId: "a41-validation",
+      releaseState: "eza" as const,
+      sourceVersion: "fyi-fixture-v1",
+      payloadField: "props.character.extreme_z_awakening.passive_skill.description" as const,
+    };
+    const details = passiveDetailsFromSkill({
+      id: 4199,
+      name: "validation",
+      description: "*When the target enemy is in the following status: {passiveImg:atk_down} or {passiveImg:def_down}*\n- ATK 20%",
+    }, context);
+    ok(details?.text && details.conditionEvidence?.[0]);
+    const stateKey = `${context.characterId}:${context.formId}:${context.releaseState}`;
+    const mutations: Array<(copy: PassiveDetails) => void> = [
+      copy => { copy.conditionEvidence![0].passiveTextSha256 = "0".repeat(64); },
+      copy => { copy.conditionEvidence![0].stateKey = "other:other:eza"; },
+      copy => { copy.conditionEvidence![0].releaseState = "initial"; },
+      copy => { copy.conditionEvidence![0].anchor.lineIndex = 99; },
+      copy => { copy.conditionEvidence![0].statuses.reverse(); },
+    ];
+    for (const mutate of mutations) {
+      const copy = JSON.parse(JSON.stringify(details)) as PassiveDetails;
+      mutate(copy);
+      const passive = parsePassive(stateKey, "validation", details.text, copy, context);
+      equal(passive.conditionEvidence, undefined);
+      equal(passive.rules[0].conditionStatus, "unknown");
+    }
+  });
+
+  it("reconstructs enriched rawText losslessly and in source order", () => {
+    for (const [index, fixtureCase] of gateA41Fixture.cases.entries()) {
+      const context = {
+        characterId: `a41-tokens-${index}`,
+        formId: `a41-tokens-${index}`,
+        releaseState: "initial" as const,
+        sourceVersion: "fyi-fixture-v1",
+        payloadField: "props.character.passive_skill.description" as const,
+      };
+      const details = passiveDetailsFromSkill({ description: fixtureCase.description }, context);
+      ok(details?.text);
+      const passive = parsePassive(
+        `${context.characterId}:${context.formId}:initial`,
+        undefined,
+        details.text,
+        details,
+        context,
+      );
+      const fragments = uniqueFragments([
+        ...passive.rules.flatMap(rule => rule.source),
+        ...passive.unparsedFragments,
+      ]);
+      equal(
+        fragments.map(fragment => fragment.text).join("\n").replace(/\s/g, ""),
+        details.text.replace(/\s/g, ""),
+        fixtureCase.name,
+      );
+    }
+  });
+});
+
 describe("team-analysis validation and artifacts", function () {
+  it("validates structural evidence identity, hash, anchor, release, and serialized order", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const evidenceContext = {
+      characterId: characters[0].id,
+      formId: characters[0].id,
+      releaseState: "initial" as const,
+      sourceVersion: "fyi-fixture-v1",
+      payloadField: "props.character.passive_skill.description" as const,
+    };
+    const details = passiveDetailsFromSkill({
+      id: 4123,
+      name: "Evidence validation",
+      description: "*When the target enemy is in the following status: {passiveImg:stun}*\n- ATK 20%",
+    }, evidenceContext);
+    ok(details?.text && details.conditionEvidence?.[0]);
+    characters[0].passive = details.text;
+    characters[0].passiveDetails = details;
+    const validDataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    deepEqual(validateTeamAnalysisDataset(validDataset, characters, fixture.catalogEntries), []);
+
+    const invalidCharacters = JSON.parse(JSON.stringify(characters)) as Character[];
+    invalidCharacters[0].passiveDetails!.conditionEvidence![0].passiveTextSha256 = "f".repeat(64);
+    const invalidDataset = buildTeamAnalysisDataset(invalidCharacters, fixture.catalogEntries, options);
+    const invalidCodes = validateTeamAnalysisDataset(invalidDataset, invalidCharacters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(invalidCodes.includes("condition-evidence-source"));
+
+    const reordered = JSON.parse(JSON.stringify(validDataset)) as typeof validDataset;
+    reordered.states[0].passive!.conditionEvidence![0].statuses[0].order = 3;
+    const reorderedCodes = validateTeamAnalysisDataset(reordered, characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(reorderedCodes.includes("condition-evidence-output"));
+  });
+
   it("reports coverage by passive/rule status and supported effect", () => {
     const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
     const coverage = buildTeamAnalysisCoverageReport(dataset);
@@ -1223,7 +1367,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.4\.0/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.4\.1/);
   });
 });
 

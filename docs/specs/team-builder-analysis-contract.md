@@ -96,6 +96,7 @@ export interface ParsedPassive {
   parseStatus: "supported" | "partial" | "unknown";
   rules: PassiveRule[];
   unparsedFragments: SourceFragment[];
+  conditionEvidence?: PassiveConditionEvidence[];
 }
 
 export interface PassiveRule {
@@ -115,6 +116,38 @@ export interface SourceFragment {
   start?: number;
   end?: number;
 }
+
+export interface PassiveConditionEvidence {
+  kind: "enemy_status";
+  stateKey: string;
+  characterId: string;
+  formId: string;
+  releaseState: "initial" | "eza" | "seza";
+  passiveSkillId?: string;
+  passiveTextSha256: string;
+  anchor: {
+    lineIndex: number;
+    endLineIndex?: number;
+    normalizedText: string;
+    structuralText: string;
+  };
+  statuses: Array<{
+    order: number;
+    sourceToken: string;
+    status?: EnemyStatus;
+    resolution: "supported" | "unresolved";
+  }>;
+  connector?: "and" | "or";
+  resolution: "supported" | "partial" | "unresolved";
+  provenance: {
+    source: "dokkan_fyi_payload";
+    sourceVersion: string;
+    payloadField:
+      | "props.character.passive_skill.description"
+      | "props.character.extreme_z_awakening.passive_skill.description";
+    markerSyntax: "passiveImg";
+  };
+}
 ```
 
 Rule IDs are deterministic from state key plus normalized source position, not
@@ -125,6 +158,22 @@ Condition and effect status are independent. A rule with an unknown condition
 and recognized effects is `partial`: it retains `op: "unknown"` for the
 condition and the typed effects. Rule status is `supported` only when both are
 supported, and `unknown` only when both are unknown.
+
+Gate A4.1 keeps the display contract lossless: `rawText`, `PassiveDetails.text`,
+`lines`, and `sections` remain the marker-stripped text that existing consumers
+already receive. Optional `PassiveDetails.conditionEvidence` and the validated
+copy on `ParsedPassive` retain structural condition markers separately. The
+parser accepts an evidence record only when state, form, release, passive hash,
+line range, normalized anchor, marker order, connector, and payload field all
+agree. Source type and marker syntax must match the contract, while source
+version is retained as required provenance rather than an independent trust
+boundary. A mismatch is ignored and the original unknown branch is preserved.
+
+`connector` is emitted only when `and` or `or` is explicit in the structural
+source. Comma-only lists do not receive an invented boolean meaning. A partially
+resolved marker list retains known status predicates plus an unknown branch
+only when the connector itself is proven. Source evidence never causes network
+I/O during semantic parsing.
 
 ## 5. Boolean condition AST
 
@@ -682,7 +731,7 @@ Suggested manifest:
   "uncompressedSizeBytes": 0,
   "stateCount": 0,
   "rulesVersion": "1",
-  "parserVersion": "1.4.0",
+  "parserVersion": "1.4.1",
   "sourceCharacterDatasetVersion": "...",
   "sourceCharacterPayloadSha256": "..."
 }
@@ -702,6 +751,13 @@ enemy predicates, evaluation moments, and the enemy-selection coverage map are
 additive; no existing serialized meaning changes. Consumers already required
 to tolerate unknown optional enrichment may ignore these values.
 `parserVersion` advances to `1.4.0` for feature detection.
+
+Gate A4.1 keeps `schemaVersion` at `1`. The optional evidence arrays and
+coverage counters are additive, while existing condition/effect fields retain
+their meaning. `parserVersion` advances to `1.4.1` because validated upstream
+markers can now change an affected condition from unknown to typed
+`enemy_status`. Consumers that ignore the new evidence continue to consume the
+same AST and raw-text fields.
 
 - Upload immutable payload before mutable manifest.
 - Run publisher dry-run and report projected new bytes before upload.

@@ -207,11 +207,54 @@ export interface PassiveDetails {
     text?: string,
     lines?: string[],
     sections?: PassiveSection[],
+    conditionEvidence?: PassiveConditionEvidence[],
 }
 
 export interface PassiveSection {
     label?: string,
     lines: string[],
+}
+
+export type PassiveEvidenceResolution = "supported" | "partial" | "unresolved";
+export type PassiveEvidenceConnector = "and" | "or";
+export type PassiveEnemyStatus = "atk_down" | "def_down" | "stunned" | "super_attack_sealed";
+
+export interface PassiveConditionEvidence {
+    kind: "enemy_status",
+    stateKey: string,
+    characterId: string,
+    formId: string,
+    releaseState: "initial" | "eza" | "seza",
+    passiveSkillId?: string,
+    passiveTextSha256: string,
+    anchor: PassiveConditionEvidenceAnchor,
+    statuses: PassiveEnemyStatusEvidenceItem[],
+    connector?: PassiveEvidenceConnector,
+    resolution: PassiveEvidenceResolution,
+    provenance: PassiveEvidenceProvenance,
+}
+
+export interface PassiveConditionEvidenceAnchor {
+    lineIndex: number,
+    endLineIndex?: number,
+    normalizedText: string,
+    structuralText: string,
+}
+
+export interface PassiveEnemyStatusEvidenceItem {
+    order: number,
+    sourceToken: string,
+    status?: PassiveEnemyStatus,
+    resolution: "supported" | "unresolved",
+}
+
+export interface PassiveEvidenceProvenance {
+    source: "dokkan_fyi_payload",
+    sourceVersion: string,
+    payloadField:
+        | "props.character.passive_skill.description"
+        | "props.character.extreme_z_awakening.passive_skill.description",
+    markerSyntax: "passiveImg",
 }
 
 export interface SuperAttackDetails {

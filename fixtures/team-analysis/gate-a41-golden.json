@@ -1,0 +1,70 @@
+{
+  "cases": [
+    {
+      "name": "one structural stun status",
+      "source": "real",
+      "description": "*When the target enemy is in the following status: {passiveImg:stun}*\n- ATK 20%{passiveImg:up_g}",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["stunned"] }
+    },
+    {
+      "name": "structural statuses with OR",
+      "source": "real",
+      "description": "*When the target enemy is in the following status: {passiveImg:atk_down} or {passiveImg:def_down}*\n- ATK 20%{passiveImg:up_g}",
+      "expectedStatus": "supported",
+      "condition": { "op": "any", "children": [
+        { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["atk_down"] },
+        { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["def_down"] }
+      ] }
+    },
+    {
+      "name": "wrapped structural status header",
+      "source": "real",
+      "description": "*When the target enemy is in the following\nstatus: {passiveImg:atk_down}\nor {passiveImg:def_down}*\n- ATK 20%{passiveImg:up_g}",
+      "expectedStatus": "supported",
+      "condition": { "op": "any", "children": [
+        { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["atk_down"] },
+        { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["def_down"] }
+      ] }
+    },
+    {
+      "name": "structural statuses with AND",
+      "source": "synthetic",
+      "description": "*When the target enemy is in the following status: {passiveImg:stun} and {passiveImg:astute}*\n- ATK 20%{passiveImg:up_g}",
+      "expectedStatus": "supported",
+      "condition": { "op": "all", "children": [
+        { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["stunned"] },
+        { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["super_attack_sealed"] }
+      ] }
+    },
+    {
+      "name": "structural status plus enemy HP",
+      "source": "real",
+      "description": "*When the target enemy is in the following status: {passiveImg:stun} or HP is 50% or less*\n- ATK 20%{passiveImg:up_g}",
+      "expectedStatus": "supported",
+      "condition": { "op": "any", "children": [
+        { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["stunned"] },
+        { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "current_target", "comparator": "lte", "value": 50 }
+      ] }
+    },
+    {
+      "name": "partially resolved structural statuses",
+      "source": "synthetic",
+      "description": "*When the target enemy is in the following status: {passiveImg:stun} or {passiveImg:unknown_status}*\n- ATK 20%{passiveImg:up_g}",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": { "op": "any", "children": [
+        { "op": "predicate", "kind": "enemy_status", "scope": "enemy", "enemySelection": "current_target", "enemyStatuses": ["stunned"] },
+        { "op": "unknown", "sourceText": "When the target enemy is in the following status: or" }
+      ] }
+    },
+    {
+      "name": "source header without status labels",
+      "source": "synthetic",
+      "description": "*When the target enemy is in the following status:*\n- ATK 20%{passiveImg:up_g}",
+      "expectedStatus": "partial",
+      "conditionStatus": "unknown",
+      "condition": { "op": "unknown", "sourceText": "When the target enemy is in the following status:" }
+    }
+  ]
+}

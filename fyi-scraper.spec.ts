@@ -6,11 +6,57 @@ import {
   finishSkillsFromFyi,
   normalizeTransformationSource,
   obtainabilityDetailsFromFyi,
+  passiveDetailsFromSkill,
   preferredSuperAttacks,
   reversibleExchangeDetailsFromFyi,
   selectCurrentState,
   standbyDetailsFromFyi,
 } from "./fyi-scraper";
+
+describe("passiveDetailsFromSkill enemy-status evidence", function () {
+  it("keeps display text unchanged while preserving ordered structural status markers", () => {
+    const description = "*When the target enemy is in the following status: {passiveImg:atk_down} or {passiveImg:astute}*\n- ATK 20%{passiveImg:up_g}";
+    const details = passiveDetailsFromSkill({
+      id: 4112,
+      name: "Structural passive",
+      description,
+      effects: [{ id: 4112, type: 90, target: 1 }],
+    } as any, {
+      characterId: "1012001",
+      formId: "1012001",
+      releaseState: "eza",
+      sourceVersion: "9b8400b8f2f713f705f9ee5b2c56470d",
+      payloadField: "props.character.extreme_z_awakening.passive_skill.description",
+    });
+
+    equal(details?.text, "When the target enemy is in the following status:  or\n- ATK 20%");
+    deepEqual(details?.conditionEvidence?.[0].statuses, [
+      { order: 0, sourceToken: "atk_down", status: "atk_down", resolution: "supported" },
+      { order: 1, sourceToken: "astute", status: "super_attack_sealed", resolution: "supported" },
+    ]);
+    equal(details?.conditionEvidence?.[0].connector, "or");
+    equal(details?.conditionEvidence?.[0].resolution, "supported");
+    equal(details?.conditionEvidence?.[0].anchor.lineIndex, 0);
+    equal(details?.conditionEvidence?.[0].provenance.source, "dokkan_fyi_payload");
+    equal(details?.conditionEvidence?.[0].passiveTextSha256.length, 64);
+    equal(details?.text?.includes("passiveImg"), false);
+  });
+
+  it("marks missing labels unresolved instead of fabricating a status", () => {
+    const details = passiveDetailsFromSkill({
+      description: "*When the target enemy is in the following status:*\n- ATK 20%",
+    } as any, {
+      characterId: "1",
+      formId: "1",
+      releaseState: "initial",
+      sourceVersion: "fixture-v1",
+      payloadField: "props.character.passive_skill.description",
+    });
+
+    deepEqual(details?.conditionEvidence?.[0].statuses, []);
+    equal(details?.conditionEvidence?.[0].resolution, "unresolved");
+  });
+});
 
 describe("selectCurrentState", function () {
   it("prefers extreme z awakening fields when the latest state is awakened", () => {

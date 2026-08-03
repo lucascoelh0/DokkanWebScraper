@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { resolve } from "path";
 import {
@@ -11,6 +12,7 @@ import {
     Classes,
     FinishSkill,
     FinishSkillEffectKind,
+    PassiveConditionEvidence,
     PassiveDetails,
     PortraitSpec,
     Rarities,
@@ -27,6 +29,7 @@ import { parseLeaderSkillDetails, splitPassiveSections } from "./scraper";
 
 const DOKKAN_FYI_BASE_URL = "https://dokkan.fyi";
 const DOKKAN_FYI_CDN_URL = "https://cdn.dokkan.fyi";
+const DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION = 4;
 
 export const DEFAULT_DOKKAN_FYI_EXPERIMENT_CHARACTER_IDS = [
     1032521, 1033761, 1032771, 1026251, 1033941,
@@ -162,6 +165,7 @@ interface FyiSkill {
     name?: string,
     description?: string | null,
     condition?: string | null,
+    effects?: FyiEffect[],
 }
 
 interface FyiStandbySkill extends FyiSkill {
@@ -284,6 +288,16 @@ interface CurrentState {
     leaderSkill?: FyiSkill,
     passiveSkill?: FyiSkill,
     currentSuperAttacks: FyiSuperAttack[],
+}
+
+export interface PassiveDetailsEvidenceContext {
+    characterId: string,
+    formId: string,
+    releaseState: "initial" | "eza" | "seza",
+    sourceVersion: string,
+    payloadField:
+        | "props.character.passive_skill.description"
+        | "props.character.extreme_z_awakening.passive_skill.description",
 }
 
 interface CachedFyiPage {
@@ -553,7 +567,16 @@ async function mapDokkanFyiCharacter(
     const reversibleExchange = reversibleExchangeDetailsFromFyi(character, enrichedTransformations);
     const exclusiveSkillOrbs = exclusiveSkillOrbsFromFyi(character.skill_orbs);
     const activeSkill = character.active_skills?.[0];
-    const passive = passiveDetailsFromSkill(currentState.passiveSkill);
+    const releaseState = releaseStateFromLatestType(currentState.latestType);
+    const passive = passiveDetailsFromSkill(currentState.passiveSkill, {
+        characterId: character.id.toString(),
+        formId: character.id.toString(),
+        releaseState,
+        sourceVersion: page.version,
+        payloadField: releaseState === "initial"
+            ? "props.character.passive_skill.description"
+            : "props.character.extreme_z_awakening.passive_skill.description",
+    });
     const currentSuperAttacks = currentState.currentSuperAttacks;
     const normalSuperAttack = matchingFyiSuperAttack(currentSuperAttacks, "normal");
     const ultraSuperAttack = matchingFyiSuperAttack(currentSuperAttacks, "ultra");
@@ -647,7 +670,12 @@ async function buildTransformations(
         visited.add(targetCharacterId);
 
         const targetPage = await client.fetchCharacterPage(targetCharacterId);
-        transformations.push(mapDokkanFyiTransformation(rootCharacter.id, targetPage.payload.props.character, current.entry));
+        transformations.push(mapDokkanFyiTransformation(
+            rootCharacter.id,
+            targetPage.payload.props.character,
+            current.entry,
+            targetPage.version,
+        ));
 
         for (const nestedEntry of targetPage.payload.props.transformationPath ?? []) {
             queue.push({
@@ -781,6 +809,7 @@ async function ensureTransformation(
         baseCharacterId,
         targetPage.payload.props.character,
         fallbackEntry,
+        targetPage.version,
     );
     transformations.push(transformation);
     return transformation;
@@ -790,9 +819,19 @@ function mapDokkanFyiTransformation(
     baseCharacterId: number,
     character: FyiCharacter,
     entry: FyiTransformationPathEntry,
+    sourceVersion: string,
 ): Transformation {
     const currentState = selectCurrentState(character);
-    const passive = passiveDetailsFromSkill(currentState.passiveSkill);
+    const releaseState = releaseStateFromLatestType(currentState.latestType);
+    const passive = passiveDetailsFromSkill(currentState.passiveSkill, {
+        characterId: baseCharacterId.toString(),
+        formId: character.id.toString(),
+        releaseState,
+        sourceVersion,
+        payloadField: releaseState === "initial"
+            ? "props.character.passive_skill.description"
+            : "props.character.extreme_z_awakening.passive_skill.description",
+    });
     const currentSuperAttacks = currentState.currentSuperAttacks;
     const normalSuperAttack = matchingFyiSuperAttack(currentSuperAttacks, "normal");
     const ultraSuperAttack = matchingFyiSuperAttack(currentSuperAttacks, "ultra");
@@ -864,6 +903,13 @@ export function selectCurrentState(character: FyiCharacter): CurrentState {
             : character.passive_skill,
         currentSuperAttacks: preferredSuperAttacks(character.super_attacks ?? [], useExtremeState),
     };
+}
+
+function releaseStateFromLatestType(value: string): "initial" | "eza" | "seza" {
+    if (value === "seza") {
+        return "seza";
+    }
+    return value === "initial" ? "initial" : "eza";
 }
 
 export function preferredSuperAttacks(
@@ -951,7 +997,10 @@ function unitSuperAttacksFromFyi(superAttacks: FyiSuperAttack[]): UnitSuperAttac
         }));
 }
 
-function passiveDetailsFromSkill(skill: FyiSkill | undefined | null): PassiveDetails | undefined {
+export function passiveDetailsFromSkill(
+    skill: FyiSkill | undefined | null,
+    evidenceContext?: PassiveDetailsEvidenceContext,
+): PassiveDetails | undefined {
     if (!skill) {
         return undefined;
     }
@@ -960,13 +1009,161 @@ function passiveDetailsFromSkill(skill: FyiSkill | undefined | null): PassiveDet
     const lines = text
         ? text.split("\n").map(line => line.trim()).filter(Boolean)
         : [];
+    const conditionEvidence = evidenceContext
+        ? enemyStatusConditionEvidence(skill, text, evidenceContext)
+        : [];
 
     return {
         name: cleanInlineText(skill.name),
         text,
         lines,
         sections: lines.length ? splitPassiveSections(lines) : undefined,
+        ...(conditionEvidence.length > 0 ? { conditionEvidence } : {}),
     };
+}
+
+function enemyStatusConditionEvidence(
+    skill: FyiSkill,
+    passiveText: string,
+    context: PassiveDetailsEvidenceContext,
+): PassiveConditionEvidence[] {
+    if (!skill.description) {
+        return [];
+    }
+
+    const passiveTextSha256 = sha256Text(passiveText);
+    const stateKey = `${context.characterId}:${context.formId}:${context.releaseState}`;
+    const evidence: PassiveConditionEvidence[] = [];
+    let normalizedLineIndex = 0;
+    const sourceLines = skill.description.replace(/\r/g, "").split("\n").flatMap(rawLine => {
+        const normalizedText = cleanMultilineText(rawLine);
+        if (!normalizedText) {
+            return [];
+        }
+        const sourceLine = {
+            rawText: rawLine.trim(),
+            structuralText: normalizePassiveStructuralLine(rawLine),
+            normalizedText,
+            lineIndex: normalizedLineIndex,
+        };
+        normalizedLineIndex += 1;
+        return [sourceLine];
+    });
+
+    for (let index = 0; index < sourceLines.length; index += 1) {
+        const firstLine = sourceLines[index];
+        if (!firstLine.rawText.startsWith("*") || firstLine.rawText.startsWith("*-")) {
+            continue;
+        }
+        const anchorLines = [firstLine];
+        while (!anchorLines[anchorLines.length - 1].rawText.endsWith("*")
+            && index + 1 < sourceLines.length
+            && !sourceLines[index + 1].rawText.startsWith("-")) {
+            index += 1;
+            anchorLines.push(sourceLines[index]);
+        }
+        const structuralText = anchorLines.map(line => line.structuralText).join(" ").replace(/\s+/g, " ").trim();
+        if (!/following status:/i.test(structuralText)) {
+            continue;
+        }
+        const normalizedText = anchorLines.map(line => line.normalizedText).join(" ").replace(/\s+/g, " ").trim();
+        const statusSource = structuralText.slice(
+            structuralText.toLowerCase().indexOf("following status:") + "following status:".length,
+        );
+        const markerMatches = [...statusSource.matchAll(/\{passiveImg:([^}]+)\}/g)];
+        const statuses = markerMatches.map((match, order) => {
+            const sourceToken = match[1];
+            const status = passiveEnemyStatusFromMarker(sourceToken);
+            return {
+                order,
+                sourceToken,
+                ...(status ? { status } : {}),
+                resolution: status ? "supported" as const : "unresolved" as const,
+            };
+        });
+        const connector = passiveEvidenceConnector(statusSource, markerMatches.length);
+        const resolution = statuses.length === 0
+            ? "unresolved" as const
+            : statuses.some(status => status.resolution === "unresolved")
+                || (statuses.length > 1 && !connector)
+                ? "partial" as const
+                : "supported" as const;
+
+        evidence.push({
+            kind: "enemy_status",
+            stateKey,
+            characterId: context.characterId,
+            formId: context.formId,
+            releaseState: context.releaseState,
+            ...(skill.id !== undefined ? { passiveSkillId: skill.id.toString() } : {}),
+            passiveTextSha256,
+            anchor: {
+                lineIndex: anchorLines[0].lineIndex,
+                ...(anchorLines.length > 1 ? { endLineIndex: anchorLines[anchorLines.length - 1].lineIndex } : {}),
+                normalizedText,
+                structuralText,
+            },
+            statuses,
+            ...(connector ? { connector } : {}),
+            resolution,
+            provenance: {
+                source: "dokkan_fyi_payload",
+                sourceVersion: context.sourceVersion,
+                payloadField: context.payloadField,
+                markerSyntax: "passiveImg",
+            },
+        });
+    }
+
+    return evidence;
+}
+
+function normalizePassiveStructuralLine(value: string): string {
+    return value.trim().replace(/^\*\s*/, "").replace(/\s*\*$/, "").trim();
+}
+
+function passiveEnemyStatusFromMarker(
+    sourceToken: string,
+): "atk_down" | "def_down" | "stunned" | "super_attack_sealed" | undefined {
+    switch (sourceToken) {
+        case "atk_down":
+            return "atk_down";
+        case "def_down":
+            return "def_down";
+        case "stun":
+            return "stunned";
+        case "astute":
+            return "super_attack_sealed";
+        default:
+            return undefined;
+    }
+}
+
+function passiveEvidenceConnector(
+    statusSource: string,
+    markerCount: number,
+): "and" | "or" | undefined {
+    if (markerCount < 2) {
+        return undefined;
+    }
+    const firstMarkerIndex = statusSource.search(/\{passiveImg:[^}]+\}/);
+    const lastMarkerIndex = statusSource.lastIndexOf("{passiveImg:");
+    const lastMarkerEnd = lastMarkerIndex >= 0 ? statusSource.indexOf("}", lastMarkerIndex) + 1 : -1;
+    if (firstMarkerIndex < 0 || lastMarkerEnd <= firstMarkerIndex) {
+        return undefined;
+    }
+    const markerList = statusSource.slice(firstMarkerIndex, lastMarkerEnd)
+        .replace(/\{passiveImg:[^}]+\}/g, "#");
+    const hasAnd = /\band\b/i.test(markerList);
+    const hasOr = /\bor\b/i.test(markerList);
+    if (hasAnd === hasOr) {
+        return undefined;
+    }
+    return hasAnd ? "and" : "or";
+}
+
+function sha256Text(value: string): string {
+    return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
 function buildCoverageReport(characters: Character[]): DokkanFyiCoverageReport {
@@ -1312,10 +1509,14 @@ async function readCachedMappedCharacter(path: string, ttlMs: number): Promise<C
     try {
         const cached = JSON.parse(await readFile(path, "utf8")) as {
             fetchedAt?: string,
+            mappingVersion?: number,
             character?: Character,
         };
         const fetchedAt = Date.parse(cached.fetchedAt ?? "");
-        if (!cached.character || !Number.isFinite(fetchedAt) || Date.now() - fetchedAt > ttlMs) {
+        if (!cached.character
+            || cached.mappingVersion !== DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION
+            || !Number.isFinite(fetchedAt)
+            || Date.now() - fetchedAt > ttlMs) {
             return undefined;
         }
 
@@ -1329,6 +1530,7 @@ async function writeCachedMappedCharacter(path: string, character: Character): P
     await mkdir(resolve(path, ".."), { recursive: true });
     await writeFile(path, JSON.stringify({
         fetchedAt: new Date().toISOString(),
+        mappingVersion: DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION,
         character,
     }), "utf8");
 }
