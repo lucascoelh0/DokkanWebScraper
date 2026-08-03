@@ -1,0 +1,412 @@
+# Team Builder Analysis Data Contract
+
+**Status:** proposed
+**Last updated:** 2026-08-03
+**Consumer:** DkB Companion Android Team Builder
+
+## 1. Decision
+
+The scraper normalizes stable character identity and passive semantics. Android
+evaluates those semantics against the user's team, rotations, and optional
+battle scenario.
+
+Do not scrape or reproduce another site's recommendation order, synergy grade,
+rotation plan, or passive-activation count. Those are runtime results, not
+source data.
+
+This contract is additive. Existing raw passive text and `PassiveDetails`
+remain the display/debug source of truth.
+
+The product specification is:
+
+`D:\Dokkan\Dokkanpanion\docs\features\team-builder.md`.
+
+## 2. Why a separate dataset
+
+Passive semantic parsing is used by Team Builder, evolves faster than the core
+character display contract, and can add significant structured data. Publish a
+separate `team-analysis.json.gz` so that:
+
+- catalog startup and Room rebuild do not pay the full semantics cost;
+- parser releases can be tested and rolled back independently;
+- Android can load it only when Team Builder needs it;
+- older Android clients continue using the existing character dataset;
+- missing enrichment degrades to leader/link analysis.
+
+The dataset must declare the exact compatible character dataset version or
+content SHA-256. Android must not join mismatched versions.
+
+## 3. Top-level contract
+
+```ts
+export interface TeamAnalysisDataset {
+  schemaVersion: number;
+  rulesVersion: string;
+  parserVersion: string;
+  generatedAt: string;
+  sourceCharacterDatasetVersion: string;
+  sourceCharacterPayloadSha256: string;
+  stateCount: number;
+  supportedRuleCount: number;
+  partialRuleCount: number;
+  unknownRuleCount: number;
+  states: CharacterStateAnalysis[];
+}
+
+export interface CharacterStateAnalysis {
+  stateKey: string;
+  characterId: string;
+  canonicalId?: string;
+  gameCharacterId?: string;
+  baseCharacterId?: string;
+  hardDuplicateGroupId: string;
+  variantGroupId?: string;
+  awakeningFamilyId?: string;
+  formId: string;
+  releaseState: "initial" | "eza" | "seza";
+  displayName: string;
+  passive?: ParsedPassive;
+}
+```
+
+Identity values come from the source payload where available. They must not be
+reconstructed from portrait filenames or display text.
+
+`hardDuplicateGroupId` represents one recruitable card across all of its
+transformations, exchanges, standby/domain forms, and release states. Android
+uses it to reject two copies in the six owned slots. The Friend slot is an
+explicit runtime exception.
+
+`variantGroupId` relates distinct recruitable cards that represent variants of
+the same character identity. It drives an allowed soft-duplicate warning only;
+it must never be used as a linking decision or hard legality rule. When the
+source does not expose a reliable relationship, omit it instead of deriving it
+from a display name.
+
+`stateKey` is deterministic and opaque to Android. A recommended readable form
+is `{characterId}:{formId}:{releaseState}`, but consumers compare the full key
+and never parse it.
+
+## 4. Passive contract
+
+```ts
+export interface ParsedPassive {
+  name?: string;
+  rawText: string;
+  parseStatus: "supported" | "partial" | "unknown";
+  rules: PassiveRule[];
+  unparsedFragments: SourceFragment[];
+}
+
+export interface PassiveRule {
+  id: string;
+  condition: ConditionExpression;
+  effects: PassiveEffect[];
+  source: SourceFragment[];
+  parseStatus: "supported" | "partial" | "unknown";
+  confidence: "high" | "medium" | "low";
+}
+
+export interface SourceFragment {
+  lineIndex: number;
+  text: string;
+  start?: number;
+  end?: number;
+}
+```
+
+Rule IDs are deterministic from state key plus normalized source position, not
+random UUIDs. Re-scraping unchanged text must produce byte-stable semantic data
+apart from top-level timestamps.
+
+## 5. Boolean condition AST
+
+```ts
+export type ConditionExpression =
+  | { op: "always" }
+  | { op: "all"; children: ConditionExpression[] }
+  | { op: "any"; children: ConditionExpression[] }
+  | { op: "not"; child: ConditionExpression }
+  | { op: "predicate"; predicate: PassivePredicate }
+  | { op: "unknown"; sourceText: string };
+
+export interface PassivePredicate {
+  kind: PassivePredicateKind;
+  scope: "self" | "rotation" | "team" | "enemy" | "battle";
+  comparator?: "eq" | "neq" | "lt" | "lte" | "gt" | "gte" | "between";
+  value?: number;
+  maxValue?: number;
+  count?: number;
+  categories?: string[];
+  names?: string[];
+  classes?: string[];
+  types?: string[];
+  slots?: number[];
+  kiSphereTypes?: string[];
+  sourceText: string;
+}
+```
+
+Initial predicate taxonomy:
+
+### Team-resolvable
+
+- `ally_category_present`
+- `ally_name_present`
+- `ally_class_present`
+- `ally_type_present`
+- `team_category_count`
+- `team_class_count`
+- `team_type_count`
+- `all_rotation_allies_category`
+- `all_rotation_allies_class`
+- `rotation_partner_category`
+- `rotation_partner_name`
+- `rotation_partner_link_present`
+- `character_is_leader`
+- `character_is_friend`
+
+### Placement-resolvable
+
+- `battle_slot`
+- `rotation_assignment`
+- `rotation_partner_present`
+- `floater_assignment`
+
+### Optional scenario
+
+- `hp_percent`
+- `turn_number`
+- `turns_from_entry`
+- `enemy_count`
+- `enemy_category`
+- `enemy_name`
+- `enemy_class`
+- `enemy_type`
+- `enemy_status`
+- `domain_active`
+- `standby_active`
+- `active_skill_used`
+- `revive_triggered`
+
+### Runtime/battle dependent
+
+- `ki_amount`
+- `ki_spheres_obtained`
+- `ki_sphere_type_obtained`
+- `attacks_performed`
+- `attacks_received`
+- `attacks_evaded`
+- `super_attacks_performed`
+- `super_attack_received`
+- `final_blow_delivered`
+- `chance_roll`
+
+Unknown or unsupported clauses use `op: "unknown"`; they are never coerced to
+`always` or false.
+
+## 6. Effect contract
+
+```ts
+export interface PassiveEffect {
+  kind: PassiveEffectKind;
+  target: PassiveTarget;
+  value?: number;
+  unit?: "percent" | "flat" | "ki" | "count" | "boolean";
+  chancePercent?: number;
+  perStack?: number;
+  stackCap?: number;
+  duration?: PassiveDuration;
+  categories?: string[];
+  names?: string[];
+  classes?: string[];
+  types?: string[];
+  sourceText: string;
+}
+
+export interface PassiveTarget {
+  scope:
+    | "self"
+    | "rotation_allies"
+    | "team_allies"
+    | "category_allies"
+    | "class_allies"
+    | "type_allies"
+    | "enemy"
+    | "all_enemies"
+    | "unknown";
+}
+
+export interface PassiveDuration {
+  kind: "instant" | "within_turn" | "turns" | "battle" | "until_trigger" | "unknown";
+  turns?: number;
+}
+```
+
+Initial effect taxonomy:
+
+- `ki`
+- `hp`
+- `atk`
+- `def`
+- `damage_reduction`
+- `guard`
+- `evade_chance`
+- `critical_chance`
+- `additional_attack`
+- `additional_super_attack`
+- `effective_against_all_types`
+- `super_attack_seal`
+- `stun_chance`
+- `enemy_atk_down`
+- `enemy_def_down`
+- `support`
+- `ki_sphere_change`
+- `scouter`
+- `revive`
+- `domain`
+- `unknown`
+
+`support` may be a derived tag only when an underlying typed ally-targeting
+effect is also retained. Never emit support solely because a character appears
+on a site's support-only page.
+
+## 7. Parsing pipeline
+
+1. Preserve source skill name, raw text, lines, and sections.
+2. Normalize punctuation/whitespace without deleting source offsets.
+3. Split section headers from effects using the existing deterministic passive
+   section logic.
+4. Parse boolean connectors (`and`, `or`, `when`, `if`, `for every`, `plus an
+   additional`) into an AST.
+5. Parse predicates and effects independently.
+6. Associate effects with the narrowest preceding condition scope.
+7. Preserve every unsupported fragment explicitly.
+8. Generate a coverage report by predicate/effect/status.
+
+Do not parse Android display output. The TypeScript pipeline owns source cleanup
+and semantics so every consumer receives the same rules.
+
+## 8. Coverage gates
+
+The current published payload has 1,556 passive states and broad condition
+families. Parser rollout is staged:
+
+### Gate A - team and rotation predicates
+
+- category/name/class/type ally conditions;
+- all-same-turn conditions;
+- slot 1/2/3;
+- unconditional/basic effects;
+- ally-targeting Ki/ATK/DEF/support effects.
+
+Required before Android shows enabler/support labels:
+
+- golden fixtures for every supported form;
+- no source-token loss;
+- no `unknown` converted to `Met`/`NotMet`;
+- measured high-confidence coverage reported, not assumed.
+
+### Gate B - scenario predicates
+
+- HP and turn thresholds;
+- enemy count/category/class/type/name/status;
+- entry duration, domains, standby, active skill, revive.
+
+### Gate C - runtime counters
+
+- attacks, supers, evades, Ki and Ki spheres;
+- stacking, caps, duration, and chance.
+
+Gate C can remain `Unknown` in Team Builder unless a user supplies a simulation
+scenario. Parsing it is still useful for role explanations.
+
+No global percentage alone is sufficient. Coverage reports must separate:
+
+- source states;
+- parsed rules;
+- supported predicates;
+- supported effects;
+- partial rules;
+- unknown fragments;
+- team-evaluable versus scenario/runtime-only rules.
+
+## 9. Validation and fixtures
+
+Required golden families:
+
+- unconditional/basic passive;
+- entrance animation;
+- category, name, class, and type ally;
+- `another ally` versus self-inclusive conditions;
+- same-turn all/any composition;
+- slot 1, 2, 3 and combinations;
+- HP upper/lower/range;
+- turn threshold and duration from entry;
+- attacks performed/received/evaded;
+- Super Attack performed/received;
+- Ki thresholds and typed/Rainbow spheres;
+- enemy count/type/class/category/name/status;
+- stack per event with cap;
+- Active Skill, standby, finish, revive, and domain;
+- nested `and`/`or` precedence;
+- transformed, exchange, tag, EZA, and SEZA states;
+- malformed/unknown text fallback.
+
+Validators:
+
+- state keys unique;
+- hard-duplicate group present for every state and stable across forms of one
+  card;
+- variant groups never merge states solely because display names match;
+- every state references a character/form in the matching character payload;
+- source fragments are ordered and point to original text;
+- numeric values are finite and within contract bounds;
+- AST nodes are non-empty and bounded in depth;
+- unknown enum values serialize safely;
+- manifest count/size/SHA match payload;
+- output deterministic with fixed `generatedAt`.
+
+## 10. Publication and compatibility
+
+Suggested manifest:
+
+```json
+{
+  "schemaVersion": 1,
+  "datasetVersion": "...",
+  "generatedAt": "...",
+  "fileName": "releases/.../team-analysis.json.gz",
+  "compression": "gzip",
+  "sha256": "...",
+  "sizeBytes": 0,
+  "uncompressedSizeBytes": 0,
+  "stateCount": 0,
+  "rulesVersion": "1",
+  "parserVersion": "1",
+  "sourceCharacterDatasetVersion": "...",
+  "sourceCharacterPayloadSha256": "..."
+}
+```
+
+- Upload immutable payload before mutable manifest.
+- Run publisher dry-run and report projected new bytes before upload.
+- Keep R2 comfortably below the owner's 10 GB free allowance.
+- Cache payload by content hash and promote manifest atomically.
+- Bundle one compatible compressed payload in Android for offline use.
+- Android rejects mismatch/corruption and keeps the previous compatible cache.
+- Old cached character datasets remain supported; passive-aware analysis is
+  optional enrichment.
+
+## 11. Explicit exclusions
+
+This dataset does not contain:
+
+- team drafts or user choices;
+- precomputed team recommendations;
+- synergy grades;
+- rotation suggestions;
+- event-specific optimal teams;
+- tier-list power;
+- copied Dokkan.fyi badge values;
+- runtime battle outcomes.
