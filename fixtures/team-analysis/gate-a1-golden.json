@@ -1,0 +1,320 @@
+{
+  "cases": [
+    {
+      "name": "another category ally on team",
+      "rawText": "When there is another \"Ginyu Force\" Category ally on the\nteam\n- All allies' Ki +2",
+      "passiveDetails": {
+        "lines": ["When there is another \"Ginyu Force\" Category ally on the team", "- All allies' Ki +2"],
+        "sections": [
+          {
+            "label": "When there is another \"Ginyu Force\" Category ally on the team",
+            "lines": ["All allies' Ki +2"]
+          }
+        ]
+      },
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "predicate",
+        "predicateKinds": ["ally_category_present"],
+        "scopes": ["team"],
+        "selfInclusions": ["excluded"],
+        "categories": ["Ginyu Force"],
+        "effectKinds": ["ki"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "category ally including self",
+      "rawText": "When there is a \"Movie Heroes\" Category ally on the team\n- All allies' ATK 30% (self included)",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "predicate",
+        "predicateKinds": ["ally_category_present"],
+        "scopes": ["team"],
+        "selfInclusions": ["included"],
+        "categories": ["Movie Heroes"],
+        "effectKinds": ["atk"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "named ally on team",
+      "rawText": "When another ally whose name includes \"Goku\" is on the team\n- All allies' DEF 30%",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "predicate",
+        "predicateKinds": ["ally_name_present"],
+        "scopes": ["team"],
+        "selfInclusions": ["excluded"],
+        "names": ["Goku"],
+        "effectKinds": ["def"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "rotation partner category",
+      "rawText": "When another \"Bond of Parent and Child\" Category ally attacking in the same turn\n- All allies' Ki +1",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "predicate",
+        "predicateKinds": ["rotation_partner_category"],
+        "scopes": ["rotation"],
+        "selfInclusions": ["excluded"],
+        "categories": ["Bond of Parent and Child"],
+        "effectKinds": ["ki"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "all rotation allies category",
+      "rawText": "When all allies attacking in the same turn are \"Super Heroes\" Category characters\n- All allies' ATK & DEF 20%",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "predicate",
+        "predicateKinds": ["all_rotation_allies_category"],
+        "scopes": ["rotation"],
+        "selfInclusions": ["included"],
+        "categories": ["Super Heroes"],
+        "effectKinds": ["atk", "def"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "two categories with or",
+      "rawText": "When another \"Planetary Destruction\" or \"Pure Saiyans\" Category ally attacking in the same turn\n- All allies' Ki +2",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "any",
+        "predicateKinds": ["rotation_partner_category", "rotation_partner_category"],
+        "scopes": ["rotation", "rotation"],
+        "selfInclusions": ["excluded", "excluded"],
+        "categories": ["Planetary Destruction", "Pure Saiyans"],
+        "effectKinds": ["ki"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "category and name with and",
+      "rawText": "When a \"Future Saga\" Category ally whose name includes\n\"Trunks\" attacking in the same turn\n- \"Future Saga\" Category allies' Ki +2",
+      "passiveDetails": {
+        "sections": [
+          {
+            "label": "When a \"Future Saga\" Category ally whose name includes \"Trunks\" attacking in the same turn",
+            "lines": ["\"Future Saga\" Category allies' Ki +2"]
+          }
+        ]
+      },
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "all",
+        "predicateKinds": ["ally_category_present", "ally_name_present"],
+        "scopes": ["rotation", "rotation"],
+        "selfInclusions": ["included", "included"],
+        "categories": ["Future Saga"],
+        "names": ["Trunks"],
+        "effectKinds": ["ki"],
+        "effectTarget": "category_allies"
+      }
+    },
+    {
+      "name": "explicit ally count",
+      "rawText": "When another 2 or more \"Peppy Gals\" Category allies are on the team\n- All allies' Ki +2",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "predicate",
+        "predicateKinds": ["ally_category_present"],
+        "scopes": ["team"],
+        "selfInclusions": ["excluded"],
+        "categories": ["Peppy Gals"],
+        "counts": [2],
+        "effectKinds": ["ki"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "multiple support effects",
+      "rawText": "Basic effect(s)\n- All allies' Ki +3 and ATK & DEF 30%",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "always",
+        "predicateKinds": [],
+        "scopes": [],
+        "selfInclusions": [],
+        "effectKinds": ["ki", "atk", "def"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "category restricted support",
+      "rawText": "Basic effect(s)\n- \"Worthy Rivals\" Category allies' Ki +2 and ATK & DEF 30% (self excluded)",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "always",
+        "predicateKinds": [],
+        "scopes": [],
+        "selfInclusions": [],
+        "categories": ["Worthy Rivals"],
+        "effectKinds": ["ki", "atk", "def"],
+        "effectTarget": "category_allies",
+        "effectSelfInclusion": "excluded"
+      }
+    },
+    {
+      "name": "known condition fully typed effect",
+      "rawText": "When there is another \"Ginyu Force\" Category ally on the team\n- All allies' Ki +2 and chance of performing a critical hit 20%",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "predicate",
+        "predicateKinds": ["ally_category_present"],
+        "scopes": ["team"],
+        "selfInclusions": ["excluded"],
+        "categories": ["Ginyu Force"],
+        "effectKinds": ["ki", "critical_chance"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "allies dodge chance",
+      "rawText": "Basic effect(s)\n- \"Youth\" Category allies' chance of evading enemy's attack 5%",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "always",
+        "predicateKinds": [],
+        "scopes": [],
+        "selfInclusions": [],
+        "categories": ["Youth"],
+        "effectKinds": ["evade_chance"],
+        "effectTarget": "category_allies"
+      }
+    },
+    {
+      "name": "allies damage reduction",
+      "rawText": "Basic effect(s)\n- All allies' damage reduction rate 11%",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "always",
+        "predicateKinds": [],
+        "scopes": [],
+        "selfInclusions": [],
+        "effectKinds": ["damage_reduction"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "allies guard",
+      "rawText": "Basic effect(s)\n- All allies' guards all attacks",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "always",
+        "predicateKinds": [],
+        "scopes": [],
+        "selfInclusions": [],
+        "effectKinds": ["guard"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "allies effective against all types",
+      "rawText": "Basic effect(s)\n- All allies' attacks are effective against all Types",
+      "expected": {
+        "parseStatus": "supported",
+        "conditionStatus": "supported",
+        "effectStatus": "supported",
+        "conditionOp": "always",
+        "predicateKinds": [],
+        "scopes": [],
+        "selfInclusions": [],
+        "effectKinds": ["effective_against_all_types"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "known effect with unknown qualifier",
+      "rawText": "Basic effect(s)\n- All allies' chance of performing a critical hit 10% for 2 turns",
+      "expected": {
+        "parseStatus": "partial",
+        "conditionStatus": "supported",
+        "effectStatus": "partial",
+        "conditionOp": "always",
+        "predicateKinds": [],
+        "scopes": [],
+        "selfInclusions": [],
+        "effectKinds": ["critical_chance", "unknown"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "qualitative chance remains unknown",
+      "rawText": "Basic effect(s)\n- All allies' high chance of performing a critical hit",
+      "expected": {
+        "parseStatus": "partial",
+        "conditionStatus": "supported",
+        "effectStatus": "unknown",
+        "conditionOp": "always",
+        "predicateKinds": [],
+        "scopes": [],
+        "selfInclusions": [],
+        "effectKinds": ["unknown"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "unknown condition known effect",
+      "rawText": "When HP is 50% or more\n- All allies' Ki +2 and ATK & DEF 30%",
+      "expected": {
+        "parseStatus": "partial",
+        "conditionStatus": "unknown",
+        "effectStatus": "supported",
+        "conditionOp": "unknown",
+        "predicateKinds": [],
+        "scopes": [],
+        "selfInclusions": [],
+        "effectKinds": ["ki", "atk", "def"],
+        "effectTarget": "team_allies"
+      }
+    },
+    {
+      "name": "fully unknown remains unknown",
+      "rawText": "When HP is 50% or more\n- Performs a mysterious action",
+      "expected": {
+        "parseStatus": "unknown",
+        "conditionStatus": "unknown",
+        "effectStatus": "unknown",
+        "conditionOp": "unknown",
+        "predicateKinds": [],
+        "scopes": [],
+        "selfInclusions": [],
+        "effectKinds": ["unknown"],
+        "effectTarget": "self"
+      }
+    }
+  ]
+}

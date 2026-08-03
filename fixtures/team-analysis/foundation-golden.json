@@ -112,7 +112,7 @@
     { "stateKey": "1005001:1005001:eza", "hardDuplicateGroupId": "card:1005001", "variantGroupId": "canonical:50", "awakeningFamilyId": "awakening:1005000", "parseStatus": "supported" },
     { "stateKey": "1005001:1005001:seza", "hardDuplicateGroupId": "card:1005001", "variantGroupId": "canonical:50", "awakeningFamilyId": "awakening:1005000", "parseStatus": "supported" },
     { "stateKey": "1006001:1006001:initial", "hardDuplicateGroupId": "card:1006001", "variantGroupId": "canonical:60", "awakeningFamilyId": "awakening:1006000", "parseStatus": "partial" },
-    { "stateKey": "1006002:1006002:initial", "hardDuplicateGroupId": "card:1006002", "variantGroupId": "canonical:60", "awakeningFamilyId": "awakening:1006000", "parseStatus": "unknown" },
+    { "stateKey": "1006002:1006002:initial", "hardDuplicateGroupId": "card:1006002", "variantGroupId": "canonical:60", "awakeningFamilyId": "awakening:1006000", "parseStatus": "partial" },
     { "stateKey": "1007001:1007001:initial", "hardDuplicateGroupId": "card:1007001", "awakeningFamilyId": "awakening:1007000" },
     { "stateKey": "1007002:1007002:initial", "hardDuplicateGroupId": "card:1007002", "awakeningFamilyId": "awakening:1007002" }
   ]

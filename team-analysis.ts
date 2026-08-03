@@ -3,10 +3,12 @@ import { FyiCharacterCatalogEntry } from "./fyi-character-catalog";
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.0.0";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.1.0";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
 export type ReleaseState = "initial" | "eza" | "seza";
+export type SelfInclusion = "included" | "excluded" | "unknown";
+export type PassiveEffectClassification = "support";
 
 export type PassivePredicateKind =
     | "ally_category_present"
@@ -68,7 +70,6 @@ export type PassiveEffectKind =
     | "stun_chance"
     | "enemy_atk_down"
     | "enemy_def_down"
-    | "support"
     | "ki_sphere_change"
     | "scouter"
     | "revive"
@@ -115,7 +116,9 @@ export interface ParsedPassive {
 export interface PassiveRule {
     id: string,
     condition: ConditionExpression,
+    conditionStatus: ParseStatus,
     effects: PassiveEffect[],
+    effectStatus: ParseStatus,
     source: SourceFragment[],
     parseStatus: ParseStatus,
     confidence: "high" | "medium" | "low",
@@ -126,6 +129,25 @@ export interface SourceFragment {
     text: string,
     start?: number,
     end?: number,
+}
+
+export interface MappedPassiveText {
+    text: string,
+    source: SourceFragment[],
+    mapped: boolean,
+}
+
+export interface MappedPassiveSection {
+    label?: MappedPassiveText,
+    lines: MappedPassiveText[],
+}
+
+export interface PassiveSourceMap {
+    rawText: string,
+    sourceFragments: SourceFragment[],
+    lines: MappedPassiveText[],
+    sections: MappedPassiveSection[],
+    unmappedTexts: string[],
 }
 
 export type ConditionExpression =
@@ -139,6 +161,7 @@ export type ConditionExpression =
 export interface PassivePredicate {
     kind: PassivePredicateKind,
     scope: "self" | "rotation" | "team" | "enemy" | "battle",
+    selfInclusion?: SelfInclusion,
     comparator?: "eq" | "neq" | "lt" | "lte" | "gt" | "gte" | "between",
     value?: number,
     maxValue?: number,
@@ -165,6 +188,7 @@ export interface PassiveEffect {
     names?: string[],
     classes?: string[],
     types?: string[],
+    classifications?: PassiveEffectClassification[],
     sourceText: string,
 }
 
@@ -179,6 +203,7 @@ export interface PassiveTarget {
         | "enemy"
         | "all_enemies"
         | "unknown",
+    selfInclusion?: SelfInclusion,
 }
 
 export interface PassiveDuration {
@@ -195,6 +220,8 @@ export interface TeamAnalysisCoverageReport {
     passiveStatusCounts: Record<ParseStatus, number>,
     parsedRuleCount: number,
     ruleStatusCounts: Record<ParseStatus, number>,
+    conditionStatusCounts: Record<ParseStatus, number>,
+    effectStatusCounts: Record<ParseStatus, number>,
     conditionCounts: {
         always: number,
         predicate: number,
@@ -203,6 +230,7 @@ export interface TeamAnalysisCoverageReport {
     },
     supportedPredicateCounts: Record<string, number>,
     supportedEffectCounts: Record<string, number>,
+    derivedSupportEffectCount: number,
     unknownEffectCount: number,
     unknownFragmentCount: number,
     teamEvaluableRuleCount: number,
@@ -238,6 +266,7 @@ interface AnalysisReleaseSource {
     releaseState: ReleaseState,
     passiveText: string,
     passiveName?: string,
+    passiveDetails?: PassiveDetails,
 }
 
 interface ResolvedIdentity {
@@ -321,7 +350,7 @@ function buildCharacterStates(
         const identity = resolveIdentity(character, form, catalogEntry, releaseSource.releaseState);
         const stateKey = buildStateKey(identity.characterId, identity.formId, identity.releaseState);
         const passive = releaseSource.passiveText
-            ? parsePassive(stateKey, releaseSource.passiveName, releaseSource.passiveText)
+            ? parsePassive(stateKey, releaseSource.passiveName, releaseSource.passiveText, releaseSource.passiveDetails)
             : undefined;
 
         return {
@@ -371,6 +400,7 @@ function analysisReleaseSources(form: AnalysisFormSource): AnalysisReleaseSource
             releaseState: releaseStateFromForm(form),
             passiveText: initialPassiveText,
             passiveName: form.passiveDetails?.name,
+            passiveDetails: form.passiveDetails,
         }];
     }
 
@@ -378,12 +408,14 @@ function analysisReleaseSources(form: AnalysisFormSource): AnalysisReleaseSource
         releaseState: "initial",
         passiveText: initialPassiveText,
         passiveName: form.passiveDetails?.name,
+        passiveDetails: form.passiveDetails,
     }];
     if (ezaPassiveText) {
         releases.push({
             releaseState: "eza",
             passiveText: ezaPassiveText,
             passiveName: form.ezaPassiveDetails?.name,
+            passiveDetails: form.ezaPassiveDetails,
         });
     }
     if (sezaPassiveText) {
@@ -402,221 +434,677 @@ function compareAnalysisStates(left: CharacterStateAnalysis, right: CharacterSta
         || releaseOrder[left.releaseState] - releaseOrder[right.releaseState];
 }
 
-export function parsePassive(stateKey: string, name: string | undefined, rawText: string): ParsedPassive {
-    const rawLines = rawText.replace(/\r\n/g, "\n").split("\n");
+interface LogicalPassiveBlock {
+    kind: "condition" | "effect",
+    text: string,
+    source: SourceFragment[],
+}
+
+interface ParsedConditionResult {
+    condition: ConditionExpression,
+    status: ParseStatus,
+}
+
+interface ParsedEffectResult {
+    effects: PassiveEffect[],
+    status: ParseStatus,
+}
+
+export function parsePassive(
+    stateKey: string,
+    name: string | undefined,
+    rawText: string,
+    passiveDetails?: PassiveDetails,
+): ParsedPassive {
+    const sourceMap = mapPassiveDetailsToSource(rawText, passiveDetails);
+    const blocks = buildLogicalPassiveBlocks(sourceMap.sourceFragments);
     const rules: PassiveRule[] = [];
     const unparsedFragments: SourceFragment[] = [];
-    let currentHeader: SourceFragment | undefined;
-    let currentHeaderIsAlways = false;
-    let currentHeaderHasRule = false;
+    let currentCondition: LogicalPassiveBlock | undefined;
+    let currentConditionUsed = false;
 
-    const flushUnusedHeader = () => {
-        if (!currentHeader || currentHeaderHasRule || currentHeaderIsAlways) {
+    const flushUnusedCondition = () => {
+        if (!currentCondition || currentConditionUsed) {
             return;
         }
-        rules.push(unknownStandaloneRule(stateKey, currentHeader));
-        unparsedFragments.push(currentHeader);
+        rules.push(unknownStandaloneRule(stateKey, currentCondition));
+        unparsedFragments.push(...currentCondition.source);
     };
 
-    for (let lineIndex = 0; lineIndex < rawLines.length; lineIndex += 1) {
-        const rawLine = rawLines[lineIndex];
-        const trimmed = rawLine.trim();
-        if (!trimmed) {
+    for (const block of blocks) {
+        if (block.kind === "condition") {
+            flushUnusedCondition();
+            currentCondition = block;
+            currentConditionUsed = false;
             continue;
         }
 
-        if (!trimmed.startsWith("- ")) {
-            flushUnusedHeader();
-            currentHeader = trimmedFragment(rawLine, lineIndex);
-            currentHeaderIsAlways = isAlwaysHeader(trimmed);
-            currentHeaderHasRule = false;
-            continue;
+        const conditionResult = currentCondition
+            ? parseCondition(currentCondition.text)
+            : { condition: { op: "always" } as ConditionExpression, status: "supported" as ParseStatus };
+        const effectResult = parseEffects(block.text);
+        const source = uniqueOrderedFragments([
+            ...(currentCondition?.source ?? []),
+            ...block.source,
+        ]);
+        const parseStatus = combineParseStatuses(conditionResult.status, effectResult.status);
+        rules.push({
+            id: ruleIdFromFragment(stateKey, block.source[block.source.length - 1]),
+            condition: conditionResult.condition,
+            conditionStatus: conditionResult.status,
+            effects: effectResult.effects,
+            effectStatus: effectResult.status,
+            source,
+            parseStatus,
+            confidence: confidenceFromStatus(parseStatus),
+        });
+        if (conditionResult.status !== "supported" && currentCondition) {
+            unparsedFragments.push(...currentCondition.source);
         }
-
-        const bulletOffset = rawLine.indexOf("- ") + 2;
-        const bulletText = rawLine.slice(bulletOffset).trim();
-        const bulletStart = rawLine.indexOf(bulletText, bulletOffset);
-        const clauses = splitSemicolonClauses(rawLine, lineIndex, bulletText, bulletStart);
-        for (const clause of clauses) {
-            const effects = parseUnconditionalEffects(clause.text);
-            if (effects && (currentHeaderIsAlways || !currentHeader)) {
-                const source = currentHeader ? [currentHeader, clause] : [clause];
-                rules.push({
-                    id: ruleIdFromFragment(stateKey, clause),
-                    condition: { op: "always" },
-                    effects,
-                    source,
-                    parseStatus: "supported",
-                    confidence: "high",
-                });
-            } else {
-                const conditionText = currentHeader?.text ?? clause.text;
-                const source = currentHeader ? [currentHeader, clause] : [clause];
-                rules.push({
-                    id: ruleIdFromFragment(stateKey, clause),
-                    condition: { op: "unknown", sourceText: conditionText },
-                    effects: [unknownEffect(clause.text)],
-                    source,
-                    parseStatus: "unknown",
-                    confidence: "low",
-                });
-                if (currentHeader && !currentHeaderIsAlways) {
-                    unparsedFragments.push(currentHeader);
-                }
-                unparsedFragments.push(clause);
-            }
-            currentHeaderHasRule = true;
+        if (effectResult.status !== "supported") {
+            unparsedFragments.push(...block.source);
         }
+        currentConditionUsed = true;
     }
-    flushUnusedHeader();
+    flushUnusedCondition();
 
-    const orderedUnparsedFragments = uniqueOrderedFragments(unparsedFragments);
     return {
         ...(name ? { name } : {}),
         rawText,
         parseStatus: aggregatePassiveStatus(rules),
         rules,
-        unparsedFragments: orderedUnparsedFragments,
+        unparsedFragments: uniqueOrderedFragments(unparsedFragments),
     };
+}
+
+export function mapPassiveDetailsToSource(
+    rawText: string,
+    passiveDetails?: PassiveDetails,
+): PassiveSourceMap {
+    const normalizedRawText = rawText.replace(/\r\n/g, "\n");
+    const rawLines = normalizedRawText.split("\n");
+    const sourceFragments = rawLines
+        .map((line, lineIndex) => trimmedFragment(line, lineIndex))
+        .filter(fragment => fragment.text.length > 0);
+    const lineTexts = passiveDetails?.lines ?? sourceFragments.map(fragment => fragment.text);
+    const lines = alignPassiveTexts(rawLines, lineTexts);
+    const sectionEntries = (passiveDetails?.sections ?? []).flatMap(section => [
+        ...(section.label ? [{ type: "label" as const, text: section.label }] : []),
+        ...section.lines.map(text => ({ type: "line" as const, text })),
+    ]);
+    const mappedSectionEntries = alignPassiveTexts(rawLines, sectionEntries.map(entry => entry.text));
+    let mappedIndex = 0;
+    const sections = (passiveDetails?.sections ?? []).map(section => ({
+        ...(section.label ? { label: mappedSectionEntries[mappedIndex++] } : {}),
+        lines: section.lines.map(() => mappedSectionEntries[mappedIndex++]),
+    }));
+    const unmappedTexts = [
+        ...lines.filter(line => !line.mapped).map(line => line.text),
+        ...mappedSectionEntries.filter(entry => !entry.mapped).map(entry => entry.text),
+    ];
+    return {
+        rawText,
+        sourceFragments,
+        lines,
+        sections,
+        unmappedTexts,
+    };
+}
+
+function alignPassiveTexts(rawLines: string[], texts: string[]): MappedPassiveText[] {
+    const stream = buildAlignmentStream(rawLines);
+    let cursor = 0;
+    return texts.map(text => {
+        const normalizedText = normalizeAlignmentText(text);
+        const matchIndex = normalizedText ? stream.text.indexOf(normalizedText, cursor) : -1;
+        if (matchIndex < 0) {
+            return { text, source: [], mapped: false };
+        }
+        cursor = matchIndex + normalizedText.length;
+        const positions = stream.positions.slice(matchIndex, cursor);
+        return {
+            text,
+            source: fragmentsFromAlignmentPositions(rawLines, positions),
+            mapped: true,
+        };
+    });
+}
+
+function buildAlignmentStream(rawLines: string[]): {
+    text: string,
+    positions: Array<{ lineIndex: number, column: number }>,
+} {
+    let text = "";
+    const positions: Array<{ lineIndex: number, column: number }> = [];
+    rawLines.forEach((line, lineIndex) => {
+        const bullet = /^\s*-\s+/.exec(line);
+        for (let column = 0; column < line.length; column += 1) {
+            const character = line[column];
+            const structuralBullet = Boolean(bullet && column >= (bullet.index ?? 0) && column < (bullet[0].length));
+            if (/\s/.test(character) || character === "*" || structuralBullet) {
+                continue;
+            }
+            text += character;
+            positions.push({ lineIndex, column });
+        }
+    });
+    return { text, positions };
+}
+
+function normalizeAlignmentText(text: string): string {
+    return text.replace(/^\s*-\s+/, "").replace(/[\s*]/g, "");
+}
+
+function fragmentsFromAlignmentPositions(
+    rawLines: string[],
+    positions: Array<{ lineIndex: number, column: number }>,
+): SourceFragment[] {
+    const ranges = new Map<number, { start: number, end: number }>();
+    for (const position of positions) {
+        const range = ranges.get(position.lineIndex);
+        if (range) {
+            range.start = Math.min(range.start, position.column);
+            range.end = Math.max(range.end, position.column + 1);
+        } else {
+            ranges.set(position.lineIndex, { start: position.column, end: position.column + 1 });
+        }
+    }
+    return [...ranges.entries()].sort(([left], [right]) => left - right).map(([lineIndex, range]) => ({
+        lineIndex,
+        text: rawLines[lineIndex].slice(range.start, range.end),
+        start: range.start,
+        end: range.end,
+    }));
+}
+
+function buildLogicalPassiveBlocks(sourceFragments: SourceFragment[]): LogicalPassiveBlock[] {
+    const blocks: LogicalPassiveBlock[] = [];
+    let current: { kind: "condition" | "effect", source: SourceFragment[] } | undefined;
+    const flush = () => {
+        if (!current) {
+            return;
+        }
+        blocks.push({
+            kind: current.kind,
+            text: logicalText(current.kind, current.source),
+            source: current.source,
+        });
+        current = undefined;
+    };
+
+    for (const fragment of sourceFragments) {
+        const isBullet = /^-\s+/.test(fragment.text);
+        if (isBullet) {
+            flush();
+            current = { kind: "effect", source: [fragment] };
+            continue;
+        }
+        if (!current) {
+            current = { kind: "condition", source: [fragment] };
+            continue;
+        }
+        if (current.kind === "effect" && isLogicalHeaderStart(fragment.text)) {
+            flush();
+            current = { kind: "condition", source: [fragment] };
+            continue;
+        }
+        current.source.push(fragment);
+    }
+    flush();
+    return blocks;
+}
+
+function logicalText(kind: "condition" | "effect", source: SourceFragment[]): string {
+    return source.map((fragment, index) => {
+        const text = fragment.text.replace(/^\*|\*$/g, "").trim();
+        return kind === "effect" && index === 0 ? text.replace(/^-\s+/, "") : text;
+    }).join(" ").replace(/\s+/g, " ").trim();
+}
+
+function isLogicalHeaderStart(text: string): boolean {
+    return /^(?:Activates the Entrance Animation|Basic effect\(s\)|When\b|If\b|Per\b|For\b|Starting\b|As the\b|After\b|Before\b|At the\b|With\b|Without\b|While\b|The less\b|The more\b|Upon\b|Once\b|Every\b|\d+ or more\b)/i.test(text.trim());
 }
 
 function isAlwaysHeader(text: string): boolean {
     return /^\*?Basic effect\(s\)\*?:?$/i.test(text.trim());
 }
 
-function parseUnconditionalEffects(sourceText: string): PassiveEffect[] | undefined {
+function parseCondition(sourceText: string): ParsedConditionResult {
     const text = sourceText.trim();
-    const kiMatch = /^Ki\s*\+\s*(\d+(?:\.\d+)?)$/i.exec(text);
-    if (kiMatch) {
-        return [numericEffect("ki", Number(kiMatch[1]), "ki", text)];
+    if (isAlwaysHeader(text)) {
+        return { condition: { op: "always" }, status: "supported" };
     }
 
-    const statMatch = /^((?:HP|ATK|DEF)(?:\s*(?:,|&|and)\s*(?:HP|ATK|DEF))*)\s*\+?\s*(\d+(?:\.\d+)?)%$/i.exec(text);
-    if (statMatch) {
-        const value = Number(statMatch[2]);
-        const kinds = statMatch[1].match(/HP|ATK|DEF/gi) ?? [];
-        return kinds.map(kind => numericEffect(kind.toLowerCase() as "hp" | "atk" | "def", value, "percent", text));
+    const allRotationMatch = /^When all allies attacking in the same turn are (.+?) Category characters?$/i.exec(text);
+    if (allRotationMatch) {
+        const categoryValues = parseQuotedValues(allRotationMatch[1]);
+        if (categoryValues) {
+            return {
+                condition: {
+                    op: "predicate",
+                    predicate: {
+                        kind: "all_rotation_allies_category",
+                        scope: "rotation",
+                        selfInclusion: "included",
+                        categories: categoryValues.values,
+                        sourceText: text,
+                    },
+                },
+                status: "supported",
+            };
+        }
     }
 
-    const recoveryMatch = /^Recovers\s+(\d+(?:\.\d+)?)%\s+HP$/i.exec(text);
-    if (recoveryMatch) {
-        return [numericEffect("hp", Number(recoveryMatch[1]), "percent", text)];
+    const allyCondition = parseAllyCondition(text);
+    if (allyCondition) {
+        return { condition: allyCondition, status: "supported" };
+    }
+    return {
+        condition: { op: "unknown", sourceText: text },
+        status: "unknown",
+    };
+}
+
+function parseAllyCondition(text: string): ConditionExpression | undefined {
+    if (!/^When\b/i.test(text)) {
+        return undefined;
+    }
+    let body = text.replace(/^When\s+/i, "").trim();
+    let selfInclusion: SelfInclusion = "included";
+    if (/\(self excluded\)/i.test(body)) {
+        selfInclusion = "excluded";
+        body = body.replace(/\s*\(self excluded\)\s*/ig, " ").trim();
+    } else if (/\(self included\)/i.test(body)) {
+        body = body.replace(/\s*\(self included\)\s*/ig, " ").trim();
+    }
+    body = body.replace(/^there (?:is|are)\s+/i, "");
+    const anotherMatch = /^another\s+/i.exec(body);
+    if (anotherMatch) {
+        selfInclusion = "excluded";
+        body = body.slice(anotherMatch[0].length);
+    }
+    let count: number | undefined;
+    const countMatch = /^(\d+)\s+or more\s+/i.exec(body);
+    if (countMatch) {
+        count = Number(countMatch[1]);
+        body = body.slice(countMatch[0].length);
+    }
+    body = body.replace(/^an?\s+/i, "");
+
+    let scope: "team" | "rotation";
+    const teamMatch = /\s+(?:is\s+|are\s+)?on the team$/i.exec(body);
+    const rotationMatch = /\s+(?:is\s+|are\s+)?attacking in the same turn$/i.exec(body);
+    if (teamMatch) {
+        scope = "team";
+        body = body.slice(0, teamMatch.index).trim();
+    } else if (rotationMatch) {
+        scope = "rotation";
+        body = body.slice(0, rotationMatch.index).trim();
+    } else {
+        return undefined;
     }
 
-    const reductionMatch = /^Damage reduction rate\s+(\d+(?:\.\d+)?)%$/i.exec(text);
-    if (reductionMatch) {
-        return [numericEffect("damage_reduction", Number(reductionMatch[1]), "percent", text)];
+    const categoryAndName = /^(.+?) Category all(?:y|ies) whose name includes (.+)$/i.exec(body);
+    if (categoryAndName) {
+        const categoryExpression = buildQuotedPredicateExpression(
+            categoryAndName[1],
+            value => allyPredicate("category", value, scope, selfInclusion, count, text),
+        );
+        const nameExpression = buildQuotedPredicateExpression(
+            categoryAndName[2],
+            value => allyPredicate("name", value, scope, selfInclusion, count, text),
+        );
+        return categoryExpression && nameExpression
+            ? { op: "all", children: [categoryExpression, nameExpression] }
+            : undefined;
     }
 
-    const evadeMatch = /^Chance of evading enemy(?:'s|’s) attack\s+(\d+(?:\.\d+)?)%$/i.exec(text);
-    if (evadeMatch) {
-        const chancePercent = Number(evadeMatch[1]);
-        return [{
-            kind: "evade_chance",
-            target: { scope: "self" },
-            value: chancePercent,
-            unit: "percent",
-            chancePercent,
-            sourceText: text,
-        }];
+    const categoryMatch = /^(.+?) Category all(?:y|ies)$/i.exec(body);
+    if (categoryMatch) {
+        return buildQuotedPredicateExpression(
+            categoryMatch[1],
+            value => allyPredicate("category", value, scope, selfInclusion, count, text),
+        );
     }
-
-    const criticalMatch = /^Chance of performing a critical hit\s+(\d+(?:\.\d+)?)%$/i.exec(text);
-    if (criticalMatch) {
-        const chancePercent = Number(criticalMatch[1]);
-        return [{
-            kind: "critical_chance",
-            target: { scope: "self" },
-            value: chancePercent,
-            unit: "percent",
-            chancePercent,
-            sourceText: text,
-        }];
-    }
-
-    if (/^Guards all attacks$/i.test(text)) {
-        return [booleanEffect("guard", text)];
-    }
-    if (/^Attacks are effective against all Types$/i.test(text)) {
-        return [booleanEffect("effective_against_all_types", text)];
+    const nameMatch = /^all(?:y|ies) whose name includes (.+)$/i.exec(body);
+    if (nameMatch) {
+        return buildQuotedPredicateExpression(
+            nameMatch[1],
+            value => allyPredicate("name", value, scope, selfInclusion, count, text),
+        );
     }
     return undefined;
 }
 
-function numericEffect(
-    kind: "ki" | "hp" | "atk" | "def" | "damage_reduction",
-    value: number,
-    unit: "percent" | "ki",
+function allyPredicate(
+    type: "category" | "name",
+    value: string,
+    scope: "team" | "rotation",
+    selfInclusion: SelfInclusion,
+    count: number | undefined,
     sourceText: string,
-): PassiveEffect {
+): ConditionExpression {
+    const rotationPartner = scope === "rotation" && selfInclusion === "excluded";
+    const kind: PassivePredicateKind = type === "category"
+        ? (rotationPartner ? "rotation_partner_category" : "ally_category_present")
+        : (rotationPartner ? "rotation_partner_name" : "ally_name_present");
     return {
-        kind,
-        target: { scope: "self" },
-        value,
-        unit,
-        sourceText,
+        op: "predicate",
+        predicate: {
+            kind,
+            scope,
+            selfInclusion,
+            ...(count !== undefined ? { comparator: "gte" as const, count } : {}),
+            ...(type === "category" ? { categories: [value] } : { names: [value] }),
+            sourceText,
+        },
     };
 }
 
-function booleanEffect(
-    kind: "guard" | "effective_against_all_types",
+function buildQuotedPredicateExpression(
     sourceText: string,
-): PassiveEffect {
+    build: (value: string) => ConditionExpression,
+): ConditionExpression | undefined {
+    const parsed = parseQuotedValues(sourceText);
+    if (!parsed) {
+        return undefined;
+    }
+    const children = parsed.values.map(build);
+    if (children.length === 1) {
+        return children[0];
+    }
     return {
-        kind,
-        target: { scope: "self" },
+        op: parsed.connector === "and" ? "all" : "any",
+        children,
+    };
+}
+
+function parseQuotedValues(sourceText: string): {
+    values: string[],
+    connector: "single" | "and" | "or",
+} | undefined {
+    const values = [...sourceText.matchAll(/"([^"]+)"/g)].map(match => match[1].trim()).filter(Boolean);
+    if (values.length === 0) {
+        return undefined;
+    }
+    const separators = sourceText.replace(/"[^"]+"/g, "#").trim();
+    if (!/^#(?:\s*(?:,\s*)?(?:and|or)?\s*#)*$/i.test(separators)) {
+        return undefined;
+    }
+    const hasAnd = /\band\b/i.test(separators);
+    const hasOr = /\bor\b/i.test(separators);
+    if (hasAnd && hasOr) {
+        return undefined;
+    }
+    if (values.length > 1 && !hasAnd && !hasOr) {
+        return undefined;
+    }
+    return {
+        values,
+        connector: hasAnd ? "and" : hasOr ? "or" : "single",
+    };
+}
+
+function parseEffects(sourceText: string): ParsedEffectResult {
+    const resolvedTarget = resolveEffectTarget(sourceText);
+    const parsedAtoms = parseEffectAtoms(resolvedTarget.body);
+    const effects = parsedAtoms.atoms.map(atom => applyEffectTarget(atom, resolvedTarget));
+    effects.push(...parsedAtoms.unknownSegments.map(segment => unknownEffect(
+        segment,
+        resolvedTarget.target,
+        resolvedTarget.categories,
+    )));
+    return {
+        effects,
+        status: effectListStatus(effects),
+    };
+}
+
+interface ResolvedEffectTarget {
+    body: string,
+    target: PassiveTarget,
+    categories?: string[],
+}
+
+interface PassiveEffectAtom {
+    kind:
+        | "ki"
+        | "hp"
+        | "atk"
+        | "def"
+        | "damage_reduction"
+        | "guard"
+        | "evade_chance"
+        | "critical_chance"
+        | "effective_against_all_types",
+    value?: number,
+    unit?: PassiveEffect["unit"],
+    chancePercent?: number,
+    sourceText: string,
+}
+
+interface EffectAtomCandidate {
+    start: number,
+    end: number,
+    atoms: PassiveEffectAtom[],
+}
+
+function resolveEffectTarget(sourceText: string): ResolvedEffectTarget {
+    let text = sourceText.trim();
+    let selfInclusion: SelfInclusion = "included";
+    if (/\(self excluded\)/i.test(text)) {
+        selfInclusion = "excluded";
+        text = text.replace(/\s*\(self excluded\)\s*/ig, " ").trim();
+    } else if (/\(self included\)/i.test(text)) {
+        text = text.replace(/\s*\(self included\)\s*/ig, " ").trim();
+    }
+
+    const allAlliesMatch = /^All allies['’]\s+(.+)$/i.exec(text);
+    const categoryAlliesMatch = /^(.+?) Category allies['’]\s+(.+)$/i.exec(text);
+    if (allAlliesMatch) {
+        return {
+            body: allAlliesMatch[1],
+            target: { scope: "team_allies", selfInclusion },
+        };
+    }
+    if (categoryAlliesMatch) {
+        const parsedCategories = parseQuotedValues(categoryAlliesMatch[1]);
+        if (!parsedCategories || parsedCategories.connector === "and") {
+            return { body: text, target: { scope: "unknown" } };
+        }
+        return {
+            body: categoryAlliesMatch[2],
+            target: { scope: "category_allies", selfInclusion },
+            categories: parsedCategories.values,
+        };
+    }
+    if (/^(?:.+?\s+allies|All enemies|Attacked enemy|Enemy|Target enemy)['’]\s+/i.test(text)) {
+        return { body: text, target: { scope: "unknown" } };
+    }
+    return { body: sourceText.trim(), target: { scope: "self" } };
+}
+
+function parseEffectAtoms(body: string): {
+    atoms: PassiveEffectAtom[],
+    unknownSegments: string[],
+} {
+    const candidates: EffectAtomCandidate[] = [];
+    const addMatches = (
+        pattern: RegExp,
+        build: (match: RegExpMatchArray) => PassiveEffectAtom[],
+    ) => {
+        for (const match of body.matchAll(pattern)) {
+            const start = match.index ?? 0;
+            candidates.push({ start, end: start + match[0].length, atoms: build(match) });
+        }
+    };
+
+    addMatches(/\b(?:(?:Receives|Gains)\s+)?(?:an additional\s+)?Ki\s*\+\s*(\d+(?:\.\d+)?)/gi, match => [{
+        kind: "ki",
+        value: Number(match[1]),
+        unit: "ki",
+        sourceText: match[0],
+    }]);
+    addMatches(/\b(?:(?:Receives|Gains)\s+)?(?:an additional\s+)?((?:HP|ATK|DEF)(?:\s*(?:,|&|and)\s*(?:HP|ATK|DEF))*)\s*\+?\s*(\d+(?:\.\d+)?)(%)?/gi, match => {
+        const value = Number(match[2]);
+        const unit: "percent" | "flat" = match[3] ? "percent" : "flat";
+        return (match[1].match(/HP|ATK|DEF/gi) ?? []).map(kind => ({
+            kind: kind.toLowerCase() as "hp" | "atk" | "def",
+            value,
+            unit,
+            sourceText: match[0],
+        }));
+    });
+    addMatches(/\bRecovers\s+(\d+(?:\.\d+)?)%\s+HP\b/gi, match => [{
+        kind: "hp",
+        value: Number(match[1]),
+        unit: "percent",
+        sourceText: match[0],
+    }]);
+    addMatches(/\bDamage reduction rate\s+(\d+(?:\.\d+)?)%/gi, match => [{
+        kind: "damage_reduction",
+        value: Number(match[1]),
+        unit: "percent",
+        sourceText: match[0],
+    }]);
+    addMatches(/\bChance of evading enemy(?:'s|’s) attack\s+(\d+(?:\.\d+)?)%/gi, match => {
+        const chancePercent = Number(match[1]);
+        return [{
+            kind: "evade_chance",
+            value: chancePercent,
+            unit: "percent",
+            chancePercent,
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\bChance of performing a critical hit\s+(\d+(?:\.\d+)?)%/gi, match => {
+        const chancePercent = Number(match[1]);
+        return [{
+            kind: "critical_chance",
+            value: chancePercent,
+            unit: "percent",
+            chancePercent,
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\bGuards all attacks\b/gi, match => [{
+        kind: "guard",
         value: 1,
         unit: "boolean",
-        sourceText,
+        sourceText: match[0],
+    }]);
+    addMatches(/\bAttacks are effective against all Types\b/gi, match => [{
+        kind: "effective_against_all_types",
+        value: 1,
+        unit: "boolean",
+        sourceText: match[0],
+    }]);
+
+    const selected: EffectAtomCandidate[] = [];
+    for (const candidate of candidates.sort((left, right) => left.start - right.start || right.end - left.end)) {
+        if (!selected.some(existing => candidate.start < existing.end && candidate.end > existing.start)) {
+            selected.push(candidate);
+        }
+    }
+    selected.sort((left, right) => left.start - right.start);
+    return {
+        atoms: selected.flatMap(candidate => candidate.atoms),
+        unknownSegments: unknownSegmentsBetweenAtoms(body, selected),
     };
 }
 
-function unknownEffect(sourceText: string): PassiveEffect {
+function unknownSegmentsBetweenAtoms(body: string, atoms: EffectAtomCandidate[]): string[] {
+    if (atoms.length === 0) {
+        return body.trim() ? [body.trim()] : [];
+    }
+    const segments: string[] = [];
+    let cursor = 0;
+    for (const atom of atoms) {
+        const segment = cleanUnknownEffectSegment(body.slice(cursor, atom.start));
+        if (segment) {
+            segments.push(segment);
+        }
+        cursor = atom.end;
+    }
+    const finalSegment = cleanUnknownEffectSegment(body.slice(cursor));
+    if (finalSegment) {
+        segments.push(finalSegment);
+    }
+    return segments;
+}
+
+function cleanUnknownEffectSegment(sourceText: string): string {
+    let text = sourceText.trim();
+    let previous: string;
+    do {
+        previous = text;
+        text = text
+            .replace(/^(?:and|plus)\b\s*/i, "")
+            .replace(/\s*\b(?:and|plus)$/i, "")
+            .replace(/^[,;&]+\s*/, "")
+            .replace(/\s*[,;&]+$/, "")
+            .trim();
+    } while (text !== previous);
+    return text.replace(/\s+/g, " ");
+}
+
+const BENEFICIAL_EFFECT_KINDS = new Set<PassiveEffectKind>([
+    "ki", "hp", "atk", "def", "damage_reduction", "guard", "evade_chance",
+    "critical_chance", "additional_attack", "additional_super_attack",
+    "effective_against_all_types", "ki_sphere_change", "scouter", "revive", "domain",
+]);
+
+function applyEffectTarget(atom: PassiveEffectAtom, resolvedTarget: ResolvedEffectTarget): PassiveEffect {
+    const allyTarget = isAllyTarget(resolvedTarget.target);
+    return {
+        ...atom,
+        target: { ...resolvedTarget.target },
+        ...(resolvedTarget.categories ? { categories: resolvedTarget.categories } : {}),
+        ...(allyTarget && BENEFICIAL_EFFECT_KINDS.has(atom.kind)
+            ? { classifications: ["support" as const] }
+            : {}),
+    };
+}
+
+function combineParseStatuses(conditionStatus: ParseStatus, effectStatus: ParseStatus): ParseStatus {
+    if (conditionStatus === "supported" && effectStatus === "supported") {
+        return "supported";
+    }
+    if (conditionStatus === "unknown" && effectStatus === "unknown") {
+        return "unknown";
+    }
+    return "partial";
+}
+
+function confidenceFromStatus(status: ParseStatus): "high" | "medium" | "low" {
+    return status === "supported" ? "high" : status === "partial" ? "medium" : "low";
+}
+
+function unknownEffect(
+    sourceText: string,
+    target: PassiveTarget = { scope: "unknown" },
+    categories?: string[],
+): PassiveEffect {
     return {
         kind: "unknown",
-        target: { scope: "unknown" },
+        target: { ...target },
+        ...(categories ? { categories } : {}),
         sourceText,
     };
 }
 
-function unknownStandaloneRule(stateKey: string, fragment: SourceFragment): PassiveRule {
+function unknownStandaloneRule(stateKey: string, block: LogicalPassiveBlock): PassiveRule {
+    const fragment = block.source[block.source.length - 1];
     return {
         id: ruleIdFromFragment(stateKey, fragment),
-        condition: { op: "unknown", sourceText: fragment.text },
-        effects: [unknownEffect(fragment.text)],
-        source: [fragment],
+        condition: { op: "unknown", sourceText: block.text },
+        conditionStatus: "unknown",
+        effects: [unknownEffect(block.text)],
+        effectStatus: "unknown",
+        source: block.source,
         parseStatus: "unknown",
         confidence: "low",
     };
-}
-
-function splitSemicolonClauses(
-    rawLine: string,
-    lineIndex: number,
-    bulletText: string,
-    bulletStart: number,
-): SourceFragment[] {
-    const fragments: SourceFragment[] = [];
-    let relativeStart = 0;
-    for (const match of bulletText.matchAll(/;|$/g)) {
-        const rawClause = bulletText.slice(relativeStart, match.index);
-        const text = rawClause.trim();
-        if (text) {
-            const leadingWhitespace = rawClause.length - rawClause.trimStart().length;
-            const start = bulletStart + relativeStart + leadingWhitespace;
-            fragments.push({
-                lineIndex,
-                text,
-                start,
-                end: start + text.length,
-            });
-        }
-        relativeStart = (match.index ?? bulletText.length) + 1;
-        if ((match.index ?? 0) === bulletText.length) {
-            break;
-        }
-    }
-    return fragments.length ? fragments : [trimmedFragment(rawLine, lineIndex)];
 }
 
 function trimmedFragment(rawLine: string, lineIndex: number): SourceFragment {
@@ -673,11 +1161,14 @@ function countRuleStatuses(states: CharacterStateAnalysis[]): Record<ParseStatus
 export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): TeamAnalysisCoverageReport {
     const passiveStatusCounts: Record<ParseStatus, number> = { supported: 0, partial: 0, unknown: 0 };
     const ruleStatusCounts: Record<ParseStatus, number> = { supported: 0, partial: 0, unknown: 0 };
+    const conditionStatusCounts: Record<ParseStatus, number> = { supported: 0, partial: 0, unknown: 0 };
+    const effectStatusCounts: Record<ParseStatus, number> = { supported: 0, partial: 0, unknown: 0 };
     const supportedPredicateCounts: Record<string, number> = {};
     const supportedEffectCounts: Record<string, number> = {};
     const conditionCounts = { always: 0, predicate: 0, unknown: 0, composite: 0 };
     let passiveStateCount = 0;
     let unknownEffectCount = 0;
+    let derivedSupportEffectCount = 0;
     let unknownFragmentCount = 0;
     let teamEvaluableRuleCount = 0;
     let scenarioRuleCount = 0;
@@ -693,9 +1184,15 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
 
         for (const rule of state.passive.rules) {
             ruleStatusCounts[rule.parseStatus] += 1;
+            conditionStatusCounts[rule.conditionStatus] += 1;
+            effectStatusCounts[rule.effectStatus] += 1;
             const conditionKind = classifyCondition(rule.condition);
             conditionCounts[conditionKind] += 1;
-            if (conditionKind === "always") {
+            if (
+                rule.conditionStatus === "supported"
+                && !hasScenarioPredicate(rule.condition)
+                && !hasRuntimePredicate(rule.condition)
+            ) {
                 teamEvaluableRuleCount += 1;
             } else if (hasScenarioPredicate(rule.condition)) {
                 scenarioRuleCount += 1;
@@ -708,6 +1205,9 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
                     unknownEffectCount += 1;
                 } else {
                     supportedEffectCounts[effect.kind] = (supportedEffectCounts[effect.kind] ?? 0) + 1;
+                }
+                if (effect.classifications?.includes("support")) {
+                    derivedSupportEffectCount += 1;
                 }
             }
         }
@@ -722,9 +1222,12 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         passiveStatusCounts,
         parsedRuleCount: dataset.supportedRuleCount + dataset.partialRuleCount + dataset.unknownRuleCount,
         ruleStatusCounts,
+        conditionStatusCounts,
+        effectStatusCounts,
         conditionCounts,
         supportedPredicateCounts: sortedRecord(supportedPredicateCounts),
         supportedEffectCounts: sortedRecord(supportedEffectCounts),
+        derivedSupportEffectCount,
         unknownEffectCount,
         unknownFragmentCount,
         teamEvaluableRuleCount,
@@ -876,14 +1379,15 @@ function expectedStateIdentities(
 
 function expectedStateSources(
     characters: Character[],
-): Map<string, { displayName: string, passiveText: string }> {
-    const expected = new Map<string, { displayName: string, passiveText: string }>();
+): Map<string, { displayName: string, passiveText: string, passiveDetails?: PassiveDetails }> {
+    const expected = new Map<string, { displayName: string, passiveText: string, passiveDetails?: PassiveDetails }>();
     for (const character of characters) {
         for (const form of [character, ...(character.transformations ?? [])] as AnalysisFormSource[]) {
             for (const releaseSource of analysisReleaseSources(form)) {
                 expected.set(buildStateKey(character.id, form.id, releaseSource.releaseState), {
                     displayName: form.name,
                     passiveText: releaseSource.passiveText,
+                    ...(releaseSource.passiveDetails ? { passiveDetails: releaseSource.passiveDetails } : {}),
                 });
             }
         }
@@ -917,7 +1421,7 @@ function validateStableIdentity(
 
 function validateStateSource(
     state: CharacterStateAnalysis,
-    expected: { displayName: string, passiveText: string } | undefined,
+    expected: { displayName: string, passiveText: string, passiveDetails?: PassiveDetails } | undefined,
     issues: TeamAnalysisValidationIssue[],
 ): void {
     if (!expected) {
@@ -929,6 +1433,16 @@ function validateStateSource(
     if (expected.passiveText) {
         if (state.passive?.rawText !== expected.passiveText) {
             issues.push({ code: "passive-text-source", message: `Passive rawText does not exactly match the character form.`, stateKey: state.stateKey });
+        }
+        if (expected.passiveDetails) {
+            const sourceMap = mapPassiveDetailsToSource(expected.passiveText, expected.passiveDetails);
+            if (sourceMap.unmappedTexts.length > 0) {
+                issues.push({
+                    code: "passive-details-source-map",
+                    message: `${sourceMap.unmappedTexts.length} PassiveDetails text(s) do not map to rawText offsets.`,
+                    stateKey: state.stateKey,
+                });
+            }
         }
     } else if (state.passive) {
         issues.push({ code: "unexpected-passive", message: `Analysis contains a passive absent from the character form.`, stateKey: state.stateKey });
@@ -961,15 +1475,131 @@ function validatePassive(
         if (rule.effects.length === 0) {
             issues.push({ code: "empty-effects", message: `Rule has no effects.`, stateKey: state.stateKey, ruleId: rule.id });
         }
+        const conditionStatus = conditionExpressionStatus(rule.condition);
+        const effectStatus = effectListStatus(rule.effects);
+        if (rule.conditionStatus !== conditionStatus) {
+            issues.push({ code: "condition-status", message: `Condition status does not match its AST.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (rule.effectStatus !== effectStatus) {
+            issues.push({ code: "effect-status", message: `Effect status does not match its effects.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (rule.parseStatus !== combineParseStatuses(rule.conditionStatus, rule.effectStatus)) {
+            issues.push({ code: "rule-status", message: `Rule status does not match condition/effect status.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
         validateCondition(rule.condition, 1, state, rule, issues);
         validateFragmentList(rule.source, rawLines, state, rule, issues);
         for (const effect of rule.effects) {
             validateFiniteNumbers(effect, state, rule, issues);
+            validateEffectContract(effect, state, rule, issues);
             if (effect.chancePercent !== undefined && (effect.chancePercent < 0 || effect.chancePercent > 100)) {
                 issues.push({ code: "chance-range", message: `chancePercent is outside 0..100.`, stateKey: state.stateKey, ruleId: rule.id });
             }
             if (effect.duration?.kind === "turns" && (!Number.isInteger(effect.duration.turns) || (effect.duration.turns ?? 0) <= 0)) {
                 issues.push({ code: "duration-range", message: `Turn duration must be a positive integer.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+        }
+    }
+    validateSourceTokenCoverage(passive, rawLines, state, issues);
+}
+
+function conditionExpressionStatus(condition: ConditionExpression): ParseStatus {
+    if (condition.op === "always") {
+        return "supported";
+    }
+    if (condition.op === "unknown") {
+        return "unknown";
+    }
+    if (condition.op === "predicate") {
+        return condition.predicate.kind === "unknown" ? "unknown" : "supported";
+    }
+    if (condition.op === "not") {
+        return conditionExpressionStatus(condition.child);
+    }
+    return aggregateStatuses(condition.children.map(conditionExpressionStatus));
+}
+
+function effectListStatus(effects: PassiveEffect[]): ParseStatus {
+    return aggregateStatuses(effects.map(effect => effect.kind === "unknown" ? "unknown" : "supported"));
+}
+
+function aggregateStatuses(statuses: ParseStatus[]): ParseStatus {
+    if (statuses.length === 0 || statuses.every(status => status === "unknown")) {
+        return "unknown";
+    }
+    if (statuses.every(status => status === "supported")) {
+        return "supported";
+    }
+    return "partial";
+}
+
+const ALLY_PREDICATE_KINDS = new Set<PassivePredicateKind>([
+    "ally_category_present", "ally_name_present", "all_rotation_allies_category",
+    "rotation_partner_category", "rotation_partner_name",
+]);
+
+const ALLY_TARGET_SCOPES = new Set<PassiveTarget["scope"]>([
+    "rotation_allies", "team_allies", "category_allies", "class_allies", "type_allies",
+]);
+
+function isAllyTarget(target: PassiveTarget): boolean {
+    return ALLY_TARGET_SCOPES.has(target.scope);
+}
+
+function validateEffectContract(
+    effect: PassiveEffect,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const allyTarget = isAllyTarget(effect.target);
+    if (allyTarget && effect.target.selfInclusion === undefined) {
+        issues.push({ code: "target-self-inclusion", message: `Ally target must declare self inclusion.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (effect.target.scope === "category_allies" && (effect.categories?.length ?? 0) === 0) {
+        issues.push({ code: "target-categories", message: `Category ally target must name affected categories.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if ((effect.kind as string) === "support") {
+        issues.push({ code: "standalone-support", message: `Support must be a derived classification, not an isolated effect.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    const isDerivedSupport = effect.classifications?.includes("support") === true;
+    if (isDerivedSupport && (!allyTarget || !BENEFICIAL_EFFECT_KINDS.has(effect.kind))) {
+        issues.push({ code: "invalid-support-classification", message: `Support classification requires a beneficial typed ally effect.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (allyTarget && BENEFICIAL_EFFECT_KINDS.has(effect.kind) && !isDerivedSupport) {
+        issues.push({ code: "missing-support-classification", message: `Beneficial typed ally effect must carry derived support classification.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+}
+
+function validateSourceTokenCoverage(
+    passive: ParsedPassive,
+    rawLines: string[],
+    state: CharacterStateAnalysis,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const fragments = uniqueOrderedFragments([
+        ...passive.rules.flatMap(rule => rule.source),
+        ...passive.unparsedFragments,
+    ]);
+    const covered = rawLines.map(line => Array.from({ length: line.length }, () => false));
+    for (const fragment of fragments) {
+        const start = fragment.start ?? rawLines[fragment.lineIndex]?.indexOf(fragment.text) ?? -1;
+        const end = fragment.end ?? (start >= 0 ? start + fragment.text.length : -1);
+        if (start < 0 || end < start || !covered[fragment.lineIndex]) {
+            continue;
+        }
+        for (let index = start; index < end; index += 1) {
+            covered[fragment.lineIndex][index] = true;
+        }
+    }
+    for (let lineIndex = 0; lineIndex < rawLines.length; lineIndex += 1) {
+        for (let column = 0; column < rawLines[lineIndex].length; column += 1) {
+            if (!/\s/.test(rawLines[lineIndex][column]) && !covered[lineIndex][column]) {
+                issues.push({
+                    code: "source-token-loss",
+                    message: `Source token at line ${lineIndex}, column ${column} is not referenced.`,
+                    stateKey: state.stateKey,
+                });
+                return;
             }
         }
     }
@@ -1024,6 +1654,21 @@ function validateCondition(
         validateCondition(condition.child, depth + 1, state, rule, issues);
     } else if (condition.op === "predicate") {
         validateFiniteNumbers(condition.predicate, state, rule, issues);
+        if (ALLY_PREDICATE_KINDS.has(condition.predicate.kind) && condition.predicate.selfInclusion === undefined) {
+            issues.push({ code: "condition-self-inclusion", message: `Ally condition must declare self inclusion.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (condition.predicate.count !== undefined
+            && (!Number.isInteger(condition.predicate.count) || condition.predicate.count <= 0)) {
+            issues.push({ code: "condition-count", message: `Ally count must be a positive integer.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (["ally_category_present", "all_rotation_allies_category", "rotation_partner_category"].includes(condition.predicate.kind)
+            && (condition.predicate.categories?.length ?? 0) === 0) {
+            issues.push({ code: "condition-categories", message: `Category condition must name at least one category.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (["ally_name_present", "rotation_partner_name"].includes(condition.predicate.kind)
+            && (condition.predicate.names?.length ?? 0) === 0) {
+            issues.push({ code: "condition-names", message: `Name condition must name at least one character.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
         for (const slot of condition.predicate.slots ?? []) {
             if (!Number.isInteger(slot) || slot < 1 || slot > 3) {
                 issues.push({ code: "slot-range", message: `Battle slot must be 1, 2, or 3.`, stateKey: state.stateKey, ruleId: rule.id });

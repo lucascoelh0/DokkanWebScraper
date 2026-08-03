@@ -101,7 +101,9 @@ export interface ParsedPassive {
 export interface PassiveRule {
   id: string;
   condition: ConditionExpression;
+  conditionStatus: "supported" | "partial" | "unknown";
   effects: PassiveEffect[];
+  effectStatus: "supported" | "partial" | "unknown";
   source: SourceFragment[];
   parseStatus: "supported" | "partial" | "unknown";
   confidence: "high" | "medium" | "low";
@@ -119,6 +121,11 @@ Rule IDs are deterministic from state key plus normalized source position, not
 random UUIDs. Re-scraping unchanged text must produce byte-stable semantic data
 apart from top-level timestamps.
 
+Condition and effect status are independent. A rule with an unknown condition
+and recognized effects is `partial`: it retains `op: "unknown"` for the
+condition and the typed effects. Rule status is `supported` only when both are
+supported, and `unknown` only when both are unknown.
+
 ## 5. Boolean condition AST
 
 ```ts
@@ -133,6 +140,7 @@ export type ConditionExpression =
 export interface PassivePredicate {
   kind: PassivePredicateKind;
   scope: "self" | "rotation" | "team" | "enemy" | "battle";
+  selfInclusion?: "included" | "excluded" | "unknown";
   comparator?: "eq" | "neq" | "lt" | "lte" | "gt" | "gte" | "between";
   value?: number;
   maxValue?: number;
@@ -146,6 +154,11 @@ export interface PassivePredicate {
   sourceText: string;
 }
 ```
+
+Every ally-related predicate must declare `selfInclusion`. `another ally` and
+`(self excluded)` map to `excluded`. Source wording that explicitly permits the
+current character maps to `included`. When the source does not settle the
+question, use `unknown`; do not infer it from a character name or category.
 
 Initial predicate taxonomy:
 
@@ -221,8 +234,11 @@ export interface PassiveEffect {
   names?: string[];
   classes?: string[];
   types?: string[];
+  classifications?: PassiveEffectClassification[];
   sourceText: string;
 }
+
+export type PassiveEffectClassification = "support";
 
 export interface PassiveTarget {
   scope:
@@ -235,6 +251,7 @@ export interface PassiveTarget {
     | "enemy"
     | "all_enemies"
     | "unknown";
+  selfInclusion?: "included" | "excluded" | "unknown";
 }
 
 export interface PassiveDuration {
@@ -260,16 +277,19 @@ Initial effect taxonomy:
 - `stun_chance`
 - `enemy_atk_down`
 - `enemy_def_down`
-- `support`
 - `ki_sphere_change`
 - `scouter`
 - `revive`
 - `domain`
 - `unknown`
 
-`support` may be a derived tag only when an underlying typed ally-targeting
-effect is also retained. Never emit support solely because a character appears
-on a site's support-only page.
+`support` is emitted only as a derived classification on an underlying typed,
+beneficial ally-targeting effect. This includes typed Ki/HP/ATK/DEF, critical
+chance, evade chance, damage reduction, guard, and effective-against-all-types
+effects when their target is allied. The generator never emits an isolated
+`kind: "support"` effect, and never classifies support solely because a
+character appears on a site's support-only page. Every ally target must declare
+whether it includes self, excludes self, or is unknown.
 
 ## 7. Parsing pipeline
 
@@ -283,6 +303,13 @@ on a site's support-only page.
 6. Associate effects with the narrowest preceding condition scope.
 7. Preserve every unsupported fragment explicitly.
 8. Generate a coverage report by predicate/effect/status.
+
+Effect parsing is target-independent: first recognize source-neutral effect
+atoms, then apply the target resolved from the source prefix (`self`, all
+allies, category allies, and future class/type ally prefixes). In a compound
+effect, recognized atoms remain typed while only the unrecognized qualifier or
+segment becomes `unknown`. Qualitative chance words such as `high` or `great`
+must not receive numeric values until a central, validated mapping exists.
 
 Do not parse Android display output. The TypeScript pipeline owns source cleanup
 and semantics so every consumer receives the same rules.
@@ -298,7 +325,7 @@ families. Parser rollout is staged:
 - all-same-turn conditions;
 - slot 1/2/3;
 - unconditional/basic effects;
-- ally-targeting Ki/ATK/DEF/support effects.
+- beneficial typed ally-targeting effects with derived support classification.
 
 Required before Android shows enabler/support labels:
 
