@@ -1,14 +1,25 @@
 import { Character, PassiveDetails, Transformation } from "./character";
 import { FyiCharacterCatalogEntry } from "./fyi-character-catalog";
+import {
+    ChanceSemantic,
+    QualitativeChanceTerm,
+    validatedChancePercent,
+} from "./team-analysis-chance-lexicon";
+import { resolveFirstPartyProbability } from "./team-analysis-first-party-probabilities";
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.1.0";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.1.2";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
 export type ReleaseState = "initial" | "eza" | "seza";
 export type SelfInclusion = "included" | "excluded" | "unknown";
 export type PassiveEffectClassification = "support";
+export type ProbabilitySource =
+    | "explicit_text"
+    | "first_party_game_db"
+    | "qualitative_lexicon"
+    | "unresolved";
 
 export type PassivePredicateKind =
     | "ally_category_present"
@@ -180,7 +191,15 @@ export interface PassiveEffect {
     target: PassiveTarget,
     value?: number,
     unit?: "percent" | "flat" | "ki" | "count" | "boolean",
+    count?: number,
+    activationChancePercent?: number,
+    additionalToSuperChancePercent?: number,
+    /** @deprecated Compatibility alias for activationChancePercent. */
     chancePercent?: number,
+    qualitativeChanceTerm?: QualitativeChanceTerm,
+    probabilitySource?: ProbabilitySource,
+    additionalToSuperQualitativeChanceTerm?: QualitativeChanceTerm,
+    additionalToSuperProbabilitySource?: ProbabilitySource,
     perStack?: number,
     stackCap?: number,
     duration?: PassiveDuration,
@@ -232,6 +251,8 @@ export interface TeamAnalysisCoverageReport {
     supportedEffectCounts: Record<string, number>,
     derivedSupportEffectCount: number,
     unknownEffectCount: number,
+    unresolvedProbabilityEffectCount: number,
+    probabilitySourceCounts: Record<ProbabilitySource, number>,
     unknownFragmentCount: number,
     teamEvaluableRuleCount: number,
     scenarioRuleCount: number,
@@ -482,7 +503,11 @@ export function parsePassive(
         const conditionResult = currentCondition
             ? parseCondition(currentCondition.text)
             : { condition: { op: "always" } as ConditionExpression, status: "supported" as ParseStatus };
-        const effectResult = parseEffects(block.text);
+        const effectResult = parseEffects(block.text, {
+            stateKey,
+            rawText,
+            ruleLineIndex: block.source[0]?.lineIndex ?? -1,
+        });
         const source = uniqueOrderedFragments([
             ...(currentCondition?.source ?? []),
             ...block.source,
@@ -643,7 +668,9 @@ function buildLogicalPassiveBlocks(sourceFragments: SourceFragment[]): LogicalPa
             current = { kind: "condition", source: [fragment] };
             continue;
         }
-        if (current.kind === "effect" && isLogicalHeaderStart(fragment.text)) {
+        if (current.kind === "effect"
+            && isLogicalHeaderStart(fragment.text)
+            && !isEffectModifierContinuation(fragment.text)) {
             flush();
             current = { kind: "condition", source: [fragment] };
             continue;
@@ -652,6 +679,10 @@ function buildLogicalPassiveBlocks(sourceFragments: SourceFragment[]): LogicalPa
     }
     flush();
     return blocks;
+}
+
+function isEffectModifierContinuation(text: string): boolean {
+    return /^for\s+\d+\s+turn(?:s|\(s\))?$/i.test(text.trim());
 }
 
 function logicalText(kind: "condition" | "effect", source: SourceFragment[]): string {
@@ -845,9 +876,15 @@ function parseQuotedValues(sourceText: string): {
     };
 }
 
-function parseEffects(sourceText: string): ParsedEffectResult {
+interface EffectParseContext {
+    stateKey: string,
+    rawText: string,
+    ruleLineIndex: number,
+}
+
+function parseEffects(sourceText: string, context: EffectParseContext): ParsedEffectResult {
     const resolvedTarget = resolveEffectTarget(sourceText);
-    const parsedAtoms = parseEffectAtoms(resolvedTarget.body);
+    const parsedAtoms = parseEffectAtoms(resolvedTarget.body, context);
     const effects = parsedAtoms.atoms.map(atom => applyEffectTarget(atom, resolvedTarget));
     effects.push(...parsedAtoms.unknownSegments.map(segment => unknownEffect(
         segment,
@@ -876,10 +913,23 @@ interface PassiveEffectAtom {
         | "guard"
         | "evade_chance"
         | "critical_chance"
+        | "additional_attack"
+        | "additional_super_attack"
+        | "stun_chance"
+        | "super_attack_seal"
         | "effective_against_all_types",
     value?: number,
     unit?: PassiveEffect["unit"],
+    count?: number,
+    activationChancePercent?: number,
+    additionalToSuperChancePercent?: number,
     chancePercent?: number,
+    qualitativeChanceTerm?: QualitativeChanceTerm,
+    probabilitySource?: ProbabilitySource,
+    additionalToSuperQualitativeChanceTerm?: QualitativeChanceTerm,
+    additionalToSuperProbabilitySource?: ProbabilitySource,
+    stackCap?: number,
+    duration?: PassiveDuration,
     sourceText: string,
 }
 
@@ -887,6 +937,12 @@ interface EffectAtomCandidate {
     start: number,
     end: number,
     atoms: PassiveEffectAtom[],
+}
+
+interface EffectModifierCandidate {
+    start: number,
+    end: number,
+    apply: (atom: PassiveEffectAtom) => void,
 }
 
 function resolveEffectTarget(sourceText: string): ResolvedEffectTarget {
@@ -918,13 +974,125 @@ function resolveEffectTarget(sourceText: string): ResolvedEffectTarget {
             categories: parsedCategories.values,
         };
     }
+    if (/\b(?:stuns?|stunning|seals?|sealing)\s+(?:all enemies|all enemies['’])/i.test(text)) {
+        return { body: text, target: { scope: "all_enemies" } };
+    }
+    if (/\b(?:stuns?|stunning|seals?|sealing)\s+(?:(?:the\s+)?attacked\s+enemy|(?:the\s+)?enemy)(?:['’]s)?/i.test(text)) {
+        return { body: text, target: { scope: "enemy" } };
+    }
     if (/^(?:.+?\s+allies|All enemies|Attacked enemy|Enemy|Target enemy)['’]\s+/i.test(text)) {
         return { body: text, target: { scope: "unknown" } };
     }
     return { body: sourceText.trim(), target: { scope: "self" } };
 }
 
-function parseEffectAtoms(body: string): {
+function activationChanceFields(
+    percent: number,
+    probabilitySource: ProbabilitySource = "explicit_text",
+    qualitativeChanceTerm?: QualitativeChanceTerm,
+): Pick<PassiveEffectAtom, "activationChancePercent" | "chancePercent" | "probabilitySource" | "qualitativeChanceTerm"> {
+    return {
+        activationChancePercent: percent,
+        chancePercent: percent,
+        probabilitySource,
+        ...(qualitativeChanceTerm ? { qualitativeChanceTerm } : {}),
+    };
+}
+
+function explicitAttackCount(sourceCount: string): number {
+    return /^an?$/i.test(sourceCount) ? 1 : Number(sourceCount);
+}
+
+interface ResolvedProbability {
+    percent?: number,
+    qualitativeChanceTerm?: QualitativeChanceTerm,
+    probabilitySource: ProbabilitySource,
+}
+
+function normalizeQualitativeChanceTerm(sourceTerm: string | undefined): QualitativeChanceTerm | undefined {
+    if (!sourceTerm) {
+        return undefined;
+    }
+    const normalized = sourceTerm.trim().toLowerCase();
+    if (normalized === "a" || normalized === "a chance") {
+        return "a chance";
+    }
+    if (["rare", "medium", "high", "great"].includes(normalized)) {
+        return normalized as QualitativeChanceTerm;
+    }
+    return undefined;
+}
+
+function resolveProbability(
+    context: EffectParseContext,
+    semantic: ChanceSemantic,
+    sourceTerm: string | undefined,
+    sourcePercent: string | undefined,
+): ResolvedProbability {
+    const qualitativeChanceTerm = normalizeQualitativeChanceTerm(sourceTerm);
+    if (sourcePercent !== undefined) {
+        return {
+            percent: Number(sourcePercent),
+            ...(qualitativeChanceTerm ? { qualitativeChanceTerm } : {}),
+            probabilitySource: "explicit_text",
+        };
+    }
+    if (qualitativeChanceTerm) {
+        const firstParty = resolveFirstPartyProbability(
+            context.stateKey,
+            context.rawText,
+            context.ruleLineIndex,
+            qualitativeChanceTerm,
+            semantic,
+        );
+        if (firstParty) {
+            return {
+                percent: firstParty.percent,
+                qualitativeChanceTerm,
+                probabilitySource: "first_party_game_db",
+            };
+        }
+        const lexiconPercent = validatedChancePercent(qualitativeChanceTerm, semantic);
+        if (lexiconPercent !== undefined) {
+            return {
+                percent: lexiconPercent,
+                qualitativeChanceTerm,
+                probabilitySource: "qualitative_lexicon",
+            };
+        }
+        return { qualitativeChanceTerm, probabilitySource: "unresolved" };
+    }
+    return { probabilitySource: "unresolved" };
+}
+
+function activationProbabilityFields(probability: ResolvedProbability): Pick<
+    PassiveEffectAtom,
+    "activationChancePercent" | "chancePercent" | "qualitativeChanceTerm" | "probabilitySource"
+> {
+    return {
+        ...(probability.percent !== undefined ? {
+            activationChancePercent: probability.percent,
+            chancePercent: probability.percent,
+        } : {}),
+        ...(probability.qualitativeChanceTerm ? { qualitativeChanceTerm: probability.qualitativeChanceTerm } : {}),
+        probabilitySource: probability.probabilitySource,
+    };
+}
+
+function additionalToSuperProbabilityFields(probability: ResolvedProbability): Pick<
+    PassiveEffectAtom,
+    "additionalToSuperChancePercent" | "additionalToSuperQualitativeChanceTerm" | "additionalToSuperProbabilitySource"
+> {
+    return {
+        ...(probability.percent !== undefined ? { additionalToSuperChancePercent: probability.percent } : {}),
+        ...(probability.qualitativeChanceTerm
+            ? { additionalToSuperQualitativeChanceTerm: probability.qualitativeChanceTerm }
+            : {}),
+        additionalToSuperProbabilitySource: probability.probabilitySource,
+    };
+}
+
+function parseEffectAtoms(body: string, context: EffectParseContext): {
     atoms: PassiveEffectAtom[],
     unknownSegments: string[],
 } {
@@ -932,12 +1100,183 @@ function parseEffectAtoms(body: string): {
     const addMatches = (
         pattern: RegExp,
         build: (match: RegExpMatchArray) => PassiveEffectAtom[],
+        rejectUnknownChancePrefix = false,
     ) => {
         for (const match of body.matchAll(pattern)) {
             const start = match.index ?? 0;
-            candidates.push({ start, end: start + match[0].length, atoms: build(match) });
+            if (rejectUnknownChancePrefix
+                && /\bchance of\s+$/i.test(body.slice(Math.max(0, start - 48), start))) {
+                continue;
+            }
+            const atoms = build(match);
+            if (atoms.length > 0) {
+                candidates.push({ start, end: start + match[0].length, atoms });
+            }
         }
     };
+
+    addMatches(/\b(?:(?:(?<activationTerm>rare|medium|high|great)\s+chance(?:\s*\((?<activationParenPercent>\d+(?:\.\d+)?)%\))?|(?<activationPercent>\d+(?:\.\d+)?)%\s+chance|(?<activationArticle>a)\s+chance|(?<activationBare>chance))\s+of\s+)?launch(?:es|ing)\s+(?<attackCount>an?|\d+)\s+additional attack(?:\(s\)|s)?(?:,?\s*each of which|\s+that|\s+which)\s+(?:has|have)\s+(?:(?<conversionArticle>a)\s+chance|(?:a\s+)?(?:(?<conversionTerm>rare|medium|high|great)\s+chance(?:\s*\((?<conversionParenPercent>\d+(?:\.\d+)?)%\))?|(?<conversionPercent>\d+(?:\.\d+)?)%\s+chance)|(?<conversionBare>chance))\s+of becoming a Super Attack(?:\s+(?<conversionTrailingPercent>\d+(?:\.\d+)?)%)?/gi, match => {
+        const groups = match.groups ?? {};
+        const hasActivationChance = [groups.activationTerm, groups.activationPercent, groups.activationArticle, groups.activationBare].some(Boolean);
+        const activation = hasActivationChance
+            ? resolveProbability(context, "additional_super_activation", groups.activationTerm ?? groups.activationArticle, groups.activationParenPercent ?? groups.activationPercent)
+            : { percent: 100, probabilitySource: "explicit_text" as ProbabilitySource };
+        const conversion = resolveProbability(
+            context,
+            "additional_to_super",
+            groups.conversionTerm ?? groups.conversionArticle,
+            groups.conversionTrailingPercent ?? groups.conversionParenPercent ?? groups.conversionPercent,
+        );
+        return [{
+            kind: "additional_attack",
+            count: explicitAttackCount(groups.attackCount),
+            ...activationProbabilityFields(activation),
+            ...additionalToSuperProbabilityFields(conversion),
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\b(?:(?:(rare|medium|high|great)\s+chance(?:\s*\((\d+(?:\.\d+)?)%\))?|(\d+(?:\.\d+)?)%\s+chance|(a)\s+chance|(chance))\s+of\s+)?launch(?:es|ing)\s+(an?|\d+)\s+additional Super Attack(?:\(s\)|s)?(?:\s+(\d+(?:\.\d+)?)%)?/gi, match => {
+        const hasActivationChance = match.slice(1, 6).some(Boolean);
+        const activation = hasActivationChance
+            ? resolveProbability(context, "additional_super_activation", match[1] ?? match[4], match[7] ?? match[2] ?? match[3])
+            : { percent: 100, probabilitySource: "explicit_text" as ProbabilitySource };
+        return [{
+            kind: "additional_super_attack",
+            count: explicitAttackCount(match[6]),
+            ...activationProbabilityFields(activation),
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\b(?:(?:(rare|medium|high|great)\s+chance(?:\s*\((\d+(?:\.\d+)?)%\))?|(\d+(?:\.\d+)?)%\s+chance|(a)\s+chance|(chance))\s+of\s+)?launch(?:es|ing)\s+(an?|\d+)\s+additional attack(?:\(s\)|s)?/gi, match => {
+        const hasActivationChance = match.slice(1, 6).some(Boolean);
+        const activation = hasActivationChance
+            ? resolveProbability(context, "additional_super_activation", match[1] ?? match[4], match[2] ?? match[3])
+            : { percent: 100, probabilitySource: "explicit_text" as ProbabilitySource };
+        return [{
+            kind: "additional_attack",
+            count: explicitAttackCount(match[6]),
+            ...activationProbabilityFields(activation),
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\bChance of performing a critical hit\s*(?:&|and|,)\s*damage reduction(?: rate)?\s+(\d+(?:\.\d+)?)%/gi, match => {
+        const percent = Number(match[1]);
+        return [{
+            kind: "critical_chance",
+            value: percent,
+            unit: "percent",
+            ...activationChanceFields(percent),
+            sourceText: match[0],
+        }, {
+            kind: "damage_reduction",
+            value: percent,
+            unit: "percent",
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\bChance of performing a critical hit\s*(?:&|and|,)\s*(?:chance of\s+)?evading enemy(?:'s|’s) attack\s+(\d+(?:\.\d+)?)%/gi, match => {
+        const percent = Number(match[1]);
+        return ["critical_chance", "evade_chance"].map(kind => ({
+            kind: kind as "critical_chance" | "evade_chance",
+            value: percent,
+            unit: "percent",
+            ...activationChanceFields(percent),
+            sourceText: match[0],
+        }));
+    });
+    addMatches(/\b(?:(rare|medium|high|great)\s+chance(?:\s*\((\d+(?:\.\d+)?)%\))?|(a)\s+chance|(chance))\s+of performing a critical hit(?:\s+(\d+(?:\.\d+)?)%)?/gi, match => {
+        const probability = resolveProbability(context, "critical_activation", match[1] ?? match[3], match[5] ?? match[2]);
+        return [{
+            kind: "critical_chance",
+            ...(probability.percent !== undefined ? { value: probability.percent } : {}),
+            unit: "percent",
+            ...activationProbabilityFields(probability),
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\b(\d+(?:\.\d+)?)%\s+chance of performing a critical hit/gi, match => {
+        const activationChancePercent = Number(match[1]);
+        return [{
+            kind: "critical_chance",
+            value: activationChancePercent,
+            unit: "percent",
+            ...activationChanceFields(activationChancePercent),
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\bPerforms a critical hit\b/gi, match => [{
+        kind: "critical_chance",
+        value: 100,
+        unit: "percent",
+        ...activationChanceFields(100),
+        sourceText: match[0],
+    }]);
+    addMatches(/\b(?:(rare|medium|high|great)\s+chance(?:\s*\((\d+(?:\.\d+)?)%\))?|(a)\s+chance|(chance))\s+of evading enemy(?:'s|’s) attack(?:\s+(\d+(?:\.\d+)?)%)?/gi, match => {
+        const probability = resolveProbability(context, "evade_activation", match[1] ?? match[3], match[5] ?? match[2]);
+        return [{
+            kind: "evade_chance",
+            ...(probability.percent !== undefined ? { value: probability.percent } : {}),
+            unit: "percent",
+            ...activationProbabilityFields(probability),
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\b(\d+(?:\.\d+)?)%\s+chance of evading enemy(?:'s|’s) attack/gi, match => {
+        const activationChancePercent = Number(match[1]);
+        return [{
+            kind: "evade_chance",
+            value: activationChancePercent,
+            unit: "percent",
+            ...activationChanceFields(activationChancePercent),
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\bEvades enemy(?:'s|’s) attack\b/gi, match => [{
+        kind: "evade_chance",
+        value: 100,
+        unit: "percent",
+        ...activationChanceFields(100),
+        sourceText: match[0],
+    }]);
+    addMatches(/\b(?:(?:(rare|medium|high|great)\s+chance(?:\s*\((\d+(?:\.\d+)?)%\))?|(\d+(?:\.\d+)?)%\s+chance|(a)\s+chance|(chance))\s+of\s+)?(?:stunning|stuns?)\s+((?:(?:the\s+)?attacked\s+enemy)|(?:(?:the\s+)?enemy)|all enemies)\b/gi, match => {
+        const hasActivationChance = match.slice(1, 6).some(Boolean);
+        const probability = hasActivationChance
+            ? resolveProbability(context, "stun_activation", match[1] ?? match[4], match[2] ?? match[3])
+            : { percent: 100, probabilitySource: "explicit_text" as ProbabilitySource };
+        return [{
+            kind: "stun_chance",
+            value: 1,
+            unit: "boolean",
+            ...activationProbabilityFields(probability),
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\b(?:(?:(rare|medium|high|great)\s+chance(?:\s*\((\d+(?:\.\d+)?)%\))?|(\d+(?:\.\d+)?)%\s+chance|(a)\s+chance|(chance))\s+of\s+)?(?:sealing|seals?)\s+((?:(?:the\s+)?attacked\s+enemy)|(?:(?:the\s+)?enemy))['’]s\s+Super Attack(?:s)?\b/gi, match => {
+        const hasActivationChance = match.slice(1, 6).some(Boolean);
+        const probability = hasActivationChance
+            ? resolveProbability(context, "seal_activation", match[1] ?? match[4], match[2] ?? match[3])
+            : { percent: 100, probabilitySource: "explicit_text" as ProbabilitySource };
+        return [{
+            kind: "super_attack_seal",
+            value: 1,
+            unit: "boolean",
+            ...activationProbabilityFields(probability),
+            sourceText: match[0],
+        }];
+    });
+    addMatches(/\b(?:(?:(rare|medium|high|great)\s+chance(?:\s*\((\d+(?:\.\d+)?)%\))?|(\d+(?:\.\d+)?)%\s+chance|(a)\s+chance|(chance))\s+of\s+)?(?:sealing|seals?)\s+all enemies['’]\s+Super Attacks?\b/gi, match => {
+        const hasActivationChance = match.slice(1, 6).some(Boolean);
+        const probability = hasActivationChance
+            ? resolveProbability(context, "seal_activation", match[1] ?? match[4], match[2] ?? match[3])
+            : { percent: 100, probabilitySource: "explicit_text" as ProbabilitySource };
+        return [{
+            kind: "super_attack_seal",
+            value: 1,
+            unit: "boolean",
+            ...activationProbabilityFields(probability),
+            sourceText: match[0],
+        }];
+    });
 
     addMatches(/\b(?:(?:Receives|Gains)\s+)?(?:an additional\s+)?Ki\s*\+\s*(\d+(?:\.\d+)?)/gi, match => [{
         kind: "ki",
@@ -973,7 +1312,7 @@ function parseEffectAtoms(body: string): {
             kind: "evade_chance",
             value: chancePercent,
             unit: "percent",
-            chancePercent,
+            ...activationChanceFields(chancePercent),
             sourceText: match[0],
         }];
     });
@@ -983,7 +1322,7 @@ function parseEffectAtoms(body: string): {
             kind: "critical_chance",
             value: chancePercent,
             unit: "percent",
-            chancePercent,
+            ...activationChanceFields(chancePercent),
             sourceText: match[0],
         }];
     });
@@ -1007,19 +1346,91 @@ function parseEffectAtoms(body: string): {
         }
     }
     selected.sort((left, right) => left.start - right.start);
+    const modifiers = applyEffectModifiers(body, selected);
     return {
         atoms: selected.flatMap(candidate => candidate.atoms),
-        unknownSegments: unknownSegmentsBetweenAtoms(body, selected),
+        unknownSegments: unknownSegmentsBetweenAtoms(body, [...selected, ...modifiers]),
     };
 }
 
-function unknownSegmentsBetweenAtoms(body: string, atoms: EffectAtomCandidate[]): string[] {
+function applyEffectModifiers(body: string, atoms: EffectAtomCandidate[]): EffectModifierCandidate[] {
+    const candidates: EffectModifierCandidate[] = [];
+    const addModifiers = (
+        pattern: RegExp,
+        build: (match: RegExpMatchArray) => (atom: PassiveEffectAtom) => void,
+    ) => {
+        for (const match of body.matchAll(pattern)) {
+            const start = match.index ?? 0;
+            candidates.push({
+                start,
+                end: start + match[0].length,
+                apply: build(match),
+            });
+        }
+    };
+
+    addModifiers(/\bwithin the turn\b/gi, () => atom => {
+        atom.duration = { kind: "within_turn" };
+    });
+    addModifiers(/\bfor\s+(\d+)\s+turn(?:s\b|\(s\)(?!\w)|\b)/gi, match => atom => {
+        atom.duration = { kind: "turns", turns: Number(match[1]) };
+    });
+    addModifiers(/\b(?:for the rest of (?:the )?battle|throughout (?:the )?battle|permanently)\b/gi, () => atom => {
+        atom.duration = { kind: "battle" };
+    });
+    addModifiers(/\(\s*up to\s+(\d+(?:\.\d+)?)%\s*\)/gi, match => atom => {
+        atom.stackCap = Number(match[1]);
+    });
+
+    const applied: EffectModifierCandidate[] = [];
+    for (const modifier of candidates.sort((left, right) => left.start - right.start || left.end - right.end)) {
+        const preceding = [...atoms]
+            .reverse()
+            .find(atom => atom.end <= modifier.start && !body.slice(atom.end, modifier.start).includes(";"));
+        if (!preceding) {
+            continue;
+        }
+        const bridge = stripKnownModifierText(body.slice(preceding.end, modifier.start));
+        if (!/^[\s,()]*$/.test(bridge)) {
+            continue;
+        }
+        if (/up to/i.test(modifierText(body, modifier)) && preceding.atoms.some(atom => atom.unit !== "percent")) {
+            continue;
+        }
+        for (const atom of preceding.atoms) {
+            modifier.apply(atom);
+        }
+        applied.push(modifier);
+    }
+    return applied;
+}
+
+function stripKnownModifierText(sourceText: string): string {
+    return sourceText
+        .replace(/\bwithin the turn\b/gi, "")
+        .replace(/\bfor\s+\d+\s+turn(?:s\b|\(s\)(?!\w)|\b)/gi, "")
+        .replace(/\b(?:for the rest of (?:the )?battle|throughout (?:the )?battle|permanently)\b/gi, "")
+        .replace(/\(\s*up to\s+\d+(?:\.\d+)?%\s*\)/gi, "");
+}
+
+function modifierText(body: string, modifier: EffectModifierCandidate): string {
+    return body.slice(modifier.start, modifier.end);
+}
+
+function unknownSegmentsBetweenAtoms(
+    body: string,
+    atoms: Array<Pick<EffectAtomCandidate, "start" | "end">>,
+): string[] {
     if (atoms.length === 0) {
         return body.trim() ? [body.trim()] : [];
     }
     const segments: string[] = [];
     let cursor = 0;
-    for (const atom of atoms) {
+    for (const atom of [...atoms].sort((left, right) => left.start - right.start || left.end - right.end)) {
+        if (atom.start < cursor) {
+            cursor = Math.max(cursor, atom.end);
+            continue;
+        }
         const segment = cleanUnknownEffectSegment(body.slice(cursor, atom.start));
         if (segment) {
             segments.push(segment);
@@ -1165,9 +1576,16 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
     const effectStatusCounts: Record<ParseStatus, number> = { supported: 0, partial: 0, unknown: 0 };
     const supportedPredicateCounts: Record<string, number> = {};
     const supportedEffectCounts: Record<string, number> = {};
+    const probabilitySourceCounts: Record<ProbabilitySource, number> = {
+        explicit_text: 0,
+        first_party_game_db: 0,
+        qualitative_lexicon: 0,
+        unresolved: 0,
+    };
     const conditionCounts = { always: 0, predicate: 0, unknown: 0, composite: 0 };
     let passiveStateCount = 0;
     let unknownEffectCount = 0;
+    let unresolvedProbabilityEffectCount = 0;
     let derivedSupportEffectCount = 0;
     let unknownFragmentCount = 0;
     let teamEvaluableRuleCount = 0;
@@ -1209,6 +1627,14 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
                 if (effect.classifications?.includes("support")) {
                     derivedSupportEffectCount += 1;
                 }
+                const probabilitySources = [effect.probabilitySource, effect.additionalToSuperProbabilitySource]
+                    .filter((source): source is ProbabilitySource => source !== undefined);
+                for (const source of probabilitySources) {
+                    probabilitySourceCounts[source] += 1;
+                }
+                if (probabilitySources.includes("unresolved")) {
+                    unresolvedProbabilityEffectCount += 1;
+                }
             }
         }
     }
@@ -1229,6 +1655,8 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         supportedEffectCounts: sortedRecord(supportedEffectCounts),
         derivedSupportEffectCount,
         unknownEffectCount,
+        unresolvedProbabilityEffectCount,
+        probabilitySourceCounts,
         unknownFragmentCount,
         teamEvaluableRuleCount,
         scenarioRuleCount,
@@ -1491,11 +1919,33 @@ function validatePassive(
         for (const effect of rule.effects) {
             validateFiniteNumbers(effect, state, rule, issues);
             validateEffectContract(effect, state, rule, issues);
-            if (effect.chancePercent !== undefined && (effect.chancePercent < 0 || effect.chancePercent > 100)) {
-                issues.push({ code: "chance-range", message: `chancePercent is outside 0..100.`, stateKey: state.stateKey, ruleId: rule.id });
+            for (const field of ["activationChancePercent", "additionalToSuperChancePercent", "chancePercent"] as const) {
+                const chance = effect[field];
+                if (chance !== undefined && (chance < 0 || chance > 100)) {
+                    issues.push({ code: "chance-range", message: `${field} is outside 0..100.`, stateKey: state.stateKey, ruleId: rule.id });
+                }
+            }
+            if (effect.activationChancePercent !== undefined
+                && effect.chancePercent !== undefined
+                && effect.activationChancePercent !== effect.chancePercent) {
+                issues.push({ code: "chance-alias", message: `chancePercent must equal activationChancePercent when both are present.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.additionalToSuperChancePercent !== undefined && effect.kind !== "additional_attack") {
+                issues.push({ code: "additional-to-super-kind", message: `additionalToSuperChancePercent is valid only for additional_attack.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            validateProbabilityChannel(effect, "activation", state, rule, issues);
+            validateProbabilityChannel(effect, "additional_to_super", state, rule, issues);
+            if (effect.count !== undefined && (!Number.isInteger(effect.count) || effect.count <= 0)) {
+                issues.push({ code: "effect-count", message: `Effect count must be a positive integer.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.stackCap !== undefined && effect.stackCap < 0) {
+                issues.push({ code: "effect-cap", message: `Effect cap cannot be negative.`, stateKey: state.stateKey, ruleId: rule.id });
             }
             if (effect.duration?.kind === "turns" && (!Number.isInteger(effect.duration.turns) || (effect.duration.turns ?? 0) <= 0)) {
                 issues.push({ code: "duration-range", message: `Turn duration must be a positive integer.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.duration?.kind !== "turns" && effect.duration?.turns !== undefined) {
+                issues.push({ code: "duration-turns-kind", message: `Only a turns duration may declare turns.`, stateKey: state.stateKey, ruleId: rule.id });
             }
         }
     }
@@ -1519,7 +1969,51 @@ function conditionExpressionStatus(condition: ConditionExpression): ParseStatus 
 }
 
 function effectListStatus(effects: PassiveEffect[]): ParseStatus {
-    return aggregateStatuses(effects.map(effect => effect.kind === "unknown" ? "unknown" : "supported"));
+    return aggregateStatuses(effects.map(effect => {
+        if (effect.kind === "unknown") {
+            return "unknown";
+        }
+        if (effect.probabilitySource === "unresolved"
+            || effect.additionalToSuperProbabilitySource === "unresolved") {
+            return "partial";
+        }
+        return "supported";
+    }));
+}
+
+function validateProbabilityChannel(
+    effect: PassiveEffect,
+    channel: "activation" | "additional_to_super",
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const percent = channel === "activation"
+        ? effect.activationChancePercent
+        : effect.additionalToSuperChancePercent;
+    const term = channel === "activation"
+        ? effect.qualitativeChanceTerm
+        : effect.additionalToSuperQualitativeChanceTerm;
+    const source = channel === "activation"
+        ? effect.probabilitySource
+        : effect.additionalToSuperProbabilitySource;
+    const prefix = channel === "activation" ? "probability" : "additional-to-super-probability";
+
+    if ((percent !== undefined || term !== undefined) && source === undefined) {
+        issues.push({ code: `${prefix}-source`, message: `Probability metadata requires a source.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (source === "unresolved" && percent !== undefined) {
+        issues.push({ code: `${prefix}-unresolved-value`, message: `An unresolved probability cannot declare a numeric value.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (source !== undefined && source !== "unresolved" && percent === undefined) {
+        issues.push({ code: `${prefix}-missing-value`, message: `A resolved probability must declare a numeric value.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if ((source === "first_party_game_db" || source === "qualitative_lexicon") && term === undefined) {
+        issues.push({ code: `${prefix}-missing-term`, message: `Non-text numeric resolution requires a qualitative term.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (channel === "additional_to_super" && source !== undefined && effect.kind !== "additional_attack") {
+        issues.push({ code: "additional-to-super-kind", message: `Additional-to-Super probability metadata is valid only for additional_attack.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
 }
 
 function aggregateStatuses(statuses: ParseStatus[]): ParseStatus {

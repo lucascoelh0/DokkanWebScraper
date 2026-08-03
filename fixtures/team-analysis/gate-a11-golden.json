@@ -1,0 +1,285 @@
+{
+  "cases": [
+    {
+      "name": "guaranteed additional attack",
+      "rawText": "Basic effect(s)\n- Launches an additional attack",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "additional_attack", "count": 1, "activationChancePercent": 100, "chancePercent": 100, "probabilitySource": "explicit_text", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "guaranteed additional Super Attack",
+      "rawText": "Basic effect(s)\n- Launches an additional Super Attack",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "additional_super_attack", "count": 1, "activationChancePercent": 100, "chancePercent": 100, "probabilitySource": "explicit_text", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "chance of additional Super Attack",
+      "rawText": "Basic effect(s)\n- High chance of launching an additional Super Attack",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "additional_super_attack", "count": 1, "activationChancePercent": 50, "chancePercent": 50, "qualitativeChanceTerm": "high", "probabilitySource": "qualitative_lexicon", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "additional attack can become Super Attack",
+      "rawText": "Basic effect(s)\n- Launches an additional attack that has a medium chance of becoming a Super Attack",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "additional_attack", "count": 1, "activationChancePercent": 100, "chancePercent": 100, "probabilitySource": "explicit_text", "additionalToSuperChancePercent": 30, "additionalToSuperQualitativeChanceTerm": "medium", "additionalToSuperProbabilitySource": "qualitative_lexicon", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "two additional attacks",
+      "rawText": "Basic effect(s)\n- Launches 2 additional attacks, each of which has a great chance of becoming a Super Attack",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "additional_attack", "count": 2, "activationChancePercent": 100, "chancePercent": 100, "probabilitySource": "explicit_text", "additionalToSuperChancePercent": 70, "additionalToSuperQualitativeChanceTerm": "great", "additionalToSuperProbabilitySource": "qualitative_lexicon", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "numeric activation and conversion chances",
+      "rawText": "Basic effect(s)\n- 59% chance of launching an additional attack that has a 66% chance of becoming a Super Attack",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "additional_attack", "count": 1, "activationChancePercent": 59, "chancePercent": 59, "probabilitySource": "explicit_text", "additionalToSuperChancePercent": 66, "additionalToSuperProbabilitySource": "explicit_text", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "qualitative critical chance",
+      "rawText": "Basic effect(s)\n- High chance of performing a critical hit",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "critical_chance", "value": 50, "unit": "percent", "activationChancePercent": 50, "chancePercent": 50, "qualitativeChanceTerm": "high", "probabilitySource": "qualitative_lexicon", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "rare critical chance without association",
+      "rawText": "Basic effect(s)\n- Rare chance of performing a critical hit",
+      "expected": {
+        "parseStatus": "partial",
+        "effectStatus": "partial",
+        "effects": [
+          { "kind": "critical_chance", "unit": "percent", "qualitativeChanceTerm": "rare", "probabilitySource": "unresolved", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "qualitative dodge chance",
+      "rawText": "Basic effect(s)\n- Great chance of evading enemy's attack",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "evade_chance", "value": 70, "unit": "percent", "activationChancePercent": 70, "chancePercent": 70, "qualitativeChanceTerm": "great", "probabilitySource": "qualitative_lexicon", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "rare dodge chance without association",
+      "rawText": "Basic effect(s)\n- Rare chance of evading enemy's attack",
+      "expected": {
+        "parseStatus": "partial",
+        "effectStatus": "partial",
+        "effects": [
+          { "kind": "evade_chance", "unit": "percent", "qualitativeChanceTerm": "rare", "probabilitySource": "unresolved", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "rare additional Super Attack without association",
+      "rawText": "Basic effect(s)\n- Rare chance of launching an additional Super Attack",
+      "expected": {
+        "parseStatus": "partial",
+        "effectStatus": "partial",
+        "effects": [
+          { "kind": "additional_super_attack", "count": 1, "qualitativeChanceTerm": "rare", "probabilitySource": "unresolved", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "rare additional to Super chance without association",
+      "rawText": "Basic effect(s)\n- Launches an additional attack that has a rare chance of becoming a Super Attack",
+      "expected": {
+        "parseStatus": "partial",
+        "effectStatus": "partial",
+        "effects": [
+          { "kind": "additional_attack", "count": 1, "activationChancePercent": 100, "chancePercent": 100, "probabilitySource": "explicit_text", "additionalToSuperQualitativeChanceTerm": "rare", "additionalToSuperProbabilitySource": "unresolved", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "explicit chance overrides qualitative term",
+      "rawText": "Basic effect(s)\n- Rare chance (37%) of performing a critical hit",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "critical_chance", "value": 37, "unit": "percent", "activationChancePercent": 37, "chancePercent": 37, "qualitativeChanceTerm": "rare", "probabilitySource": "explicit_text", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "chance without qualifier remains unresolved",
+      "rawText": "Basic effect(s)\n- Chance of performing a critical hit",
+      "expected": {
+        "parseStatus": "partial",
+        "effectStatus": "partial",
+        "effects": [
+          { "kind": "critical_chance", "unit": "percent", "probabilitySource": "unresolved", "sourceText": "Chance of performing a critical hit", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "stun chance for two turns",
+      "rawText": "Basic effect(s)\n- Medium chance of stunning the attacked enemy for 2 turn(s)",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "stun_chance", "value": 1, "unit": "boolean", "activationChancePercent": 30, "chancePercent": 30, "qualitativeChanceTerm": "medium", "probabilitySource": "qualitative_lexicon", "target": "enemy", "durationKind": "turns", "durationTurns": 2 }
+        ]
+      }
+    },
+    {
+      "name": "Super Attack seal for three turns",
+      "rawText": "Basic effect(s)\n- Seals the attacked enemy's Super Attack\nfor 3 turns",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "super_attack_seal", "value": 1, "unit": "boolean", "activationChancePercent": 100, "chancePercent": 100, "probabilitySource": "explicit_text", "target": "enemy", "durationKind": "turns", "durationTurns": 3 }
+        ]
+      }
+    },
+    {
+      "name": "within the turn",
+      "rawText": "Basic effect(s)\n- Medium chance of evading enemy's attack within the turn",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "evade_chance", "value": 30, "unit": "percent", "activationChancePercent": 30, "chancePercent": 30, "qualitativeChanceTerm": "medium", "probabilitySource": "qualitative_lexicon", "target": "self", "durationKind": "within_turn" }
+        ]
+      }
+    },
+    {
+      "name": "battle duration",
+      "rawText": "Basic effect(s)\n- ATK +20% for the rest of the battle",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "atk", "value": 20, "unit": "percent", "target": "self", "durationKind": "battle" }
+        ]
+      }
+    },
+    {
+      "name": "percent cap",
+      "rawText": "Basic effect(s)\n- ATK & DEF +20% (up to 60%)",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "atk", "value": 20, "unit": "percent", "stackCap": 60, "target": "self" },
+          { "kind": "def", "value": 20, "unit": "percent", "stackCap": 60, "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "shared critical and damage reduction value",
+      "rawText": "Basic effect(s)\n- Chance of performing a critical hit & damage reduction rate 20%",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "critical_chance", "value": 20, "unit": "percent", "activationChancePercent": 20, "chancePercent": 20, "probabilitySource": "explicit_text", "target": "self" },
+          { "kind": "damage_reduction", "value": 20, "unit": "percent", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "known effect with unknown qualifier",
+      "rawText": "Basic effect(s)\n- Launches an additional Super Attack when attacking as the 3rd attacker in a turn",
+      "expected": {
+        "parseStatus": "partial",
+        "effects": [
+          { "kind": "additional_super_attack", "count": 1, "activationChancePercent": 100, "chancePercent": 100, "probabilitySource": "explicit_text", "target": "self" },
+          { "kind": "unknown", "sourceText": "when attacking as the 3rd attacker in a turn", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "unqualified additional Super chance remains unresolved",
+      "rawText": "Basic effect(s)\n- Chance of launching an additional Super Attack",
+      "expected": {
+        "parseStatus": "partial",
+        "effectStatus": "partial",
+        "effects": [
+          { "kind": "additional_super_attack", "count": 1, "probabilitySource": "unresolved", "sourceText": "Chance of launching an additional Super Attack", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "a chance conversion validated by first-party audit",
+      "rawText": "Basic effect(s)\n- Launches an additional attack that has a chance of becoming a Super Attack",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "additional_attack", "count": 1, "activationChancePercent": 100, "chancePercent": 100, "probabilitySource": "explicit_text", "additionalToSuperChancePercent": 10, "additionalToSuperQualitativeChanceTerm": "a chance", "additionalToSuperProbabilitySource": "qualitative_lexicon", "target": "self" }
+        ]
+      }
+    },
+    {
+      "name": "Jaco rare stun with first-party association",
+      "stateKey": "1002210:1002210:initial",
+      "rawText": "Basic effect(s)\n- Rare chance of stunning all enemies",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "stun_chance", "value": 1, "unit": "boolean", "activationChancePercent": 7, "chancePercent": 7, "qualitativeChanceTerm": "rare", "probabilitySource": "first_party_game_db", "target": "all_enemies" }
+        ]
+      }
+    },
+    {
+      "name": "Chiaotzu guaranteed stun text",
+      "stateKey": "1000140:1000140:initial",
+      "rawText": "Basic effect(s)\n- Stuns all enemies",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "stun_chance", "value": 1, "unit": "boolean", "activationChancePercent": 100, "chancePercent": 100, "probabilitySource": "explicit_text", "target": "all_enemies" }
+        ]
+      }
+    },
+    {
+      "name": "ally critical support regression",
+      "rawText": "Basic effect(s)\n- All allies' high chance of performing a critical hit",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "critical_chance", "value": 50, "unit": "percent", "activationChancePercent": 50, "chancePercent": 50, "qualitativeChanceTerm": "high", "probabilitySource": "qualitative_lexicon", "target": "team_allies", "selfInclusion": "included", "classifications": ["support"] }
+        ]
+      }
+    },
+    {
+      "name": "category dodge support regression",
+      "rawText": "Basic effect(s)\n- \"Ginyu Force\" Category allies' Great chance of evading enemy's attack (self excluded)",
+      "expected": {
+        "parseStatus": "supported",
+        "effects": [
+          { "kind": "evade_chance", "value": 70, "unit": "percent", "activationChancePercent": 70, "chancePercent": 70, "qualitativeChanceTerm": "great", "probabilitySource": "qualitative_lexicon", "target": "category_allies", "selfInclusion": "excluded", "classifications": ["support"] }
+        ]
+      }
+    }
+  ]
+}

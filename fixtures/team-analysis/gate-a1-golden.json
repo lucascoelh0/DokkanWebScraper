@@ -258,7 +258,7 @@
     },
     {
       "name": "known effect with unknown qualifier",
-      "rawText": "Basic effect(s)\n- All allies' chance of performing a critical hit 10% for 2 turns",
+      "rawText": "Basic effect(s)\n- All allies' chance of performing a critical hit 10% for 2 turns while celebrating",
       "expected": {
         "parseStatus": "partial",
         "conditionStatus": "supported",
@@ -272,17 +272,17 @@
       }
     },
     {
-      "name": "qualitative chance remains unknown",
-      "rawText": "Basic effect(s)\n- All allies' high chance of performing a critical hit",
+      "name": "unqualified chance remains unresolved",
+      "rawText": "Basic effect(s)\n- All allies' Chance of performing a critical hit",
       "expected": {
         "parseStatus": "partial",
         "conditionStatus": "supported",
-        "effectStatus": "unknown",
+        "effectStatus": "partial",
         "conditionOp": "always",
         "predicateKinds": [],
         "scopes": [],
         "selfInclusions": [],
-        "effectKinds": ["unknown"],
+        "effectKinds": ["critical_chance"],
         "effectTarget": "team_allies"
       }
     },

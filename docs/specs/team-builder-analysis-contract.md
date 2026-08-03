@@ -226,7 +226,15 @@ export interface PassiveEffect {
   target: PassiveTarget;
   value?: number;
   unit?: "percent" | "flat" | "ki" | "count" | "boolean";
+  count?: number;
+  activationChancePercent?: number;
+  additionalToSuperChancePercent?: number;
+  /** @deprecated Compatibility alias for activationChancePercent. */
   chancePercent?: number;
+  qualitativeChanceTerm?: "a chance" | "rare" | "medium" | "high" | "great";
+  probabilitySource?: "explicit_text" | "first_party_game_db" | "qualitative_lexicon" | "unresolved";
+  additionalToSuperQualitativeChanceTerm?: "a chance" | "rare" | "medium" | "high" | "great";
+  additionalToSuperProbabilitySource?: "explicit_text" | "first_party_game_db" | "qualitative_lexicon" | "unresolved";
   perStack?: number;
   stackCap?: number;
   duration?: PassiveDuration;
@@ -260,6 +268,25 @@ export interface PassiveDuration {
 }
 ```
 
+`activationChancePercent` is the probability that the typed effect activates.
+`additionalToSuperChancePercent` has a narrower and different meaning: for an
+`additional_attack`, it is the probability that each additional attack becomes
+a Super Attack. `chancePercent` remains serialized as a compatibility alias for
+`activationChancePercent`; when both fields exist they must be equal. It must
+never be populated with the additional-to-Super probability. `count` records an
+explicit number of attacks without changing either probability.
+
+The activation channel owns `qualitativeChanceTerm` and `probabilitySource`.
+The conversion channel owns the corresponding `additionalToSuper*` metadata.
+This prevents an activation qualifier such as `high chance` from being confused
+with a separate conversion qualifier such as `medium chance`. A typed effect
+whose probability source is `unresolved` remains present, has no invented
+numeric percentage, and makes the rule's independent `effectStatus` `partial`.
+
+`duration` and `stackCap` modify the corresponding typed effect. They are not
+emitted as standalone unknown effects when their association is unambiguous.
+Unrecognized intervening qualifiers remain separate `unknown` effects.
+
 Initial effect taxonomy:
 
 - `ki`
@@ -285,11 +312,59 @@ Initial effect taxonomy:
 
 `support` is emitted only as a derived classification on an underlying typed,
 beneficial ally-targeting effect. This includes typed Ki/HP/ATK/DEF, critical
-chance, evade chance, damage reduction, guard, and effective-against-all-types
-effects when their target is allied. The generator never emits an isolated
+chance, evade chance, damage reduction, guard, additional attack, additional
+Super Attack, and effective-against-all-types effects when their target is allied.
+The generator never emits an isolated
 `kind: "support"` effect, and never classifies support solely because a
 character appears on a site's support-only page. Every ally target must declare
 whether it includes self, excludes self, or is unknown.
+
+### Validated qualitative chance lexicon
+
+Gate A1.1 resolves qualitative probability in this priority order:
+
+1. percentage explicit in passive text;
+2. checked-in first-party evidence tied to the exact state, complete passive
+   text hash, rule line, and effect semantic;
+3. the stable qualitative lexicon below;
+4. `unresolved`, preserving the typed effect and source term without a number.
+
+The central stable lexicon is:
+
+| Source term | Percent | Validated source |
+| --- | ---: | --- |
+| `medium` | 30 | Global first-party game DB |
+| `high` | 50 | Global first-party game DB |
+| `great` | 70 | Global first-party game DB |
+
+`rare` has no universal numeric mapping. It is resolved only by exact
+first-party evidence for the affected state/rule/effect. Current validated
+records legitimately contain both 7% and 15%; unrelated 7/15 fields are never
+reverse-mapped to `rare`.
+
+The phrase `a chance` is accepted as 10% only for additional-attack-to-Super
+conversion. All eight audited first-party passive sets using that exact syntax
+store 10 in `eff_value3`; other effect families remain unresolved. This
+family-specific entry prevents the 10% observation from becoming a universal
+probability rule.
+
+The central mapping and row-level provenance live in
+`team-analysis-chance-lexicon.ts`. The evidence comes from the local first-party
+export (`dbVersion` `1782367825`, `assetVersion` `1782367204`) and joins
+`passive_skill_sets`, `passive_skill_set_relations`, and `passive_skills`.
+Separate rows validate critical activation (`eff_value1`), evade activation
+(`eff_value1`), additional Super activation (`probability`), and conversion of
+an additional attack to Super (`eff_value3`). Exact state-bound evidence lives
+in `team-analysis-first-party-probabilities.ts`; stable terms and the audited
+family-specific `a chance` entry live in `team-analysis-chance-lexicon.ts`.
+An explicit percentage always wins. `Chance of...` without a percentage or
+qualifier is a typed but unresolved probability, never `true`, `false`, or
+`always`.
+
+Hidden Potential is a separate mechanic: Critical and Additional use skill
+level × 2%, while Dodge/Evasion uses skill level × 1%. Those formulas are future
+domain knowledge outside this passive contract and are not applied by this
+parser.
 
 ## 7. Parsing pipeline
 
@@ -410,11 +485,14 @@ Suggested manifest:
   "uncompressedSizeBytes": 0,
   "stateCount": 0,
   "rulesVersion": "1",
-  "parserVersion": "1",
+  "parserVersion": "1.1.2",
   "sourceCharacterDatasetVersion": "...",
   "sourceCharacterPayloadSha256": "..."
 }
 ```
+
+Gate A1.1 keeps `schemaVersion` at `1`: all new effect fields are optional and
+`chancePercent` remains available for existing consumers.
 
 - Upload immutable payload before mutable manifest.
 - Run publisher dry-run and report projected new bytes before upload.

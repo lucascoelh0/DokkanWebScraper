@@ -20,6 +20,12 @@ import {
   buildTeamAnalysisArtifact,
   validateTeamAnalysisArtifact,
 } from "./team-analysis-artifacts";
+import { TEAM_ANALYSIS_CHANCE_LEXICON, validatedChancePercent } from "./team-analysis-chance-lexicon";
+import {
+  FIRST_PARTY_PROBABILITY_EVIDENCE,
+  resolveFirstPartyProbability,
+} from "./team-analysis-first-party-probabilities";
+import { readGameDbTable } from "./game-db/game-db-source";
 
 interface FoundationFixture {
   characters: Character[];
@@ -56,6 +62,39 @@ interface GateA1Fixture {
   }>;
 }
 
+interface GateA11Fixture {
+  cases: Array<{
+    name: string;
+    stateKey?: string;
+    ruleIndex?: number;
+    rawText: string;
+    expected: {
+      parseStatus: string;
+      effectStatus?: string;
+      effects: Array<{
+        kind: string;
+        target: string;
+        value?: number;
+        unit?: string;
+        count?: number;
+        activationChancePercent?: number;
+        additionalToSuperChancePercent?: number;
+        chancePercent?: number;
+        stackCap?: number;
+        durationKind?: string;
+        durationTurns?: number;
+        selfInclusion?: string;
+        classifications?: string[];
+        sourceText?: string;
+        qualitativeChanceTerm?: string;
+        probabilitySource?: string;
+        additionalToSuperQualitativeChanceTerm?: string;
+        additionalToSuperProbabilitySource?: string;
+      }>;
+    };
+  }>;
+}
+
 const fixtureRelativePath = "fixtures/team-analysis/foundation-golden.json";
 const sourceFixturePath = resolve(__dirname, fixtureRelativePath);
 const fixturePath = existsSync(sourceFixturePath)
@@ -68,6 +107,12 @@ const gateA1Path = existsSync(sourceGateA1Path)
   ? sourceGateA1Path
   : resolve(__dirname, "..", gateA1RelativePath);
 const gateA1Fixture = JSON.parse(readFileSync(gateA1Path, "utf8")) as GateA1Fixture;
+const gateA11RelativePath = "fixtures/team-analysis/gate-a11-golden.json";
+const sourceGateA11Path = resolve(__dirname, gateA11RelativePath);
+const gateA11Path = existsSync(sourceGateA11Path)
+  ? sourceGateA11Path
+  : resolve(__dirname, "..", gateA11RelativePath);
+const gateA11Fixture = JSON.parse(readFileSync(gateA11Path, "utf8")) as GateA11Fixture;
 
 const options = {
   generatedAt: "2026-08-03T12:00:00.000Z",
@@ -252,9 +297,9 @@ describe("team-analysis Gate A1 passive parser", function () {
     }
   });
 
-  it("preserves only an unrecognized qualifier and never invents qualitative percentages", () => {
+  it("preserves only an unrecognized qualifier and marks unqualified probabilities unresolved", () => {
     const qualifiedCase = gateA1Fixture.cases.find(item => item.name === "known effect with unknown qualifier");
-    const qualitativeCase = gateA1Fixture.cases.find(item => item.name === "qualitative chance remains unknown");
+    const qualitativeCase = gateA1Fixture.cases.find(item => item.name === "unqualified chance remains unresolved");
     ok(qualifiedCase);
     ok(qualitativeCase);
 
@@ -267,11 +312,13 @@ describe("team-analysis Gate A1 passive parser", function () {
     );
     deepEqual(qualified.rules[0].effects.map(effect => effect.sourceText), [
       "chance of performing a critical hit 10%",
-      "for 2 turns",
+      "while celebrating",
     ]);
-    equal(qualitative.rules[0].effects[0].kind, "unknown");
+    deepEqual(qualified.rules[0].effects[0].duration, { kind: "turns", turns: 2 });
+    equal(qualitative.rules[0].effects[0].kind, "critical_chance");
     equal(qualitative.rules[0].effects[0].value, undefined);
     equal(qualitative.rules[0].effects[0].chancePercent, undefined);
+    equal(qualitative.rules[0].effects[0].probabilitySource, "unresolved");
     deepEqual(wrapped.rules[0].effects.map(effect => effect.sourceText), [
       "Receives an additional Ki +1",
       "per Ki Sphere obtained",
@@ -315,6 +362,215 @@ describe("team-analysis Gate A1 passive parser", function () {
   it("reconstructs every non-whitespace source token in original order", () => {
     for (const fixtureCase of gateA1Fixture.cases) {
       const passive = parsePassive("gate-a1:tokens:initial", undefined, fixtureCase.rawText, fixtureCase.passiveDetails);
+      const fragments = uniqueFragments([
+        ...passive.rules.flatMap(rule => rule.source),
+        ...passive.unparsedFragments,
+      ]);
+      const reconstructed = fragments.map(fragment => fragment.text).join("\n").replace(/\s/g, "");
+      equal(reconstructed, fixtureCase.rawText.replace(/\s/g, ""), fixtureCase.name);
+    }
+  });
+});
+
+describe("team-analysis Gate A1.1 combat effects", function () {
+  it("uses only source-validated qualitative chance values", () => {
+    deepEqual(Object.keys(TEAM_ANALYSIS_CHANCE_LEXICON), ["a chance", "medium", "high", "great"]);
+    equal(validatedChancePercent("a chance", "additional_to_super"), 10);
+    equal(validatedChancePercent("a chance", "critical_activation"), undefined);
+    equal(validatedChancePercent("rare", "critical_activation"), undefined);
+    equal(validatedChancePercent("medium", "critical_activation"), 30);
+    equal(validatedChancePercent("HIGH", "evade_activation"), 50);
+    equal(validatedChancePercent("great", "additional_super_activation"), 70);
+    for (const entry of Object.values(TEAM_ANALYSIS_CHANCE_LEXICON)) {
+      equal(entry.origin.source, "first-party-game-db");
+      if (entry.term === "a chance") {
+        deepEqual(new Set(entry.evidence.map(item => item.semantic)), new Set(["additional_to_super"]));
+      } else {
+        deepEqual(new Set(entry.evidence.map(item => item.semantic)), new Set([
+          "critical_activation", "evade_activation", "additional_super_activation", "additional_to_super",
+        ]));
+      }
+    }
+  });
+
+  for (const fixtureCase of gateA11Fixture.cases) {
+    it(`matches Gate A1.1 golden case: ${fixtureCase.name}`, () => {
+      const passive = parsePassive(
+        fixtureCase.stateKey ?? `gate-a11:${fixtureCase.name}:initial`,
+        fixtureCase.name,
+        fixtureCase.rawText,
+      );
+      const rule = passive.rules[fixtureCase.ruleIndex ?? 0];
+
+      equal(passive.parseStatus, fixtureCase.expected.parseStatus);
+      equal(rule.effectStatus, fixtureCase.expected.effectStatus ?? fixtureCase.expected.parseStatus);
+      equal(rule.conditionStatus, "supported");
+      equal(rule.condition.op, "always");
+      equal(rule.effects.length, fixtureCase.expected.effects.length);
+      fixtureCase.expected.effects.forEach((expected, index) => {
+        const effect = rule.effects[index];
+        equal(effect.kind, expected.kind);
+        equal(effect.target.scope, expected.target);
+        for (const field of [
+          "value", "unit", "count", "activationChancePercent", "additionalToSuperChancePercent",
+          "chancePercent", "stackCap", "qualitativeChanceTerm", "probabilitySource",
+          "additionalToSuperQualitativeChanceTerm", "additionalToSuperProbabilitySource",
+        ] as const) {
+          equal(effect[field], expected[field], `${fixtureCase.name}: ${field}`);
+        }
+        if (expected.sourceText !== undefined) {
+          equal(effect.sourceText, expected.sourceText, `${fixtureCase.name}: sourceText`);
+        }
+        equal(effect.duration?.kind, expected.durationKind, `${fixtureCase.name}: duration kind`);
+        equal(effect.duration?.turns, expected.durationTurns, `${fixtureCase.name}: duration turns`);
+        equal(effect.target.selfInclusion, expected.selfInclusion, `${fixtureCase.name}: self inclusion`);
+        deepEqual(effect.classifications, expected.classifications, `${fixtureCase.name}: classifications`);
+      });
+    });
+  }
+
+  it("keeps activation and additional-to-Super chances semantically distinct", () => {
+    const passive = parsePassive(
+      "gate-a11:distinct-chances:initial",
+      undefined,
+      "Basic effect(s)\n- High chance of launching an additional attack that has a medium chance of becoming a Super Attack",
+    );
+    const effect = passive.rules[0].effects[0];
+
+    equal(effect.kind, "additional_attack");
+    equal(effect.activationChancePercent, 50);
+    equal(effect.chancePercent, 50);
+    equal(effect.additionalToSuperChancePercent, 30);
+    equal(effect.qualitativeChanceTerm, "high");
+    equal(effect.probabilitySource, "qualitative_lexicon");
+    equal(effect.additionalToSuperQualitativeChanceTerm, "medium");
+    equal(effect.additionalToSuperProbabilitySource, "qualitative_lexicon");
+  });
+
+  it("requires structural first-party evidence and never resolves rare by term alone", () => {
+    equal(FIRST_PARTY_PROBABILITY_EVIDENCE.length, 10);
+    const jacoText = "Basic effect(s)\n- Rare chance of stunning all enemies";
+    const jaco = resolveFirstPartyProbability(
+      "1002210:1002210:initial", jacoText, 1, "rare", "stun_activation",
+    );
+
+    equal(jaco?.percent, 7);
+    equal(jaco?.passiveSkillSetId, "198");
+    equal(resolveFirstPartyProbability(
+      "1002210:1002210:initial", jacoText, 1, "rare", "critical_activation",
+    ), undefined);
+    equal(resolveFirstPartyProbability(
+      "1002210:1002210:initial", `${jacoText}.`, 1, "rare", "stun_activation",
+    ), undefined);
+  });
+
+  it("matches every checked-in probability association to the audited first-party rows", async () => {
+    const dataDir = resolve("game-db/data/game-db-acquisition/first-party/latest/data");
+    const config = { sourceRoot: resolve("game-db"), dataDir };
+    const [cards, sets, relations, skills] = await Promise.all([
+      readGameDbTable(config, "cards"),
+      readGameDbTable(config, "passive_skill_sets"),
+      readGameDbTable(config, "passive_skill_set_relations"),
+      readGameDbTable(config, "passive_skills"),
+    ]);
+    const setsById = new Map(sets.map(row => [row.id, row]));
+    const skillsById = new Map(skills.map(row => [row.id, row]));
+    const cardsById = new Map(cards.map(row => [row.id, row]));
+    const relationKeys = new Set(relations.map(row => `${row.passive_skill_set_id}:${row.passive_skill_id}`));
+
+    for (const evidence of FIRST_PARTY_PROBABILITY_EVIDENCE) {
+      ok(/rare\s+chance/i.test(setsById.get(evidence.passiveSkillSetId)?.itemized_description ?? ""));
+      for (const skillId of evidence.passiveSkillIds) {
+        ok(relationKeys.has(`${evidence.passiveSkillSetId}:${skillId}`));
+        const skill = skillsById.get(skillId);
+        equal(Number(skill?.efficacy_type), evidence.efficacyType);
+        equal(Number(skill?.[evidence.valueField]), evidence.percent);
+      }
+    }
+
+    deepEqual(["1000140", "1002210", "1004870"].map(id => cardsById.get(id)?.passive_skill_set_id), ["141", "198", "402"]);
+    deepEqual(["141", "198", "402"].map(id => Number(skillsById.get(id)?.probability)), [100, 7, 100]);
+    deepEqual(["141", "198", "402"].map(id => Number(skillsById.get(id)?.is_once)), [1, 0, 1]);
+  });
+
+  it("keeps conditional dodge, critical, and additional contributions as separate rules", () => {
+    const rawText = [
+      "Basic effect(s)",
+      "- High chance of evading enemy's attack",
+      "- Medium chance of performing a critical hit",
+      "- Launches an additional attack",
+      "When there is another \"Ginyu Force\" Category ally on the team",
+      "- Chance of evading enemy's attack 20%",
+      "- Chance of performing a critical hit 10%",
+      "- 30% chance of launching an additional attack",
+    ].join("\n");
+    const passive = parsePassive("gate-a11:separate-contributions:initial", undefined, rawText);
+    const typed = passive.rules.flatMap(rule => rule.effects
+      .filter(effect => ["evade_chance", "critical_chance", "additional_attack"].includes(effect.kind))
+      .map(effect => ({ ruleId: rule.id, condition: rule.condition, effect })));
+
+    equal(typed.length, 6);
+    equal(new Set(typed.map(item => item.ruleId)).size, 6);
+    deepEqual(typed.filter(item => item.effect.kind === "evade_chance")
+      .map(item => item.effect.activationChancePercent), [50, 20]);
+    deepEqual(typed.filter(item => item.effect.kind === "critical_chance")
+      .map(item => item.effect.activationChancePercent), [30, 10]);
+    deepEqual(typed.filter(item => item.effect.kind === "additional_attack")
+      .map(item => item.effect.activationChancePercent), [100, 30]);
+    equal(typed.filter(item => item.condition.op !== "always").length, 3);
+  });
+
+  it("preserves Gohan's base and conditional dodge contributions without summing them", () => {
+    const rawText = [
+      "Basic effect(s)",
+      "- Ki +1 and ATK & DEF 120%",
+      "- Rare chance of evading enemy's attack",
+      "As the 1st attacker in a turn",
+      "- Ki +3 and ATK 30%",
+      "- Chance of evading enemy's attack 50%",
+      "As the 2nd attacker in a turn",
+      "- Ki +1 and ATK 10%",
+      "- Chance of evading enemy's attack 30%",
+      "When HP is 30% or less",
+      "- ATK 200%",
+      "- Performs a critical hit",
+      "- Fully recovers HP",
+    ].join("\n");
+    const passive = parsePassive("1017511:1017511:initial", undefined, rawText);
+    const dodge = passive.rules.flatMap(rule => rule.effects
+      .filter(effect => effect.kind === "evade_chance")
+      .map(effect => ({ ruleId: rule.id, effect })));
+
+    deepEqual(dodge.map(item => item.effect.activationChancePercent), [15, 50, 30]);
+    deepEqual(dodge.map(item => item.effect.probabilitySource), [
+      "first_party_game_db", "explicit_text", "explicit_text",
+    ]);
+    equal(new Set(dodge.map(item => item.ruleId)).size, 3);
+  });
+
+  it("preserves explicit 7/15 percentages and never reverse-maps them to rare", () => {
+    const critical = parsePassive(
+      "gate-a11:explicit-seven:initial",
+      undefined,
+      "Basic effect(s)\n- 7% chance of performing a critical hit",
+    ).rules[0].effects[0];
+    const evade = parsePassive(
+      "gate-a11:explicit-fifteen:initial",
+      undefined,
+      "Basic effect(s)\n- 15% chance of evading enemy's attack",
+    ).rules[0].effects[0];
+
+    equal(critical.kind, "critical_chance");
+    equal(critical.activationChancePercent, 7);
+    equal(critical.probabilitySource, "explicit_text");
+    equal(evade.kind, "evade_chance");
+    equal(evade.activationChancePercent, 15);
+    equal(evade.probabilitySource, "explicit_text");
+  });
+
+  it("reconstructs every Gate A1.1 source token in original order", () => {
+    for (const fixtureCase of gateA11Fixture.cases) {
+      const passive = parsePassive("gate-a11:tokens:initial", undefined, fixtureCase.rawText);
       const fragments = uniqueFragments([
         ...passive.rules.flatMap(rule => rule.source),
         ...passive.unparsedFragments,
@@ -401,6 +657,37 @@ describe("team-analysis validation and artifacts", function () {
     ok(codes.includes("missing-support-classification"));
   });
 
+  it("rejects ambiguous combat chance semantics, invalid counts, caps, and durations", () => {
+    const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
+    const broken = JSON.parse(JSON.stringify(dataset)) as typeof dataset;
+    const effect = broken.states.flatMap(item => item.passive?.rules ?? [])
+      .flatMap(rule => rule.effects)
+      .find(item => item.kind !== "unknown");
+    ok(effect);
+    effect.kind = "critical_chance";
+    effect.activationChancePercent = 30;
+    effect.chancePercent = 50;
+    effect.qualitativeChanceTerm = "rare";
+    effect.probabilitySource = "unresolved";
+    effect.additionalToSuperChancePercent = 120;
+    effect.additionalToSuperQualitativeChanceTerm = "rare";
+    effect.additionalToSuperProbabilitySource = "unresolved";
+    effect.count = 0;
+    effect.stackCap = -1;
+    effect.duration = { kind: "battle", turns: 2 };
+
+    const codes = validateTeamAnalysisDataset(broken, fixture.characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(codes.includes("chance-range"));
+    ok(codes.includes("chance-alias"));
+    ok(codes.includes("additional-to-super-kind"));
+    ok(codes.includes("probability-unresolved-value"));
+    ok(codes.includes("additional-to-super-probability-unresolved-value"));
+    ok(codes.includes("effect-count"));
+    ok(codes.includes("effect-cap"));
+    ok(codes.includes("duration-turns-kind"));
+  });
+
   it("rejects PassiveDetails text that cannot be mapped back to raw offsets", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
     ok(characters[0].passiveDetails?.lines);
@@ -425,7 +712,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.1\.0/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.1\.2/);
   });
 });
 
