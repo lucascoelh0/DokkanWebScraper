@@ -1,0 +1,119 @@
+{
+  "characters": [
+    {
+      "id": "1001001",
+      "name": "Base Hero",
+      "passive": "Basic effect(s)\n- Ki +3\n- ATK & DEF 120%",
+      "passiveDetails": {
+        "name": "Simple Resolve",
+        "text": "Basic effect(s)\n- Ki +3\n- ATK & DEF 120%",
+        "lines": ["Basic effect(s)", "- Ki +3", "- ATK & DEF 120%"]
+      },
+      "transformations": [
+        {
+          "id": "4001001",
+          "baseCharacterId": "1001001",
+          "name": "Transformed Hero",
+          "passive": "Basic effect(s)\n- Guards all attacks",
+          "passiveDetails": {
+            "name": "Transformed Resolve",
+            "text": "Basic effect(s)\n- Guards all attacks"
+          },
+          "transformationSource": "active-skill"
+        }
+      ]
+    },
+    {
+      "id": "1002001",
+      "name": "Hero + Partner",
+      "passive": "Basic effect(s)\n- ATK 100%",
+      "transformations": [
+        {
+          "id": "4002001",
+          "baseCharacterId": "1002001",
+          "name": "Partner + Hero",
+          "passive": "Basic effect(s)\n- DEF 100%",
+          "transformationSource": "reversible-exchange"
+        }
+      ]
+    },
+    {
+      "id": "1003001",
+      "name": "Standby Hero",
+      "passive": "Basic effect(s)\n- Damage reduction rate 30%",
+      "transformations": [
+        {
+          "id": "4003001",
+          "baseCharacterId": "1003001",
+          "name": "Standby Hero (Charging)",
+          "passive": "When the Finish Effect is not activated\n- Unable to attack",
+          "transformationSource": "standby"
+        }
+      ]
+    },
+    {
+      "id": "1004001",
+      "name": "EZA Hero",
+      "ezaReleaseDate": "2025-01-01T00:00:00.000Z",
+      "passive": "Basic effect(s)\n- ATK 80%",
+      "ezaPassive": "Basic effect(s)\n- ATK 180%"
+    },
+    {
+      "id": "1005001",
+      "name": "SEZA Hero",
+      "ezaReleaseDate": "2024-01-01T00:00:00.000Z",
+      "sezaReleaseDate": "2026-01-01T00:00:00.000Z",
+      "passive": "Basic effect(s)\n- DEF 100%",
+      "ezaPassive": "Basic effect(s)\n- DEF 150%",
+      "sezaPassive": "Basic effect(s)\n- DEF 250%"
+    },
+    {
+      "id": "1006001",
+      "name": "Variant Hero",
+      "passive": "Basic effect(s)\n- Ki +3; performs a mysterious action"
+    },
+    {
+      "id": "1006002",
+      "name": "Variant Hero",
+      "passive": "When attacking\n- ATK 100%"
+    },
+    {
+      "id": "1007001",
+      "name": "Same Display Name",
+      "passive": ""
+    },
+    {
+      "id": "1007002",
+      "name": "Same Display Name",
+      "passive": ""
+    }
+  ],
+  "catalogEntries": [
+    { "id": "1001001", "canonicalId": "10", "characterId": "110", "baseCharacterId": "1001000" },
+    { "id": "1002001", "canonicalId": "20", "characterId": "120", "baseCharacterId": "1002000" },
+    { "id": "1003001", "canonicalId": "30", "characterId": "130", "baseCharacterId": "1003000" },
+    { "id": "1004001", "canonicalId": "40", "characterId": "140", "baseCharacterId": "1004000" },
+    { "id": "1005001", "canonicalId": "50", "characterId": "150", "baseCharacterId": "1005000" },
+    { "id": "1006001", "canonicalId": "60", "characterId": "160", "baseCharacterId": "1006000" },
+    { "id": "1006002", "canonicalId": "60", "characterId": "160", "baseCharacterId": "1006000" },
+    { "id": "1007001", "characterId": "170", "baseCharacterId": "1007000" },
+    { "id": "1007002", "characterId": "171", "baseCharacterId": "1007002" }
+  ],
+  "expectedStates": [
+    { "stateKey": "1001001:1001001:initial", "hardDuplicateGroupId": "card:1001001", "variantGroupId": "canonical:10", "awakeningFamilyId": "awakening:1001000", "parseStatus": "supported" },
+    { "stateKey": "1001001:4001001:initial", "hardDuplicateGroupId": "card:1001001", "variantGroupId": "canonical:10", "awakeningFamilyId": "awakening:1001000", "parseStatus": "supported" },
+    { "stateKey": "1002001:1002001:initial", "hardDuplicateGroupId": "card:1002001", "variantGroupId": "canonical:20", "awakeningFamilyId": "awakening:1002000", "parseStatus": "supported" },
+    { "stateKey": "1002001:4002001:initial", "hardDuplicateGroupId": "card:1002001", "variantGroupId": "canonical:20", "awakeningFamilyId": "awakening:1002000", "parseStatus": "supported" },
+    { "stateKey": "1003001:1003001:initial", "hardDuplicateGroupId": "card:1003001", "variantGroupId": "canonical:30", "awakeningFamilyId": "awakening:1003000", "parseStatus": "supported" },
+    { "stateKey": "1003001:4003001:initial", "hardDuplicateGroupId": "card:1003001", "variantGroupId": "canonical:30", "awakeningFamilyId": "awakening:1003000", "parseStatus": "unknown" },
+    { "stateKey": "1004001:1004001:initial", "hardDuplicateGroupId": "card:1004001", "variantGroupId": "canonical:40", "awakeningFamilyId": "awakening:1004000", "parseStatus": "supported" },
+    { "stateKey": "1004001:1004001:eza", "hardDuplicateGroupId": "card:1004001", "variantGroupId": "canonical:40", "awakeningFamilyId": "awakening:1004000", "parseStatus": "supported" },
+    { "stateKey": "1005001:1005001:initial", "hardDuplicateGroupId": "card:1005001", "variantGroupId": "canonical:50", "awakeningFamilyId": "awakening:1005000", "parseStatus": "supported" },
+    { "stateKey": "1005001:1005001:eza", "hardDuplicateGroupId": "card:1005001", "variantGroupId": "canonical:50", "awakeningFamilyId": "awakening:1005000", "parseStatus": "supported" },
+    { "stateKey": "1005001:1005001:seza", "hardDuplicateGroupId": "card:1005001", "variantGroupId": "canonical:50", "awakeningFamilyId": "awakening:1005000", "parseStatus": "supported" },
+    { "stateKey": "1006001:1006001:initial", "hardDuplicateGroupId": "card:1006001", "variantGroupId": "canonical:60", "awakeningFamilyId": "awakening:1006000", "parseStatus": "partial" },
+    { "stateKey": "1006002:1006002:initial", "hardDuplicateGroupId": "card:1006002", "variantGroupId": "canonical:60", "awakeningFamilyId": "awakening:1006000", "parseStatus": "unknown" },
+    { "stateKey": "1007001:1007001:initial", "hardDuplicateGroupId": "card:1007001", "awakeningFamilyId": "awakening:1007000" },
+    { "stateKey": "1007002:1007002:initial", "hardDuplicateGroupId": "card:1007002", "awakeningFamilyId": "awakening:1007002" }
+  ]
+}
