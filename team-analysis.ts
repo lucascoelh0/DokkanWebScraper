@@ -9,12 +9,14 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.1.2";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.2.0";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
 export type ReleaseState = "initial" | "eza" | "seza";
 export type SelfInclusion = "included" | "excluded" | "unknown";
 export type PassiveEffectClassification = "support";
+export type TeamAnalysisClass = "Super" | "Extreme";
+export type TeamAnalysisType = "AGL" | "TEQ" | "INT" | "STR" | "PHY";
 export type ProbabilitySource =
     | "explicit_text"
     | "first_party_game_db"
@@ -26,11 +28,15 @@ export type PassivePredicateKind =
     | "ally_name_present"
     | "ally_class_present"
     | "ally_type_present"
+    | "ally_class_type_present"
+    | "ally_category_class_present"
     | "team_category_count"
     | "team_class_count"
     | "team_type_count"
     | "all_rotation_allies_category"
     | "all_rotation_allies_class"
+    | "character_class"
+    | "character_type"
     | "rotation_partner_category"
     | "rotation_partner_name"
     | "rotation_partner_link_present"
@@ -179,8 +185,8 @@ export interface PassivePredicate {
     count?: number,
     categories?: string[],
     names?: string[],
-    classes?: string[],
-    types?: string[],
+    classes?: TeamAnalysisClass[],
+    types?: TeamAnalysisType[],
     slots?: number[],
     kiSphereTypes?: string[],
     sourceText: string,
@@ -205,8 +211,8 @@ export interface PassiveEffect {
     duration?: PassiveDuration,
     categories?: string[],
     names?: string[],
-    classes?: string[],
-    types?: string[],
+    classes?: TeamAnalysisClass[],
+    types?: TeamAnalysisType[],
     classifications?: PassiveEffectClassification[],
     sourceText: string,
 }
@@ -219,6 +225,7 @@ export interface PassiveTarget {
         | "category_allies"
         | "class_allies"
         | "type_allies"
+        | "class_type_allies"
         | "enemy"
         | "all_enemies"
         | "unknown",
@@ -255,6 +262,7 @@ export interface TeamAnalysisCoverageReport {
     probabilitySourceCounts: Record<ProbabilitySource, number>,
     unknownFragmentCount: number,
     teamEvaluableRuleCount: number,
+    placementEvaluableRuleCount: number,
     scenarioRuleCount: number,
     runtimeOnlyRuleCount: number,
     identity: {
@@ -705,42 +713,120 @@ function parseCondition(sourceText: string): ParsedConditionResult {
     if (isAlwaysHeader(text)) {
         return { condition: { op: "always" }, status: "supported" };
     }
+    const condition = parseBooleanCondition(text);
+    return { condition, status: conditionExpressionStatus(condition) };
+}
 
-    const allRotationMatch = /^When all allies attacking in the same turn are (.+?) Category characters?$/i.exec(text);
-    if (allRotationMatch) {
-        const categoryValues = parseQuotedValues(allRotationMatch[1]);
-        if (categoryValues) {
+function parseBooleanCondition(sourceText: string): ConditionExpression {
+    const original = sourceText.trim();
+    const withoutPrefix = original.replace(/^(?:when|if)\s+/i, "").trim();
+    const text = stripOuterConditionParentheses(withoutPrefix);
+    const exact = parseExactConditionClause(text, original);
+    if (exact) {
+        return exact;
+    }
+
+    for (const connector of ["or", "and"] as const) {
+        const parts = splitTopLevelCondition(text, connector);
+        if (parts.length > 1) {
             return {
-                condition: {
-                    op: "predicate",
-                    predicate: {
-                        kind: "all_rotation_allies_category",
-                        scope: "rotation",
-                        selfInclusion: "included",
-                        categories: categoryValues.values,
-                        sourceText: text,
-                    },
-                },
-                status: "supported",
+                op: connector === "or" ? "any" : "all",
+                children: parts.map(parseBooleanCondition),
             };
         }
     }
 
-    const allyCondition = parseAllyCondition(text);
-    if (allyCondition) {
-        return { condition: allyCondition, status: "supported" };
-    }
-    return {
-        condition: { op: "unknown", sourceText: text },
-        status: "unknown",
-    };
+    return parsePartialSlotCondition(text) ?? { op: "unknown", sourceText: original };
 }
 
-function parseAllyCondition(text: string): ConditionExpression | undefined {
-    if (!/^When\b/i.test(text)) {
-        return undefined;
+function parseExactConditionClause(text: string, sourceText: string): ConditionExpression | undefined {
+    const slot = parseExactSlotCondition(text, sourceText);
+    if (slot) {
+        return slot;
     }
-    let body = text.replace(/^When\s+/i, "").trim();
+
+    const allRotationCategory = /^all allies attacking in the same turn are (.+?) Category characters?$/i.exec(text);
+    if (allRotationCategory) {
+        const categoryValues = parseQuotedValues(allRotationCategory[1]);
+        if (categoryValues) {
+            return predicateExpression({
+                kind: "all_rotation_allies_category",
+                scope: "rotation",
+                selfInclusion: "included",
+                categories: categoryValues.values,
+                sourceText,
+            });
+        }
+    }
+
+    const allRotationClass = /^all allies attacking in the same turn are (Super|Extreme) Class characters?$/i.exec(text);
+    if (allRotationClass) {
+        return predicateExpression({
+            kind: "all_rotation_allies_class",
+            scope: "rotation",
+            selfInclusion: "included",
+            classes: [normalizeClass(allRotationClass[1])],
+            sourceText,
+        });
+    }
+
+    if (/^(?:the team includes all five Types|all five Types are represented on the team)$/i.test(text)) {
+        return {
+            op: "all",
+            children: TEAM_ANALYSIS_TYPES.map(type => predicateExpression({
+                kind: "ally_type_present",
+                scope: "team",
+                selfInclusion: "included",
+                types: [type],
+                sourceText,
+            })),
+        };
+    }
+
+    const selfClass = /^(?:the|this) character is (Super|Extreme) Class$/i.exec(text);
+    if (selfClass) {
+        return predicateExpression({
+            kind: "character_class",
+            scope: "self",
+            classes: [normalizeClass(selfClass[1])],
+            sourceText,
+        });
+    }
+    const selfType = /^(?:the|this) character is (AGL|TEQ|INT|STR|PHY) Type$/i.exec(text);
+    if (selfType) {
+        return predicateExpression({
+            kind: "character_type",
+            scope: "self",
+            types: [normalizeType(selfType[1])],
+            sourceText,
+        });
+    }
+
+    const onlyTypeInRotation = /^(?:the|this) character is the only (AGL|TEQ|INT|STR|PHY) Type ally attacking in the (?:same )?turn$/i.exec(text);
+    if (onlyTypeInRotation) {
+        const type = normalizeType(onlyTypeInRotation[1]);
+        return {
+            op: "all",
+            children: [
+                predicateExpression({
+                    kind: "character_type",
+                    scope: "self",
+                    types: [type],
+                    sourceText,
+                }),
+                {
+                    op: "not",
+                    child: allyPredicate("type", type, "rotation", "excluded", undefined, undefined, sourceText),
+                },
+            ],
+        };
+    }
+
+    return parseAllyConditionClause(text, sourceText);
+}
+
+function parseAllyConditionClause(sourceBody: string, sourceText: string): ConditionExpression | undefined {
+    let body = sourceBody.trim();
     let selfInclusion: SelfInclusion = "included";
     if (/\(self excluded\)/i.test(body)) {
         selfInclusion = "excluded";
@@ -748,17 +834,36 @@ function parseAllyCondition(text: string): ConditionExpression | undefined {
     } else if (/\(self included\)/i.test(body)) {
         body = body.replace(/\s*\(self included\)\s*/ig, " ").trim();
     }
-    body = body.replace(/^there (?:is|are)\s+/i, "");
+    let negated = false;
+    if (/^without\s+/i.test(body)) {
+        negated = true;
+        body = body.replace(/^without\s+/i, "");
+    }
+    if (/^there (?:is|are) no\s+/i.test(body)) {
+        negated = true;
+        body = body.replace(/^there (?:is|are) no\s+/i, "");
+    } else {
+        body = body.replace(/^there (?:is|are)\s+/i, "");
+    }
     const anotherMatch = /^another\s+/i.exec(body);
     if (anotherMatch) {
         selfInclusion = "excluded";
         body = body.slice(anotherMatch[0].length);
     }
     let count: number | undefined;
+    let comparator: PassivePredicate["comparator"] | undefined;
     const countMatch = /^(\d+)\s+or more\s+/i.exec(body);
     if (countMatch) {
         count = Number(countMatch[1]);
+        comparator = "gte";
         body = body.slice(countMatch[0].length);
+    } else {
+        const exactCountMatch = /^(\d+)\s+/i.exec(body);
+        if (exactCountMatch) {
+            count = Number(exactCountMatch[1]);
+            comparator = "eq";
+            body = body.slice(exactCountMatch[0].length);
+        }
     }
     body = body.replace(/^an?\s+/i, "");
 
@@ -775,61 +880,271 @@ function parseAllyCondition(text: string): ConditionExpression | undefined {
         return undefined;
     }
 
+    const classCategoryMatch = /^(?:(Super|Extreme) Class\s+(.+?) Category|(.+?) Category\s+(Super|Extreme) Class) all(?:y|ies)$/i.exec(body);
+    if (classCategoryMatch) {
+        const className = normalizeClass(classCategoryMatch[1] ?? classCategoryMatch[4]);
+        const categoryValues = parseQuotedValues(classCategoryMatch[2] ?? classCategoryMatch[3]);
+        if (categoryValues) {
+            const children = categoryValues.values.map(category => allyPredicate(
+                "category_class",
+                { category, className },
+                scope,
+                selfInclusion,
+                count,
+                comparator,
+                sourceText,
+            ));
+            const expression: ConditionExpression = children.length === 1
+                ? children[0]
+                : { op: categoryValues.connector === "and" ? "all" : "any", children };
+            return negated ? { op: "not", child: expression } : expression;
+        }
+    }
+
     const categoryAndName = /^(.+?) Category all(?:y|ies) whose name includes (.+)$/i.exec(body);
     if (categoryAndName) {
         const categoryExpression = buildQuotedPredicateExpression(
             categoryAndName[1],
-            value => allyPredicate("category", value, scope, selfInclusion, count, text),
+            value => allyPredicate("category", value, scope, selfInclusion, count, comparator, sourceText),
         );
         const nameExpression = buildQuotedPredicateExpression(
             categoryAndName[2],
-            value => allyPredicate("name", value, scope, selfInclusion, count, text),
+            value => allyPredicate("name", value, scope, selfInclusion, count, comparator, sourceText),
         );
-        return categoryExpression && nameExpression
-            ? { op: "all", children: [categoryExpression, nameExpression] }
+        const expression = categoryExpression && nameExpression
+            ? { op: "all" as const, children: [categoryExpression, nameExpression] }
             : undefined;
+        return expression && negated ? { op: "not", child: expression } : expression;
     }
 
     const categoryMatch = /^(.+?) Category all(?:y|ies)$/i.exec(body);
     if (categoryMatch) {
-        return buildQuotedPredicateExpression(
+        const expression = buildQuotedPredicateExpression(
             categoryMatch[1],
-            value => allyPredicate("category", value, scope, selfInclusion, count, text),
+            value => allyPredicate("category", value, scope, selfInclusion, count, comparator, sourceText),
         );
+        return expression && negated ? { op: "not", child: expression } : expression;
     }
     const nameMatch = /^all(?:y|ies) whose name includes (.+)$/i.exec(body);
     if (nameMatch) {
-        return buildQuotedPredicateExpression(
+        const expression = buildQuotedPredicateExpression(
             nameMatch[1],
-            value => allyPredicate("name", value, scope, selfInclusion, count, text),
+            value => allyPredicate("name", value, scope, selfInclusion, count, comparator, sourceText),
         );
+        return expression && negated ? { op: "not", child: expression } : expression;
+    }
+
+    const classTypeMatch = /^(Super|Extreme)\s+(AGL|TEQ|INT|STR|PHY) Type all(?:y|ies)$/i.exec(body);
+    if (classTypeMatch) {
+        const expression = allyPredicate(
+            "class_type",
+            { className: normalizeClass(classTypeMatch[1]), typeName: normalizeType(classTypeMatch[2]) },
+            scope,
+            selfInclusion,
+            count,
+            comparator,
+            sourceText,
+        );
+        return negated ? { op: "not", child: expression } : expression;
+    }
+    const classMatch = /^(Super|Extreme) Class all(?:y|ies)$/i.exec(body);
+    if (classMatch) {
+        const expression = allyPredicate(
+            "class",
+            normalizeClass(classMatch[1]),
+            scope,
+            selfInclusion,
+            count,
+            comparator,
+            sourceText,
+        );
+        return negated ? { op: "not", child: expression } : expression;
+    }
+    const typeMatch = /^(AGL|TEQ|INT|STR|PHY) Type all(?:y|ies)$/i.exec(body);
+    if (typeMatch) {
+        const expression = allyPredicate(
+            "type",
+            normalizeType(typeMatch[1]),
+            scope,
+            selfInclusion,
+            count,
+            comparator,
+            sourceText,
+        );
+        return negated ? { op: "not", child: expression } : expression;
     }
     return undefined;
 }
 
 function allyPredicate(
-    type: "category" | "name",
-    value: string,
+    type: "category" | "name" | "class" | "type" | "class_type" | "category_class",
+    value: string | {
+        className: TeamAnalysisClass,
+        typeName?: TeamAnalysisType,
+        category?: string,
+    },
     scope: "team" | "rotation",
     selfInclusion: SelfInclusion,
     count: number | undefined,
+    comparator: PassivePredicate["comparator"] | undefined,
     sourceText: string,
 ): ConditionExpression {
     const rotationPartner = scope === "rotation" && selfInclusion === "excluded";
     const kind: PassivePredicateKind = type === "category"
         ? (rotationPartner ? "rotation_partner_category" : "ally_category_present")
-        : (rotationPartner ? "rotation_partner_name" : "ally_name_present");
-    return {
-        op: "predicate",
-        predicate: {
-            kind,
-            scope,
-            selfInclusion,
-            ...(count !== undefined ? { comparator: "gte" as const, count } : {}),
-            ...(type === "category" ? { categories: [value] } : { names: [value] }),
-            sourceText,
-        },
-    };
+        : type === "name"
+            ? (rotationPartner ? "rotation_partner_name" : "ally_name_present")
+            : type === "class"
+                ? "ally_class_present"
+                : type === "type"
+                    ? "ally_type_present"
+                    : type === "class_type"
+                        ? "ally_class_type_present"
+                        : "ally_category_class_present";
+    return predicateExpression({
+        kind,
+        scope,
+        selfInclusion,
+        ...(count !== undefined ? { comparator, count } : {}),
+        ...(type === "category" ? { categories: [value as string] } : {}),
+        ...(type === "name" ? { names: [value as string] } : {}),
+        ...(type === "class" ? { classes: [value as TeamAnalysisClass] } : {}),
+        ...(type === "type" ? { types: [value as TeamAnalysisType] } : {}),
+        ...(type === "class_type" ? {
+            classes: [(value as { className: TeamAnalysisClass }).className],
+            types: [(value as { typeName: TeamAnalysisType }).typeName],
+        } : {}),
+        ...(type === "category_class" ? {
+            categories: [(value as { category: string }).category],
+            classes: [(value as { className: TeamAnalysisClass }).className],
+        } : {}),
+        sourceText,
+    });
+}
+
+function predicateExpression(predicate: PassivePredicate): ConditionExpression {
+    return { op: "predicate", predicate };
+}
+
+const TEAM_ANALYSIS_TYPES: readonly TeamAnalysisType[] = ["AGL", "TEQ", "INT", "STR", "PHY"];
+const TEAM_ANALYSIS_CLASSES: readonly TeamAnalysisClass[] = ["Super", "Extreme"];
+const SLOT_LIST_PATTERN = "(?:1st|2nd|3rd)(?:\\s*(?:,|and|or)\\s*(?:1st|2nd|3rd))*";
+
+function normalizeClass(value: string): TeamAnalysisClass {
+    return /^super$/i.test(value) ? "Super" : "Extreme";
+}
+
+function normalizeType(value: string): TeamAnalysisType {
+    return value.toUpperCase() as TeamAnalysisType;
+}
+
+function parseSlotValues(sourceText: string): number[] {
+    return [...sourceText.matchAll(/\b(1st|2nd|3rd)\b/gi)]
+        .map(match => Number(match[1][0]));
+}
+
+function parseExactSlotCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    const attackerPattern = new RegExp(`^(?:As the|attacking as the)\\s+(${SLOT_LIST_PATTERN})\\s+attacker in a turn$`, "i");
+    const slotPattern = new RegExp(`^attacking in the\\s+(${SLOT_LIST_PATTERN})\\s+slot$`, "i");
+    const match = attackerPattern.exec(text) ?? slotPattern.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    return predicateExpression({
+        kind: "battle_slot",
+        scope: "self",
+        slots: parseSlotValues(match[1]),
+        sourceText,
+    });
+}
+
+function parsePartialSlotCondition(text: string): ConditionExpression | undefined {
+    const pattern = new RegExp(`\\b(?:attacking as the|attacking in the|(?:the|this) character is the|as the)\\s+(${SLOT_LIST_PATTERN})\\s+(?:attacker(?:\\s+in a turn)?|slot)\\b`, "i");
+    const match = pattern.exec(text);
+    if (!match || match.index === undefined) {
+        return undefined;
+    }
+    const prefix = text.slice(0, match.index).replace(/[\s,]+$/g, "");
+    const suffix = text.slice(match.index + match[0].length).replace(/^[\s,]+/g, "");
+    const slot = predicateExpression({
+        kind: "battle_slot",
+        scope: "self",
+        slots: parseSlotValues(match[1]),
+        sourceText: match[0],
+    });
+    const children: ConditionExpression[] = [
+        ...(prefix ? [{ op: "unknown" as const, sourceText: prefix }] : []),
+        slot,
+        ...(suffix ? [{ op: "unknown" as const, sourceText: suffix }] : []),
+    ];
+    return children.length === 1 ? children[0] : { op: "all", children };
+}
+
+function stripOuterConditionParentheses(sourceText: string): string {
+    let text = sourceText.trim();
+    while (text.startsWith("(") && matchingOuterParenthesisIndex(text) === text.length - 1) {
+        text = text.slice(1, -1).trim();
+    }
+    return text;
+}
+
+function matchingOuterParenthesisIndex(text: string): number {
+    let depth = 0;
+    let quoted = false;
+    for (let index = 0; index < text.length; index += 1) {
+        const character = text[index];
+        if (character === "\"") {
+            quoted = !quoted;
+        } else if (!quoted && character === "(") {
+            depth += 1;
+        } else if (!quoted && character === ")") {
+            depth -= 1;
+            if (depth === 0) {
+                return index;
+            }
+        }
+    }
+    return -1;
+}
+
+function splitTopLevelCondition(sourceText: string, connector: "and" | "or"): string[] {
+    const matches = [...sourceText.matchAll(/\s+,?\s*(and|or)\s+/gi)];
+    const parts: string[] = [];
+    let lastIndex = 0;
+    for (const match of matches) {
+        const index = match.index ?? -1;
+        if (index < 0
+            || match[1].toLowerCase() !== connector
+            || conditionDepthAt(sourceText, index) !== 0) {
+            continue;
+        }
+        const right = sourceText.slice(index + match[0].length).trim();
+        if (!/^(?:when|if|as|attacking|there|all|the\s+(?:team|character)|this\s+character|another|no|\()/i.test(right)) {
+            continue;
+        }
+        parts.push(sourceText.slice(lastIndex, index).replace(/[\s,]+$/g, "").trim());
+        lastIndex = index + match[0].length;
+    }
+    if (parts.length === 0) {
+        return [sourceText];
+    }
+    parts.push(sourceText.slice(lastIndex).trim());
+    return parts.filter(Boolean);
+}
+
+function conditionDepthAt(sourceText: string, targetIndex: number): number {
+    let depth = 0;
+    let quoted = false;
+    for (let index = 0; index < targetIndex; index += 1) {
+        if (sourceText[index] === "\"") {
+            quoted = !quoted;
+        } else if (!quoted && sourceText[index] === "(") {
+            depth += 1;
+        } else if (!quoted && sourceText[index] === ")") {
+            depth -= 1;
+        }
+    }
+    return depth;
 }
 
 function buildQuotedPredicateExpression(
@@ -876,6 +1191,14 @@ function parseQuotedValues(sourceText: string): {
     };
 }
 
+function parseTypeValues(sourceText: string): TeamAnalysisType[] | undefined {
+    const parts = sourceText.split(/\s*(?:,|&|\band\b|\bor\b)\s*/i).filter(Boolean);
+    if (parts.length === 0 || parts.some(part => !/^(?:AGL|TEQ|INT|STR|PHY)$/i.test(part))) {
+        return undefined;
+    }
+    return [...new Set(parts.map(normalizeType))];
+}
+
 interface EffectParseContext {
     stateKey: string,
     rawText: string,
@@ -890,6 +1213,8 @@ function parseEffects(sourceText: string, context: EffectParseContext): ParsedEf
         segment,
         resolvedTarget.target,
         resolvedTarget.categories,
+        resolvedTarget.classes,
+        resolvedTarget.types,
     )));
     return {
         effects,
@@ -901,6 +1226,8 @@ interface ResolvedEffectTarget {
     body: string,
     target: PassiveTarget,
     categories?: string[],
+    classes?: TeamAnalysisClass[],
+    types?: TeamAnalysisType[],
 }
 
 interface PassiveEffectAtom {
@@ -957,6 +1284,9 @@ function resolveEffectTarget(sourceText: string): ResolvedEffectTarget {
 
     const allAlliesMatch = /^All allies['’]\s+(.+)$/i.exec(text);
     const categoryAlliesMatch = /^(.+?) Category allies['’]\s+(.+)$/i.exec(text);
+    const classTypeAlliesMatch = /^(Super|Extreme)\s+(AGL|TEQ|INT|STR|PHY) Type allies['’]\s+(.+)$/i.exec(text);
+    const classAlliesMatch = /^(Super|Extreme) Class allies['’]\s+(.+)$/i.exec(text);
+    const typeAlliesMatch = /^(.+?) Type allies['’]\s+(.+)$/i.exec(text);
     if (allAlliesMatch) {
         return {
             body: allAlliesMatch[1],
@@ -974,13 +1304,38 @@ function resolveEffectTarget(sourceText: string): ResolvedEffectTarget {
             categories: parsedCategories.values,
         };
     }
+    if (classTypeAlliesMatch) {
+        return {
+            body: classTypeAlliesMatch[3],
+            target: { scope: "class_type_allies", selfInclusion },
+            classes: [normalizeClass(classTypeAlliesMatch[1])],
+            types: [normalizeType(classTypeAlliesMatch[2])],
+        };
+    }
+    if (classAlliesMatch) {
+        return {
+            body: classAlliesMatch[2],
+            target: { scope: "class_allies", selfInclusion },
+            classes: [normalizeClass(classAlliesMatch[1])],
+        };
+    }
+    if (typeAlliesMatch) {
+        const parsedTypes = parseTypeValues(typeAlliesMatch[1]);
+        if (parsedTypes) {
+            return {
+                body: typeAlliesMatch[2],
+                target: { scope: "type_allies", selfInclusion },
+                types: parsedTypes,
+            };
+        }
+    }
     if (/\b(?:stuns?|stunning|seals?|sealing)\s+(?:all enemies|all enemies['’])/i.test(text)) {
         return { body: text, target: { scope: "all_enemies" } };
     }
     if (/\b(?:stuns?|stunning|seals?|sealing)\s+(?:(?:the\s+)?attacked\s+enemy|(?:the\s+)?enemy)(?:['’]s)?/i.test(text)) {
         return { body: text, target: { scope: "enemy" } };
     }
-    if (/^(?:.+?\s+allies|All enemies|Attacked enemy|Enemy|Target enemy)['’]\s+/i.test(text)) {
+    if (/^(?:.+?\s+allies|.+?\s+characters|All enemies|Attacked enemy|Enemy|Target enemy)['’]\s+/i.test(text)) {
         return { body: text, target: { scope: "unknown" } };
     }
     return { body: sourceText.trim(), target: { scope: "self" } };
@@ -1471,6 +1826,8 @@ function applyEffectTarget(atom: PassiveEffectAtom, resolvedTarget: ResolvedEffe
         ...atom,
         target: { ...resolvedTarget.target },
         ...(resolvedTarget.categories ? { categories: resolvedTarget.categories } : {}),
+        ...(resolvedTarget.classes ? { classes: resolvedTarget.classes } : {}),
+        ...(resolvedTarget.types ? { types: resolvedTarget.types } : {}),
         ...(allyTarget && BENEFICIAL_EFFECT_KINDS.has(atom.kind)
             ? { classifications: ["support" as const] }
             : {}),
@@ -1495,11 +1852,15 @@ function unknownEffect(
     sourceText: string,
     target: PassiveTarget = { scope: "unknown" },
     categories?: string[],
+    classes?: TeamAnalysisClass[],
+    types?: TeamAnalysisType[],
 ): PassiveEffect {
     return {
         kind: "unknown",
         target: { ...target },
         ...(categories ? { categories } : {}),
+        ...(classes ? { classes } : {}),
+        ...(types ? { types } : {}),
         sourceText,
     };
 }
@@ -1589,6 +1950,7 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
     let derivedSupportEffectCount = 0;
     let unknownFragmentCount = 0;
     let teamEvaluableRuleCount = 0;
+    let placementEvaluableRuleCount = 0;
     let scenarioRuleCount = 0;
     let runtimeOnlyRuleCount = 0;
 
@@ -1606,12 +1968,12 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
             effectStatusCounts[rule.effectStatus] += 1;
             const conditionKind = classifyCondition(rule.condition);
             conditionCounts[conditionKind] += 1;
-            if (
-                rule.conditionStatus === "supported"
+            if (rule.conditionStatus === "supported" && hasPlacementPredicate(rule.condition)) {
+                placementEvaluableRuleCount += 1;
+            } else if (rule.conditionStatus === "supported"
                 && !hasScenarioPredicate(rule.condition)
-                && !hasRuntimePredicate(rule.condition)
-            ) {
-                teamEvaluableRuleCount += 1;
+                && !hasRuntimePredicate(rule.condition)) {
+                    teamEvaluableRuleCount += 1;
             } else if (hasScenarioPredicate(rule.condition)) {
                 scenarioRuleCount += 1;
             } else if (hasRuntimePredicate(rule.condition)) {
@@ -1659,6 +2021,7 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         probabilitySourceCounts,
         unknownFragmentCount,
         teamEvaluableRuleCount,
+        placementEvaluableRuleCount,
         scenarioRuleCount,
         runtimeOnlyRuleCount,
         identity: {
@@ -1688,12 +2051,20 @@ const RUNTIME_PREDICATES = new Set<PassivePredicateKind>([
     "final_blow_delivered", "chance_roll",
 ]);
 
+const PLACEMENT_PREDICATES = new Set<PassivePredicateKind>([
+    "battle_slot", "rotation_assignment", "rotation_partner_present", "floater_assignment",
+]);
+
 function hasScenarioPredicate(condition: ConditionExpression): boolean {
     return conditionHasPredicate(condition, predicate => SCENARIO_PREDICATES.has(predicate.kind));
 }
 
 function hasRuntimePredicate(condition: ConditionExpression): boolean {
     return conditionHasPredicate(condition, predicate => RUNTIME_PREDICATES.has(predicate.kind));
+}
+
+function hasPlacementPredicate(condition: ConditionExpression): boolean {
+    return conditionHasPredicate(condition, predicate => PLACEMENT_PREDICATES.has(predicate.kind));
 }
 
 function conditionHasPredicate(
@@ -2028,11 +2399,14 @@ function aggregateStatuses(statuses: ParseStatus[]): ParseStatus {
 
 const ALLY_PREDICATE_KINDS = new Set<PassivePredicateKind>([
     "ally_category_present", "ally_name_present", "all_rotation_allies_category",
-    "rotation_partner_category", "rotation_partner_name",
+    "rotation_partner_category", "rotation_partner_name", "ally_class_present",
+    "ally_type_present", "ally_class_type_present", "ally_category_class_present",
+    "all_rotation_allies_class",
 ]);
 
 const ALLY_TARGET_SCOPES = new Set<PassiveTarget["scope"]>([
     "rotation_allies", "team_allies", "category_allies", "class_allies", "type_allies",
+    "class_type_allies",
 ]);
 
 function isAllyTarget(target: PassiveTarget): boolean {
@@ -2052,6 +2426,13 @@ function validateEffectContract(
     if (effect.target.scope === "category_allies" && (effect.categories?.length ?? 0) === 0) {
         issues.push({ code: "target-categories", message: `Category ally target must name affected categories.`, stateKey: state.stateKey, ruleId: rule.id });
     }
+    if (["class_allies", "class_type_allies"].includes(effect.target.scope) && (effect.classes?.length ?? 0) === 0) {
+        issues.push({ code: "target-classes", message: `Class ally target must name an affected class.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (["type_allies", "class_type_allies"].includes(effect.target.scope) && (effect.types?.length ?? 0) === 0) {
+        issues.push({ code: "target-types", message: `Type ally target must name an affected type.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    validateClassAndTypeValues(effect.classes, effect.types, state, rule, issues);
     if ((effect.kind as string) === "support") {
         issues.push({ code: "standalone-support", message: `Support must be a derived classification, not an isolated effect.`, stateKey: state.stateKey, ruleId: rule.id });
     }
@@ -2155,7 +2536,7 @@ function validateCondition(
             && (!Number.isInteger(condition.predicate.count) || condition.predicate.count <= 0)) {
             issues.push({ code: "condition-count", message: `Ally count must be a positive integer.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (["ally_category_present", "all_rotation_allies_category", "rotation_partner_category"].includes(condition.predicate.kind)
+        if (["ally_category_present", "ally_category_class_present", "all_rotation_allies_category", "rotation_partner_category"].includes(condition.predicate.kind)
             && (condition.predicate.categories?.length ?? 0) === 0) {
             issues.push({ code: "condition-categories", message: `Category condition must name at least one category.`, stateKey: state.stateKey, ruleId: rule.id });
         }
@@ -2163,11 +2544,41 @@ function validateCondition(
             && (condition.predicate.names?.length ?? 0) === 0) {
             issues.push({ code: "condition-names", message: `Name condition must name at least one character.`, stateKey: state.stateKey, ruleId: rule.id });
         }
+        if (["ally_class_present", "ally_class_type_present", "ally_category_class_present", "all_rotation_allies_class", "character_class"].includes(condition.predicate.kind)
+            && (condition.predicate.classes?.length ?? 0) === 0) {
+            issues.push({ code: "condition-classes", message: `Class condition must name at least one class.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (["ally_type_present", "ally_class_type_present", "character_type"].includes(condition.predicate.kind)
+            && (condition.predicate.types?.length ?? 0) === 0) {
+            issues.push({ code: "condition-types", message: `Type condition must name at least one type.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        validateClassAndTypeValues(condition.predicate.classes, condition.predicate.types, state, rule, issues);
+        if (condition.predicate.kind === "battle_slot" && condition.predicate.scope !== "self") {
+            issues.push({ code: "slot-scope", message: `Battle slot must describe the current character.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (condition.predicate.kind === "battle_slot" && (condition.predicate.slots?.length ?? 0) === 0) {
+            issues.push({ code: "slot-values", message: `Battle slot must name at least one position.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
         for (const slot of condition.predicate.slots ?? []) {
             if (!Number.isInteger(slot) || slot < 1 || slot > 3) {
                 issues.push({ code: "slot-range", message: `Battle slot must be 1, 2, or 3.`, stateKey: state.stateKey, ruleId: rule.id });
             }
         }
+    }
+}
+
+function validateClassAndTypeValues(
+    classes: TeamAnalysisClass[] | undefined,
+    types: TeamAnalysisType[] | undefined,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    if ((classes ?? []).some(value => !TEAM_ANALYSIS_CLASSES.includes(value))) {
+        issues.push({ code: "class-value", message: `Class must be Super or Extreme.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if ((types ?? []).some(value => !TEAM_ANALYSIS_TYPES.includes(value))) {
+        issues.push({ code: "type-value", message: `Type must be AGL, TEQ, INT, STR, or PHY.`, stateKey: state.stateKey, ruleId: rule.id });
     }
 }
 

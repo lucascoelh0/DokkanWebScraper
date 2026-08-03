@@ -1,0 +1,247 @@
+{
+  "cases": [
+    {
+      "name": "Super Class ally on team",
+      "source": "synthetic",
+      "rawText": "When there is a Super Class ally on the team\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ally_class_present", "scope": "team", "selfInclusion": "included", "classes": ["Super"] }
+    },
+    {
+      "name": "another Extreme Class rotation ally",
+      "source": "real",
+      "rawText": "When there is another Extreme Class ally attacking in the same turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ally_class_present", "scope": "rotation", "selfInclusion": "excluded", "classes": ["Extreme"] }
+    },
+    {
+      "name": "no Extreme Class ally on team",
+      "source": "synthetic",
+      "rawText": "When there is no Extreme Class ally on the team\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "not", "child": { "op": "predicate", "kind": "ally_class_present", "scope": "team", "selfInclusion": "included", "classes": ["Extreme"] } }
+    },
+    {
+      "name": "all rotation allies Super Class",
+      "source": "synthetic",
+      "rawText": "When all allies attacking in the same turn are Super Class characters\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "all_rotation_allies_class", "scope": "rotation", "selfInclusion": "included", "classes": ["Super"] }
+    },
+    {
+      "name": "three Extreme Class rotation allies",
+      "source": "real",
+      "rawText": "When there are 3 Extreme Class allies attacking in the same turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ally_class_present", "scope": "rotation", "selfInclusion": "included", "comparator": "eq", "count": 3, "classes": ["Extreme"] }
+    },
+    {
+      "name": "Class and Category constrain the same allies",
+      "source": "real",
+      "rawText": "When there are 3 Extreme Class \"Crossover\" Category allies attacking in the same turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ally_category_class_present", "scope": "rotation", "selfInclusion": "included", "comparator": "eq", "count": 3, "categories": ["Crossover"], "classes": ["Extreme"] }
+    },
+    {
+      "name": "AGL Type ally on team",
+      "source": "real",
+      "rawText": "When there is an AGL Type ally on the team\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ally_type_present", "scope": "team", "selfInclusion": "included", "types": ["AGL"] }
+    },
+    {
+      "name": "another PHY Type count on team",
+      "source": "real",
+      "rawText": "When another 2 or more PHY Type allies are on the team\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ally_type_present", "scope": "team", "selfInclusion": "excluded", "comparator": "gte", "count": 2, "types": ["PHY"] }
+    },
+    {
+      "name": "self is the only STR Type rotation ally",
+      "source": "real",
+      "rawText": "When the character is the only STR Type ally attacking in the turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "character_type", "scope": "self", "types": ["STR"] },
+          { "op": "not", "child": { "op": "predicate", "kind": "ally_type_present", "scope": "rotation", "selfInclusion": "excluded", "types": ["STR"] } }
+        ]
+      }
+    },
+    {
+      "name": "all five Types on team",
+      "source": "synthetic",
+      "rawText": "When the team includes all five Types\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "ally_type_present", "scope": "team", "selfInclusion": "included", "types": ["AGL"] },
+          { "op": "predicate", "kind": "ally_type_present", "scope": "team", "selfInclusion": "included", "types": ["TEQ"] },
+          { "op": "predicate", "kind": "ally_type_present", "scope": "team", "selfInclusion": "included", "types": ["INT"] },
+          { "op": "predicate", "kind": "ally_type_present", "scope": "team", "selfInclusion": "included", "types": ["STR"] },
+          { "op": "predicate", "kind": "ally_type_present", "scope": "team", "selfInclusion": "included", "types": ["PHY"] }
+        ]
+      }
+    },
+    {
+      "name": "Super AGL Type rotation ally",
+      "source": "synthetic",
+      "rawText": "When there is another Super AGL Type ally attacking in the same turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ally_class_type_present", "scope": "rotation", "selfInclusion": "excluded", "classes": ["Super"], "types": ["AGL"] }
+    },
+    {
+      "name": "self Super Class",
+      "source": "synthetic",
+      "rawText": "When the character is Super Class\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "character_class", "scope": "self", "classes": ["Super"] }
+    },
+    {
+      "name": "self TEQ Type",
+      "source": "synthetic",
+      "rawText": "When this character is TEQ Type\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "character_type", "scope": "self", "types": ["TEQ"] }
+    },
+    {
+      "name": "slot 1 real phrasing",
+      "source": "real",
+      "rawText": "As the 1st attacker in a turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "battle_slot", "scope": "self", "slots": [1] }
+    },
+    {
+      "name": "slot 2 explicit slot phrasing",
+      "source": "synthetic",
+      "rawText": "When attacking in the 2nd slot\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "battle_slot", "scope": "self", "slots": [2] }
+    },
+    {
+      "name": "slot 3 attacking phrasing",
+      "source": "real",
+      "rawText": "When attacking as the 3rd attacker in a turn\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "battle_slot", "scope": "self", "slots": [3] }
+    },
+    {
+      "name": "slot qualifier remains partial",
+      "source": "real",
+      "rawText": "After receiving an attack as the 1st attacker in a turn\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "unknown", "sourceText": "After receiving an attack" },
+          { "op": "predicate", "kind": "battle_slot", "scope": "self", "slots": [1] }
+        ]
+      }
+    },
+    {
+      "name": "nested AND OR",
+      "source": "synthetic",
+      "rawText": "When (there is a \"Ginyu Force\" Category ally on the team or when there is an ally whose name includes \"Goku\" on the team) and (when there is a Super Class ally on the team or when attacking as the 2nd attacker in a turn)\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          {
+            "op": "any",
+            "children": [
+              { "op": "predicate", "kind": "ally_category_present", "scope": "team", "selfInclusion": "included", "categories": ["Ginyu Force"] },
+              { "op": "predicate", "kind": "ally_name_present", "scope": "team", "selfInclusion": "included", "names": ["Goku"] }
+            ]
+          },
+          {
+            "op": "any",
+            "children": [
+              { "op": "predicate", "kind": "ally_class_present", "scope": "team", "selfInclusion": "included", "classes": ["Super"] },
+              { "op": "predicate", "kind": "battle_slot", "scope": "self", "slots": [2] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "known OR unknown remains partial",
+      "source": "synthetic",
+      "rawText": "When there is an Extreme Class ally on the team or when HP is 50% or less\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": {
+        "op": "any",
+        "children": [
+          { "op": "predicate", "kind": "ally_class_present", "scope": "team", "selfInclusion": "included", "classes": ["Extreme"] },
+          { "op": "unknown", "sourceText": "when HP is 50% or less" }
+        ]
+      }
+    },
+    {
+      "name": "ambiguous class scope",
+      "source": "synthetic",
+      "rawText": "When there is a Super Class ally\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "unknown",
+      "condition": { "op": "unknown", "sourceText": "When there is a Super Class ally" }
+    },
+    {
+      "name": "Category named Super Class is not Class",
+      "source": "synthetic",
+      "rawText": "When there is a \"Super Class\" Category ally on the team\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ally_category_present", "scope": "team", "selfInclusion": "included", "categories": ["Super Class"] }
+    },
+    {
+      "name": "Super Class support target",
+      "source": "real",
+      "rawText": "Basic effect(s)\n- Super Class allies' Ki +2 and ATK & DEF 30%",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "target": { "scope": "class_allies", "selfInclusion": "included", "classes": ["Super"] }
+    },
+    {
+      "name": "multiple Type support target",
+      "source": "real",
+      "rawText": "Basic effect(s)\n- TEQ & STR Type allies' Ki +2 and ATK & DEF 30%",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "target": { "scope": "type_allies", "selfInclusion": "included", "types": ["TEQ", "STR"] }
+    },
+    {
+      "name": "Class and Type support target",
+      "source": "real",
+      "rawText": "Basic effect(s)\n- Extreme PHY Type allies' Ki +2 and ATK & DEF 30%",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "target": { "scope": "class_type_allies", "selfInclusion": "included", "classes": ["Extreme"], "types": ["PHY"] }
+    },
+    {
+      "name": "Class target excludes self",
+      "source": "synthetic",
+      "rawText": "Basic effect(s)\n- Extreme Class allies' Ki +2 (self excluded)",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "target": { "scope": "class_allies", "selfInclusion": "excluded", "classes": ["Extreme"] }
+    },
+    {
+      "name": "Class target preserves residual unknown effect",
+      "source": "synthetic",
+      "rawText": "Basic effect(s)\n- Super Class allies' ATK 30% and morale rises sharply",
+      "expectedStatus": "partial",
+      "condition": { "op": "always" },
+      "target": { "scope": "class_allies", "selfInclusion": "included", "classes": ["Super"] }
+    },
+    {
+      "name": "ambiguous Class target remains unknown",
+      "source": "synthetic",
+      "rawText": "Basic effect(s)\n- Super Class characters' Ki +2",
+      "expectedStatus": "partial",
+      "condition": { "op": "always" },
+      "target": { "scope": "unknown" }
+    }
+  ]
+}

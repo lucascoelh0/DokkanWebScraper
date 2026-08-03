@@ -147,18 +147,38 @@ export interface PassivePredicate {
   count?: number;
   categories?: string[];
   names?: string[];
-  classes?: string[];
-  types?: string[];
+  classes?: TeamAnalysisClass[];
+  types?: TeamAnalysisType[];
   slots?: number[];
   kiSphereTypes?: string[];
   sourceText: string;
 }
+
+export type TeamAnalysisClass = "Super" | "Extreme";
+export type TeamAnalysisType = "AGL" | "TEQ" | "INT" | "STR" | "PHY";
 ```
 
 Every ally-related predicate must declare `selfInclusion`. `another ally` and
 `(self excluded)` map to `excluded`. Source wording that explicitly permits the
 current character maps to `included`. When the source does not settle the
 question, use `unknown`; do not infer it from a character name or category.
+
+Gate A2 uses the following scope rules:
+
+- `on the team` maps to `team`;
+- `attacking in the same turn` maps to `rotation`;
+- a predicate about `the character` or `this character` maps to `self`;
+- a clause without an explicit scope remains `op: "unknown"`.
+
+Values inside one dimension are alternatives unless the source connector
+creates separate AST children. Different dimensions on the same predicate are
+conjunctive: for example, `classes: ["Extreme"]` plus
+`categories: ["Crossover"]` must be satisfied by the same ally. This avoids
+mistaking a Class+Category or Class+Type restriction for two unrelated allies.
+`all` is logical AND, `any` is logical OR, and `not` negates only its child.
+The parser preserves parentheses and gives AND higher precedence than OR. A
+recognized child and an unknown child produce a partial AST; neither child is
+discarded.
 
 Initial predicate taxonomy:
 
@@ -168,6 +188,8 @@ Initial predicate taxonomy:
 - `ally_name_present`
 - `ally_class_present`
 - `ally_type_present`
+- `ally_class_type_present`
+- `ally_category_class_present`
 - `team_category_count`
 - `team_class_count`
 - `team_type_count`
@@ -175,6 +197,8 @@ Initial predicate taxonomy:
 - `all_rotation_allies_class`
 - `rotation_partner_category`
 - `rotation_partner_name`
+- `character_class`
+- `character_type`
 - `rotation_partner_link_present`
 - `character_is_leader`
 - `character_is_friend`
@@ -185,6 +209,11 @@ Initial predicate taxonomy:
 - `rotation_assignment`
 - `rotation_partner_present`
 - `floater_assignment`
+
+`battle_slot` always has `scope: "self"` and `slots` containing only `1`, `2`,
+or `3`. Multiple positions in the same phrase are alternatives. The predicate
+captures only the current character's rotation position; an attack-history
+qualifier surrounding it stays as a separate unknown child until a later gate.
 
 ### Optional scenario
 
@@ -240,8 +269,8 @@ export interface PassiveEffect {
   duration?: PassiveDuration;
   categories?: string[];
   names?: string[];
-  classes?: string[];
-  types?: string[];
+  classes?: TeamAnalysisClass[];
+  types?: TeamAnalysisType[];
   classifications?: PassiveEffectClassification[];
   sourceText: string;
 }
@@ -256,6 +285,7 @@ export interface PassiveTarget {
     | "category_allies"
     | "class_allies"
     | "type_allies"
+    | "class_type_allies"
     | "enemy"
     | "all_enemies"
     | "unknown";
@@ -319,6 +349,14 @@ The generator never emits an isolated
 character appears on a site's support-only page. Every ally target must declare
 whether it includes self, excludes self, or is unknown.
 
+For `category_allies`, `class_allies`, `type_allies`, and
+`class_type_allies`, selector arrays live on the effect and constrain the
+target. Values within a selector array are alternatives; Class and Type
+selectors on `class_type_allies` are intersected. `allies` includes self,
+`another ally` or `(self excluded)` excludes self, and genuinely unsettled
+wording uses `unknown`. A recognized beneficial Class/Type ally effect receives
+only `classifications: ["support"]`; `support` is never an effect kind.
+
 ### Validated qualitative chance lexicon
 
 Gate A1.1 resolves qualitative probability in this priority order:
@@ -381,7 +419,7 @@ parser.
 
 Effect parsing is target-independent: first recognize source-neutral effect
 atoms, then apply the target resolved from the source prefix (`self`, all
-allies, category allies, and future class/type ally prefixes). In a compound
+allies, category allies, Class allies, Type allies, or Class+Type allies). In a compound
 effect, recognized atoms remain typed while only the unrecognized qualifier or
 segment becomes `unknown`. Qualitative chance words such as `high` or `great`
 must not receive numeric values until a central, validated mapping exists.
@@ -485,14 +523,19 @@ Suggested manifest:
   "uncompressedSizeBytes": 0,
   "stateCount": 0,
   "rulesVersion": "1",
-  "parserVersion": "1.1.2",
+  "parserVersion": "1.2.0",
   "sourceCharacterDatasetVersion": "...",
   "sourceCharacterPayloadSha256": "..."
 }
 ```
 
-Gate A1.1 keeps `schemaVersion` at `1`: all new effect fields are optional and
-`chancePercent` remains available for existing consumers.
+Gate A2 keeps `schemaVersion` at `1`. It adds optional selector fields and new
+predicate/target enum values but does not remove or reinterpret any Gate A1/A1.1
+field. Consumers that treat Team Analysis as optional enrichment and ignore
+unrecognized predicates/targets remain compatible; `parserVersion` advances to
+`1.2.0` so consumers can feature-detect the richer semantics. A schema bump is
+reserved for a change that makes previously valid payloads invalid or changes
+the meaning of an existing field.
 
 - Upload immutable payload before mutable manifest.
 - Run publisher dry-run and report projected new bytes before upload.

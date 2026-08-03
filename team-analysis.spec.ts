@@ -95,6 +95,42 @@ interface GateA11Fixture {
   }>;
 }
 
+type GateA2ConditionShape =
+  | { op: "always" }
+  | { op: "unknown"; sourceText: string }
+  | { op: "not"; child: GateA2ConditionShape }
+  | { op: "all" | "any"; children: GateA2ConditionShape[] }
+  | {
+    op: "predicate";
+    kind: string;
+    scope: string;
+    selfInclusion?: string;
+    comparator?: string;
+    count?: number;
+    categories?: string[];
+    names?: string[];
+    classes?: string[];
+    types?: string[];
+    slots?: number[];
+  };
+
+interface GateA2Fixture {
+  cases: Array<{
+    name: string;
+    source: "real" | "synthetic";
+    rawText: string;
+    expectedStatus: string;
+    conditionStatus?: string;
+    condition: GateA2ConditionShape;
+    target?: {
+      scope: string;
+      selfInclusion?: string;
+      classes?: string[];
+      types?: string[];
+    };
+  }>;
+}
+
 const fixtureRelativePath = "fixtures/team-analysis/foundation-golden.json";
 const sourceFixturePath = resolve(__dirname, fixtureRelativePath);
 const fixturePath = existsSync(sourceFixturePath)
@@ -113,6 +149,12 @@ const gateA11Path = existsSync(sourceGateA11Path)
   ? sourceGateA11Path
   : resolve(__dirname, "..", gateA11RelativePath);
 const gateA11Fixture = JSON.parse(readFileSync(gateA11Path, "utf8")) as GateA11Fixture;
+const gateA2RelativePath = "fixtures/team-analysis/gate-a2-golden.json";
+const sourceGateA2Path = resolve(__dirname, gateA2RelativePath);
+const gateA2Path = existsSync(sourceGateA2Path)
+  ? sourceGateA2Path
+  : resolve(__dirname, "..", gateA2RelativePath);
+const gateA2Fixture = JSON.parse(readFileSync(gateA2Path, "utf8")) as GateA2Fixture;
 
 const options = {
   generatedAt: "2026-08-03T12:00:00.000Z",
@@ -268,7 +310,7 @@ describe("team-analysis Gate A1 passive parser", function () {
         equal(rule.effects[0].target.selfInclusion, fixtureCase.expected.effectSelfInclusion);
       }
       for (const effect of rule.effects.filter(effect => effect.kind !== "unknown"
-        && ["rotation_allies", "team_allies", "category_allies", "class_allies", "type_allies"]
+        && ["rotation_allies", "team_allies", "category_allies", "class_allies", "type_allies", "class_type_allies"]
           .includes(effect.target.scope))) {
         deepEqual(effect.classifications, ["support"]);
       }
@@ -325,17 +367,19 @@ describe("team-analysis Gate A1 passive parser", function () {
     ]);
   });
 
-  it("does not misassign future class/type ally prefixes to self", () => {
+  it("parses Class ally prefixes without assigning them to self", () => {
     const passive = parsePassive(
       "gate-a1:future-target:initial",
       undefined,
       "Basic effect(s)\n- Super Class allies' ATK 30%",
     );
 
-    equal(passive.rules[0].parseStatus, "partial");
+    equal(passive.rules[0].parseStatus, "supported");
     equal(passive.rules[0].effects[0].kind, "atk");
-    equal(passive.rules[0].effects[0].target.scope, "unknown");
-    equal(passive.rules[0].effects[0].classifications, undefined);
+    equal(passive.rules[0].effects[0].target.scope, "class_allies");
+    equal(passive.rules[0].effects[0].target.selfInclusion, "included");
+    deepEqual(passive.rules[0].effects[0].classes, ["Super"]);
+    deepEqual(passive.rules[0].effects[0].classifications, ["support"]);
   });
 
   it("maps wrapped PassiveDetails lines and sections to exact raw offsets", () => {
@@ -581,6 +625,63 @@ describe("team-analysis Gate A1.1 combat effects", function () {
   });
 });
 
+describe("team-analysis Gate A2 class, type, slot, and boolean parser", function () {
+  for (const fixtureCase of gateA2Fixture.cases) {
+    it(`matches Gate A2 golden case: ${fixtureCase.name}`, () => {
+      const passive = parsePassive(`gate-a2:${fixtureCase.name}:initial`, fixtureCase.name, fixtureCase.rawText);
+      const rule = passive.rules[0];
+
+      equal(passive.parseStatus, fixtureCase.expectedStatus);
+      equal(rule.conditionStatus, fixtureCase.conditionStatus ?? "supported");
+      deepEqual(conditionShape(rule.condition), fixtureCase.condition);
+      if (fixtureCase.target) {
+        const typedEffects = rule.effects.filter(effect => effect.kind !== "unknown");
+        ok(typedEffects.length > 0);
+        for (const effect of typedEffects) {
+          deepEqual({
+            scope: effect.target.scope,
+            ...(effect.target.selfInclusion ? { selfInclusion: effect.target.selfInclusion } : {}),
+            ...(effect.classes ? { classes: effect.classes } : {}),
+            ...(effect.types ? { types: effect.types } : {}),
+          }, fixtureCase.target);
+          if (["class_allies", "type_allies", "class_type_allies"].includes(effect.target.scope)) {
+            deepEqual(effect.classifications, ["support"]);
+          } else {
+            equal(effect.classifications, undefined);
+          }
+        }
+      }
+      equal(rule.effects.some(effect => (effect.kind as string) === "support"), false);
+    });
+  }
+
+  it("reconstructs every Gate A2 source token in original order", () => {
+    for (const fixtureCase of gateA2Fixture.cases) {
+      const passive = parsePassive("gate-a2:tokens:initial", undefined, fixtureCase.rawText);
+      const fragments = uniqueFragments([
+        ...passive.rules.flatMap(rule => rule.source),
+        ...passive.unparsedFragments,
+      ]);
+      const reconstructed = fragments.map(fragment => fragment.text).join("\n").replace(/\s/g, "");
+      equal(reconstructed, fixtureCase.rawText.replace(/\s/g, ""), fixtureCase.name);
+    }
+  });
+
+  it("preserves a resolved Class target on both typed and residual effects", () => {
+    const fixtureCase = gateA2Fixture.cases.find(item => item.name === "Class target preserves residual unknown effect");
+    ok(fixtureCase);
+    const passive = parsePassive("gate-a2:residual-target:initial", undefined, fixtureCase.rawText);
+    const effects = passive.rules[0].effects;
+
+    deepEqual(effects.map(effect => effect.kind), ["atk", "unknown"]);
+    for (const effect of effects) {
+      equal(effect.target.scope, "class_allies");
+      equal(effect.target.selfInclusion, "included");
+      deepEqual(effect.classes, ["Super"]);
+    }
+  });
+});
+
 describe("team-analysis validation and artifacts", function () {
   it("reports coverage by passive/rule status and supported effect", () => {
     const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
@@ -688,6 +789,55 @@ describe("team-analysis validation and artifacts", function () {
     ok(codes.includes("duration-turns-kind"));
   });
 
+  it("rejects invalid Class, Type, and battle-slot payloads", () => {
+    const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
+    const broken = JSON.parse(JSON.stringify(dataset)) as typeof dataset;
+    const rule = broken.states[0].passive?.rules[0];
+    ok(rule);
+    rule.condition = JSON.parse(JSON.stringify({
+      op: "all",
+      children: [
+        {
+          op: "predicate",
+          predicate: {
+            kind: "ally_class_type_present",
+            scope: "rotation",
+            selfInclusion: "included",
+            classes: ["Hero"],
+            types: ["BLUE"],
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "battle_slot",
+            scope: "rotation",
+            slots: [0, 4],
+            sourceText: "Basic effect(s)",
+          },
+        },
+      ],
+    })) as typeof rule.condition;
+    rule.effects = JSON.parse(JSON.stringify([{
+      kind: "atk",
+      target: { scope: "class_type_allies", selfInclusion: "included" },
+      value: 20,
+      unit: "percent",
+      classifications: ["support"],
+      sourceText: "ATK 20%",
+    }])) as typeof rule.effects;
+
+    const codes = validateTeamAnalysisDataset(broken, fixture.characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(codes.includes("class-value"));
+    ok(codes.includes("type-value"));
+    ok(codes.includes("slot-scope"));
+    ok(codes.includes("slot-range"));
+    ok(codes.includes("target-classes"));
+    ok(codes.includes("target-types"));
+  });
+
   it("rejects PassiveDetails text that cannot be mapped back to raw offsets", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
     ok(characters[0].passiveDetails?.lines);
@@ -712,7 +862,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.1\.2/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.2\.0/);
   });
 });
 
@@ -733,6 +883,35 @@ function flattenPredicates(condition: ConditionExpression): PassivePredicate[] {
     return flattenPredicates(condition.child);
   }
   return [];
+}
+
+function conditionShape(condition: ConditionExpression): GateA2ConditionShape {
+  if (condition.op === "always") {
+    return { op: "always" };
+  }
+  if (condition.op === "unknown") {
+    return { op: "unknown", sourceText: condition.sourceText };
+  }
+  if (condition.op === "not") {
+    return { op: "not", child: conditionShape(condition.child) };
+  }
+  if (condition.op === "all" || condition.op === "any") {
+    return { op: condition.op, children: condition.children.map(conditionShape) };
+  }
+  const predicate = condition.predicate;
+  return {
+    op: "predicate",
+    kind: predicate.kind,
+    scope: predicate.scope,
+    ...(predicate.selfInclusion ? { selfInclusion: predicate.selfInclusion } : {}),
+    ...(predicate.comparator ? { comparator: predicate.comparator } : {}),
+    ...(predicate.count !== undefined ? { count: predicate.count } : {}),
+    ...(predicate.categories ? { categories: predicate.categories } : {}),
+    ...(predicate.names ? { names: predicate.names } : {}),
+    ...(predicate.classes ? { classes: predicate.classes } : {}),
+    ...(predicate.types ? { types: predicate.types } : {}),
+    ...(predicate.slots ? { slots: predicate.slots } : {}),
+  };
 }
 
 function unique<T>(values: T[]): T[] {
