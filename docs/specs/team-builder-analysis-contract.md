@@ -199,7 +199,8 @@ export interface PassivePredicate {
   classes?: TeamAnalysisClass[];
   types?: TeamAnalysisType[];
   slots?: number[];
-  kiSphereTypes?: string[];
+  kiSphereTypes?: KiSphereType[];
+  kiContext?: KiContext;
   evaluationMoment?: PassiveEvaluationMoment;
   enemySelection?: EnemySelection;
   enemyStatuses?: EnemyStatus[];
@@ -212,6 +213,9 @@ export interface PassivePredicate {
 
 export type TeamAnalysisClass = "Super" | "Extreme";
 export type TeamAnalysisType = "AGL" | "TEQ" | "INT" | "STR" | "PHY";
+export type ConcreteKiSphereType = TeamAnalysisType | "rainbow";
+export type KiSphereType = ConcreteKiSphereType | "non_rainbow" | "any";
+export type KiContext = "final_attack_ki" | "collected_ki_spheres" | "board_state";
 export type PassiveEvaluationMoment =
   | "start_of_turn"
   | "entry_turn"
@@ -446,6 +450,37 @@ the required sibling proof.
 Unknown or unsupported clauses use `op: "unknown"`; they are never coerced to
 `always` or false.
 
+### Gate A5 Ki and Ki Sphere semantics
+
+The three Ki predicates are runtime inputs, not team-construction facts:
+
+- `ki_amount` is the character's final Ki for the current attack. It uses
+  `scope: "self"`, `kiContext: "final_attack_ki"`, an explicit scalar
+  comparator, and `evaluationMoment: "when_attacking"` or `before_attack`.
+- `ki_spheres_obtained` is an explicit count from the character's current
+  collection. It uses `kiContext: "collected_ki_spheres"`; its
+  `kiSphereTypes` restrict which collected spheres enter the count.
+- `ki_sphere_type_obtained` is presence shorthand and means `gte 1` for its
+  declared sphere selector in the current collection.
+
+Ki values and Ki Sphere counts are separate quantities. Closed intervals are
+serialized as an `all` AST containing lower and upper scalar predicates, so no
+implicit endpoint conversion or off-by-one rule is required. Attack Ki is an
+integer in `0..24`; sphere counts are non-negative integers.
+
+`KiSphereType` is deliberately distinct from `TeamAnalysisType`, even though
+the five color labels overlap. `rainbow` is a sphere color, `non_rainbow`
+represents the source phrase `Type Ki Sphere`, and `any` means no color filter.
+`any` and `non_rainbow` are exclusive selectors and cannot be combined with
+other values. Wording such as bare `When Ki is 24` does not prove whether the
+value is final attack Ki and remains unknown. Missing runtime context also
+evaluates to `Unknown`, never false or true.
+
+The future evaluator needs, at minimum, optional `finalAttackKi`, the exact
+counts collected in the current path by sphere color, and (only for board
+effects) the pre-conversion board state. It must not estimate an average path,
+assume 24 Ki, or infer unprovided sphere colors.
+
 ## 6. Effect contract
 
 ```ts
@@ -465,6 +500,8 @@ export interface PassiveEffect {
   additionalToSuperProbabilitySource?: "explicit_text" | "first_party_game_db" | "qualitative_lexicon" | "unresolved";
   perStack?: number;
   stackCap?: number;
+  scaling?: PassiveEffectScaling;
+  kiSphereChange?: KiSphereChange;
   duration?: PassiveDuration;
   categories?: string[];
   names?: string[];
@@ -495,6 +532,21 @@ export interface PassiveDuration {
   kind: "instant" | "within_turn" | "turns" | "battle" | "until_trigger" | "unknown";
   turns?: number;
 }
+
+export interface PassiveEffectScaling {
+  kind: "per_ki_sphere";
+  kiSphereTypes: KiSphereType[];
+  spheresPerIncrement: number;
+  kiContext: "collected_ki_spheres";
+}
+
+export interface KiSphereChange {
+  sourceSelection: "listed_types" | "all" | "random_type";
+  sourceTypes?: ConcreteKiSphereType[];
+  excludedSourceTypes?: TeamAnalysisType[];
+  destinationType: ConcreteKiSphereType;
+  kiContext: "board_state";
+}
 ```
 
 `activationChancePercent` is the probability that the typed effect activates.
@@ -515,6 +567,23 @@ numeric percentage, and makes the rule's independent `effectStatus` `partial`.
 `duration` and `stackCap` modify the corresponding typed effect. They are not
 emitted as standalone unknown effects when their association is unambiguous.
 Unrecognized intervening qualifiers remain separate `unknown` effects.
+
+For `scaling.kind: "per_ki_sphere"`, the effect's `value` is the increment
+applied once per `spheresPerIncrement` matching spheres; it is not a static
+bonus. `stackCap` remains the cap on that same effect and is not folded into the
+increment. Effects under a proven `For every ... Ki Sphere obtained` header and
+effects with an inline `per ... Ki Sphere obtained` modifier use the same
+structure. Separate passive contributions remain separate effects even when
+they share kind, selector, or target.
+
+`ki_sphere_change` requires a structured `KiSphereChange`. `listed_types`
+names concrete source colors, `all` proves every source sphere, and
+`random_type` proves that one Type is selected while optional exclusions remain
+explicit. Destinations are concrete colors or `rainbow`; ambiguous "another
+Type", item/special spheres, chance-qualified conversions without validated
+probability semantics, and unclear source/destination wording remain unknown.
+Board conversion always carries `kiContext: "board_state"` and is not a
+character-Type target.
 
 A temporal window that decides whether a rule is active belongs to the
 condition AST, including an inline suffix such as `ATK +X% for 5 turns from the
@@ -731,7 +800,7 @@ Suggested manifest:
   "uncompressedSizeBytes": 0,
   "stateCount": 0,
   "rulesVersion": "1",
-  "parserVersion": "1.4.1",
+  "parserVersion": "1.5.0",
   "sourceCharacterDatasetVersion": "...",
   "sourceCharacterPayloadSha256": "..."
 }
@@ -758,6 +827,15 @@ their meaning. `parserVersion` advances to `1.4.1` because validated upstream
 markers can now change an affected condition from unknown to typed
 `enemy_status`. Consumers that ignore the new evidence continue to consume the
 same AST and raw-text fields.
+
+Gate A5 also keeps `schemaVersion` at `1`. `kiContext`, typed sphere selectors,
+effect scaling, conversion metadata, and Ki coverage counters are additive;
+previously valid fields retain their meaning, and consumers may ignore the new
+optional enrichment. The already reserved Ki predicate/effect kinds now gain
+validated payload instances. `parserVersion` advances to `1.5.0` so consumers
+can feature-detect these runtime semantics. A schema bump remains reserved for
+removing a field, narrowing previously valid payloads, or changing an existing
+serialized meaning.
 
 - Upload immutable payload before mutable manifest.
 - Run publisher dry-run and report projected new bytes before upload.

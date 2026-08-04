@@ -1,0 +1,208 @@
+{
+  "cases": [
+    {
+      "name": "attacking Ki lower bound",
+      "source": "real",
+      "rawText": "When attacking with 12 or more Ki\n- ATK 2500",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ki_amount", "scope": "self", "comparator": "gte", "value": 12, "evaluationMoment": "when_attacking", "kiContext": "final_attack_ki" }
+    },
+    {
+      "name": "attacking Ki exact",
+      "source": "real",
+      "rawText": "When attacking with 24 Ki\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ki_amount", "scope": "self", "comparator": "eq", "value": 24, "evaluationMoment": "when_attacking", "kiContext": "final_attack_ki" }
+    },
+    {
+      "name": "attacking Ki upper bound",
+      "source": "real",
+      "rawText": "When attacking with 11 or less Ki\n- DEF 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ki_amount", "scope": "self", "comparator": "lte", "value": 11, "evaluationMoment": "when_attacking", "kiContext": "final_attack_ki" }
+    },
+    {
+      "name": "attacking Ki closed interval",
+      "source": "synthetic",
+      "rawText": "When attacking with between 12 and 18 Ki\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "ki_amount", "scope": "self", "comparator": "gte", "value": 12, "evaluationMoment": "when_attacking", "kiContext": "final_attack_ki" },
+          { "op": "predicate", "kind": "ki_amount", "scope": "self", "comparator": "lte", "value": 18, "evaluationMoment": "when_attacking", "kiContext": "final_attack_ki" }
+        ]
+      }
+    },
+    {
+      "name": "any Ki Sphere count",
+      "source": "real",
+      "rawText": "3 or more Ki Spheres obtained\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ki_spheres_obtained", "scope": "self", "comparator": "gte", "value": 3, "kiSphereTypes": ["any"], "kiContext": "collected_ki_spheres" }
+    },
+    {
+      "name": "Rainbow Ki Sphere count",
+      "source": "real",
+      "rawText": "2 or more Rainbow Ki Spheres obtained\n- DEF 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ki_spheres_obtained", "scope": "self", "comparator": "gte", "value": 2, "kiSphereTypes": ["rainbow"], "kiContext": "collected_ki_spheres" }
+    },
+    {
+      "name": "colored Type Ki Sphere count",
+      "source": "real",
+      "rawText": "3 or more Type Ki Spheres obtained\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ki_spheres_obtained", "scope": "self", "comparator": "gte", "value": 3, "kiSphereTypes": ["non_rainbow"], "kiContext": "collected_ki_spheres" }
+    },
+    {
+      "name": "colored Ki Sphere presence",
+      "source": "real",
+      "rawText": "With a TEQ Ki Sphere obtained\n- Ki +2",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ki_sphere_type_obtained", "scope": "self", "comparator": "gte", "value": 1, "kiSphereTypes": ["TEQ"], "kiContext": "collected_ki_spheres" }
+    },
+    {
+      "name": "all five concrete Ki Sphere colors",
+      "source": "synthetic",
+      "rawText": "With an AGL, TEQ, INT, STR or PHY Ki Sphere obtained\n- Ki +2",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ki_sphere_type_obtained", "scope": "self", "comparator": "gte", "value": 1, "kiSphereTypes": ["AGL", "TEQ", "INT", "STR", "PHY"], "kiContext": "collected_ki_spheres" }
+    },
+    {
+      "name": "non-Rainbow Ki Sphere presence",
+      "source": "synthetic",
+      "rawText": "With a non-Rainbow Ki Sphere obtained\n- Ki +2",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ki_sphere_type_obtained", "scope": "self", "comparator": "gte", "value": 1, "kiSphereTypes": ["non_rainbow"], "kiContext": "collected_ki_spheres" }
+    },
+    {
+      "name": "Ki and sphere condition with AND",
+      "source": "synthetic",
+      "rawText": "When attacking with 18 or more Ki and 3 or more Rainbow Ki Spheres obtained\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "ki_amount", "scope": "self", "comparator": "gte", "value": 18, "evaluationMoment": "when_attacking", "kiContext": "final_attack_ki" },
+          { "op": "predicate", "kind": "ki_spheres_obtained", "scope": "self", "comparator": "gte", "value": 3, "kiSphereTypes": ["rainbow"], "kiContext": "collected_ki_spheres" }
+        ]
+      }
+    },
+    {
+      "name": "sphere alternatives with OR",
+      "source": "real",
+      "rawText": "1 or more INT Ki Spheres obtained, or 3 or more Ki Spheres obtained\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "any",
+        "children": [
+          { "op": "predicate", "kind": "ki_spheres_obtained", "scope": "self", "comparator": "gte", "value": 1, "kiSphereTypes": ["INT"], "kiContext": "collected_ki_spheres" },
+          { "op": "predicate", "kind": "ki_spheres_obtained", "scope": "self", "comparator": "gte", "value": 3, "kiSphereTypes": ["any"], "kiContext": "collected_ki_spheres" }
+        ]
+      }
+    },
+    {
+      "name": "header scaling per Rainbow sphere",
+      "source": "real",
+      "rawText": "For every Rainbow Ki Sphere obtained\n- ATK & DEF 10%",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effects": [
+        { "kind": "atk", "value": 10, "unit": "percent", "scaling": { "kind": "per_ki_sphere", "kiSphereTypes": ["rainbow"], "spheresPerIncrement": 1, "kiContext": "collected_ki_spheres" } },
+        { "kind": "def", "value": 10, "unit": "percent", "scaling": { "kind": "per_ki_sphere", "kiSphereTypes": ["rainbow"], "spheresPerIncrement": 1, "kiContext": "collected_ki_spheres" } }
+      ]
+    },
+    {
+      "name": "inline Ki scaling with cap",
+      "source": "real",
+      "rawText": "Basic effect(s)\n- Receives an additional Ki +1 per Ki Sphere obtained (up to +5)",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effects": [
+        { "kind": "ki", "value": 1, "unit": "ki", "stackCap": 5, "scaling": { "kind": "per_ki_sphere", "kiSphereTypes": ["any"], "spheresPerIncrement": 1, "kiContext": "collected_ki_spheres" } }
+      ]
+    },
+    {
+      "name": "typed combat effects scale independently",
+      "source": "synthetic",
+      "rawText": "For every Type Ki Sphere obtained\n- Chance of performing a critical hit 5% and chance of evading enemy's attack 4% and damage reduction rate 3%",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effects": [
+        { "kind": "critical_chance", "value": 5, "unit": "percent", "scaling": { "kind": "per_ki_sphere", "kiSphereTypes": ["non_rainbow"], "spheresPerIncrement": 1, "kiContext": "collected_ki_spheres" } },
+        { "kind": "evade_chance", "value": 4, "unit": "percent", "scaling": { "kind": "per_ki_sphere", "kiSphereTypes": ["non_rainbow"], "spheresPerIncrement": 1, "kiContext": "collected_ki_spheres" } },
+        { "kind": "damage_reduction", "value": 3, "unit": "percent", "scaling": { "kind": "per_ki_sphere", "kiSphereTypes": ["non_rainbow"], "spheresPerIncrement": 1, "kiContext": "collected_ki_spheres" } }
+      ]
+    },
+    {
+      "name": "scaling every two spheres",
+      "source": "real",
+      "rawText": "For every 2 Rainbow Ki Spheres obtained\n- Launches an additional Super Attack",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effects": [
+        { "kind": "additional_super_attack", "count": 1, "scaling": { "kind": "per_ki_sphere", "kiSphereTypes": ["rainbow"], "spheresPerIncrement": 2, "kiContext": "collected_ki_spheres" } }
+      ]
+    },
+    {
+      "name": "listed Ki Sphere conversion",
+      "source": "real",
+      "rawText": "Basic effect(s)\n- Changes Ki Spheres: AGL & STR to TEQ",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effects": [
+        { "kind": "ki_sphere_change", "kiSphereChange": { "sourceSelection": "listed_types", "sourceTypes": ["AGL", "STR"], "destinationType": "TEQ", "kiContext": "board_state" } }
+      ]
+    },
+    {
+      "name": "all Ki Sphere conversion",
+      "source": "real",
+      "rawText": "Basic effect(s)\n- Changes Ki Spheres: All to PHY",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effects": [
+        { "kind": "ki_sphere_change", "kiSphereChange": { "sourceSelection": "all", "destinationType": "PHY", "kiContext": "board_state" } }
+      ]
+    },
+    {
+      "name": "random Type conversion with exclusions",
+      "source": "real",
+      "rawText": "Basic effect(s)\n- Randomly changes Ki Spheres of a certain Type (PHY excluded) to Rainbow Ki Spheres",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effects": [
+        { "kind": "ki_sphere_change", "kiSphereChange": { "sourceSelection": "random_type", "excludedSourceTypes": ["PHY"], "destinationType": "rainbow", "kiContext": "board_state" } }
+      ]
+    },
+    {
+      "name": "ambiguous bare Ki phase",
+      "source": "real",
+      "rawText": "When Ki is 18 or more\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "unknown",
+      "condition": { "op": "unknown", "sourceText": "When Ki is 18 or more" }
+    },
+    {
+      "name": "ambiguous conversion destination",
+      "source": "synthetic",
+      "rawText": "Basic effect(s)\n- Changes Ki Spheres to another Type",
+      "expectedStatus": "partial",
+      "condition": { "op": "always" },
+      "effects": [
+        { "kind": "unknown", "sourceText": "Changes Ki Spheres to another Type" }
+      ]
+    },
+    {
+      "name": "known scaling with residual qualifier",
+      "source": "synthetic",
+      "rawText": "Basic effect(s)\n- ATK 10% per Rainbow Ki Sphere obtained after tracing an optimal path",
+      "expectedStatus": "partial",
+      "condition": { "op": "always" },
+      "effects": [
+        { "kind": "atk", "value": 10, "unit": "percent", "scaling": { "kind": "per_ki_sphere", "kiSphereTypes": ["rainbow"], "spheresPerIncrement": 1, "kiContext": "collected_ki_spheres" } },
+        { "kind": "unknown", "sourceText": "after tracing an optimal path" }
+      ]
+    }
+  ]
+}

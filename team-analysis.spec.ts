@@ -13,6 +13,7 @@ import {
   ConditionExpression,
   mapPassiveDetailsToSource,
   parsePassive,
+  PassiveEffect,
   PassivePredicate,
   validateTeamAnalysisDataset,
 } from "./team-analysis";
@@ -115,6 +116,8 @@ type GoldenConditionShape =
     classes?: string[];
     types?: string[];
     slots?: number[];
+    kiSphereTypes?: string[];
+    kiContext?: string;
     evaluationMoment?: string;
     enemySelection?: string;
     enemyStatuses?: string[];
@@ -176,6 +179,38 @@ interface GateA41Fixture {
   }>;
 }
 
+interface GateA5Fixture {
+  cases: Array<{
+    name: string;
+    source: "real" | "synthetic";
+    rawText: string;
+    expectedStatus: string;
+    conditionStatus?: string;
+    condition: GoldenConditionShape;
+    effects?: Array<{
+      kind: string;
+      value?: number;
+      unit?: string;
+      count?: number;
+      stackCap?: number;
+      sourceText?: string;
+      scaling?: {
+        kind: string;
+        kiSphereTypes: string[];
+        spheresPerIncrement: number;
+        kiContext: string;
+      };
+      kiSphereChange?: {
+        sourceSelection: string;
+        sourceTypes?: string[];
+        excludedSourceTypes?: string[];
+        destinationType: string;
+        kiContext: string;
+      };
+    }>;
+  }>;
+}
+
 const fixtureRelativePath = "fixtures/team-analysis/foundation-golden.json";
 const sourceFixturePath = resolve(__dirname, fixtureRelativePath);
 const fixturePath = existsSync(sourceFixturePath)
@@ -218,6 +253,12 @@ const gateA41Path = existsSync(sourceGateA41Path)
   ? sourceGateA41Path
   : resolve(__dirname, "..", gateA41RelativePath);
 const gateA41Fixture = JSON.parse(readFileSync(gateA41Path, "utf8")) as GateA41Fixture;
+const gateA5RelativePath = "fixtures/team-analysis/gate-a5-golden.json";
+const sourceGateA5Path = resolve(__dirname, gateA5RelativePath);
+const gateA5Path = existsSync(sourceGateA5Path)
+  ? sourceGateA5Path
+  : resolve(__dirname, "..", gateA5RelativePath);
+const gateA5Fixture = JSON.parse(readFileSync(gateA5Path, "utf8")) as GateA5Fixture;
 
 const options = {
   generatedAt: "2026-08-03T12:00:00.000Z",
@@ -429,8 +470,13 @@ describe("team-analysis Gate A1 passive parser", function () {
     equal(qualitative.rules[0].effects[0].probabilitySource, "unresolved");
     deepEqual(wrapped.rules[0].effects.map(effect => effect.sourceText), [
       "Receives an additional Ki +1",
-      "per Ki Sphere obtained",
     ]);
+    deepEqual(wrapped.rules[0].effects[0].scaling, {
+      kind: "per_ki_sphere",
+      kiSphereTypes: ["any"],
+      spheresPerIncrement: 1,
+      kiContext: "collected_ki_spheres",
+    });
   });
 
   it("parses Class ally prefixes without assigning them to self", () => {
@@ -899,6 +945,35 @@ describe("team-analysis Gate A4.1 structural enemy-status evidence", function ()
   });
 });
 
+describe("team-analysis Gate A5 Ki and Ki Sphere parser", function () {
+  for (const fixtureCase of gateA5Fixture.cases) {
+    it(`matches Gate A5 golden case: ${fixtureCase.name}`, () => {
+      const passive = parsePassive(`gate-a5:${fixtureCase.name}:initial`, fixtureCase.name, fixtureCase.rawText);
+      const rule = passive.rules[0];
+
+      equal(passive.parseStatus, fixtureCase.expectedStatus);
+      equal(rule.conditionStatus, fixtureCase.conditionStatus ?? "supported");
+      deepEqual(conditionShape(rule.condition), fixtureCase.condition);
+      if (fixtureCase.effects) {
+        deepEqual(rule.effects.map(gateA5EffectShape), fixtureCase.effects);
+      }
+      equal(rule.effects.some(effect => (effect.kind as string) === "support"), false);
+    });
+  }
+
+  it("reconstructs every Gate A5 source token in original order", () => {
+    for (const fixtureCase of gateA5Fixture.cases) {
+      const passive = parsePassive("gate-a5:tokens:initial", undefined, fixtureCase.rawText);
+      const fragments = uniqueFragments([
+        ...passive.rules.flatMap(rule => rule.source),
+        ...passive.unparsedFragments,
+      ]);
+      const reconstructed = fragments.map(fragment => fragment.text).join("\n").replace(/\s/g, "");
+      equal(reconstructed, fixtureCase.rawText.replace(/\s/g, ""), fixtureCase.name);
+    }
+  });
+});
+
 describe("team-analysis validation and artifacts", function () {
   it("validates structural evidence identity, hash, anchor, release, and serialized order", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
@@ -1135,6 +1210,94 @@ describe("team-analysis validation and artifacts", function () {
     ok(codes.includes("target-types"));
   });
 
+  it("rejects invalid Ki comparators, ranges, contexts, sphere selectors, scaling, and conversions", () => {
+    const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
+    const broken = JSON.parse(JSON.stringify(dataset)) as typeof dataset;
+    const rule = broken.states[0].passive?.rules[0];
+    ok(rule);
+    rule.condition = JSON.parse(JSON.stringify({
+      op: "all",
+      children: [
+        {
+          op: "predicate",
+          predicate: {
+            kind: "ki_amount",
+            scope: "team",
+            comparator: "between",
+            value: 25,
+            kiSphereTypes: ["BLUE"],
+            kiContext: "board_state",
+            evaluationMoment: "start_of_turn",
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "ki_spheres_obtained",
+            scope: "self",
+            comparator: "gte",
+            value: -1,
+            kiSphereTypes: ["any", "rainbow"],
+            kiContext: "board_state",
+            sourceText: "Basic effect(s)",
+          },
+        },
+        {
+          op: "predicate",
+          predicate: {
+            kind: "ki_sphere_type_obtained",
+            scope: "self",
+            comparator: "eq",
+            value: 2,
+            kiSphereTypes: ["rainbow"],
+            kiContext: "collected_ki_spheres",
+            sourceText: "Basic effect(s)",
+          },
+        },
+      ],
+    })) as typeof rule.condition;
+    rule.effects = JSON.parse(JSON.stringify([
+      {
+        kind: "atk",
+        target: { scope: "self" },
+        value: 10,
+        unit: "percent",
+        scaling: {
+          kind: "per_attack",
+          kiSphereTypes: [],
+          spheresPerIncrement: 0,
+          kiContext: "board_state",
+        },
+        kiSphereChange: {
+          sourceSelection: "all",
+          sourceTypes: ["AGL"],
+          destinationType: "any",
+          kiContext: "collected_ki_spheres",
+        },
+        sourceText: "Basic effect(s)",
+      },
+      {
+        kind: "ki_sphere_change",
+        target: { scope: "team_allies", selfInclusion: "included" },
+        sourceText: "Basic effect(s)",
+      },
+    ])) as typeof rule.effects;
+
+    const codes = validateTeamAnalysisDataset(broken, fixture.characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    for (const code of [
+      "ki-scope", "ki-comparator", "ki-amount-range", "ki-amount-context",
+      "ki-amount-moment", "ki-amount-sphere-types", "ki-sphere-count-range",
+      "ki-sphere-context", "ki-sphere-types-exclusive", "ki-sphere-presence",
+      "effect-scaling-kind", "effect-scaling-context", "effect-scaling-unit",
+      "effect-scaling-sphere-types", "ki-sphere-change-kind",
+      "ki-sphere-change-fields",
+    ]) {
+      ok(codes.includes(code), code);
+    }
+  });
+
   it("rejects invalid HP, battle-turn, entry-turn, phase, and window payloads", () => {
     const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
     const broken = JSON.parse(JSON.stringify(dataset)) as typeof dataset;
@@ -1367,7 +1530,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.4\.1/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.5\.0/);
   });
 });
 
@@ -1418,6 +1581,8 @@ function conditionShape(condition: ConditionExpression): GoldenConditionShape {
     ...(predicate.classes ? { classes: predicate.classes } : {}),
     ...(predicate.types ? { types: predicate.types } : {}),
     ...(predicate.slots ? { slots: predicate.slots } : {}),
+    ...(predicate.kiSphereTypes ? { kiSphereTypes: predicate.kiSphereTypes } : {}),
+    ...(predicate.kiContext ? { kiContext: predicate.kiContext } : {}),
     ...(predicate.evaluationMoment ? { evaluationMoment: predicate.evaluationMoment } : {}),
     ...(predicate.enemySelection ? { enemySelection: predicate.enemySelection } : {}),
     ...(predicate.enemyStatuses ? { enemyStatuses: predicate.enemyStatuses } : {}),
@@ -1425,6 +1590,19 @@ function conditionShape(condition: ConditionExpression): GoldenConditionShape {
     ...(predicate.excludedNames ? { excludedNames: predicate.excludedNames } : {}),
     ...(predicate.excludedNameMatch ? { excludedNameMatch: predicate.excludedNameMatch } : {}),
     ...(predicate.enemyReference ? { enemyReference: predicate.enemyReference } : {}),
+  };
+}
+
+function gateA5EffectShape(effect: PassiveEffect) {
+  return {
+    kind: effect.kind,
+    ...(effect.value !== undefined ? { value: effect.value } : {}),
+    ...(effect.unit !== undefined ? { unit: effect.unit } : {}),
+    ...(effect.count !== undefined ? { count: effect.count } : {}),
+    ...(effect.stackCap !== undefined ? { stackCap: effect.stackCap } : {}),
+    ...(effect.scaling ? { scaling: effect.scaling } : {}),
+    ...(effect.kiSphereChange ? { kiSphereChange: effect.kiSphereChange } : {}),
+    ...(effect.kind === "unknown" && effect.sourceText ? { sourceText: effect.sourceText } : {}),
   };
 }
 
