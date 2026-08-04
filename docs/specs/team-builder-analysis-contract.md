@@ -508,6 +508,8 @@ export interface PassiveEffect {
   classes?: TeamAnalysisClass[];
   types?: TeamAnalysisType[];
   classifications?: PassiveEffectClassification[];
+  activationTiming?: PassiveActivationTiming;
+  calculationBucket?: PassiveCalculationBucketAssignment;
   sourceText: string;
 }
 
@@ -531,6 +533,38 @@ export interface PassiveTarget {
 export interface PassiveDuration {
   kind: "instant" | "within_turn" | "turns" | "battle" | "until_trigger" | "unknown";
   turns?: number;
+}
+
+export type CalculationPhaseResolutionSource =
+  | "explicit_text"
+  | "first_party_game_db"
+  | "documented_domain_rule"
+  | "unresolved";
+
+export type PassiveActivationMoment =
+  | "start_of_turn"
+  | "before_attacking"
+  | "when_attacking"
+  | "when_performing_super_attack"
+  | "after_attacking"
+  | "after_receiving_attack"
+  | "after_evading"
+  | "after_final_blow"
+  | "unresolved";
+
+export interface PassiveActivationTiming {
+  moment: PassiveActivationMoment;
+  source: CalculationPhaseResolutionSource;
+}
+
+export type PassiveCalculationBucket =
+  | "passive_start_of_turn"
+  | "passive_on_attack"
+  | "unresolved";
+
+export interface PassiveCalculationBucketAssignment {
+  bucket: PassiveCalculationBucket;
+  source: CalculationPhaseResolutionSource;
 }
 
 export interface PassiveEffectScaling {
@@ -567,6 +601,31 @@ numeric percentage, and makes the rule's independent `effectStatus` `partial`.
 `duration` and `stackCap` modify the corresponding typed effect. They are not
 emitted as standalone unknown effects when their association is unambiguous.
 Unrecognized intervening qualifiers remain separate `unknown` effects.
+
+`activationTiming` answers when the passive contribution becomes active.
+`calculationBucket` answers where an ATK/DEF percentage contribution belongs in
+the future formula. They are independent from the rule's `condition`: a
+condition decides whether a contribution is available, activation timing says
+when it becomes available, and the bucket says which passive multiplier owns
+it. In particular, a contribution that activates after receiving an attack is
+not automatically an On Attack bucket contribution.
+
+The initial bucket contract is deliberately limited to typed `atk` and `def`
+effects. Every generated typed effect carries either a resolved or unresolved
+activation timing; every generated ATK/DEF effect likewise carries either a
+resolved or unresolved bucket. An unresolved phase is metadata uncertainty and
+does not change `conditionStatus`, `effectStatus`, or the recognized effect.
+Unknown effect atoms cannot carry a calculation-phase claim.
+
+Resolution precedence is explicit wording, exact first-party evidence for the
+same passive/effect when available, a documented domain rule, then unresolved.
+`Basic effect(s)` is classified as Start of Turn by the documented passive
+calculation rule. Explicit start-of-turn wording also maps to that bucket.
+`when performing a Super Attack` and `after performing a Super Attack` map to
+the passive On Attack bucket by the documented rule. Bare `when attacking`,
+attack-triggered stacks, and Ki thresholds remain bucket-unresolved unless a
+stronger source proves their calculation phase. Super Attack effect raises are
+a separate channel and are never serialized as passive buckets.
 
 For `scaling.kind: "per_ki_sphere"`, the effect's `value` is the increment
 applied once per `spheresPerIncrement` matching spheres; it is not a static
@@ -800,7 +859,7 @@ Suggested manifest:
   "uncompressedSizeBytes": 0,
   "stateCount": 0,
   "rulesVersion": "1",
-  "parserVersion": "1.5.0",
+  "parserVersion": "1.5.1",
   "sourceCharacterDatasetVersion": "...",
   "sourceCharacterPayloadSha256": "..."
 }
@@ -836,6 +895,15 @@ validated payload instances. `parserVersion` advances to `1.5.0` so consumers
 can feature-detect these runtime semantics. A schema bump remains reserved for
 removing a field, narrowing previously valid payloads, or changing an existing
 serialized meaning.
+
+Gate A5.1 keeps `schemaVersion` at `1`. `activationTiming`,
+`calculationBucket`, their provenance values, and calculation-phase coverage
+counters are additive enrichment. Existing condition/effect meanings and parse
+statuses do not change, and consumers may ignore the new fields.
+`parserVersion` advances to `1.5.1` for feature detection. The current
+generator emits explicit `unresolved` assignments where a calculation consumer
+would otherwise be tempted to infer a phase from absent data; older cached
+schema-1 payloads may omit the enrichment entirely.
 
 - Upload immutable payload before mutable manifest.
 - Run publisher dry-run and report projected new bytes before upload.

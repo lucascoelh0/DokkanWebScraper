@@ -211,6 +211,22 @@ interface GateA5Fixture {
   }>;
 }
 
+interface GateA51Fixture {
+  cases: Array<{
+    name: string;
+    source: "real" | "synthetic";
+    rawText: string;
+    expectedStatus: string;
+    effects: Array<{
+      kind: string;
+      activationTiming: { moment: string; source: string };
+      calculationBucket: { bucket: string; source: string };
+      target?: string;
+      classifications?: string[];
+    }>;
+  }>;
+}
+
 const fixtureRelativePath = "fixtures/team-analysis/foundation-golden.json";
 const sourceFixturePath = resolve(__dirname, fixtureRelativePath);
 const fixturePath = existsSync(sourceFixturePath)
@@ -259,6 +275,12 @@ const gateA5Path = existsSync(sourceGateA5Path)
   ? sourceGateA5Path
   : resolve(__dirname, "..", gateA5RelativePath);
 const gateA5Fixture = JSON.parse(readFileSync(gateA5Path, "utf8")) as GateA5Fixture;
+const gateA51RelativePath = "fixtures/team-analysis/gate-a51-golden.json";
+const sourceGateA51Path = resolve(__dirname, gateA51RelativePath);
+const gateA51Path = existsSync(sourceGateA51Path)
+  ? sourceGateA51Path
+  : resolve(__dirname, "..", gateA51RelativePath);
+const gateA51Fixture = JSON.parse(readFileSync(gateA51Path, "utf8")) as GateA51Fixture;
 
 const options = {
   generatedAt: "2026-08-03T12:00:00.000Z",
@@ -974,6 +996,36 @@ describe("team-analysis Gate A5 Ki and Ki Sphere parser", function () {
   });
 });
 
+describe("team-analysis Gate A5.1 calculation-phase foundation", function () {
+  for (const fixtureCase of gateA51Fixture.cases) {
+    it(`matches Gate A5.1 golden case: ${fixtureCase.name}`, () => {
+      const passive = parsePassive(`gate-a51:${fixtureCase.name}:initial`, fixtureCase.name, fixtureCase.rawText);
+      equal(passive.parseStatus, fixtureCase.expectedStatus);
+      deepEqual(
+        passive.rules.flatMap(rule => rule.effects)
+          .filter(effect => effect.kind !== "unknown")
+          .map(gateA51EffectShape),
+        fixtureCase.effects,
+      );
+    });
+  }
+
+  it("reconstructs every Gate A5.1 source token in original order", () => {
+    for (const fixtureCase of gateA51Fixture.cases) {
+      const passive = parsePassive("gate-a51:tokens:initial", undefined, fixtureCase.rawText);
+      const fragments = uniqueFragments([
+        ...passive.rules.flatMap(rule => rule.source),
+        ...passive.unparsedFragments,
+      ]);
+      equal(
+        fragments.map(fragment => fragment.text).join("\n").replace(/\s/g, ""),
+        fixtureCase.rawText.replace(/\s/g, ""),
+        fixtureCase.name,
+      );
+    }
+  });
+});
+
 describe("team-analysis validation and artifacts", function () {
   it("validates structural evidence identity, hash, anchor, release, and serialized order", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
@@ -1019,6 +1071,48 @@ describe("team-analysis validation and artifacts", function () {
     ok(coverage.ruleStatusCounts.unknown > 0);
     ok(coverage.supportedEffectCounts.atk > 0);
     ok(coverage.unknownFragmentCount > 0);
+    ok(coverage.calculationPhase.activationEligibleEffectCount > 0);
+    ok(coverage.calculationPhase.bucketEligibleEffectCount > 0);
+    ok(coverage.calculationPhase.bucketCounts.passive_start_of_turn > 0);
+  });
+
+  it("rejects impossible calculation-phase combinations", () => {
+    const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
+    const broken = JSON.parse(JSON.stringify(dataset)) as typeof dataset;
+    const typedEffects = broken.states.flatMap(item => item.passive?.rules ?? [])
+      .flatMap(rule => rule.effects)
+      .filter(effect => effect.kind !== "unknown");
+    const statEffect = typedEffects.find(effect => effect.kind === "atk" || effect.kind === "def");
+    const nonStatEffect = typedEffects.find(effect => effect.kind !== "atk" && effect.kind !== "def");
+    const unknownEffect = broken.states.flatMap(item => item.passive?.rules ?? [])
+      .flatMap(rule => rule.effects)
+      .find(effect => effect.kind === "unknown");
+    ok(statEffect && nonStatEffect && unknownEffect);
+
+    statEffect.activationTiming = JSON.parse(JSON.stringify({
+      moment: "after_time_travel",
+      source: "unresolved",
+    })) as typeof statEffect.activationTiming;
+    statEffect.calculationBucket = {
+      bucket: "passive_on_attack",
+      source: "unresolved",
+    };
+    nonStatEffect.calculationBucket = {
+      bucket: "passive_start_of_turn",
+      source: "documented_domain_rule",
+    };
+    unknownEffect.activationTiming = {
+      moment: "start_of_turn",
+      source: "explicit_text",
+    };
+
+    const codes = validateTeamAnalysisDataset(broken, fixture.characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(codes.includes("activation-moment"));
+    ok(codes.includes("activation-resolution"));
+    ok(codes.includes("calculation-bucket-resolution"));
+    ok(codes.includes("calculation-bucket-effect-kind"));
+    ok(codes.includes("unknown-effect-calculation-phase"));
   });
 
   it("separates scenario-containing rules from fully scenario-evaluable rules", () => {
@@ -1530,7 +1624,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.5\.0/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.5\.1/);
   });
 });
 
@@ -1603,6 +1697,16 @@ function gateA5EffectShape(effect: PassiveEffect) {
     ...(effect.scaling ? { scaling: effect.scaling } : {}),
     ...(effect.kiSphereChange ? { kiSphereChange: effect.kiSphereChange } : {}),
     ...(effect.kind === "unknown" && effect.sourceText ? { sourceText: effect.sourceText } : {}),
+  };
+}
+
+function gateA51EffectShape(effect: PassiveEffect) {
+  return {
+    kind: effect.kind,
+    activationTiming: effect.activationTiming,
+    calculationBucket: effect.calculationBucket,
+    ...(effect.target.scope !== "self" ? { target: effect.target.scope } : {}),
+    ...(effect.classifications ? { classifications: effect.classifications } : {}),
   };
 }
 

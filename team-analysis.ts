@@ -15,7 +15,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.5.0";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.5.1";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
 export type ReleaseState = "initial" | "eza" | "seza";
@@ -45,6 +45,25 @@ export type ProbabilitySource =
     | "explicit_text"
     | "first_party_game_db"
     | "qualitative_lexicon"
+    | "unresolved";
+export type CalculationPhaseResolutionSource =
+    | "explicit_text"
+    | "first_party_game_db"
+    | "documented_domain_rule"
+    | "unresolved";
+export type PassiveActivationMoment =
+    | "start_of_turn"
+    | "before_attacking"
+    | "when_attacking"
+    | "when_performing_super_attack"
+    | "after_attacking"
+    | "after_receiving_attack"
+    | "after_evading"
+    | "after_final_blow"
+    | "unresolved";
+export type PassiveCalculationBucket =
+    | "passive_start_of_turn"
+    | "passive_on_attack"
     | "unresolved";
 
 export type PassivePredicateKind =
@@ -255,7 +274,19 @@ export interface PassiveEffect {
     classes?: TeamAnalysisClass[],
     types?: TeamAnalysisType[],
     classifications?: PassiveEffectClassification[],
+    activationTiming?: PassiveActivationTiming,
+    calculationBucket?: PassiveCalculationBucketAssignment,
     sourceText: string,
+}
+
+export interface PassiveActivationTiming {
+    moment: PassiveActivationMoment,
+    source: CalculationPhaseResolutionSource,
+}
+
+export interface PassiveCalculationBucketAssignment {
+    bucket: PassiveCalculationBucket,
+    source: CalculationPhaseResolutionSource,
 }
 
 export interface PassiveEffectScaling {
@@ -339,6 +370,14 @@ export interface TeamAnalysisCoverageReport {
         scaledEffectSphereTypeCounts: Record<string, number>,
         conversionSourceSelectionCounts: Record<string, number>,
         conversionDestinationTypeCounts: Record<string, number>,
+    },
+    calculationPhase: {
+        activationEligibleEffectCount: number,
+        activationMomentCounts: Record<PassiveActivationMoment, number>,
+        activationSourceCounts: Record<CalculationPhaseResolutionSource, number>,
+        bucketEligibleEffectCount: number,
+        bucketCounts: Record<PassiveCalculationBucket, number>,
+        bucketSourceCounts: Record<CalculationPhaseResolutionSource, number>,
     },
     runtimeOnlyRuleCount: number,
     identity: {
@@ -627,6 +666,7 @@ export function parsePassive(
             stateKey,
             rawText,
             ruleLineIndex: block.source[0]?.lineIndex ?? -1,
+            ...(currentCondition ? { phaseContextText: currentCondition.text } : {}),
             ...(headerScaling ? { kiSphereScaling: headerScaling } : {}),
         });
         const source = uniqueOrderedFragments([
@@ -2649,17 +2689,22 @@ interface EffectParseContext {
     stateKey: string,
     rawText: string,
     ruleLineIndex: number,
+    phaseContextText?: string,
     kiSphereScaling?: PassiveEffectScaling,
 }
 
 function parseEffects(sourceText: string, context: EffectParseContext): ParsedEffectResult {
     const resolvedTarget = resolveEffectTarget(sourceText);
     const parsedAtoms = parseEffectAtoms(resolvedTarget.body, context);
-    const effects = parsedAtoms.atoms.map(atom => applyEffectTarget(
-        context.kiSphereScaling && atom.kind !== "ki_sphere_change" && !atom.scaling
-            ? { ...atom, scaling: { ...context.kiSphereScaling, kiSphereTypes: [...context.kiSphereScaling.kiSphereTypes] } }
-            : atom,
-        resolvedTarget,
+    const effects = parsedAtoms.atoms.map(atom => enrichCalculationPhase(
+        applyEffectTarget(
+            context.kiSphereScaling && atom.kind !== "ki_sphere_change" && !atom.scaling
+                ? { ...atom, scaling: { ...context.kiSphereScaling, kiSphereTypes: [...context.kiSphereScaling.kiSphereTypes] } }
+                : atom,
+            resolvedTarget,
+        ),
+        sourceText,
+        context,
     ));
     effects.push(...parsedAtoms.unknownSegments.map(segment => unknownEffect(
         segment,
@@ -3354,6 +3399,118 @@ function applyEffectTarget(atom: PassiveEffectAtom, resolvedTarget: ResolvedEffe
     };
 }
 
+const CALCULATION_BUCKET_EFFECT_KINDS = new Set<PassiveEffectKind>(["atk", "def"]);
+
+function enrichCalculationPhase(
+    effect: PassiveEffect,
+    effectSourceText: string,
+    context: EffectParseContext,
+): PassiveEffect {
+    if (effect.kind === "unknown") {
+        return effect;
+    }
+
+    const explicitMoment = explicitActivationMoment(effectSourceText)
+        ?? explicitActivationMoment(context.phaseContextText ?? "");
+    const domainMoment = explicitMoment
+        ? undefined
+        : domainActivationMoment(context.phaseContextText, context.kiSphereScaling);
+    const activationTiming: PassiveActivationTiming = explicitMoment
+        ? { moment: explicitMoment, source: "explicit_text" }
+        : domainMoment
+            ? { moment: domainMoment, source: "documented_domain_rule" }
+            : { moment: "unresolved", source: "unresolved" };
+
+    if (!CALCULATION_BUCKET_EFFECT_KINDS.has(effect.kind)) {
+        return { ...effect, activationTiming };
+    }
+
+    return {
+        ...effect,
+        activationTiming,
+        calculationBucket: resolveCalculationBucket(
+            effectSourceText,
+            context.phaseContextText,
+            context.kiSphereScaling,
+        ),
+    };
+}
+
+function explicitActivationMoment(sourceText: string): PassiveActivationMoment | undefined {
+    if (/\bwhen performing (?:a|an) (?:Super|Ultra Super) Attack\b/i.test(sourceText)) {
+        return "when_performing_super_attack";
+    }
+    if (/\bafter (?:performing (?:a|an) (?:Super|Ultra Super) Attack|attacking)\b/i.test(sourceText)
+        || /\bfor every (?:Super )?Attack performed\b/i.test(sourceText)) {
+        return "after_attacking";
+    }
+    if (/\bafter (?:receiving|being hit by) (?:an?|the) attack\b/i.test(sourceText)
+        || /\bfor every attack received\b/i.test(sourceText)) {
+        return "after_receiving_attack";
+    }
+    if (/\bafter evading (?:an?|the) attack\b/i.test(sourceText)
+        || /\bfor every attack evaded\b/i.test(sourceText)) {
+        return "after_evading";
+    }
+    if (/\bafter (?:delivering (?:a|the)?\s*final blow|a final blow is delivered)\b/i.test(sourceText)
+        || /\bfor every final blow delivered\b/i.test(sourceText)) {
+        return "after_final_blow";
+    }
+    if (/\bbefore attacking\b/i.test(sourceText)) {
+        return "before_attacking";
+    }
+    if (/\bwhen attacking\b/i.test(sourceText)) {
+        return "when_attacking";
+    }
+    if (/\bat (?:the )?start of (?:each |the )?(?:attacking )?turn\b/i.test(sourceText)) {
+        return "start_of_turn";
+    }
+    return undefined;
+}
+
+function domainActivationMoment(
+    phaseContextText: string | undefined,
+    kiSphereScaling: PassiveEffectScaling | undefined,
+): PassiveActivationMoment | undefined {
+    if (/^Basic effect\(s\)$/i.test(phaseContextText?.trim() ?? "")) {
+        return "start_of_turn";
+    }
+    if (kiSphereScaling && /^For every\b/i.test(phaseContextText?.trim() ?? "")) {
+        return "start_of_turn";
+    }
+    return undefined;
+}
+
+function resolveCalculationBucket(
+    effectSourceText: string,
+    phaseContextText: string | undefined,
+    kiSphereScaling: PassiveEffectScaling | undefined,
+): PassiveCalculationBucketAssignment {
+    const inlineMoment = explicitActivationMoment(effectSourceText);
+    if (/\b(?:when|after) performing (?:a|an) (?:Super|Ultra Super) Attack\b/i.test(effectSourceText)) {
+        return { bucket: "passive_on_attack", source: "documented_domain_rule" };
+    }
+    if (/\bat (?:the )?start of (?:each |the )?(?:attacking )?turn\b/i.test(effectSourceText)) {
+        return { bucket: "passive_start_of_turn", source: "documented_domain_rule" };
+    }
+    if (inlineMoment) {
+        return { bucket: "unresolved", source: "unresolved" };
+    }
+    if (/\b(?:when|after) performing (?:a|an) (?:Super|Ultra Super) Attack\b/i.test(phaseContextText ?? "")) {
+        return { bucket: "passive_on_attack", source: "documented_domain_rule" };
+    }
+    if (/\bat (?:the )?start of (?:each |the )?(?:attacking )?turn\b/i.test(phaseContextText ?? "")) {
+        return { bucket: "passive_start_of_turn", source: "documented_domain_rule" };
+    }
+    if (/^Basic effect\(s\)$/i.test(phaseContextText?.trim() ?? "")) {
+        return { bucket: "passive_start_of_turn", source: "documented_domain_rule" };
+    }
+    if (kiSphereScaling && /^For every\b/i.test(phaseContextText?.trim() ?? "")) {
+        return { bucket: "passive_start_of_turn", source: "documented_domain_rule" };
+    }
+    return { bucket: "unresolved", source: "unresolved" };
+}
+
 function combineParseStatuses(conditionStatus: ParseStatus, effectStatus: ParseStatus): ParseStatus {
     if (conditionStatus === "supported" && effectStatus === "supported") {
         return "supported";
@@ -3470,6 +3627,34 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
     const scaledEffectSphereTypeCounts: Record<string, number> = {};
     const conversionSourceSelectionCounts: Record<string, number> = {};
     const conversionDestinationTypeCounts: Record<string, number> = {};
+    const activationMomentCounts: Record<PassiveActivationMoment, number> = {
+        start_of_turn: 0,
+        before_attacking: 0,
+        when_attacking: 0,
+        when_performing_super_attack: 0,
+        after_attacking: 0,
+        after_receiving_attack: 0,
+        after_evading: 0,
+        after_final_blow: 0,
+        unresolved: 0,
+    };
+    const activationSourceCounts: Record<CalculationPhaseResolutionSource, number> = {
+        explicit_text: 0,
+        first_party_game_db: 0,
+        documented_domain_rule: 0,
+        unresolved: 0,
+    };
+    const bucketCounts: Record<PassiveCalculationBucket, number> = {
+        passive_start_of_turn: 0,
+        passive_on_attack: 0,
+        unresolved: 0,
+    };
+    const bucketSourceCounts: Record<CalculationPhaseResolutionSource, number> = {
+        explicit_text: 0,
+        first_party_game_db: 0,
+        documented_domain_rule: 0,
+        unresolved: 0,
+    };
     const enemyStatusEvidenceResolutionCounts = { supported: 0, partial: 0, unresolved: 0 };
     const enemyStatusEvidenceStatusCounts: Record<string, number> = {};
     const enemyStatusEvidenceSourceCounts: Record<string, number> = {};
@@ -3489,6 +3674,8 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
     let scenarioEvaluableRuleCount = 0;
     let runtimeOnlyRuleCount = 0;
     let scaledEffectCount = 0;
+    let activationEligibleEffectCount = 0;
+    let bucketEligibleEffectCount = 0;
 
     for (const state of dataset.states) {
         if (!state.passive) {
@@ -3577,6 +3764,16 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
                     conversionSourceSelectionCounts[selection] = (conversionSourceSelectionCounts[selection] ?? 0) + 1;
                     conversionDestinationTypeCounts[destination] = (conversionDestinationTypeCounts[destination] ?? 0) + 1;
                 }
+                if (effect.kind !== "unknown") {
+                    activationEligibleEffectCount += 1;
+                    activationMomentCounts[effect.activationTiming?.moment ?? "unresolved"] += 1;
+                    activationSourceCounts[effect.activationTiming?.source ?? "unresolved"] += 1;
+                }
+                if (CALCULATION_BUCKET_EFFECT_KINDS.has(effect.kind)) {
+                    bucketEligibleEffectCount += 1;
+                    bucketCounts[effect.calculationBucket?.bucket ?? "unresolved"] += 1;
+                    bucketSourceCounts[effect.calculationBucket?.source ?? "unresolved"] += 1;
+                }
             }
         }
     }
@@ -3622,6 +3819,14 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
             scaledEffectSphereTypeCounts: sortedRecord(scaledEffectSphereTypeCounts),
             conversionSourceSelectionCounts: sortedRecord(conversionSourceSelectionCounts),
             conversionDestinationTypeCounts: sortedRecord(conversionDestinationTypeCounts),
+        },
+        calculationPhase: {
+            activationEligibleEffectCount,
+            activationMomentCounts,
+            activationSourceCounts,
+            bucketEligibleEffectCount,
+            bucketCounts,
+            bucketSourceCounts,
         },
         runtimeOnlyRuleCount,
         identity: {
@@ -4094,6 +4299,7 @@ function validateEffectContract(
     rule: PassiveRule,
     issues: TeamAnalysisValidationIssue[],
 ): void {
+    validateCalculationPhase(effect, state, rule, issues);
     const allyTarget = isAllyTarget(effect.target);
     if (allyTarget && effect.target.selfInclusion === undefined) {
         issues.push({ code: "target-self-inclusion", message: `Ally target must declare self inclusion.`, stateKey: state.stateKey, ruleId: rule.id });
@@ -4141,6 +4347,64 @@ function validateEffectContract(
     }
     if (effect.kiSphereChange) {
         validateKiSphereChange(effect.kiSphereChange, effect, state, rule, issues);
+    }
+}
+
+function validateCalculationPhase(
+    effect: PassiveEffect,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const activationMoments: PassiveActivationMoment[] = [
+        "start_of_turn", "before_attacking", "when_attacking",
+        "when_performing_super_attack", "after_attacking", "after_receiving_attack",
+        "after_evading", "after_final_blow", "unresolved",
+    ];
+    const buckets: PassiveCalculationBucket[] = [
+        "passive_start_of_turn", "passive_on_attack", "unresolved",
+    ];
+    const sources: CalculationPhaseResolutionSource[] = [
+        "explicit_text", "first_party_game_db", "documented_domain_rule", "unresolved",
+    ];
+
+    if (effect.kind === "unknown") {
+        if (effect.activationTiming || effect.calculationBucket) {
+            issues.push({ code: "unknown-effect-calculation-phase", message: `Unknown effects cannot carry calculation-phase claims.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        return;
+    }
+    if (!effect.activationTiming) {
+        issues.push({ code: "activation-timing-required", message: `Typed effects must preserve a resolved or unresolved activation timing.`, stateKey: state.stateKey, ruleId: rule.id });
+    } else {
+        if (!activationMoments.includes(effect.activationTiming.moment)) {
+            issues.push({ code: "activation-moment", message: `Activation moment is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (!sources.includes(effect.activationTiming.source)) {
+            issues.push({ code: "activation-source", message: `Activation timing source is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if ((effect.activationTiming.moment === "unresolved") !== (effect.activationTiming.source === "unresolved")) {
+            issues.push({ code: "activation-resolution", message: `Unresolved activation moment and source must be paired.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+    }
+
+    const bucketEligible = CALCULATION_BUCKET_EFFECT_KINDS.has(effect.kind);
+    if (bucketEligible && !effect.calculationBucket) {
+        issues.push({ code: "calculation-bucket-required", message: `ATK and DEF effects must preserve a resolved or unresolved passive calculation bucket.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (!bucketEligible && effect.calculationBucket) {
+        issues.push({ code: "calculation-bucket-effect-kind", message: `Passive calculation buckets currently apply only to typed ATK and DEF effects.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (effect.calculationBucket) {
+        if (!buckets.includes(effect.calculationBucket.bucket)) {
+            issues.push({ code: "calculation-bucket", message: `Passive calculation bucket is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (!sources.includes(effect.calculationBucket.source)) {
+            issues.push({ code: "calculation-bucket-source", message: `Calculation bucket source is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if ((effect.calculationBucket.bucket === "unresolved") !== (effect.calculationBucket.source === "unresolved")) {
+            issues.push({ code: "calculation-bucket-resolution", message: `Unresolved calculation bucket and source must be paired.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
     }
 }
 

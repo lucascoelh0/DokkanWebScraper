@@ -1,0 +1,215 @@
+{
+  "cases": [
+    {
+      "name": "explicit start of turn",
+      "source": "real",
+      "rawText": "At the start of each turn\n- ATK & DEF 20%",
+      "expectedStatus": "partial",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "start_of_turn", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "passive_start_of_turn", "source": "documented_domain_rule" }
+        },
+        {
+          "kind": "def",
+          "activationTiming": { "moment": "start_of_turn", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "passive_start_of_turn", "source": "documented_domain_rule" }
+        }
+      ]
+    },
+    {
+      "name": "basic passive domain rule",
+      "source": "real",
+      "rawText": "Basic effect(s)\n- ATK 100%",
+      "expectedStatus": "supported",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "start_of_turn", "source": "documented_domain_rule" },
+          "calculationBucket": { "bucket": "passive_start_of_turn", "source": "documented_domain_rule" }
+        }
+      ]
+    },
+    {
+      "name": "when attacking preserves ambiguous bucket",
+      "source": "real",
+      "rawText": "When attacking\n- ATK 50%",
+      "expectedStatus": "partial",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "when_attacking", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "unresolved", "source": "unresolved" }
+        }
+      ]
+    },
+    {
+      "name": "when performing a Super Attack",
+      "source": "synthetic",
+      "rawText": "When performing a Super Attack\n- ATK & DEF 50%",
+      "expectedStatus": "partial",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "when_performing_super_attack", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "passive_on_attack", "source": "documented_domain_rule" }
+        },
+        {
+          "kind": "def",
+          "activationTiming": { "moment": "when_performing_super_attack", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "passive_on_attack", "source": "documented_domain_rule" }
+        }
+      ]
+    },
+    {
+      "name": "after performing a Super Attack",
+      "source": "real",
+      "rawText": "After performing a Super Attack\n- DEF 40%",
+      "expectedStatus": "partial",
+      "effects": [
+        {
+          "kind": "def",
+          "activationTiming": { "moment": "after_attacking", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "passive_on_attack", "source": "documented_domain_rule" }
+        }
+      ]
+    },
+    {
+      "name": "after attacking timing without bucket inference",
+      "source": "synthetic",
+      "rawText": "After attacking\n- ATK 20% for 2 turns",
+      "expectedStatus": "partial",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "after_attacking", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "unresolved", "source": "unresolved" }
+        }
+      ]
+    },
+    {
+      "name": "after receiving is not automatically On Attack",
+      "source": "real",
+      "rawText": "After receiving an attack\n- ATK & DEF 40% for 3 turns",
+      "expectedStatus": "partial",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "after_receiving_attack", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "unresolved", "source": "unresolved" }
+        },
+        {
+          "kind": "def",
+          "activationTiming": { "moment": "after_receiving_attack", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "unresolved", "source": "unresolved" }
+        }
+      ]
+    },
+    {
+      "name": "after evading timing",
+      "source": "real",
+      "rawText": "After evading an attack\n- DEF 50%",
+      "expectedStatus": "partial",
+      "effects": [
+        {
+          "kind": "def",
+          "activationTiming": { "moment": "after_evading", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "unresolved", "source": "unresolved" }
+        }
+      ]
+    },
+    {
+      "name": "after final blow timing",
+      "source": "real",
+      "rawText": "After delivering a final blow\n- ATK 40% for the rest of battle",
+      "expectedStatus": "partial",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "after_final_blow", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "unresolved", "source": "unresolved" }
+        }
+      ]
+    },
+    {
+      "name": "Ki threshold timing but unresolved bucket",
+      "source": "real",
+      "rawText": "When attacking with 12 or more Ki\n- ATK 50%",
+      "expectedStatus": "supported",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "when_attacking", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "unresolved", "source": "unresolved" }
+        }
+      ]
+    },
+    {
+      "name": "explicit inline timing overrides basic header",
+      "source": "synthetic",
+      "rawText": "Basic effect(s)\n- ATK 50% when performing a Super Attack",
+      "expectedStatus": "partial",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "when_performing_super_attack", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "passive_on_attack", "source": "documented_domain_rule" }
+        }
+      ]
+    },
+    {
+      "name": "separate Start of Turn and On Attack contributions",
+      "source": "synthetic",
+      "rawText": "Basic effect(s)\n- ATK 100%\nWhen performing a Super Attack\n- ATK 50%",
+      "expectedStatus": "partial",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "start_of_turn", "source": "documented_domain_rule" },
+          "calculationBucket": { "bucket": "passive_start_of_turn", "source": "documented_domain_rule" }
+        },
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "when_performing_super_attack", "source": "explicit_text" },
+          "calculationBucket": { "bucket": "passive_on_attack", "source": "documented_domain_rule" }
+        }
+      ]
+    },
+    {
+      "name": "ally support target regression",
+      "source": "real",
+      "rawText": "Basic effect(s)\n- All allies' ATK & DEF 30%",
+      "expectedStatus": "supported",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "start_of_turn", "source": "documented_domain_rule" },
+          "calculationBucket": { "bucket": "passive_start_of_turn", "source": "documented_domain_rule" },
+          "target": "team_allies",
+          "classifications": ["support"]
+        },
+        {
+          "kind": "def",
+          "activationTiming": { "moment": "start_of_turn", "source": "documented_domain_rule" },
+          "calculationBucket": { "bucket": "passive_start_of_turn", "source": "documented_domain_rule" },
+          "target": "team_allies",
+          "classifications": ["support"]
+        }
+      ]
+    },
+    {
+      "name": "no timing proof",
+      "source": "synthetic",
+      "rawText": "- ATK 20%",
+      "expectedStatus": "supported",
+      "effects": [
+        {
+          "kind": "atk",
+          "activationTiming": { "moment": "unresolved", "source": "unresolved" },
+          "calculationBucket": { "bucket": "unresolved", "source": "unresolved" }
+        }
+      ]
+    }
+  ]
+}
