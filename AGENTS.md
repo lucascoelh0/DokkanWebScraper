@@ -10,24 +10,40 @@ at `D:\Dokkan\Dokkanpanion`.
 - Search for exact files and symbols before broad repository exploration.
 - Do not reconstruct context already captured in those documents.
 
-## Solo Workflow
+## Lean Delegation
 
 - The user chooses the initial model.
-- Work end to end in the current session. Do not switch models, create
-  subagents, or hand work to another tool automatically.
+- The primary session owns the task end to end: decisions, edits, integration,
+  verification, commits, pushes, and publication.
+- Work solo by default. Delegate only a bounded, independent question whose
+  answer is likely to change a decision or materially improve a high-risk
+  review.
+- Before spawning, the primary session must be able to state one concise
+  deliverable and why its current context is insufficient. If it cannot, do
+  not delegate.
+- Normally use no more than one subagent. A second is allowed only for a truly
+  independent question; never exceed the configured limit of two and never ask
+  a subagent to create another subagent.
+- Use `dokkan_source_auditor` only for ambiguous game semantics, first-party
+  joins, or conflicting source evidence. Use `contract_reviewer` only after a
+  material parser, schema, cache, concurrency, provenance, or combat-calculation
+  change.
+- All project subagents are read-only. They must not edit files, run scraper
+  generation or tests, use Git, or publish data. The primary session integrates
+  their concise findings and avoids repeating the same exploration.
+- Do not delegate routine searches, reads of known files, implementation,
+  mechanical validation, trivial reviews, commits, pushes, or R2 work.
 - Recommend escalation only for concrete risk, ambiguity, or a failed attempt:
   - Luna Medium: local, predictable, mechanical, low-impact changes.
   - Sol Medium: normal features, bugs, tests, and refactors.
   - Sol High: complex state or concurrency, intermittent bugs, difficult
     investigation, heavy migration, or high-impact refactor.
-  - Opus 5 Medium: important architecture before implementation or independent
-    review of a critical change.
-  - Sonnet 5 Medium: bounded implementation with a clear contract and acceptance
-    criteria.
-  - Fable: only after a concrete Sol High and Opus 5 failure or disagreement.
+- Use Codex models only. Do not recommend Claude, Opus, Sonnet, Fable, or any
+  handoff to another provider.
 - Do not recommend a switch for marginal gains. If escalation is necessary,
-  provide a compact handoff with the objective, relevant files, unresolved
-  decisions, constraints, and current diff, then wait for the user.
+  recommend a higher Codex effort level and provide a compact handoff with the
+  objective, relevant files, unresolved decisions, constraints, and current
+  diff, then wait for the user to open another Codex session.
 
 ## Verification
 
