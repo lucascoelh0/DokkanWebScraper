@@ -28,7 +28,7 @@ import {
   resolveFirstPartyProbability,
 } from "./team-analysis-first-party-probabilities";
 import { readGameDbTable } from "./game-db/game-db-source";
-import { passiveDetailsFromSkill } from "./fyi-scraper";
+import { mapSuperAttackDetails, passiveDetailsFromSkill } from "./fyi-scraper";
 
 interface FoundationFixture {
   characters: Character[];
@@ -40,6 +40,39 @@ interface FoundationFixture {
     awakeningFamilyId?: string;
     parseStatus?: string;
   }>;
+}
+
+interface GateA71Fixture {
+  superAttackCases: Array<{
+    name: string;
+    variant: "normal" | "ultra" | "extra" | "unit";
+    rawSource: string;
+    displayText: string;
+    activationLimit?: string;
+    duration?: string;
+    turns?: number;
+    applicationTrigger?: string;
+    stackingScope?: string;
+    capPercent?: number;
+    effectCount?: number;
+    applicationSamples?: number;
+    unmarkedEffectKind?: string;
+  }>;
+  passiveCases: Array<{
+    name: string;
+    rawSource: string;
+    displayText: string;
+    markers: string[];
+    activationLimit?: string;
+    duration?: string;
+    applicationTrigger?: string;
+    minimumEffectCount?: number;
+    unmarkedEffectKind?: string;
+    endLineIndex?: number;
+    evidenceResolution?: string;
+  }>;
+  invalidEvidenceCases: string[];
+  divergenceCase: { name: string; rawSource: string; firstPartyResolution: "divergent" };
 }
 
 interface GateA1Fixture {
@@ -370,6 +403,12 @@ const gateA7Path = existsSync(sourceGateA7Path)
   ? sourceGateA7Path
   : resolve(__dirname, "..", gateA7RelativePath);
 const gateA7Fixture = JSON.parse(readFileSync(gateA7Path, "utf8")) as GateA7Fixture;
+const gateA71RelativePath = "fixtures/team-analysis/gate-a71-golden.json";
+const sourceGateA71Path = resolve(__dirname, gateA71RelativePath);
+const gateA71Path = existsSync(sourceGateA71Path)
+  ? sourceGateA71Path
+  : resolve(__dirname, "..", gateA71RelativePath);
+const gateA71Fixture = JSON.parse(readFileSync(gateA71Path, "utf8")) as GateA71Fixture;
 
 const options = {
   generatedAt: "2026-08-03T12:00:00.000Z",
@@ -1376,7 +1415,240 @@ describe("team-analysis Gate A7 Super Attack effect channel", function () {
   });
 });
 
+describe("team-analysis Gate A7.1 structural lifecycle evidence", function () {
+  const sourceVersion = "a".repeat(32);
+
+  for (const fixtureCase of gateA71Fixture.superAttackCases) {
+    it(fixtureCase.name, () => {
+      const details = mapSuperAttackDetails({
+        id: 7001,
+        description: fixtureCase.rawSource,
+        ki: fixtureCase.variant === "ultra" ? 18 : 12,
+        style: fixtureCase.variant,
+      } as any, {
+        characterId: "7000001",
+        formId: "7000001",
+        releaseState: "initial",
+        sourceVersion,
+        attackVariant: fixtureCase.variant,
+        payloadField: "props.character.super_attacks[].description",
+      });
+      ok(details);
+      equal(details.effect, fixtureCase.displayText, "display text must remain byte-for-byte normalized as before");
+      const parse = () => parseSuperAttack("7000001:7000001:initial", {
+        variant: fixtureCase.variant,
+        ordinal: 0,
+        effectText: details.effect ?? "",
+        conditionText: "",
+        structuralSource: details.structuralSource,
+        sourceAttackId: details.sourceAttackId,
+      });
+      const attack = parse();
+      equal(attack.effects.length, fixtureCase.effectCount ?? 1);
+      const lifecycleEffects = attack.effects.filter(effect => effect.kind !== fixtureCase.unmarkedEffectKind);
+      for (const effect of lifecycleEffects) {
+        equal(effect.activationLimit?.kind, fixtureCase.activationLimit);
+        equal(effect.duration.kind, fixtureCase.duration);
+        equal(effect.duration.turns, fixtureCase.turns);
+        equal(effect.applicationTrigger?.kind, fixtureCase.applicationTrigger);
+        equal(effect.stacking?.scope, fixtureCase.stackingScope);
+        equal(effect.stacking?.capPercent, fixtureCase.capPercent);
+        if (fixtureCase.applicationTrigger === "per_super_attack") {
+          equal(effect.applicationTrigger?.provenance.ruleVersion, "sa-stat-raise-lifecycle-v1");
+        }
+      }
+      if (fixtureCase.unmarkedEffectKind) {
+        const unmarked = attack.effects.find(effect => effect.kind === fixtureCase.unmarkedEffectKind);
+        ok(unmarked);
+        equal(unmarked.activationLimit, undefined, "the following clause must not inherit once");
+      }
+      for (let index = 1; index < (fixtureCase.applicationSamples ?? 1); index += 1) {
+        deepEqual(parse().effects.map(gateA71LifecycleShape), attack.effects.map(gateA71LifecycleShape));
+      }
+      if (details.structuralSource) {
+        equal(attack.structuralEvidence?.[0].rawTextSha256, details.structuralSource.rawTextSha256);
+        equal(attack.structuralEvidence?.[0].attackVariant, fixtureCase.variant);
+      }
+    });
+  }
+
+  for (const fixtureCase of gateA71Fixture.passiveCases) {
+    it(fixtureCase.name, () => {
+      const details = passiveDetailsFromSkill({ id: 7101, description: fixtureCase.rawSource } as any, {
+        characterId: "7100001",
+        formId: "7100001",
+        releaseState: "initial",
+        sourceVersion,
+        payloadField: "props.character.passive_skill.description",
+      });
+      ok(details?.structuralSource);
+      equal(details.text, fixtureCase.displayText);
+      const evidence = details.structuralSource.evidence[0];
+      deepEqual(evidence.markers.map(marker => marker.markerKind), fixtureCase.markers);
+      equal(evidence.resolution, fixtureCase.evidenceResolution ?? "supported");
+      equal(evidence.anchor.endLineIndex, fixtureCase.endLineIndex);
+      const passive = parsePassive(
+        "7100001:7100001:initial",
+        details.name,
+        details.text ?? "",
+        details,
+        { characterId: "7100001", formId: "7100001", releaseState: "initial" },
+      );
+      const typedEffects = passive.rules.flatMap(rule => rule.effects).filter(effect => effect.kind !== "unknown");
+      if (fixtureCase.minimumEffectCount !== undefined) {
+        ok(typedEffects.length >= fixtureCase.minimumEffectCount);
+      }
+      const markedEffects = typedEffects.filter(effect => effect.activationLimit || effect.duration?.source === "dokkan_fyi_structural_marker");
+      for (const effect of markedEffects) {
+        equal(effect.activationLimit?.kind, fixtureCase.activationLimit);
+        equal(effect.duration?.kind, fixtureCase.duration);
+        equal(effect.applicationTrigger?.kind, fixtureCase.applicationTrigger ?? "unknown");
+      }
+      if (fixtureCase.unmarkedEffectKind) {
+        const unmarked = typedEffects.find(effect => effect.kind === fixtureCase.unmarkedEffectKind);
+        ok(unmarked);
+        equal(unmarked.activationLimit, undefined, "the next bullet must not inherit once");
+      }
+      equal(passive.rawText, fixtureCase.displayText);
+      equal(passive.structuralEvidence?.[0].anchor.structuralText.includes("passiveImg"), true);
+    });
+  }
+
+  for (const invalidCase of gateA71Fixture.invalidEvidenceCases) {
+    it(`ignores invalid structural evidence: ${invalidCase}`, () => {
+      const details = passiveDetailsFromSkill({
+        id: 7201,
+        description: "*Basic effect(s)*\n- {passiveImg:once}{passiveImg:forever}ATK 20%{passiveImg:up_g}",
+      } as any, {
+        characterId: "7200001",
+        formId: "7200001",
+        releaseState: "initial",
+        sourceVersion,
+        payloadField: "props.character.passive_skill.description",
+      });
+      ok(details?.structuralSource);
+      const source = JSON.parse(JSON.stringify(details.structuralSource)) as NonNullable<PassiveDetails["structuralSource"]>;
+      const evidence = source.evidence[0];
+      if (invalidCase === "hash") evidence.rawTextSha256 = "f".repeat(64);
+      if (invalidCase === "anchor") evidence.anchor.normalizedText = "other effect";
+      if (invalidCase === "marker-order") evidence.markers[0].order = 2;
+      if (invalidCase === "source-version") evidence.provenance.sourceVersion = "incompatible";
+      const sourceSkillId = invalidCase === "source-id" ? "9999" : details.sourceSkillId;
+      const passive = parsePassive(
+        "7200001:7200001:initial",
+        undefined,
+        details.text ?? "",
+        { ...details, structuralSource: source, sourceSkillId },
+        { characterId: "7200001", formId: "7200001", releaseState: "initial" },
+      );
+      equal(passive.structuralEvidence, undefined);
+      passive.rules.flatMap(rule => rule.effects).forEach(effect => {
+        equal(effect.activationLimit, undefined);
+        equal(effect.duration?.source === "dokkan_fyi_structural_marker", false);
+      });
+    });
+  }
+
+  it(gateA71Fixture.divergenceCase.name, () => {
+    const details = passiveDetailsFromSkill({ id: 7301, description: gateA71Fixture.divergenceCase.rawSource } as any, {
+      characterId: "7300001",
+      formId: "7300001",
+      releaseState: "initial",
+      sourceVersion,
+      payloadField: "props.character.passive_skill.description",
+    });
+    ok(details?.structuralSource);
+    details.structuralSource.evidence[0].corroboration = [{
+      source: "first_party_game_db",
+      resolution: gateA71Fixture.divergenceCase.firstPartyResolution,
+      passiveSkillSetId: "7301",
+      passiveSkillIds: ["17007301"],
+      fields: { is_once: false },
+      sourceVersion: "first-party-fixture-v1",
+      reason: "No clause-to-row key proves that the isolated row owns the rendered marker.",
+    }];
+    const passive = parsePassive(
+      "7300001:7300001:initial",
+      undefined,
+      details.text ?? "",
+      details,
+      { characterId: "7300001", formId: "7300001", releaseState: "initial" },
+    );
+    equal(passive.structuralEvidence?.[0].corroboration?.[0].resolution, "divergent");
+    equal(passive.rules.flatMap(rule => rule.effects)[0].activationLimit?.kind, "once");
+  });
+
+  it("retains exact raw structural bytes and lossless normalized offsets", () => {
+    const rawSource = "*Basic effect(s)*\r\n- {passiveImg:once}{passiveImg:forever}ATK & DEF 20%{passiveImg:up_g}";
+    const details = passiveDetailsFromSkill({ id: 7401, description: rawSource } as any, {
+      characterId: "7400001",
+      formId: "7400001",
+      releaseState: "initial",
+      sourceVersion,
+      payloadField: "props.character.passive_skill.description",
+    });
+    ok(details?.structuralSource);
+    equal(details.structuralSource.rawText, rawSource);
+    const evidence = details.structuralSource.evidence[0];
+    equal(
+      details.structuralSource.rawText.slice(evidence.anchor.sourceSpan.start, evidence.anchor.sourceSpan.end).trimEnd(),
+      evidence.anchor.structuralText,
+    );
+    deepEqual(evidence.markers.map(marker =>
+      details.structuralSource!.rawText.slice(marker.sourceSpan.start, marker.sourceSpan.end)), [
+      "{passiveImg:once}", "{passiveImg:forever}",
+    ]);
+  });
+});
+
 describe("team-analysis validation and artifacts", function () {
+  it("rejects invalid Gate A7.1 lifecycle payloads and reports ignored source evidence", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const details = passiveDetailsFromSkill({
+      id: 7501,
+      description: "*Basic effect(s)*\n- {passiveImg:once}{passiveImg:forever}ATK 20%{passiveImg:up_g}",
+    } as any, {
+      characterId: characters[0].id,
+      formId: characters[0].id,
+      releaseState: "initial",
+      sourceVersion: "b".repeat(32),
+      payloadField: "props.character.passive_skill.description",
+    });
+    ok(details?.text && details.structuralSource);
+    characters[0].passive = details.text;
+    characters[0].passiveDetails = details;
+    const valid = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    deepEqual(validateTeamAnalysisDataset(valid, characters, fixture.catalogEntries), []);
+
+    const broken = JSON.parse(JSON.stringify(valid)) as typeof valid;
+    const effect = broken.states[0].passive!.rules.flatMap(rule => rule.effects)
+      .find(item => item.kind === "atk")!;
+    effect.activationLimit = {
+      kind: "count",
+      count: 0,
+      source: "dokkan_fyi_structural_marker",
+      provenance: { source: "explicit_text" },
+    };
+    effect.applicationTrigger = {
+      kind: "per_super_attack",
+      source: "unresolved",
+      provenance: { source: "unresolved" },
+    };
+    const brokenCodes = validateTeamAnalysisDataset(broken, characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(brokenCodes.includes("activation-limit-count"));
+    ok(brokenCodes.includes("effect-decision-provenance"));
+    ok(brokenCodes.includes("application-trigger"));
+
+    const invalidSourceCharacters = JSON.parse(JSON.stringify(characters)) as Character[];
+    invalidSourceCharacters[0].passiveDetails!.structuralSource!.evidence[0].rawTextSha256 = "0".repeat(64);
+    const ignored = buildTeamAnalysisDataset(invalidSourceCharacters, fixture.catalogEntries, options);
+    equal(ignored.states[0].passive?.structuralEvidence, undefined);
+    const sourceCodes = validateTeamAnalysisDataset(ignored, invalidSourceCharacters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(sourceCodes.includes("structural-evidence-source"));
+  });
+
   it("validates structural evidence identity, hash, anchor, release, and serialized order", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
     const evidenceContext = {
@@ -2066,7 +2338,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.7\.0/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.7\.1/);
   });
 });
 
@@ -2167,6 +2439,18 @@ function gateA6EffectShape(effect: PassiveEffect, expected?: { scalingKind?: str
 }
 
 function gateA7EffectShape(effect: ReturnType<typeof parseSuperAttack>["effects"][number]) {
+  const duration = {
+    kind: effect.duration.kind,
+    ...(effect.duration.turns !== undefined ? { turns: effect.duration.turns } : {}),
+    source: effect.duration.source,
+  };
+  const stacking = effect.stacking ? {
+    kind: effect.stacking.kind,
+    source: effect.stacking.source,
+    ...(effect.stacking.capPercent !== undefined ? { capPercent: effect.stacking.capPercent } : {}),
+    ...(effect.stacking.capSource !== undefined ? { capSource: effect.stacking.capSource } : {}),
+    ...(effect.stacking.scope !== undefined ? { scope: effect.stacking.scope } : {}),
+  } : undefined;
   return {
     kind: effect.kind,
     target: effect.target.scope,
@@ -2174,14 +2458,24 @@ function gateA7EffectShape(effect: ReturnType<typeof parseSuperAttack>["effects"
     ...(effect.magnitude ? { magnitude: effect.magnitude } : {}),
     ...(effect.value !== undefined ? { value: effect.value } : {}),
     ...(effect.unit ? { unit: effect.unit } : {}),
-    duration: effect.duration,
-    ...(effect.stacking ? { stacking: effect.stacking } : {}),
+    duration,
+    ...(stacking ? { stacking } : {}),
     ...(effect.activationChancePercent !== undefined
       ? { activationChancePercent: effect.activationChancePercent }
       : {}),
     ...(effect.qualitativeChanceTerm ? { qualitativeChanceTerm: effect.qualitativeChanceTerm } : {}),
     ...(effect.probabilitySource ? { probabilitySource: effect.probabilitySource } : {}),
     ...(effect.calculationBucket ? { bucket: effect.calculationBucket.bucket } : {}),
+  };
+}
+
+function gateA71LifecycleShape(effect: ReturnType<typeof parseSuperAttack>["effects"][number]) {
+  return {
+    kind: effect.kind,
+    duration: effect.duration,
+    stacking: effect.stacking,
+    activationLimit: effect.activationLimit,
+    applicationTrigger: effect.applicationTrigger,
   };
 }
 

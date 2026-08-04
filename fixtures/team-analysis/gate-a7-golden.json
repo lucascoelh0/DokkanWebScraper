@@ -14,7 +14,7 @@
           "target": "self",
           "magnitude": "greatly_raise",
           "duration": { "kind": "current_turn", "source": "explicit_text" },
-          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "stacking": { "kind": "stackable", "source": "documented_domain_rule", "scope": "current_turn" },
           "bucket": "super_attack_raise"
         },
         {
@@ -22,7 +22,7 @@
           "target": "self",
           "magnitude": "greatly_raise",
           "duration": { "kind": "current_turn", "source": "explicit_text" },
-          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "stacking": { "kind": "stackable", "source": "documented_domain_rule", "scope": "current_turn" },
           "bucket": "super_attack_raise"
         }
       ]
@@ -43,7 +43,7 @@
           "value": 44,
           "unit": "percent",
           "duration": { "kind": "current_turn", "source": "explicit_text" },
-          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "stacking": { "kind": "stackable", "source": "documented_domain_rule", "scope": "current_turn" },
           "bucket": "super_attack_raise"
         },
         {
@@ -53,7 +53,7 @@
           "value": 44,
           "unit": "percent",
           "duration": { "kind": "current_turn", "source": "explicit_text" },
-          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "stacking": { "kind": "stackable", "source": "documented_domain_rule", "scope": "current_turn" },
           "bucket": "super_attack_raise"
         }
       ]
@@ -72,7 +72,7 @@
           "target": "self",
           "magnitude": "raise",
           "duration": { "kind": "current_turn", "source": "explicit_text" },
-          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "stacking": { "kind": "stackable", "source": "documented_domain_rule", "scope": "current_turn" },
           "bucket": "super_attack_raise"
         },
         {
@@ -102,7 +102,7 @@
           "value": 30,
           "unit": "percent",
           "duration": { "kind": "current_turn", "source": "explicit_text" },
-          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "stacking": { "kind": "stackable", "source": "documented_domain_rule", "scope": "current_turn" },
           "bucket": "super_attack_raise"
         }
       ]
@@ -212,14 +212,15 @@
             "kind": "stackable",
             "source": "explicit_text",
             "capPercent": 150,
-            "capSource": "explicit_text"
+            "capSource": "explicit_text",
+            "scope": "battle"
           },
           "bucket": "super_attack_raise"
         }
       ]
     },
     {
-      "name": "bare raise does not become permanent or stackable",
+      "name": "bare canonical raise uses the versioned battle lifecycle rule",
       "source": "real",
       "variant": "normal",
       "rawText": "Raises ATK & DEF\nand causes colossal damage to enemy",
@@ -231,16 +232,16 @@
           "kind": "atk_raise",
           "target": "self",
           "magnitude": "raise",
-          "duration": { "kind": "unknown", "source": "unresolved" },
-          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "duration": { "kind": "permanent", "source": "documented_domain_rule" },
+          "stacking": { "kind": "stackable", "source": "documented_domain_rule", "scope": "battle" },
           "bucket": "super_attack_raise"
         },
         {
           "kind": "def_raise",
           "target": "self",
           "magnitude": "raise",
-          "duration": { "kind": "unknown", "source": "unresolved" },
-          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "duration": { "kind": "permanent", "source": "documented_domain_rule" },
+          "stacking": { "kind": "stackable", "source": "documented_domain_rule", "scope": "battle" },
           "bucket": "super_attack_raise"
         }
       ]
@@ -296,7 +297,7 @@
           "value": 140,
           "unit": "percent",
           "duration": { "kind": "turns", "turns": 4, "source": "explicit_text" },
-          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "stacking": { "kind": "stackable", "source": "documented_domain_rule", "scope": "active_windows" },
           "bucket": "super_attack_raise"
         },
         {
@@ -304,7 +305,7 @@
           "target": "self",
           "magnitude": "raise",
           "duration": { "kind": "current_turn", "source": "explicit_text" },
-          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "stacking": { "kind": "stackable", "source": "documented_domain_rule", "scope": "current_turn" },
           "bucket": "super_attack_raise"
         }
       ]

@@ -105,6 +105,7 @@ export interface ParsedPassive {
   rules: PassiveRule[];
   unparsedFragments: SourceFragment[];
   conditionEvidence?: PassiveConditionEvidence[];
+  structuralEvidence?: EffectStructuralEvidence[];
 }
 
 export interface PassiveRule {
@@ -182,6 +183,24 @@ source. Comma-only lists do not receive an invented boolean meaning. A partially
 resolved marker list retains known status predicates plus an unknown branch
 only when the connector itself is proven. Source evidence never causes network
 I/O during semantic parsing.
+
+Gate A7.1 adds optional `structuralSource` metadata to upstream
+`PassiveDetails`, `SuperAttackDetails`, and `UnitSuperAttack`. It contains the
+complete pre-cleanup source text, SHA-256 hashes of the raw and normalized
+documents, and effect-marker evidence. Each record binds state, character,
+form, release, skill/attack ID when available, attack variant, source field and
+version, exact line range, absolute source span, structural anchor, marker
+order, and per-marker resolution. The Team Analysis copy contains only
+validated evidence. A bad hash, anchor, order, span, identity, variant, payload
+field, or non-32-hex FYI source version invalidates the record and cannot
+promote a lifecycle fact.
+
+`{passiveImg:once}` proves only `activationLimit: once`.
+`{passiveImg:forever}` proves only battle persistence. Their combination keeps
+those two facts separate. Neither marker proves frequency, stacking, cap,
+condition, activation timing, or calculation bucket. Unknown leading effect
+markers remain `unresolved`; condition-status markers remain in the existing
+condition-evidence channel and are not reclassified as effect markers.
 
 ## 5. Boolean condition AST
 
@@ -869,6 +888,40 @@ Gate A7 adds a sibling channel; it does not serialize Super Attack effects as
 passive rules or Active Skill effects.
 
 ```ts
+export interface EffectDecisionProvenance {
+  source:
+    | "explicit_text"
+    | "first_party_game_db"
+    | "documented_domain_rule"
+    | "dokkan_fyi_structural_marker"
+    | "unresolved";
+  evidenceId?: string;
+  ruleVersion?: string;
+}
+
+export interface EffectStructuralEvidence {
+  kind: "effect_markers";
+  id: string;
+  stateKey: string;
+  characterId: string;
+  formId: string;
+  releaseState: "initial" | "eza" | "seza";
+  channel: "passive" | "super_attack";
+  passiveSkillId?: string;
+  superAttackId?: string;
+  attackVariant?: "normal" | "ultra" | "extra" | "unit";
+  rawTextSha256: string;
+  normalizedTextSha256: string;
+  anchor: EffectStructuralEvidenceAnchor;
+  markers: EffectStructuralMarker[];
+  resolution: "supported" | "partial" | "unresolved";
+  corroboration?: EffectStructuralCorroboration[];
+  semanticConflicts?: EffectStructuralSemanticConflict[];
+  provenance: EffectStructuralEvidenceProvenance;
+}
+```
+
+```ts
 export interface ParsedSuperAttack {
   id: string;
   variant: "normal" | "ultra" | "extra" | "unit";
@@ -885,6 +938,7 @@ export interface ParsedSuperAttack {
   parseStatus: ParseStatus;
   sourceFragments: SourceFragment[];
   unparsedFragments: SourceFragment[];
+  structuralEvidence?: EffectStructuralEvidence[];
 }
 
 export interface ParsedSuperAttackCondition {
@@ -920,12 +974,26 @@ export interface SuperAttackEffect {
     kind: "current_turn" | "turns" | "permanent" | "unknown";
     turns?: number;
     source: CalculationPhaseResolutionSource;
+    provenance?: EffectDecisionProvenance;
   };
   stacking?: {
     kind: "stackable" | "not_stackable" | "unknown";
     capPercent?: number;
     source: CalculationPhaseResolutionSource;
     capSource?: CalculationPhaseResolutionSource;
+    scope?: "current_turn" | "active_windows" | "battle" | "unknown";
+    provenance?: EffectDecisionProvenance;
+  };
+  activationLimit?: {
+    kind: "once" | "count" | "unknown";
+    count?: number;
+    source: CalculationPhaseResolutionSource;
+    provenance: EffectDecisionProvenance;
+  };
+  applicationTrigger?: {
+    kind: "per_super_attack" | "per_combat_event" | "entry" | "unknown";
+    source: CalculationPhaseResolutionSource;
+    provenance: EffectDecisionProvenance;
   };
   activationTiming: {
     moment: "when_super_attack_effect_resolves" | "unresolved";
@@ -963,15 +1031,18 @@ Numeric percentages are emitted only when present in the effect text.
 terms remain qualitative magnitudes; they are not reverse-mapped to imagined
 percentages. `for 1 turn`, `for N turns`, and explicit `in battle`/
 `permanently` wording map respectively to `current_turn`, `turns`, and
-`permanent`. A bare raise has `duration: unknown`; it is never promoted to a
-permanent stack by convention.
+`permanent`.
 
-Every stat effect preserves stacking separately. Gate A7 emits `stackable` and
-`capPercent` only for explicit stacking/cap syntax. Otherwise it emits
-`stacking.kind: "unknown"` with unresolved provenance, even when community
-knowledge would normally call the effect stackable. The production payload has
-no explicit cap syntax; cap support is protected by synthetic goldens rather
-than inferred production data.
+Gate A7.1 applies `sa-stat-raise-lifecycle-v1` only to canonical Super Attack
+ATK/DEF raises. Each performed Super applies one contribution. One-turn raises
+are cumulative only inside that turn; N-turn raises keep independently active
+windows; raises without a finite duration persist for the battle. Accordingly,
+the channel emits `applicationTrigger: per_super_attack`, `stackable`, and a
+`current_turn`, `active_windows`, or `battle` stacking scope with
+`documented_domain_rule` provenance. Explicit caps remain independent and are
+never invented. This rule does not apply to lowering, heal, stun, seal,
+sacrifice, ally support, damage-only text, or ambiguous clauses. Qualitative
+magnitude remains qualitative; the rule supplies no percentage or formula.
 
 Status chance wording is equally conservative. An explicit numeric chance is
 stored with `probabilitySource: "explicit_text"`. Qualitative Super Attack
@@ -997,8 +1068,10 @@ evasion, counters, and other out-of-scope clauses remain lossless residuals.
 
 ## 7. Parsing pipeline
 
-1. Preserve source skill name, raw text, lines, and sections.
-2. Normalize punctuation/whitespace without deleting source offsets.
+1. Preserve and hash the complete source before marker cleanup; extract
+   structural markers with exact spans and narrow bullet/clause anchors.
+2. Preserve source skill name, normalized raw text, lines, and sections without
+   changing the existing display text.
 3. Split section headers from effects using the existing deterministic passive
    section logic.
 4. Parse boolean connectors (`and`, `or`, `when`, `if`, `for every`, `plus an
@@ -1008,7 +1081,7 @@ evasion, counters, and other out-of-scope clauses remain lossless residuals.
    channel while leaving effect duration in `PassiveDuration`.
 7. Associate effects with the narrowest preceding condition scope.
 8. Preserve every unsupported fragment explicitly.
-9. Generate a coverage report by predicate/effect/status.
+9. Generate a coverage report by predicate/effect/status/evidence/lifecycle.
 
 The Super Attack pipeline runs independently: select the exact release/variant
 source, preserve effect and condition text, recognize only Gate A7 effect
@@ -1129,7 +1202,7 @@ Suggested manifest:
   "uncompressedSizeBytes": 0,
   "stateCount": 0,
   "rulesVersion": "1",
-  "parserVersion": "1.7.0",
+  "parserVersion": "1.7.1",
   "sourceCharacterDatasetVersion": "...",
   "sourceCharacterPayloadSha256": "..."
 }
@@ -1191,6 +1264,15 @@ serialized meanings are unchanged. Consumers may ignore the sibling channel,
 and older cached schema-1 payloads may omit it entirely. `parserVersion:
 "1.7.0"` allows consumers to feature-detect the conservative Super Attack
 effect contract.
+
+Gate A7.1 keeps `schemaVersion` at `1`: upstream `structuralSource`, validated
+`structuralEvidence`, lifecycle decisions/provenance, stacking scope, and
+coverage counters are all optional additive fields. Older schema-1 character
+and Team Analysis payloads without them remain valid. `parserVersion: "1.7.1"`
+feature-detects the structural-marker validation and the versioned canonical
+Super Attack raise lifecycle rule. The rule changes only previously unresolved
+duration/stacking for that narrow family; it does not reinterpret passive,
+lowering, stun, seal, chance, target, timing, or calculation-bucket fields.
 
 - Upload immutable payload before mutable manifest.
 - Run publisher dry-run and report projected new bytes before upload.

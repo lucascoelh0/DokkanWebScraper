@@ -1,6 +1,8 @@
 import { createHash } from "crypto";
 import {
     Character,
+    EffectStructuralEvidence,
+    EffectStructuralSource,
     PassiveConditionEvidence,
     PassiveDetails,
     SuperAttackDetails,
@@ -17,7 +19,8 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.7.0";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.7.1";
+export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
 export type ReleaseState = "initial" | "eza" | "seza";
@@ -52,7 +55,29 @@ export type CalculationPhaseResolutionSource =
     | "explicit_text"
     | "first_party_game_db"
     | "documented_domain_rule"
+    | "dokkan_fyi_structural_marker"
     | "unresolved";
+export type EffectApplicationTriggerKind = "per_super_attack" | "per_combat_event" | "entry" | "unknown";
+export type EffectStackingScope = "current_turn" | "active_windows" | "battle" | "unknown";
+
+export interface EffectDecisionProvenance {
+    source: CalculationPhaseResolutionSource,
+    evidenceId?: string,
+    ruleVersion?: string,
+}
+
+export interface EffectActivationLimit {
+    kind: "once" | "count" | "unknown",
+    count?: number,
+    source: CalculationPhaseResolutionSource,
+    provenance: EffectDecisionProvenance,
+}
+
+export interface EffectApplicationTrigger {
+    kind: EffectApplicationTriggerKind,
+    source: CalculationPhaseResolutionSource,
+    provenance: EffectDecisionProvenance,
+}
 export type PassiveActivationMoment =
     | "start_of_turn"
     | "before_attacking"
@@ -253,6 +278,7 @@ export interface ParsedSuperAttack {
     parseStatus: ParseStatus,
     sourceFragments: SourceFragment[],
     unparsedFragments: SourceFragment[],
+    structuralEvidence?: EffectStructuralEvidence[],
 }
 
 export interface ParsedSuperAttackCondition {
@@ -275,6 +301,8 @@ export interface SuperAttackEffect {
     probabilitySource?: ProbabilitySource,
     duration: SuperAttackEffectDuration,
     stacking?: SuperAttackEffectStacking,
+    activationLimit?: EffectActivationLimit,
+    applicationTrigger?: EffectApplicationTrigger,
     activationTiming: SuperAttackActivationTiming,
     calculationBucket?: SuperAttackCalculationBucketAssignment,
     parseStatus: ParseStatus,
@@ -291,6 +319,7 @@ export interface SuperAttackEffectDuration {
     kind: "current_turn" | "turns" | "permanent" | "unknown",
     turns?: number,
     source: CalculationPhaseResolutionSource,
+    provenance?: EffectDecisionProvenance,
 }
 
 export interface SuperAttackEffectStacking {
@@ -298,6 +327,8 @@ export interface SuperAttackEffectStacking {
     capPercent?: number,
     source: CalculationPhaseResolutionSource,
     capSource?: CalculationPhaseResolutionSource,
+    scope?: EffectStackingScope,
+    provenance?: EffectDecisionProvenance,
 }
 
 export interface SuperAttackActivationTiming {
@@ -317,6 +348,7 @@ export interface ParsedPassive {
     rules: PassiveRule[],
     unparsedFragments: SourceFragment[],
     conditionEvidence?: PassiveConditionEvidence[],
+    structuralEvidence?: EffectStructuralEvidence[],
 }
 
 export interface PassiveRule {
@@ -409,6 +441,9 @@ export interface PassiveEffect {
     scaling?: PassiveEffectScaling,
     kiSphereChange?: KiSphereChange,
     duration?: PassiveDuration,
+    stacking?: SuperAttackEffectStacking,
+    activationLimit?: EffectActivationLimit,
+    applicationTrigger?: EffectApplicationTrigger,
     categories?: string[],
     names?: string[],
     classes?: TeamAnalysisClass[],
@@ -471,6 +506,8 @@ export interface PassiveTarget {
 export interface PassiveDuration {
     kind: "instant" | "within_turn" | "turns" | "battle" | "until_trigger" | "unknown",
     turns?: number,
+    source?: CalculationPhaseResolutionSource,
+    provenance?: EffectDecisionProvenance,
 }
 
 export interface TeamAnalysisCoverageReport {
@@ -511,6 +548,22 @@ export interface TeamAnalysisCoverageReport {
         resolutionCounts: Record<"supported" | "partial" | "unresolved", number>,
         statusCounts: Record<string, number>,
         sourceCounts: Record<string, number>,
+    },
+    structuralEvidence: {
+        evidenceCount: number,
+        passiveEvidenceCount: number,
+        superAttackEvidenceCount: number,
+        markerCounts: Record<string, number>,
+        resolutionCounts: Record<string, number>,
+        superAttackVariantCounts: Record<string, number>,
+        divergentCorroborationCount: number,
+        semanticConflictCount: number,
+    },
+    lifecycle: {
+        activationLimitKindCounts: Record<string, number>,
+        applicationTriggerKindCounts: Record<string, number>,
+        durationSourceCounts: Record<string, number>,
+        stackingScopeCounts: Record<string, number>,
     },
     kiAnalysis: {
         predicateContextCounts: Record<string, number>,
@@ -615,6 +668,8 @@ export interface AnalysisSuperAttackSource {
     style?: string,
     effectText: string,
     conditionText: string,
+    structuralSource?: EffectStructuralSource,
+    sourceAttackId?: string,
 }
 
 interface ResolvedIdentity {
@@ -855,6 +910,8 @@ function analysisSuperAttackSources(
             ...(details?.style ? { style: details.style } : {}),
             effectText,
             conditionText: details?.condition ?? "",
+            ...(details?.structuralSource ? { structuralSource: details.structuralSource } : {}),
+            ...(details?.sourceAttackId ? { sourceAttackId: details.sourceAttackId } : {}),
         });
     }
 
@@ -873,6 +930,8 @@ function analysisSuperAttackSources(
                 ...(unit.style ? { style: unit.style } : {}),
                 effectText,
                 conditionText: unit.unitSuperAttackCondition ?? "",
+                ...(unit.structuralSource ? { structuralSource: unit.structuralSource } : {}),
+                ...(unit.sourceAttackId ? { sourceAttackId: unit.sourceAttackId } : {}),
             });
         });
     }
@@ -897,6 +956,14 @@ export function parseSuperAttack(
     source: AnalysisSuperAttackSource,
 ): ParsedSuperAttack {
     const rawText = source.effectText;
+    const structuralEvidence = validStructuralEvidence(
+        stateKey,
+        rawText,
+        source.structuralSource,
+        "super_attack",
+        source.variant,
+        source.sourceAttackId,
+    );
     const candidates = superAttackEffectCandidates(rawText)
         .sort((left, right) => left.start - right.start || right.end - left.end);
     const accepted: SuperAttackEffectCandidate[] = [];
@@ -910,7 +977,10 @@ export function parseSuperAttack(
     const effects = accepted.flatMap(candidate => {
         const fragments = sourceFragmentsForAbsoluteRange(rawText, candidate.start, candidate.end);
         const sourceText = rawText.slice(candidate.start, candidate.end);
-        return candidate.effects.map(effect => ({ ...effect, sourceText, source: fragments }));
+        return candidate.effects.map(effect => applySuperAttackStructuralSemantics(
+            { ...effect, sourceText, source: fragments },
+            structuralEvidence,
+        ));
     });
     const unparsedFragments = complementSourceFragments(
         rawText,
@@ -940,7 +1010,229 @@ export function parseSuperAttack(
         parseStatus,
         sourceFragments: wholeLineSourceFragments(rawText),
         unparsedFragments,
+        ...(structuralEvidence.length > 0 ? { structuralEvidence } : {}),
     };
+}
+
+function validStructuralEvidence(
+    stateKey: string,
+    normalizedText: string,
+    source: EffectStructuralSource | undefined,
+    channel: "passive" | "super_attack",
+    attackVariant?: SuperAttackVariant,
+    sourceEntityId?: string,
+): EffectStructuralEvidence[] {
+    if (!source
+        || source.rawTextSha256 !== sha256Text(source.rawText)
+        || source.normalizedTextSha256 !== sha256Text(normalizedText)
+        || cleanStructuralText(source.rawText) !== normalizedText) {
+        return [];
+    }
+    let previousAnchorEnd = -1;
+    const valid: EffectStructuralEvidence[] = [];
+    for (const entry of source.evidence ?? []) {
+        const anchor = entry.anchor;
+        const start = anchor?.sourceSpan?.start;
+        const end = anchor?.sourceSpan?.end;
+        const expectedPayloadField = channel === "passive"
+            ? entry.releaseState === "initial"
+                ? "props.character.passive_skill.description"
+                : "props.character.extreme_z_awakening.passive_skill.description"
+            : "props.character.super_attacks[].description";
+        const stateIdentity = stateKey.split(":");
+        const markerResolution = entry.markers.every(marker => marker.resolution === "supported")
+            ? "supported"
+            : entry.markers.every(marker => marker.resolution === "unresolved")
+                ? "unresolved"
+                : "partial";
+        if (entry.kind !== "effect_markers"
+            || entry.stateKey !== stateKey
+            || entry.characterId !== stateIdentity[0]
+            || entry.formId !== stateIdentity[1]
+            || entry.releaseState !== stateIdentity[2]
+            || entry.channel !== channel
+            || entry.rawTextSha256 !== source.rawTextSha256
+            || entry.normalizedTextSha256 !== source.normalizedTextSha256
+            || entry.provenance?.source !== "dokkan_fyi_payload"
+            || entry.provenance.markerSyntax !== "passiveImg"
+            || entry.provenance.payloadField !== expectedPayloadField
+            || !/^[a-f0-9]{32}$/i.test(entry.provenance.sourceVersion)
+            || (channel === "super_attack" && entry.attackVariant !== attackVariant)
+            || (channel === "passive" && entry.passiveSkillId !== sourceEntityId)
+            || (channel === "super_attack" && entry.superAttackId !== sourceEntityId)
+            || entry.resolution !== markerResolution
+            || !Number.isInteger(start) || !Number.isInteger(end)
+            || start < 0 || end <= start || end > source.rawText.length
+            || start < previousAnchorEnd
+            || source.rawText.slice(start, end).trimEnd() !== anchor.structuralText
+            || cleanStructuralAnchor(anchor.structuralText) !== anchor.normalizedText
+            || !structuralAnchorMatchesDisplay(normalizedText, anchor)
+            || !validStructuralMarkers(source.rawText, entry)) {
+            continue;
+        }
+        const expectedIdPart = channel === "passive"
+            ? entry.passiveSkillId ?? "unknown"
+            : entry.superAttackId ?? "unknown";
+        if (entry.id !== `${stateKey}:${channel}:${expectedIdPart}:${start}`) {
+            continue;
+        }
+        previousAnchorEnd = end;
+        const { semanticConflicts: _ignoredSourceConflicts, ...trustedEntry } = entry;
+        const corroboration = (entry.corroboration ?? []).filter(validStructuralCorroboration);
+        valid.push({
+            ...trustedEntry,
+            anchor: { ...entry.anchor, sourceSpan: { ...entry.anchor.sourceSpan } },
+            markers: entry.markers.map(marker => ({ ...marker, sourceSpan: { ...marker.sourceSpan } })),
+            ...(corroboration.length > 0 ? { corroboration: corroboration.map(item => ({ ...item })) } : {}),
+        });
+    }
+    return valid;
+}
+
+function validStructuralCorroboration(
+    item: NonNullable<EffectStructuralEvidence["corroboration"]>[number],
+): boolean {
+    return item?.source === "first_party_game_db"
+        && ["corroborating", "divergent", "unresolved"].includes(item.resolution)
+        && typeof item.sourceVersion === "string" && item.sourceVersion.length > 0
+        && typeof item.reason === "string" && item.reason.length > 0
+        && (item.passiveSkillSetId === undefined || /^\d+$/.test(item.passiveSkillSetId))
+        && (item.passiveSkillIds === undefined || item.passiveSkillIds.every(id => /^\d+$/.test(id)));
+}
+
+function validStructuralMarkers(rawText: string, evidence: EffectStructuralEvidence): boolean {
+    const tokens = [...evidence.anchor.structuralText.matchAll(/\{passiveImg:([^}]+)\}/g)];
+    const prefixTokens: RegExpMatchArray[] = [];
+    let prefixEnd = 0;
+    for (const token of tokens) {
+        const tokenIndex = token.index ?? 0;
+        if (evidence.anchor.structuralText.slice(prefixEnd, tokenIndex).trim() === "") {
+            prefixTokens.push(token);
+            prefixEnd = tokenIndex + token[0].length;
+        } else {
+            break;
+        }
+    }
+    if (prefixTokens.length !== evidence.markers.length) {
+        return false;
+    }
+    return evidence.markers.every((marker, order) => {
+        const expected = prefixTokens[order];
+        const markerKind = marker.sourceToken === "once" || marker.sourceToken === "forever"
+            ? marker.sourceToken
+            : "unknown";
+        return marker.order === order
+            && marker.sourceToken === expected[1]
+            && marker.markerKind === markerKind
+            && marker.resolution === (markerKind === "unknown" ? "unresolved" : "supported")
+            && marker.sourceSpan.start === evidence.anchor.sourceSpan.start + (expected.index ?? 0)
+            && marker.sourceSpan.end === marker.sourceSpan.start + expected[0].length
+            && rawText.slice(marker.sourceSpan.start, marker.sourceSpan.end) === expected[0];
+    });
+}
+
+function cleanStructuralText(value: string): string {
+    return value
+        .replace(/\{[^}]+\}/g, "")
+        .replace(/\r/g, "")
+        .split("\n")
+        .map(line => line.trim().replace(/^\*\s*/, "").replace(/\s*\*$/, "").trim())
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+}
+
+function cleanStructuralAnchor(value: string): string {
+    return cleanStructuralText(value)
+        .replace(/^\s*-\s*/, "")
+        .replace(/\s*\n\s*/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function structuralAnchorMatchesDisplay(
+    normalizedText: string,
+    anchor: EffectStructuralEvidence["anchor"],
+): boolean {
+    const fragments = wholeLineSourceFragments(normalizedText);
+    const endLineIndex = anchor.endLineIndex ?? anchor.lineIndex;
+    if (!Number.isInteger(anchor.lineIndex)
+        || !Number.isInteger(endLineIndex)
+        || endLineIndex < anchor.lineIndex
+        || endLineIndex >= fragments.length) {
+        return false;
+    }
+    const displayText = fragments.slice(anchor.lineIndex, endLineIndex + 1)
+        .map(fragment => fragment.text.replace(/^\s*-\s*/, ""))
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+    return displayText === anchor.normalizedText || displayText.includes(anchor.normalizedText);
+}
+
+function sha256Text(value: string): string {
+    return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function evidenceMatchesEffect(
+    evidence: EffectStructuralEvidence,
+    sourceText: string,
+    source: SourceFragment[],
+): boolean {
+    const endLineIndex = evidence.anchor.endLineIndex ?? evidence.anchor.lineIndex;
+    return source.length > 0
+        && source.every(fragment => fragment.lineIndex >= evidence.anchor.lineIndex
+            && fragment.lineIndex <= endLineIndex)
+        && evidence.anchor.normalizedText.replace(/\s+/g, " ").includes(sourceText.replace(/\s+/g, " ").trim());
+}
+
+function applySuperAttackStructuralSemantics(
+    effect: SuperAttackEffect,
+    evidenceEntries: EffectStructuralEvidence[],
+): SuperAttackEffect {
+    const matching = evidenceEntries.filter(entry => evidenceMatchesEffect(entry, effect.sourceText, effect.source));
+    const once = matching.find(entry => entry.markers.some(marker => marker.markerKind === "once"));
+    const forever = matching.find(entry => entry.markers.some(marker => marker.markerKind === "forever"));
+    if (once) {
+        effect.activationLimit = markerActivationLimit(once);
+    }
+    if (forever) {
+        if (effect.duration.kind === "unknown" || effect.duration.kind === "permanent") {
+            effect.duration = {
+                kind: "permanent",
+                source: "dokkan_fyi_structural_marker",
+                provenance: markerDecisionProvenance(forever),
+            };
+        } else {
+            recordStructuralConflict(forever, "duration", "battle", effect.duration.kind, "explicit_text");
+        }
+    }
+    return effect;
+}
+
+function markerActivationLimit(evidence: EffectStructuralEvidence): EffectActivationLimit {
+    return {
+        kind: "once",
+        source: "dokkan_fyi_structural_marker",
+        provenance: markerDecisionProvenance(evidence),
+    };
+}
+
+function markerDecisionProvenance(evidence: EffectStructuralEvidence): EffectDecisionProvenance {
+    return { source: "dokkan_fyi_structural_marker", evidenceId: evidence.id };
+}
+
+function recordStructuralConflict(
+    evidence: EffectStructuralEvidence,
+    field: "activationLimit" | "duration" | "applicationTrigger" | "stacking" | "cap",
+    structuralValue: string,
+    competingValue: string,
+    competingSource: "explicit_text" | "first_party_game_db" | "documented_domain_rule",
+): void {
+    evidence.semanticConflicts = [
+        ...(evidence.semanticConflicts ?? []),
+        { field, structuralValue, competingValue, competingSource },
+    ];
 }
 
 function parseSuperAttackCondition(rawText: string): ParsedSuperAttackCondition {
@@ -1069,20 +1361,57 @@ function superAttackStatEffect(
     duration: SuperAttackEffectDuration,
     stacking: SuperAttackEffectStacking,
 ): Omit<SuperAttackEffect, "sourceText" | "source"> {
+    const resolvedDuration: SuperAttackEffectDuration = duration.kind === "unknown"
+        ? {
+            kind: "permanent",
+            source: "documented_domain_rule",
+            provenance: domainRuleProvenance(),
+        }
+        : duration;
+    const resolvedStacking: SuperAttackEffectStacking = stacking.kind === "not_stackable"
+        ? stacking
+        : {
+            ...stacking,
+            kind: "stackable",
+            scope: superAttackStackingScope(resolvedDuration),
+            source: stacking.kind === "stackable" ? stacking.source : "documented_domain_rule",
+            provenance: stacking.kind === "stackable"
+                ? { source: stacking.source }
+                : domainRuleProvenance(),
+        };
     return {
         kind,
         origin: "super_attack",
         target,
         magnitude,
         ...(value !== undefined ? { value, unit: "percent" as const } : {}),
-        duration,
-        stacking,
+        duration: resolvedDuration,
+        stacking: resolvedStacking,
+        applicationTrigger: {
+            kind: "per_super_attack",
+            source: "documented_domain_rule",
+            provenance: domainRuleProvenance(),
+        },
         activationTiming: superAttackActivationTiming(),
         calculationBucket: {
             bucket: "super_attack_raise",
             source: "documented_domain_rule",
         },
         parseStatus: "supported",
+    };
+}
+
+function superAttackStackingScope(duration: SuperAttackEffectDuration): EffectStackingScope {
+    if (duration.kind === "current_turn") return "current_turn";
+    if (duration.kind === "turns") return "active_windows";
+    if (duration.kind === "permanent") return "battle";
+    return "unknown";
+}
+
+function domainRuleProvenance(): EffectDecisionProvenance {
+    return {
+        source: "documented_domain_rule",
+        ruleVersion: SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION,
     };
 }
 
@@ -1313,6 +1642,16 @@ export function parsePassive(
         passiveDetails?.conditionEvidence ?? [],
         context,
     );
+    const structuralEvidence = context
+        ? validStructuralEvidence(
+            stateKey,
+            rawText,
+            passiveDetails?.structuralSource,
+            "passive",
+            undefined,
+            passiveDetails?.sourceSkillId,
+        )
+        : [];
     const blocks = buildLogicalPassiveBlocks(sourceMap.sourceFragments);
     const rules: PassiveRule[] = [];
     const unparsedFragments: SourceFragment[] = [];
@@ -1362,6 +1701,12 @@ export function parsePassive(
             } : {}),
             ...(headerScaling ? { headerScaling } : {}),
         });
+        effectResult.effects = effectResult.effects.map(effect => applyPassiveStructuralSemantics(
+            effect,
+            block.source,
+            structuralEvidence,
+            currentCondition?.source,
+        ));
         const source = uniqueOrderedFragments([
             ...(currentCondition?.source ?? []),
             ...block.source,
@@ -1394,7 +1739,74 @@ export function parsePassive(
         rules,
         unparsedFragments: uniqueOrderedFragments(unparsedFragments),
         ...(conditionEvidence.length > 0 ? { conditionEvidence } : {}),
+        ...(structuralEvidence.length > 0 ? { structuralEvidence } : {}),
     };
+}
+
+function applyPassiveStructuralSemantics(
+    effect: PassiveEffect,
+    source: SourceFragment[],
+    evidenceEntries: EffectStructuralEvidence[],
+    triggerContext: SourceFragment[] = [],
+): PassiveEffect {
+    const matching = evidenceEntries.filter(entry => evidenceMatchesEffect(entry, effect.sourceText, source));
+    if (matching.length === 0) {
+        return effect;
+    }
+    const once = matching.find(entry => entry.markers.some(marker => marker.markerKind === "once"));
+    const forever = matching.find(entry => entry.markers.some(marker => marker.markerKind === "forever"));
+    if (once) {
+        effect.activationLimit = markerActivationLimit(once);
+    }
+    if (forever) {
+        if (!effect.duration || effect.duration.kind === "unknown" || effect.duration.kind === "battle") {
+            effect.duration = {
+                kind: "battle",
+                source: "dokkan_fyi_structural_marker",
+                provenance: markerDecisionProvenance(forever),
+            };
+        } else {
+            recordStructuralConflict(forever, "duration", "battle", effect.duration.kind, "explicit_text");
+        }
+    }
+    if (effect.scaling?.kind === "per_combat_event") {
+        effect.applicationTrigger = {
+            kind: "per_combat_event",
+            source: "explicit_text",
+            provenance: { source: "explicit_text" },
+        };
+        if (effect.stackCap !== undefined || effect.perStack !== undefined) {
+            effect.stacking = {
+                kind: "stackable",
+                scope: passiveStackingScope(effect.duration),
+                source: "explicit_text",
+                ...(effect.stackCap !== undefined
+                    ? { capPercent: effect.stackCap, capSource: "explicit_text" as const }
+                    : {}),
+                provenance: { source: "explicit_text" },
+            };
+        }
+    } else if (triggerContext.some(fragment => /\b(?:entrance|entering|entry)\b/i.test(fragment.text))) {
+        effect.applicationTrigger = {
+            kind: "entry",
+            source: "explicit_text",
+            provenance: { source: "explicit_text" },
+        };
+    } else {
+        effect.applicationTrigger = {
+            kind: "unknown",
+            source: "unresolved",
+            provenance: { source: "unresolved" },
+        };
+    }
+    return effect;
+}
+
+function passiveStackingScope(duration: PassiveDuration | undefined): EffectStackingScope {
+    if (duration?.kind === "within_turn") return "current_turn";
+    if (duration?.kind === "turns") return "active_windows";
+    if (duration?.kind === "battle") return "battle";
+    return "unknown";
 }
 
 function validConditionEvidence(
@@ -4753,6 +5165,7 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         explicit_text: 0,
         first_party_game_db: 0,
         documented_domain_rule: 0,
+        dokkan_fyi_structural_marker: 0,
         unresolved: 0,
     };
     const bucketCounts: Record<PassiveCalculationBucket, number> = {
@@ -4764,6 +5177,7 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         explicit_text: 0,
         first_party_game_db: 0,
         documented_domain_rule: 0,
+        dokkan_fyi_structural_marker: 0,
         unresolved: 0,
     };
     const enemyStatusEvidenceResolutionCounts = { supported: 0, partial: 0, unresolved: 0 };
@@ -4774,6 +5188,17 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
     let partialEnemyStatusStateCount = 0;
     let unresolvedEnemyStatusStateCount = 0;
     let enemyStatusEvidenceCount = 0;
+    let passiveStructuralEvidenceCount = 0;
+    let superAttackStructuralEvidenceCount = 0;
+    let divergentStructuralCorroborationCount = 0;
+    let structuralSemanticConflictCount = 0;
+    const structuralMarkerCounts: Record<string, number> = {};
+    const structuralResolutionCounts: Record<string, number> = {};
+    const structuralSuperAttackVariantCounts: Record<string, number> = {};
+    const activationLimitKindCounts: Record<string, number> = {};
+    const applicationTriggerKindCounts: Record<string, number> = {};
+    const lifecycleDurationSourceCounts: Record<string, number> = {};
+    const stackingScopeCounts: Record<string, number> = {};
     let passiveStateCount = 0;
     let unknownEffectCount = 0;
     let unresolvedProbabilityEffectCount = 0;
@@ -4820,16 +5245,40 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
             superAttackConditionStatusCounts[attack.condition.parseStatus] += 1;
             superAttackEffectStatusCounts[attack.effectStatus] += 1;
             superAttackUnparsedFragmentCount += attack.unparsedFragments.length;
+            for (const evidence of attack.structuralEvidence ?? []) {
+                superAttackStructuralEvidenceCount += 1;
+                structuralSuperAttackVariantCounts[attack.variant] =
+                    (structuralSuperAttackVariantCounts[attack.variant] ?? 0) + 1;
+                collectStructuralEvidenceMetrics(
+                    evidence,
+                    structuralMarkerCounts,
+                    structuralResolutionCounts,
+                    value => { divergentStructuralCorroborationCount += value; },
+                    value => { structuralSemanticConflictCount += value; },
+                );
+            }
             for (const effect of attack.effects) {
                 superAttackTypedEffectCount += 1;
                 if (effect.value !== undefined) superAttackNumericStatEffectCount += 1;
                 superAttackEffectKindCounts[effect.kind] = (superAttackEffectKindCounts[effect.kind] ?? 0) + 1;
                 superAttackTargetScopeCounts[effect.target.scope] = (superAttackTargetScopeCounts[effect.target.scope] ?? 0) + 1;
                 superAttackDurationKindCounts[effect.duration.kind] = (superAttackDurationKindCounts[effect.duration.kind] ?? 0) + 1;
+                lifecycleDurationSourceCounts[effect.duration.source] =
+                    (lifecycleDurationSourceCounts[effect.duration.source] ?? 0) + 1;
+                if (effect.activationLimit) {
+                    activationLimitKindCounts[effect.activationLimit.kind] =
+                        (activationLimitKindCounts[effect.activationLimit.kind] ?? 0) + 1;
+                }
+                if (effect.applicationTrigger) {
+                    applicationTriggerKindCounts[effect.applicationTrigger.kind] =
+                        (applicationTriggerKindCounts[effect.applicationTrigger.kind] ?? 0) + 1;
+                }
                 if (effect.stacking) {
                     superAttackStackingKindCounts[effect.stacking.kind] =
                         (superAttackStackingKindCounts[effect.stacking.kind] ?? 0) + 1;
                     if (effect.stacking.capPercent !== undefined) superAttackCappedStackingEffectCount += 1;
+                    const scope = effect.stacking.scope ?? "unknown";
+                    stackingScopeCounts[scope] = (stackingScopeCounts[scope] ?? 0) + 1;
                 }
                 if (effect.probabilitySource) {
                     superAttackProbabilitySourceCounts[effect.probabilitySource] += 1;
@@ -4852,6 +5301,16 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         passiveStatusCounts[state.passive.parseStatus] += 1;
         unknownFragmentCount += state.passive.unparsedFragments.length;
         const statusEvidence = state.passive.conditionEvidence ?? [];
+        for (const evidence of state.passive.structuralEvidence ?? []) {
+            passiveStructuralEvidenceCount += 1;
+            collectStructuralEvidenceMetrics(
+                evidence,
+                structuralMarkerCounts,
+                structuralResolutionCounts,
+                value => { divergentStructuralCorroborationCount += value; },
+                value => { structuralSemanticConflictCount += value; },
+            );
+        }
         if (statusEvidence.length > 0) {
             enemyStatusEvidenceStateCount += 1;
             enemyStatusEvidenceCount += statusEvidence.length;
@@ -4930,6 +5389,22 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
                 }
                 if (effect.classifications?.includes("support")) {
                     derivedSupportEffectCount += 1;
+                }
+                if (effect.activationLimit) {
+                    activationLimitKindCounts[effect.activationLimit.kind] =
+                        (activationLimitKindCounts[effect.activationLimit.kind] ?? 0) + 1;
+                }
+                if (effect.applicationTrigger) {
+                    applicationTriggerKindCounts[effect.applicationTrigger.kind] =
+                        (applicationTriggerKindCounts[effect.applicationTrigger.kind] ?? 0) + 1;
+                }
+                if (effect.duration?.source) {
+                    lifecycleDurationSourceCounts[effect.duration.source] =
+                        (lifecycleDurationSourceCounts[effect.duration.source] ?? 0) + 1;
+                }
+                if (effect.stacking) {
+                    const scope = effect.stacking.scope ?? "unknown";
+                    stackingScopeCounts[scope] = (stackingScopeCounts[scope] ?? 0) + 1;
                 }
                 const probabilitySources = [effect.probabilitySource, effect.additionalToSuperProbabilitySource]
                     .filter((source): source is ProbabilitySource => source !== undefined);
@@ -5018,6 +5493,22 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
             statusCounts: sortedRecord(enemyStatusEvidenceStatusCounts),
             sourceCounts: sortedRecord(enemyStatusEvidenceSourceCounts),
         },
+        structuralEvidence: {
+            evidenceCount: passiveStructuralEvidenceCount + superAttackStructuralEvidenceCount,
+            passiveEvidenceCount: passiveStructuralEvidenceCount,
+            superAttackEvidenceCount: superAttackStructuralEvidenceCount,
+            markerCounts: sortedRecord(structuralMarkerCounts),
+            resolutionCounts: sortedRecord(structuralResolutionCounts),
+            superAttackVariantCounts: sortedRecord(structuralSuperAttackVariantCounts),
+            divergentCorroborationCount: divergentStructuralCorroborationCount,
+            semanticConflictCount: structuralSemanticConflictCount,
+        },
+        lifecycle: {
+            activationLimitKindCounts: sortedRecord(activationLimitKindCounts),
+            applicationTriggerKindCounts: sortedRecord(applicationTriggerKindCounts),
+            durationSourceCounts: sortedRecord(lifecycleDurationSourceCounts),
+            stackingScopeCounts: sortedRecord(stackingScopeCounts),
+        },
         kiAnalysis: {
             predicateContextCounts: sortedRecord(kiPredicateContextCounts),
             sphereTypePredicateCounts: sortedRecord(kiSphereTypePredicateCounts),
@@ -5072,6 +5563,21 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
             awakeningFamilyAssignedStateCount: dataset.states.filter(state => Boolean(state.awakeningFamilyId)).length,
         },
     };
+}
+
+function collectStructuralEvidenceMetrics(
+    evidence: EffectStructuralEvidence,
+    markerCounts: Record<string, number>,
+    resolutionCounts: Record<string, number>,
+    addDivergence: (value: number) => void,
+    addConflict: (value: number) => void,
+): void {
+    resolutionCounts[evidence.resolution] = (resolutionCounts[evidence.resolution] ?? 0) + 1;
+    for (const marker of evidence.markers) {
+        markerCounts[marker.markerKind] = (markerCounts[marker.markerKind] ?? 0) + 1;
+    }
+    addDivergence((evidence.corroboration ?? []).filter(item => item.resolution === "divergent").length);
+    addConflict(evidence.semanticConflicts?.length ?? 0);
 }
 
 function classifyCondition(condition: ConditionExpression): "always" | "predicate" | "unknown" | "composite" {
@@ -5410,6 +5916,36 @@ function validateStateSource(
                     stateKey: state.stateKey,
                 });
             }
+            const sourceStructuralEvidence = expected.passiveDetails.structuralSource?.evidence ?? [];
+            const validStructural = validStructuralEvidence(
+                state.stateKey,
+                expected.passiveText,
+                expected.passiveDetails.structuralSource,
+                "passive",
+                undefined,
+                expected.passiveDetails.sourceSkillId,
+            );
+            if (validStructural.length !== sourceStructuralEvidence.length) {
+                issues.push({
+                    code: "structural-evidence-source",
+                    message: `${sourceStructuralEvidence.length - validStructural.length} passive structural evidence record(s) failed source validation.`,
+                    stateKey: state.stateKey,
+                });
+            }
+            const expectedStructuralOutput = parsePassive(
+                state.stateKey,
+                expected.passiveDetails.name,
+                expected.passiveText,
+                expected.passiveDetails,
+                { characterId: state.characterId, formId: state.formId, releaseState: state.releaseState },
+            ).structuralEvidence ?? [];
+            if (JSON.stringify(state.passive?.structuralEvidence ?? []) !== JSON.stringify(expectedStructuralOutput)) {
+                issues.push({
+                    code: "structural-evidence-output",
+                    message: `Serialized passive structural evidence does not match validated source evidence.`,
+                    stateKey: state.stateKey,
+                });
+            }
         }
     } else if (state.passive) {
         issues.push({ code: "unexpected-passive", message: `Analysis contains a passive absent from the character form.`, stateKey: state.stateKey });
@@ -5456,6 +5992,22 @@ function validateSuperAttacks(
                 if (actual !== expectedValue) {
                     issues.push({ code: "super-attack-source", message: `${field} does not match the character payload.`, stateKey: state.stateKey });
                 }
+            }
+            const sourceStructuralEvidence = expected.structuralSource?.evidence ?? [];
+            const expectedParsed = parseSuperAttack(state.stateKey, expected);
+            if ((expectedParsed.structuralEvidence?.length ?? 0) !== sourceStructuralEvidence.length) {
+                issues.push({
+                    code: "super-attack-structural-evidence-source",
+                    message: `${sourceStructuralEvidence.length - (expectedParsed.structuralEvidence?.length ?? 0)} Super Attack structural evidence record(s) failed source validation.`,
+                    stateKey: state.stateKey,
+                });
+            }
+            if (JSON.stringify(attack.structuralEvidence ?? []) !== JSON.stringify(expectedParsed.structuralEvidence ?? [])) {
+                issues.push({
+                    code: "super-attack-structural-evidence-output",
+                    message: `Serialized Super Attack structural evidence does not match validated source evidence.`,
+                    stateKey: state.stateKey,
+                });
             }
         }
         validateSuperAttack(attack, state, issues);
@@ -5545,7 +6097,7 @@ function validateSuperAttackEffect(
     ];
     const scopes: SuperAttackEffectTarget["scope"][] = ["self", "allies", "current_target", "all_enemies", "unknown"];
     const sources: CalculationPhaseResolutionSource[] = [
-        "explicit_text", "first_party_game_db", "documented_domain_rule", "unresolved",
+        "explicit_text", "first_party_game_db", "documented_domain_rule", "dokkan_fyi_structural_marker", "unresolved",
     ];
     if (!kinds.includes(effect.kind)) {
         issues.push({ code: "super-attack-effect-kind", message: `Super Attack effect kind is not recognized.`, stateKey: state.stateKey });
@@ -5610,6 +6162,16 @@ function validateSuperAttackEffect(
         if (effect.stacking.capSource !== undefined && effect.stacking.capPercent === undefined) {
             issues.push({ code: "super-attack-stacking-cap-source", message: `Cap provenance requires an explicit cap.`, stateKey: state.stateKey });
         }
+        const stackingScopes: EffectStackingScope[] = ["current_turn", "active_windows", "battle", "unknown"];
+        if (effect.stacking.scope !== undefined && !stackingScopes.includes(effect.stacking.scope)) {
+            issues.push({ code: "super-attack-stacking-scope", message: `Stacking scope is not recognized.`, stateKey: state.stateKey });
+        }
+    }
+    validateEffectLifecycle(effect.activationLimit, effect.applicationTrigger, state, issues);
+    if (statRaise && (effect.applicationTrigger?.kind !== "per_super_attack"
+        || effect.stacking?.kind !== "stackable"
+        || effect.stacking.scope !== superAttackStackingScope(effect.duration))) {
+        issues.push({ code: "super-attack-raise-domain-rule", message: `Canonical stat raises must retain versioned per-Super cumulative window semantics.`, stateKey: state.stateKey });
     }
     validateSuperAttackProbability(effect, state, issues);
     const expectedParseStatus: ParseStatus = effect.probabilitySource === "unresolved" ? "partial" : "supported";
@@ -5652,7 +6214,7 @@ function validateSuperAttackDuration(
 ): void {
     const kinds: SuperAttackEffectDuration["kind"][] = ["current_turn", "turns", "permanent", "unknown"];
     const sources: CalculationPhaseResolutionSource[] = [
-        "explicit_text", "first_party_game_db", "documented_domain_rule", "unresolved",
+        "explicit_text", "first_party_game_db", "documented_domain_rule", "dokkan_fyi_structural_marker", "unresolved",
     ];
     if (!kinds.includes(duration.kind) || !sources.includes(duration.source)) {
         issues.push({ code: "super-attack-duration", message: `Super Attack duration kind/source is not recognized.`, stateKey: state.stateKey });
@@ -5666,6 +6228,54 @@ function validateSuperAttackDuration(
         }
     } else if (duration.turns !== undefined) {
         issues.push({ code: "super-attack-duration-turns-kind", message: `Only a multi-turn duration may declare turns.`, stateKey: state.stateKey });
+    }
+}
+
+function validateEffectLifecycle(
+    activationLimit: EffectActivationLimit | undefined,
+    applicationTrigger: EffectApplicationTrigger | undefined,
+    state: CharacterStateAnalysis,
+    issues: TeamAnalysisValidationIssue[],
+    rule?: PassiveRule,
+): void {
+    const sources: CalculationPhaseResolutionSource[] = [
+        "explicit_text", "first_party_game_db", "documented_domain_rule", "dokkan_fyi_structural_marker", "unresolved",
+    ];
+    if (activationLimit) {
+        const kinds: EffectActivationLimit["kind"][] = ["once", "count", "unknown"];
+        if (!kinds.includes(activationLimit.kind) || !sources.includes(activationLimit.source)) {
+            issues.push({ code: "activation-limit", message: `Activation limit kind/source is not recognized.`, stateKey: state.stateKey, ruleId: rule?.id });
+        }
+        if (activationLimit.kind === "count") {
+            if (!Number.isInteger(activationLimit.count) || (activationLimit.count ?? 0) <= 0) {
+                issues.push({ code: "activation-limit-count", message: `Count activation limits require a positive integer.`, stateKey: state.stateKey, ruleId: rule?.id });
+            }
+        } else if (activationLimit.count !== undefined) {
+            issues.push({ code: "activation-limit-count-kind", message: `Only count activation limits may carry count.`, stateKey: state.stateKey, ruleId: rule?.id });
+        }
+        validateDecisionProvenance(activationLimit.source, activationLimit.provenance, state, issues, rule);
+    }
+    if (applicationTrigger) {
+        const kinds: EffectApplicationTriggerKind[] = ["per_super_attack", "per_combat_event", "entry", "unknown"];
+        if (!kinds.includes(applicationTrigger.kind) || !sources.includes(applicationTrigger.source)
+            || (applicationTrigger.kind === "unknown") !== (applicationTrigger.source === "unresolved")) {
+            issues.push({ code: "application-trigger", message: `Application trigger kind/source is invalid.`, stateKey: state.stateKey, ruleId: rule?.id });
+        }
+        validateDecisionProvenance(applicationTrigger.source, applicationTrigger.provenance, state, issues, rule);
+    }
+}
+
+function validateDecisionProvenance(
+    source: CalculationPhaseResolutionSource,
+    provenance: EffectDecisionProvenance | undefined,
+    state: CharacterStateAnalysis,
+    issues: TeamAnalysisValidationIssue[],
+    rule?: PassiveRule,
+): void {
+    if (!provenance || provenance.source !== source
+        || (source === "dokkan_fyi_structural_marker" && !provenance.evidenceId)
+        || (source === "documented_domain_rule" && provenance.ruleVersion !== SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION)) {
+        issues.push({ code: "effect-decision-provenance", message: `Effect lifecycle decision lacks matching provenance.`, stateKey: state.stateKey, ruleId: rule?.id });
     }
 }
 
@@ -5789,6 +6399,28 @@ function validatePassive(
             }
             if (effect.duration?.kind !== "turns" && effect.duration?.turns !== undefined) {
                 issues.push({ code: "duration-turns-kind", message: `Only a turns duration may declare turns.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.duration?.source !== undefined) {
+                const durationSources: CalculationPhaseResolutionSource[] = [
+                    "explicit_text", "first_party_game_db", "documented_domain_rule", "dokkan_fyi_structural_marker", "unresolved",
+                ];
+                if (!durationSources.includes(effect.duration.source)) {
+                    issues.push({ code: "duration-source", message: `Passive duration source is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+                }
+                if (effect.duration.provenance) {
+                    validateDecisionProvenance(effect.duration.source, effect.duration.provenance, state, issues, rule);
+                }
+            }
+            validateEffectLifecycle(effect.activationLimit, effect.applicationTrigger, state, issues, rule);
+            if (effect.stacking) {
+                const scopes: EffectStackingScope[] = ["current_turn", "active_windows", "battle", "unknown"];
+                if (!scopes.includes(effect.stacking.scope ?? "unknown")
+                    || effect.stacking.kind === "unknown" && effect.stacking.source !== "unresolved") {
+                    issues.push({ code: "passive-stacking", message: `Passive stacking metadata is invalid.`, stateKey: state.stateKey, ruleId: rule.id });
+                }
+                if (effect.stacking.capPercent !== undefined && effect.stacking.capPercent !== effect.stackCap) {
+                    issues.push({ code: "passive-stacking-cap", message: `Passive stacking cap must match the existing cap channel.`, stateKey: state.stateKey, ruleId: rule.id });
+                }
             }
         }
     }

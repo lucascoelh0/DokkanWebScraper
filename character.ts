@@ -193,6 +193,8 @@ export interface UnitSuperAttack {
     style?: string;
     unitSuperAttack: string | undefined;
     unitSuperAttackCondition: string | undefined;
+    structuralSource?: EffectStructuralSource;
+    sourceAttackId?: string;
 }
 
 export interface PortraitSpec {
@@ -208,6 +210,88 @@ export interface PassiveDetails {
     lines?: string[],
     sections?: PassiveSection[],
     conditionEvidence?: PassiveConditionEvidence[],
+    structuralSource?: EffectStructuralSource,
+    sourceSkillId?: string,
+}
+
+export type EffectStructuralChannel = "passive" | "super_attack";
+export type EffectStructuralMarkerKind = "once" | "forever" | "unknown";
+export type EffectStructuralAttackVariant = "normal" | "ultra" | "extra" | "unit";
+
+export interface EffectStructuralSource {
+    rawText: string,
+    rawTextSha256: string,
+    normalizedTextSha256: string,
+    evidence: EffectStructuralEvidence[],
+}
+
+export interface EffectStructuralEvidence {
+    kind: "effect_markers",
+    id: string,
+    stateKey: string,
+    characterId: string,
+    formId: string,
+    releaseState: "initial" | "eza" | "seza",
+    channel: EffectStructuralChannel,
+    passiveSkillId?: string,
+    superAttackId?: string,
+    attackVariant?: EffectStructuralAttackVariant,
+    rawTextSha256: string,
+    normalizedTextSha256: string,
+    anchor: EffectStructuralEvidenceAnchor,
+    markers: EffectStructuralMarker[],
+    resolution: PassiveEvidenceResolution,
+    corroboration?: EffectStructuralCorroboration[],
+    semanticConflicts?: EffectStructuralSemanticConflict[],
+    provenance: EffectStructuralEvidenceProvenance,
+}
+
+export interface EffectStructuralSemanticConflict {
+    field: "activationLimit" | "duration" | "applicationTrigger" | "stacking" | "cap",
+    structuralValue: string,
+    competingValue: string,
+    competingSource: "explicit_text" | "first_party_game_db" | "documented_domain_rule",
+}
+
+export interface EffectStructuralEvidenceAnchor {
+    lineIndex: number,
+    endLineIndex?: number,
+    normalizedText: string,
+    structuralText: string,
+    sourceSpan: EffectStructuralSourceSpan,
+}
+
+export interface EffectStructuralSourceSpan {
+    start: number,
+    end: number,
+}
+
+export interface EffectStructuralMarker {
+    order: number,
+    sourceToken: string,
+    markerKind: EffectStructuralMarkerKind,
+    resolution: "supported" | "unresolved",
+    sourceSpan: EffectStructuralSourceSpan,
+}
+
+export interface EffectStructuralCorroboration {
+    source: "first_party_game_db",
+    resolution: "corroborating" | "divergent" | "unresolved",
+    passiveSkillSetId?: string,
+    passiveSkillIds?: string[],
+    fields?: Record<string, string | number | boolean>,
+    sourceVersion: string,
+    reason: string,
+}
+
+export interface EffectStructuralEvidenceProvenance {
+    source: "dokkan_fyi_payload",
+    sourceVersion: string,
+    payloadField:
+        | "props.character.passive_skill.description"
+        | "props.character.extreme_z_awakening.passive_skill.description"
+        | "props.character.super_attacks[].description",
+    markerSyntax: "passiveImg",
 }
 
 export interface PassiveSection {
@@ -265,6 +349,8 @@ export interface SuperAttackDetails {
     style?: string,
     condition?: string,
     extras?: string[],
+    structuralSource?: EffectStructuralSource,
+    sourceAttackId?: string,
 }
 
 export interface CharacterExtraInfo {

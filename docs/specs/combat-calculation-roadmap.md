@@ -1,6 +1,6 @@
 # Combat calculation roadmap
 
-Status: Gate A7 Super Attack effect foundation. This document describes future data and rule
+Status: Gate A7.1 structural lifecycle evidence. This document describes future data and rule
 boundaries; it does not define an implemented calculator.
 
 ## Evidence policy
@@ -16,9 +16,11 @@ an effect active without proving whether its percentage is a Start of Turn or
 On Attack multiplier. Missing scenario context or missing phase evidence must
 produce `unknown`, never false, true, or a guessed bucket.
 
-The source priority is explicit passive wording, an exact first-party join for
-the same state/passive/effect, a versioned domain rule, then unresolved. The
-community [calculation guide](https://docs.google.com/document/d/1Kjk7QnNmfax80qXM8LL4b9woN_GxR0rqyAibR8BoDFY/edit?tab=t.0)
+The source priority is explicit source wording or an exact validated structural
+marker/span, an exact first-party join for the same state/passive/effect, a
+versioned domain rule, then unresolved. Conflicting evidence is retained rather
+than overwritten. The community
+[calculation guide](https://docs.google.com/document/d/1Kjk7QnNmfax80qXM8LL4b9woN_GxR0rqyAibR8BoDFY/edit?tab=t.0)
 and its [Reddit index thread](https://www.reddit.com/r/DBZDokkanBattle/comments/zza0ye/the_ultimate_guide_to_calculating_dokkan_full/)
 are useful historical explanations, but are not normative game data. Character
 names are never evidence keys.
@@ -148,6 +150,12 @@ The current character and Team Analysis datasets provide:
   stun and Super Attack seal, with exact source spans, target, duration,
   stacking/cap uncertainty, chance provenance, activation timing and separate
   future calculation buckets;
+- lossless `once`/`forever` structural evidence tied to exact state, form,
+  release, skill/attack identity, source version/hash, line/span, marker order,
+  and anchor, with activation limit and persistence kept independent;
+- versioned `sa-stat-raise-lifecycle-v1` metadata for canonical Super Attack
+  ATK/DEF raises: one application per Super, cumulative one-turn or active
+  N-turn windows, and battle persistence when no finite duration is present;
 - available Ki-multiplier text/steps where the source exposes them;
 - structural enemy scenario predicates for Class, Type, Category, name, HP and
   status.
@@ -158,9 +166,8 @@ No production calculator should be enabled until these inputs are typed and
 versioned:
 
 - Super Attack base multiplier and progression by Super Attack level;
-- numeric mappings for qualitative Super Attack raise/lowering terms and
-  first-party stacking rules where the text leaves duration or accumulation
-  unresolved;
+- numeric mappings for qualitative Super Attack raise/lowering terms, caps,
+  and first-party mechanics outside the narrow versioned canonical-raise rule;
 - Hidden Potential, Type Attack Boost (TAB) and Type Defense Boost (TDB);
 - the versioned Class/Type alignment table, natural/passive guard behavior,
   guard coefficient and Type Defense Boost interaction;
@@ -221,12 +228,18 @@ normal-only damage reduction as one effect guarded by one incoming-event
 condition instead of duplicating attack-kind metadata across channels.
 
 Gate A7 types the Super Attack effect channel, including ATK/DEF raises,
-SA-effect ATK/DEF lowering, stun and Super Attack seal. It preserves bare raises
-with unknown duration/stacking, qualitative probabilities without invented
-percentages, and residual effect text without selecting contributions. Damage-
-kind-specific reduction remains outside Gate A7. Boss-phase combat facts should
-be a separate source-neutral dataset; neither concern is folded into the event
-parser merely to increase coverage.
+SA-effect ATK/DEF lowering, stun and Super Attack seal. Gate A7.1 recovers
+leading `once`/`forever` markers before display cleanup and keeps activation
+limit, duration, application trigger, stacking, cap, condition,
+`activationTiming`, and `calculationBucket` as separate facts. Its versioned
+domain rule resolves only canonical SA ATK/DEF raise lifecycle: finite windows
+remain cumulative while active and a raise without finite duration persists
+for the battle, with a new application per performed Super. It does not assign
+a qualitative magnitude percentage, cap, formula, or semantics to any other
+effect family. Qualitative probabilities and residual text remain unresolved
+where source evidence is insufficient. Damage-kind-specific reduction remains
+outside this gate. Boss-phase combat facts stay in a separate source-neutral
+dataset.
 
 A later Android evaluator will consume those three inputs with tri-state logic,
 produce a list of active contributions, and pass only resolved ATK/DEF effects

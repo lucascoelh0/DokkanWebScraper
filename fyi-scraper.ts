@@ -12,6 +12,9 @@ import {
     Classes,
     FinishSkill,
     FinishSkillEffectKind,
+    EffectStructuralAttackVariant,
+    EffectStructuralEvidence,
+    EffectStructuralSource,
     PassiveConditionEvidence,
     PassiveDetails,
     PortraitSpec,
@@ -29,7 +32,7 @@ import { parseLeaderSkillDetails, splitPassiveSections } from "./scraper";
 
 const DOKKAN_FYI_BASE_URL = "https://dokkan.fyi";
 const DOKKAN_FYI_CDN_URL = "https://cdn.dokkan.fyi";
-const DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION = 4;
+const DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION = 8;
 
 export const DEFAULT_DOKKAN_FYI_EXPERIMENT_CHARACTER_IDS = [
     1032521, 1033761, 1032771, 1026251, 1033941,
@@ -279,6 +282,7 @@ interface FyiSuperAttack {
         name?: string | null,
         raw_attribute?: number,
     },
+    effects?: FyiEffect[],
 }
 
 interface CurrentState {
@@ -298,6 +302,15 @@ export interface PassiveDetailsEvidenceContext {
     payloadField:
         | "props.character.passive_skill.description"
         | "props.character.extreme_z_awakening.passive_skill.description",
+}
+
+export interface SuperAttackDetailsEvidenceContext {
+    characterId: string,
+    formId: string,
+    releaseState: "initial" | "eza" | "seza",
+    sourceVersion: string,
+    attackVariant: EffectStructuralAttackVariant,
+    payloadField: "props.character.super_attacks[].description",
 }
 
 interface CachedFyiPage {
@@ -609,10 +622,21 @@ async function mapDokkanFyiCharacter(
         superAttack: formatSuperAttackEffect(normalSuperAttack),
         ultraSuperAttack: formatSuperAttackEffect(ultraSuperAttack),
         exSuperAttack: formatSuperAttackEffect(extraSuperAttack),
-        superAttackDetails: mapSuperAttackDetails(normalSuperAttack),
-        ultraSuperAttackDetails: mapSuperAttackDetails(ultraSuperAttack),
-        exSuperAttackDetails: mapSuperAttackDetails(extraSuperAttack),
-        unitSuperAttacks: unitSuperAttacksFromFyi(currentSuperAttacks),
+        superAttackDetails: mapSuperAttackDetails(normalSuperAttack, superAttackEvidenceContext(
+            character.id.toString(), character.id.toString(), releaseState, page.version, "normal",
+        )),
+        ultraSuperAttackDetails: mapSuperAttackDetails(ultraSuperAttack, superAttackEvidenceContext(
+            character.id.toString(), character.id.toString(), releaseState, page.version, "ultra",
+        )),
+        exSuperAttackDetails: mapSuperAttackDetails(extraSuperAttack, superAttackEvidenceContext(
+            character.id.toString(), character.id.toString(), releaseState, page.version, "extra",
+        )),
+        unitSuperAttacks: unitSuperAttacksFromFyi(currentSuperAttacks, {
+            characterId: character.id.toString(),
+            formId: character.id.toString(),
+            releaseState,
+            sourceVersion: page.version,
+        }),
         passive: passive?.text ?? "",
         passiveDetails: passive,
         activeSkill: formatActiveSkill(activeSkill),
@@ -857,9 +881,15 @@ function mapDokkanFyiTransformation(
         superAttack: formatSuperAttackEffect(normalSuperAttack),
         ultraSuperAttack: formatSuperAttackEffect(ultraSuperAttack),
         exSuperAttack: formatSuperAttackEffect(extraSuperAttack),
-        superAttackDetails: mapSuperAttackDetails(normalSuperAttack),
-        ultraSuperAttackDetails: mapSuperAttackDetails(ultraSuperAttack),
-        exSuperAttackDetails: mapSuperAttackDetails(extraSuperAttack),
+        superAttackDetails: mapSuperAttackDetails(normalSuperAttack, superAttackEvidenceContext(
+            baseCharacterId.toString(), character.id.toString(), releaseState, sourceVersion, "normal",
+        )),
+        ultraSuperAttackDetails: mapSuperAttackDetails(ultraSuperAttack, superAttackEvidenceContext(
+            baseCharacterId.toString(), character.id.toString(), releaseState, sourceVersion, "ultra",
+        )),
+        exSuperAttackDetails: mapSuperAttackDetails(extraSuperAttack, superAttackEvidenceContext(
+            baseCharacterId.toString(), character.id.toString(), releaseState, sourceVersion, "extra",
+        )),
         passive: passive?.text ?? "",
         passiveDetails: passive,
         activeSkill: formatActiveSkill(activeSkill),
@@ -968,33 +998,74 @@ function superAttackKind(superAttack: FyiSuperAttack): "normal" | "ultra" | "ext
     return "normal";
 }
 
-function mapSuperAttackDetails(superAttack: FyiSuperAttack | undefined): SuperAttackDetails | undefined {
+function superAttackEvidenceContext(
+    characterId: string,
+    formId: string,
+    releaseState: "initial" | "eza" | "seza",
+    sourceVersion: string,
+    attackVariant: EffectStructuralAttackVariant,
+): SuperAttackDetailsEvidenceContext {
+    return {
+        characterId,
+        formId,
+        releaseState,
+        sourceVersion,
+        attackVariant,
+        payloadField: "props.character.super_attacks[].description",
+    };
+}
+
+export function mapSuperAttackDetails(
+    superAttack: FyiSuperAttack | undefined,
+    evidenceContext?: SuperAttackDetailsEvidenceContext,
+): SuperAttackDetails | undefined {
     if (!superAttack) {
         return undefined;
     }
 
+    const effect = cleanMultilineText(superAttack.description);
+    const structuralSource = evidenceContext
+        ? effectStructuralSource(superAttack.description, effect, evidenceContext, superAttack.id)
+        : undefined;
     return {
         name: cleanInlineText(superAttack.name),
-        effect: cleanMultilineText(superAttack.description),
+        effect,
         type: attackType(superAttack.category?.name),
         ki: toNumber(superAttack.ki),
         style: cleanInlineText(superAttack.style),
         condition: cleanMultilineText(superAttack.condition),
+        ...(structuralSource ? { structuralSource } : {}),
+        ...(structuralSource ? { sourceAttackId: superAttack.id.toString() } : {}),
     };
 }
 
-function unitSuperAttacksFromFyi(superAttacks: FyiSuperAttack[]): UnitSuperAttack[] {
+function unitSuperAttacksFromFyi(
+    superAttacks: FyiSuperAttack[],
+    evidenceContext?: Omit<SuperAttackDetailsEvidenceContext, "attackVariant" | "payloadField">,
+): UnitSuperAttack[] {
     return superAttacks
         .filter(superAttack => superAttackKind(superAttack) === "unit")
-        .map(superAttack => ({
-            name: cleanInlineText(superAttack.name),
-            effect: cleanMultilineText(superAttack.description),
-            type: attackType(superAttack.category?.name),
-            ki: toNumber(superAttack.ki),
-            style: cleanInlineText(superAttack.style),
-            unitSuperAttack: formatSuperAttack(superAttack),
-            unitSuperAttackCondition: cleanMultilineText(superAttack.condition),
-        }));
+        .map(superAttack => {
+            const effect = cleanMultilineText(superAttack.description);
+            const structuralSource = evidenceContext
+                ? effectStructuralSource(superAttack.description, effect, {
+                    ...evidenceContext,
+                    attackVariant: "unit",
+                    payloadField: "props.character.super_attacks[].description",
+                }, superAttack.id)
+                : undefined;
+            return {
+                name: cleanInlineText(superAttack.name),
+                effect,
+                type: attackType(superAttack.category?.name),
+                ki: toNumber(superAttack.ki),
+                style: cleanInlineText(superAttack.style),
+                unitSuperAttack: formatSuperAttack(superAttack),
+                unitSuperAttackCondition: cleanMultilineText(superAttack.condition),
+                ...(structuralSource ? { structuralSource } : {}),
+                ...(structuralSource ? { sourceAttackId: superAttack.id.toString() } : {}),
+            };
+        });
 }
 
 export function passiveDetailsFromSkill(
@@ -1012,6 +1083,9 @@ export function passiveDetailsFromSkill(
     const conditionEvidence = evidenceContext
         ? enemyStatusConditionEvidence(skill, text, evidenceContext)
         : [];
+    const structuralSource = evidenceContext
+        ? effectStructuralSource(skill.description, text, evidenceContext, skill.id)
+        : undefined;
 
     return {
         name: cleanInlineText(skill.name),
@@ -1019,7 +1093,177 @@ export function passiveDetailsFromSkill(
         lines,
         sections: lines.length ? splitPassiveSections(lines) : undefined,
         ...(conditionEvidence.length > 0 ? { conditionEvidence } : {}),
+        ...(structuralSource ? { structuralSource } : {}),
+        ...(structuralSource && skill.id !== undefined ? { sourceSkillId: skill.id.toString() } : {}),
     };
+}
+
+type EffectStructuralEvidenceContext = PassiveDetailsEvidenceContext | SuperAttackDetailsEvidenceContext;
+
+interface StructuralSourceLine {
+    rawText: string,
+    start: number,
+    end: number,
+    normalizedLineIndex?: number,
+}
+
+function effectStructuralSource(
+    rawValue: string | null | undefined,
+    normalizedText: string,
+    context: EffectStructuralEvidenceContext,
+    sourceEntityId: number | undefined,
+): EffectStructuralSource | undefined {
+    if (!rawValue) {
+        return undefined;
+    }
+    const lines = structuralSourceLines(rawValue);
+    const rawTextSha256 = sha256Text(rawValue);
+    const normalizedTextSha256 = sha256Text(normalizedText);
+    const stateKey = `${context.characterId}:${context.formId}:${context.releaseState}`;
+    const channel = context.payloadField === "props.character.super_attacks[].description"
+        ? "super_attack" as const
+        : "passive" as const;
+    const evidence: EffectStructuralEvidence[] = [];
+
+    for (let lineOffset = 0; lineOffset < lines.length; lineOffset += 1) {
+        const line = lines[lineOffset];
+        const markerRuns = channel === "passive"
+            ? [line.rawText.match(/^(\s*-\s*)((?:\{passiveImg:[^}]+\}\s*)+)/)].filter(
+                (match): match is RegExpMatchArray => match !== null,
+            )
+            : [...line.rawText.matchAll(/(^|;\s*)((?:\{passiveImg:[^}]+\}\s*)+)/g)];
+        for (const markerRun of markerRuns) {
+            const markerStartInLine = (markerRun.index ?? 0) + markerRun[1].length;
+            const markerSource = markerRun[2];
+            const markerMatches = [...markerSource.matchAll(/\{passiveImg:([^}]+)\}/g)];
+            if (markerMatches.length === 0) {
+                continue;
+            }
+
+            let endLineOffset = lineOffset;
+            let anchorEnd = line.end;
+            const semicolon = line.rawText.indexOf(";", markerStartInLine + markerSource.length);
+            if (semicolon >= 0) {
+                anchorEnd = line.start + semicolon;
+            } else if (channel === "passive") {
+                while (endLineOffset + 1 < lines.length) {
+                    const nextLine = lines[endLineOffset + 1];
+                    if (/^\s*(?:-|\*)\s*/.test(nextLine.rawText)) {
+                        break;
+                    }
+                    endLineOffset += 1;
+                    anchorEnd = nextLine.end;
+                }
+            } else {
+                let continuationText = line.rawText.slice(markerStartInLine + markerSource.length).trim();
+                while ((continuationText === "" || /(?:\b(?:and|or)|[,;&])\s*$/i.test(continuationText))
+                    && endLineOffset + 1 < lines.length) {
+                    const nextLine = lines[endLineOffset + 1];
+                    if (/^\s*(?:\{passiveImg:|-|\*)/.test(nextLine.rawText)) {
+                        break;
+                    }
+                    endLineOffset += 1;
+                    anchorEnd = nextLine.end;
+                    continuationText = nextLine.rawText.trim();
+                }
+            }
+            const anchorStart = line.start + markerStartInLine;
+            const structuralText = rawValue.slice(anchorStart, anchorEnd).trimEnd();
+            const normalizedAnchorText = cleanMultilineText(structuralText)
+                .replace(/^\s*-\s*/, "")
+                .replace(/\s*\n\s*/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+            const coveredLines = lines.slice(lineOffset, endLineOffset + 1)
+                .filter(item => item.normalizedLineIndex !== undefined);
+            if (!normalizedAnchorText || coveredLines.length === 0) {
+                continue;
+            }
+            const markers = markerMatches.map((match, order) => {
+                const sourceToken = match[1];
+                const markerKind: "once" | "forever" | "unknown" = sourceToken === "once" || sourceToken === "forever"
+                    ? sourceToken
+                    : "unknown";
+                const start = anchorStart + (match.index ?? 0);
+                return {
+                    order,
+                    sourceToken,
+                    markerKind,
+                    resolution: markerKind === "unknown" ? "unresolved" as const : "supported" as const,
+                    sourceSpan: { start, end: start + match[0].length },
+                };
+            });
+            const resolution = markers.every(marker => marker.resolution === "supported")
+                ? "supported" as const
+                : markers.every(marker => marker.resolution === "unresolved")
+                    ? "unresolved" as const
+                    : "partial" as const;
+            const identity = sourceEntityId?.toString() ?? "unknown";
+            evidence.push({
+                kind: "effect_markers",
+                id: `${stateKey}:${channel}:${identity}:${anchorStart}`,
+                stateKey,
+                characterId: context.characterId,
+                formId: context.formId,
+                releaseState: context.releaseState,
+                channel,
+                ...(channel === "passive" && sourceEntityId !== undefined
+                    ? { passiveSkillId: sourceEntityId.toString() }
+                    : {}),
+                ...(channel === "super_attack" && sourceEntityId !== undefined
+                    ? { superAttackId: sourceEntityId.toString() }
+                    : {}),
+                ...(channel === "super_attack"
+                    ? { attackVariant: (context as SuperAttackDetailsEvidenceContext).attackVariant }
+                    : {}),
+                rawTextSha256,
+                normalizedTextSha256,
+                anchor: {
+                    lineIndex: coveredLines[0].normalizedLineIndex!,
+                    ...(coveredLines.length > 1
+                        ? { endLineIndex: coveredLines[coveredLines.length - 1].normalizedLineIndex! }
+                        : {}),
+                    normalizedText: normalizedAnchorText,
+                    structuralText,
+                    sourceSpan: { start: anchorStart, end: anchorEnd },
+                },
+                markers,
+                resolution,
+                provenance: {
+                    source: "dokkan_fyi_payload",
+                    sourceVersion: context.sourceVersion,
+                    payloadField: context.payloadField,
+                    markerSyntax: "passiveImg",
+                },
+            });
+        }
+    }
+
+    return evidence.length > 0 ? { rawText: rawValue, rawTextSha256, normalizedTextSha256, evidence } : undefined;
+}
+
+function structuralSourceLines(rawText: string): StructuralSourceLine[] {
+    const lines: StructuralSourceLine[] = [];
+    let start = 0;
+    let normalizedLineIndex = 0;
+    while (start <= rawText.length) {
+        const newline = rawText.slice(start).search(/\r\n|\n|\r/);
+        const end = newline < 0 ? rawText.length : start + newline;
+        const rawLine = rawText.slice(start, end);
+        const normalizedLine = cleanMultilineText(rawLine);
+        lines.push({
+            rawText: rawLine,
+            start,
+            end,
+            ...(normalizedLine ? { normalizedLineIndex: normalizedLineIndex++ } : {}),
+        });
+        if (newline < 0) {
+            break;
+        }
+        const separatorLength = rawText.slice(end, end + 2) === "\r\n" ? 2 : 1;
+        start = end + separatorLength;
+    }
+    return lines;
 }
 
 function enemyStatusConditionEvidence(

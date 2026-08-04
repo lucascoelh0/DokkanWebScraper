@@ -1,0 +1,158 @@
+{
+  "superAttackCases": [
+    {
+      "name": "once keeps an explicit one-turn duration independent",
+      "variant": "normal",
+      "rawSource": "{passiveImg:once}Raises DEF for 1 turn",
+      "displayText": "Raises DEF for 1 turn",
+      "activationLimit": "once",
+      "duration": "current_turn",
+      "applicationTrigger": "per_super_attack",
+      "stackingScope": "current_turn"
+    },
+    {
+      "name": "once keeps an explicit three-turn duration independent",
+      "variant": "ultra",
+      "rawSource": "{passiveImg:once}Greatly raises ATK for 3 turns",
+      "displayText": "Greatly raises ATK for 3 turns",
+      "activationLimit": "once",
+      "duration": "turns",
+      "turns": 3,
+      "applicationTrigger": "per_super_attack",
+      "stackingScope": "active_windows"
+    },
+    {
+      "name": "forever proves battle persistence on a capped per-Super contribution",
+      "variant": "extra",
+      "rawSource": "{passiveImg:forever}Raises ATK by 30% per Super Attack (up to 150%)",
+      "displayText": "Raises ATK by 30% per Super Attack (up to 150%)",
+      "duration": "permanent",
+      "applicationTrigger": "per_super_attack",
+      "stackingScope": "battle",
+      "capPercent": 150
+    },
+    {
+      "name": "once and forever remain independent on Unit Super Attack",
+      "variant": "unit",
+      "rawSource": "{passiveImg:once}{passiveImg:forever}Raises ATK & DEF",
+      "displayText": "Raises ATK & DEF",
+      "activationLimit": "once",
+      "duration": "permanent",
+      "applicationTrigger": "per_super_attack",
+      "stackingScope": "battle",
+      "effectCount": 2
+    },
+    {
+      "name": "permanent canonical raise is reapplied by each Super",
+      "variant": "normal",
+      "rawSource": "Raises ATK",
+      "displayText": "Raises ATK",
+      "duration": "permanent",
+      "applicationTrigger": "per_super_attack",
+      "stackingScope": "battle",
+      "applicationSamples": 2
+    },
+    {
+      "name": "one-turn canonical raise supports two Supers in the same turn",
+      "variant": "normal",
+      "rawSource": "Raises DEF for 1 turn",
+      "displayText": "Raises DEF for 1 turn",
+      "duration": "current_turn",
+      "applicationTrigger": "per_super_attack",
+      "stackingScope": "current_turn",
+      "applicationSamples": 2
+    },
+    {
+      "name": "multi-turn canonical raise keeps independently active windows",
+      "variant": "ultra",
+      "rawSource": "Massively raises ATK for 5 turns",
+      "displayText": "Massively raises ATK for 5 turns",
+      "duration": "turns",
+      "turns": 5,
+      "applicationTrigger": "per_super_attack",
+      "stackingScope": "active_windows",
+      "applicationSamples": 2
+    },
+    {
+      "name": "durationless noncanonical Super text remains unresolved",
+      "variant": "extra",
+      "rawSource": "Recovers 10% HP",
+      "displayText": "Recovers 10% HP",
+      "effectCount": 0
+    },
+    {
+      "name": "same-line Super clauses do not leak a structural marker",
+      "variant": "normal",
+      "rawSource": "{passiveImg:once}Raises DEF for 1 turn; stuns the enemy",
+      "displayText": "Raises DEF for 1 turn; stuns the enemy",
+      "activationLimit": "once",
+      "duration": "current_turn",
+      "applicationTrigger": "per_super_attack",
+      "stackingScope": "current_turn",
+      "effectCount": 2,
+      "unmarkedEffectKind": "stun"
+    }
+  ],
+  "passiveCases": [
+    {
+      "name": "forever isolated resolves duration without stacking",
+      "rawSource": "*Basic effect(s)*\n- {passiveImg:forever}ATK 20%{passiveImg:up_g}",
+      "displayText": "Basic effect(s)\n- ATK 20%",
+      "markers": ["forever"],
+      "duration": "battle"
+    },
+    {
+      "name": "once and forever on an entry effect stay separate",
+      "rawSource": "*Upon entering the attacking turn*\n- {passiveImg:once}{passiveImg:forever}ATK & DEF 50%{passiveImg:up_g}",
+      "displayText": "Upon entering the attacking turn\n- ATK & DEF 50%",
+      "markers": ["once", "forever"],
+      "activationLimit": "once",
+      "duration": "battle",
+      "applicationTrigger": "entry"
+    },
+    {
+      "name": "multiple effects in one clause share the ordered markers",
+      "rawSource": "*Basic effect(s)*\n- {passiveImg:once}{passiveImg:forever}Ki +3 and ATK & DEF 60%{passiveImg:up_g}",
+      "displayText": "Basic effect(s)\n- Ki +3 and ATK & DEF 60%",
+      "markers": ["once", "forever"],
+      "activationLimit": "once",
+      "duration": "battle",
+      "minimumEffectCount": 2
+    },
+    {
+      "name": "consecutive bullets do not leak markers",
+      "rawSource": "*Basic effect(s)*\n- {passiveImg:once}ATK 20%{passiveImg:up_g}\n- DEF 30%{passiveImg:up_g}",
+      "displayText": "Basic effect(s)\n- ATK 20%\n- DEF 30%",
+      "markers": ["once"],
+      "activationLimit": "once",
+      "unmarkedEffectKind": "def"
+    },
+    {
+      "name": "broken multiline anchor stays inside one bullet",
+      "rawSource": "*Basic effect(s)*\n- {passiveImg:forever}ATK 20% and\n  DEF 20%{passiveImg:up_g}\n- Ki +1",
+      "displayText": "Basic effect(s)\n- ATK 20% and\nDEF 20%\n- Ki +1",
+      "markers": ["forever"],
+      "duration": "battle",
+      "endLineIndex": 2
+    },
+    {
+      "name": "unknown structural marker is preserved unresolved",
+      "rawSource": "*Basic effect(s)*\n- {passiveImg:mystery_gate}ATK 20%{passiveImg:up_g}",
+      "displayText": "Basic effect(s)\n- ATK 20%",
+      "markers": ["unknown"],
+      "evidenceResolution": "unresolved"
+    }
+  ],
+  "invalidEvidenceCases": [
+    "hash",
+    "anchor",
+    "marker-order",
+    "source-version",
+    "source-id"
+  ],
+  "divergenceCase": {
+    "name": "FYI marker and first-party row remain separate when divergent",
+    "rawSource": "*Basic effect(s)*\n- {passiveImg:once}ATK 20%{passiveImg:up_g}",
+    "firstPartyResolution": "divergent"
+  }
+}
