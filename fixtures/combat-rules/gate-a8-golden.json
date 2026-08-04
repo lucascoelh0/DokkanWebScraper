@@ -1,0 +1,47 @@
+{
+  "fixtureVersion": 1,
+  "statusExamples": {
+    "verified": "compat.separate-condition-timing-bucket-duration",
+    "candidate": "damage-received.channel-order",
+    "unresolved": "rounding.integer-operation-order"
+  },
+  "documentedMathematicalExamples": [
+    {
+      "id": "community-workbook-guard-average",
+      "status": "corroborated",
+      "source": "https://docs.google.com/spreadsheets/d/1Fk5jVGUxSAnupWcBNAC5WuqFBaSQYBPsCTMkj7Plyzs/edit",
+      "locator": "Guard!H2:J8",
+      "expression": "(enemyAtk * variance * alignment - defense) * guardCoefficient",
+      "inputs": {
+        "enemyAtk": 220000,
+        "variance": 1.015,
+        "alignment": 0.8,
+        "defense": 118502,
+        "guardCoefficient": 0.5
+      },
+      "expectedStages": [223300, 178640, 60138, 30069],
+      "expectedResult": 30069,
+      "productionCalculatorEvidence": false
+    },
+    {
+      "id": "community-workbook-natural-guard-tdb-average",
+      "status": "candidate",
+      "source": "https://docs.google.com/spreadsheets/d/1Fk5jVGUxSAnupWcBNAC5WuqFBaSQYBPsCTMkj7Plyzs/edit",
+      "locator": "DEF Stack & Lower!E39:G45",
+      "expression": "(enemyAtk * saMultiplier * variance * (alignment - tdbPerLevel * tdbLevel) - defense) * guardCoefficient",
+      "inputs": {
+        "enemyAtk": 120000,
+        "saMultiplier": 2.5,
+        "variance": 1.015,
+        "alignment": 0.9,
+        "tdbPerLevel": 0.01,
+        "tdbLevel": 10,
+        "defense": 129176,
+        "guardCoefficient": 0.5
+      },
+      "expectedStages": [300000, 304500, 243600, 114424, 57212],
+      "expectedResult": 57212,
+      "productionCalculatorEvidence": false
+    }
+  ]
+}

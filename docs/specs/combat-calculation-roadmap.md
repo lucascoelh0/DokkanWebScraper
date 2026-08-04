@@ -1,7 +1,32 @@
 # Combat calculation roadmap
 
-Status: Gate A7.1 structural lifecycle evidence. This document describes future data and rule
-boundaries; it does not define an implemented calculator.
+Status: Gate A8 versioned global combat-rules foundation. This document describes
+data and rule boundaries; it does not define an implemented calculator.
+
+## Gate A8 combat-rules foundation
+
+Gate A8 adds an independent `CombatRulesDataset` at schema `1`, combat-rules
+version `1.0.0`, and evidence-policy version `1`. It requires Team Analysis
+schema `1`, rules range `1..1`, parser `1.7.1` or newer, and the
+`sa-stat-raise-lifecycle-v1` capability. Older schema-1 caches without that
+capability must preserve the lifecycle as unknown. The local deterministic
+bundle uses `combat-rules.json`, `combat-rules-manifest.json`, and
+`combat-rules-coverage.json`; it is not published and contains no per-character
+data.
+
+Only `verified` entries are normative. Community-supported constants remain
+`corroborated` or `candidate`, while missing mechanics live in a separate
+`unresolvedRules` collection. A validator rejects unknown enums, incompatible
+versions, insufficient normative provenance, invalid probabilities/ranges,
+contradictory order/rounding, and candidate/unresolved rules marked normative.
+The full source audit and evidence matrix are in
+[`combat-rules-gate-a8-audit.md`](combat-rules-gate-a8-audit.md).
+
+The two normative Gate A8 entries are contract invariants: the separation of
+condition/timing/bucket/duration/stacking/runtime/result, and a compatibility
+reference to `sa-stat-raise-lifecycle-v1`. Numeric mechanics from the community
+guides and workbook are not promoted to production rules without stronger
+first-party or reproducible runtime evidence.
 
 ## Evidence policy
 
@@ -160,10 +185,26 @@ The current character and Team Analysis datasets provide:
 - structural enemy scenario predicates for Class, Type, Category, name, HP and
   status.
 
+The independent Gate A8 Combat Rules dataset additionally provides:
+
+- versioned evidence policy and exact Team Analysis compatibility;
+- stable global-rule IDs with typed channels, values/structures, units,
+  provenance, evidence levels, structural references, compatibility notes, and
+  risk;
+- non-normative candidate ATK/DEF pipelines, damage dealt/received channel
+  structures, source-group semantics, Hidden Potential rates, partial
+  dimensioned Super Attack raise mappings, guard/TDB candidates, variance
+  endpoints, and the observed minimum-damage trigger/range;
+- explicit unresolved rules for every missing table, distribution, algorithm,
+  applicability join, and integer boundary;
+- deterministic JSON, manifest, and coverage generation with size/SHA-256
+  validation.
+
 ## Data still missing
 
-No production calculator should be enabled until these inputs are typed and
-versioned:
+No production calculator should be enabled until these inputs move from
+candidate/unresolved evidence to sufficiently proven normative rules, or are
+provided by a compatible typed runtime dataset:
 
 - Super Attack base multiplier and progression by Super Attack level;
 - numeric mappings for qualitative Super Attack raise/lowering terms, caps,

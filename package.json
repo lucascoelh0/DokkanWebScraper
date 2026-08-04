@@ -35,6 +35,8 @@
     "run:fyi-character-catalog": "npx ts-node fyi-character-catalog-run.ts",
     "run:fyi-character-dataset": "npx ts-node fyi-character-dataset-run.ts",
     "run:fyi-team-analysis": "npx ts-node fyi-team-analysis-run.ts",
+    "run:combat-rules": "npx ts-node combat-rules-run.ts",
+    "validate:combat-rules": "npx ts-node combat-rules-validate.ts",
     "validate:fyi-character-dataset": "npx ts-node fyi-character-dataset-validate.ts",
     "run:fyi-experiment": "npx ts-node fyi-experiment.ts",
     "run:fyi-summons": "npx ts-node fyi-summons-run.ts",
