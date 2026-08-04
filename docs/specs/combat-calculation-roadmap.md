@@ -1,6 +1,6 @@
 # Combat calculation roadmap
 
-Status: Gate A5.1 foundation. This document describes future data and rule
+Status: Gate A7 Super Attack effect foundation. This document describes future data and rule
 boundaries; it does not define an implemented calculator.
 
 ## Evidence policy
@@ -144,6 +144,10 @@ The current character and Team Analysis datasets provide:
 - additive passive activation timing and ATK/DEF calculation bucket metadata;
 - link-skill identities;
 - Super Attack names, Ki thresholds and raw effect text;
+- typed source-neutral Super Attack ATK/DEF raises, enemy ATK/DEF lowering,
+  stun and Super Attack seal, with exact source spans, target, duration,
+  stacking/cap uncertainty, chance provenance, activation timing and separate
+  future calculation buckets;
 - available Ki-multiplier text/steps where the source exposes them;
 - structural enemy scenario predicates for Class, Type, Category, name, HP and
   status.
@@ -154,7 +158,9 @@ No production calculator should be enabled until these inputs are typed and
 versioned:
 
 - Super Attack base multiplier and progression by Super Attack level;
-- typed Super Attack ATK/DEF raises, including duration and stacking rules;
+- numeric mappings for qualitative Super Attack raise/lowering terms and
+  first-party stacking rules where the text leaves duration or accumulation
+  unresolved;
 - Hidden Potential, Type Attack Boost (TAB) and Type Defense Boost (TDB);
 - the versioned Class/Type alignment table, natural/passive guard behavior,
   guard coefficient and Type Defense Boost interaction;
@@ -214,11 +220,13 @@ modifiers. Caps and durations remain attached to the typed effect. This keeps
 normal-only damage reduction as one effect guarded by one incoming-event
 condition instead of duplicating attack-kind metadata across channels.
 
-A later data gate must type Super Attack effects and calculation channels,
-including SA-effect ATK lowering, ATK/DEF raises and damage-kind-specific
-reduction. Boss-phase combat facts should be a separate source-neutral dataset.
-Neither concern should be folded into Gate A6 merely to increase parser
-coverage.
+Gate A7 types the Super Attack effect channel, including ATK/DEF raises,
+SA-effect ATK/DEF lowering, stun and Super Attack seal. It preserves bare raises
+with unknown duration/stacking, qualitative probabilities without invented
+percentages, and residual effect text without selecting contributions. Damage-
+kind-specific reduction remains outside Gate A7. Boss-phase combat facts should
+be a separate source-neutral dataset; neither concern is folded into the event
+parser merely to increase coverage.
 
 A later Android evaluator will consume those three inputs with tri-state logic,
 produce a list of active contributions, and pass only resolved ATK/DEF effects

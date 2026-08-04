@@ -1,0 +1,323 @@
+{
+  "cases": [
+    {
+      "name": "typed qualitative ATK and DEF raises for the current turn",
+      "source": "real",
+      "variant": "normal",
+      "rawText": "Greatly raises ATK & DEF for 1 turn\nand causes supreme damage to enemy",
+      "conditionText": "",
+      "expectedStatus": "partial",
+      "expectedEffectStatus": "supported",
+      "effects": [
+        {
+          "kind": "atk_raise",
+          "target": "self",
+          "magnitude": "greatly_raise",
+          "duration": { "kind": "current_turn", "source": "explicit_text" },
+          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "bucket": "super_attack_raise"
+        },
+        {
+          "kind": "def_raise",
+          "target": "self",
+          "magnitude": "greatly_raise",
+          "duration": { "kind": "current_turn", "source": "explicit_text" },
+          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "bucket": "super_attack_raise"
+        }
+      ]
+    },
+    {
+      "name": "explicit numeric ATK and DEF raises",
+      "source": "real",
+      "variant": "normal",
+      "rawText": "Raises ATK & DEF by 44% for 1 turn and\ncauses colossal damage to enemy",
+      "conditionText": "",
+      "expectedStatus": "partial",
+      "expectedEffectStatus": "supported",
+      "effects": [
+        {
+          "kind": "atk_raise",
+          "target": "self",
+          "magnitude": "raise",
+          "value": 44,
+          "unit": "percent",
+          "duration": { "kind": "current_turn", "source": "explicit_text" },
+          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "bucket": "super_attack_raise"
+        },
+        {
+          "kind": "def_raise",
+          "target": "self",
+          "magnitude": "raise",
+          "value": 44,
+          "unit": "percent",
+          "duration": { "kind": "current_turn", "source": "explicit_text" },
+          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "bucket": "super_attack_raise"
+        }
+      ]
+    },
+    {
+      "name": "self DEF raise and current-target ATK lowering",
+      "source": "real",
+      "variant": "normal",
+      "rawText": "Raises DEF for 1 turn,\ncauses supreme damage to enemy\nand lowers ATK",
+      "conditionText": "",
+      "expectedStatus": "partial",
+      "expectedEffectStatus": "supported",
+      "effects": [
+        {
+          "kind": "def_raise",
+          "target": "self",
+          "magnitude": "raise",
+          "duration": { "kind": "current_turn", "source": "explicit_text" },
+          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "bucket": "super_attack_raise"
+        },
+        {
+          "kind": "enemy_atk_lowering",
+          "target": "current_target",
+          "magnitude": "lower",
+          "duration": { "kind": "unknown", "source": "unresolved" },
+          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "bucket": "super_attack_enemy_stat_lowering"
+        }
+      ]
+    },
+    {
+      "name": "allies raise keeps self inclusion unresolved",
+      "source": "real",
+      "variant": "ultra",
+      "rawText": "Causes mega-colossal damage to enemy;\nraises allies' ATK by 30% for 1 turn",
+      "conditionText": "",
+      "expectedStatus": "partial",
+      "expectedEffectStatus": "supported",
+      "effects": [
+        {
+          "kind": "atk_raise",
+          "target": "allies",
+          "selfInclusion": "unknown",
+          "magnitude": "raise",
+          "value": 30,
+          "unit": "percent",
+          "duration": { "kind": "current_turn", "source": "explicit_text" },
+          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "bucket": "super_attack_raise"
+        }
+      ]
+    },
+    {
+      "name": "numeric enemy lowering binds duration and accumulation cap",
+      "source": "synthetic",
+      "variant": "normal",
+      "rawText": "Lowers ATK by 30% for 3 turns per Super Attack (up to 90%)",
+      "conditionText": "",
+      "expectedStatus": "supported",
+      "expectedEffectStatus": "supported",
+      "effects": [
+        {
+          "kind": "enemy_atk_lowering",
+          "target": "current_target",
+          "magnitude": "lower",
+          "value": 30,
+          "unit": "percent",
+          "duration": { "kind": "turns", "turns": 3, "source": "explicit_text" },
+          "stacking": {
+            "kind": "stackable",
+            "source": "explicit_text",
+            "capPercent": 90,
+            "capSource": "explicit_text"
+          },
+          "bucket": "super_attack_enemy_stat_lowering"
+        }
+      ]
+    },
+    {
+      "name": "singular status target does not inherit an all-enemy damage target",
+      "source": "synthetic",
+      "variant": "normal",
+      "rawText": "Causes mass damage to all enemies; stuns the enemy",
+      "conditionText": "",
+      "expectedStatus": "partial",
+      "expectedEffectStatus": "supported",
+      "effects": [
+        {
+          "kind": "stun",
+          "target": "current_target",
+          "duration": { "kind": "unknown", "source": "unresolved" }
+        }
+      ]
+    },
+    {
+      "name": "separate unresolved qualitative seal and stun probabilities",
+      "source": "real",
+      "variant": "normal",
+      "rawText": "Causes colossal damage with\na medium chance of sealing Super Attack\nand a medium chance of stunning the enemy",
+      "conditionText": "",
+      "expectedStatus": "partial",
+      "expectedEffectStatus": "partial",
+      "effects": [
+        {
+          "kind": "super_attack_seal",
+          "target": "current_target",
+          "duration": { "kind": "unknown", "source": "unresolved" },
+          "qualitativeChanceTerm": "medium",
+          "probabilitySource": "unresolved"
+        },
+        {
+          "kind": "stun",
+          "target": "current_target",
+          "duration": { "kind": "unknown", "source": "unresolved" },
+          "qualitativeChanceTerm": "medium",
+          "probabilitySource": "unresolved"
+        }
+      ]
+    },
+    {
+      "name": "all-enemy stun keeps rare chance unresolved",
+      "source": "real",
+      "variant": "normal",
+      "rawText": "Causes mass damage to all enemies\nwith a rare chance of stunning them",
+      "conditionText": "",
+      "expectedStatus": "partial",
+      "expectedEffectStatus": "partial",
+      "effects": [
+        {
+          "kind": "stun",
+          "target": "all_enemies",
+          "duration": { "kind": "unknown", "source": "unresolved" },
+          "qualitativeChanceTerm": "rare",
+          "probabilitySource": "unresolved"
+        }
+      ]
+    },
+    {
+      "name": "explicit stack accumulation and cap",
+      "source": "synthetic",
+      "variant": "normal",
+      "rawText": "Raises ATK by 30% permanently per Super Attack (up to 150%)",
+      "conditionText": "",
+      "expectedStatus": "supported",
+      "expectedEffectStatus": "supported",
+      "effects": [
+        {
+          "kind": "atk_raise",
+          "target": "self",
+          "magnitude": "raise",
+          "value": 30,
+          "unit": "percent",
+          "duration": { "kind": "permanent", "source": "explicit_text" },
+          "stacking": {
+            "kind": "stackable",
+            "source": "explicit_text",
+            "capPercent": 150,
+            "capSource": "explicit_text"
+          },
+          "bucket": "super_attack_raise"
+        }
+      ]
+    },
+    {
+      "name": "bare raise does not become permanent or stackable",
+      "source": "real",
+      "variant": "normal",
+      "rawText": "Raises ATK & DEF\nand causes colossal damage to enemy",
+      "conditionText": "",
+      "expectedStatus": "partial",
+      "expectedEffectStatus": "supported",
+      "effects": [
+        {
+          "kind": "atk_raise",
+          "target": "self",
+          "magnitude": "raise",
+          "duration": { "kind": "unknown", "source": "unresolved" },
+          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "bucket": "super_attack_raise"
+        },
+        {
+          "kind": "def_raise",
+          "target": "self",
+          "magnitude": "raise",
+          "duration": { "kind": "unknown", "source": "unresolved" },
+          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "bucket": "super_attack_raise"
+        }
+      ]
+    },
+    {
+      "name": "explicit numeric stun chance",
+      "source": "synthetic",
+      "variant": "normal",
+      "rawText": "50% chance to stun the enemy",
+      "conditionText": "",
+      "expectedStatus": "supported",
+      "expectedEffectStatus": "supported",
+      "effects": [
+        {
+          "kind": "stun",
+          "target": "current_target",
+          "duration": { "kind": "unknown", "source": "unresolved" },
+          "activationChancePercent": 50,
+          "probabilitySource": "explicit_text"
+        }
+      ]
+    },
+    {
+      "name": "explicit stun duration stays on the status effect",
+      "source": "real",
+      "variant": "normal",
+      "rawText": "Causes colossal damage and\nstuns the enemy for 1 turn",
+      "conditionText": "",
+      "expectedStatus": "partial",
+      "expectedEffectStatus": "supported",
+      "effects": [
+        {
+          "kind": "stun",
+          "target": "current_target",
+          "duration": { "kind": "current_turn", "source": "explicit_text" }
+        }
+      ]
+    },
+    {
+      "name": "EX condition remains a separate unknown channel",
+      "source": "real",
+      "variant": "extra",
+      "rawText": "Raises ATK by 140% for 4 turns,\nraises DEF for 1 turn and\ncauses ultimate damage to enemy",
+      "conditionText": "When the 1st attack in the turn is\na Super Attack that performs a critical hit,\n77% chance for the Super Attack\nto become an EX Super Attack",
+      "expectedStatus": "partial",
+      "expectedEffectStatus": "supported",
+      "expectedConditionStatus": "unknown",
+      "effects": [
+        {
+          "kind": "atk_raise",
+          "target": "self",
+          "magnitude": "raise",
+          "value": 140,
+          "unit": "percent",
+          "duration": { "kind": "turns", "turns": 4, "source": "explicit_text" },
+          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "bucket": "super_attack_raise"
+        },
+        {
+          "kind": "def_raise",
+          "target": "self",
+          "magnitude": "raise",
+          "duration": { "kind": "current_turn", "source": "explicit_text" },
+          "stacking": { "kind": "unknown", "source": "unresolved" },
+          "bucket": "super_attack_raise"
+        }
+      ]
+    },
+    {
+      "name": "damage-only text stays unknown without token loss",
+      "source": "real",
+      "variant": "normal",
+      "rawText": "Causes supreme damage to enemy",
+      "conditionText": "",
+      "expectedStatus": "unknown",
+      "expectedEffectStatus": "unknown",
+      "effects": []
+    }
+  ]
+}

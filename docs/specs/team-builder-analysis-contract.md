@@ -1,7 +1,7 @@
 # Team Builder Analysis Data Contract
 
 **Status:** proposed
-**Last updated:** 2026-08-03
+**Last updated:** 2026-08-04
 **Consumer:** DkB Companion Android Team Builder
 
 ## 1. Decision
@@ -66,6 +66,7 @@ export interface CharacterStateAnalysis {
   releaseState: "initial" | "eza" | "seza";
   displayName: string;
   passive?: ParsedPassive;
+  superAttacks?: ParsedSuperAttack[];
 }
 ```
 
@@ -86,6 +87,13 @@ from a display name.
 `stateKey` is deterministic and opaque to Android. A recommended readable form
 is `{characterId}:{formId}:{releaseState}`, but consumers compare the full key
 and never parse it.
+
+`superAttacks` is optional additive enrichment. It is populated only from the
+Super Attack fields belonging to that exact form and release state. A base,
+EZA, SEZA, transformed, Unit, Ultra, or EX effect is never copied to another
+release merely because a display name matches. Current character payloads that
+expose only their current release may use that sole release's generic Super
+Attack fields; multi-release payloads require release-specific fields.
 
 ## 4. Passive contract
 
@@ -855,6 +863,138 @@ level × 2%, while Dodge/Evasion uses skill level × 1%. Those formulas are futu
 domain knowledge outside this passive contract and are not applied by this
 parser.
 
+### Gate A7 Super Attack effect channel
+
+Gate A7 adds a sibling channel; it does not serialize Super Attack effects as
+passive rules or Active Skill effects.
+
+```ts
+export interface ParsedSuperAttack {
+  id: string;
+  variant: "normal" | "ultra" | "extra" | "unit";
+  ordinal: number;
+  name?: string;
+  ki?: number;
+  attackType?: string;
+  style?: string;
+  effectOrigin: "super_attack";
+  rawText: string;
+  condition: ParsedSuperAttackCondition;
+  effects: SuperAttackEffect[];
+  effectStatus: ParseStatus;
+  parseStatus: ParseStatus;
+  sourceFragments: SourceFragment[];
+  unparsedFragments: SourceFragment[];
+}
+
+export interface ParsedSuperAttackCondition {
+  rawText: string;
+  expression: ConditionExpression;
+  parseStatus: ParseStatus;
+  sourceFragments: SourceFragment[];
+  unparsedFragments: SourceFragment[];
+}
+
+export interface SuperAttackEffect {
+  kind:
+    | "atk_raise"
+    | "def_raise"
+    | "enemy_atk_lowering"
+    | "enemy_def_lowering"
+    | "stun"
+    | "super_attack_seal";
+  origin: "super_attack";
+  target: {
+    scope: "self" | "allies" | "current_target" | "all_enemies" | "unknown";
+    selfInclusion?: "included" | "excluded" | "unknown";
+  };
+  magnitude?:
+    | "raise" | "greatly_raise" | "massively_raise"
+    | "lower" | "greatly_lower" | "massively_lower";
+  value?: number;
+  unit?: "percent";
+  activationChancePercent?: number;
+  qualitativeChanceTerm?: "a chance" | "rare" | "medium" | "high" | "great" | "may";
+  probabilitySource?: ProbabilitySource;
+  duration: {
+    kind: "current_turn" | "turns" | "permanent" | "unknown";
+    turns?: number;
+    source: CalculationPhaseResolutionSource;
+  };
+  stacking?: {
+    kind: "stackable" | "not_stackable" | "unknown";
+    capPercent?: number;
+    source: CalculationPhaseResolutionSource;
+    capSource?: CalculationPhaseResolutionSource;
+  };
+  activationTiming: {
+    moment: "when_super_attack_effect_resolves" | "unresolved";
+    source: CalculationPhaseResolutionSource;
+  };
+  calculationBucket?: {
+    bucket:
+      | "super_attack_raise"
+      | "super_attack_enemy_stat_lowering"
+      | "unresolved";
+    source: CalculationPhaseResolutionSource;
+  };
+  parseStatus: ParseStatus;
+  sourceText: string;
+  source: SourceFragment[];
+}
+```
+
+The `variant` names gameplay attack slots, not a source website. `id` is stable
+from state key, variant, and ordinal. `rawText`, condition text, and exact line
+offsets are retained independently. An empty attack condition is explicit
+`always`; a non-empty condition remains `unknown` until its complete binding is
+modeled. In particular, EX conversion conditions are not folded into an effect
+or treated as already met.
+
+ATK/DEF raises target `self` unless the effect explicitly says allies. The
+source-neutral `allies` target does not guess team versus rotation scope and
+keeps `selfInclusion: "unknown"` unless the source proves it. Enemy effects use
+`current_target` for singular enemy wording and `all_enemies` only when the
+description proves the plural target. This channel does not reuse
+`PassiveTarget`, whose team/rotation scopes have different evidence rules.
+
+Numeric percentages are emitted only when present in the effect text.
+`raise`, `greatly raise`, `massively raise`, and the corresponding lowering
+terms remain qualitative magnitudes; they are not reverse-mapped to imagined
+percentages. `for 1 turn`, `for N turns`, and explicit `in battle`/
+`permanently` wording map respectively to `current_turn`, `turns`, and
+`permanent`. A bare raise has `duration: unknown`; it is never promoted to a
+permanent stack by convention.
+
+Every stat effect preserves stacking separately. Gate A7 emits `stackable` and
+`capPercent` only for explicit stacking/cap syntax. Otherwise it emits
+`stacking.kind: "unknown"` with unresolved provenance, even when community
+knowledge would normally call the effect stackable. The production payload has
+no explicit cap syntax; cap support is protected by synthetic goldens rather
+than inferred production data.
+
+Status chance wording is equally conservative. An explicit numeric chance is
+stored with `probabilitySource: "explicit_text"`. Qualitative Super Attack
+terms are retained with unresolved probability and no number. The passive
+chance lexicon is not reused because its checked first-party evidence is tied
+to passive semantics, not the Super Attack special channel. A stun or seal
+without chance wording remains a typed deterministic-looking source statement
+but does not receive an invented `100` percentage.
+
+`activationTiming` states only that the effect belongs to Super Attack effect
+resolution; it does not claim a damage/DEF rounding boundary. ATK/DEF raises
+use the future `super_attack_raise` bucket, and enemy ATK/DEF lowering uses the
+separate `super_attack_enemy_stat_lowering` bucket. Status effects have no
+mathematical stat bucket. These fields remain independent from condition,
+duration, stacking, and source text, and Gate A7 does not evaluate or calculate
+any contribution.
+
+Attack-level status is `unknown` when no Gate A7 effect is recognized, and
+`partial` when typed effects coexist with residual damage/formula text, an
+unmodeled condition, or unresolved probability. Damage tier, base Super Attack
+multiplier, critical/all-Type effects, healing, sacrifice, action disable,
+evasion, counters, and other out-of-scope clauses remain lossless residuals.
+
 ## 7. Parsing pipeline
 
 1. Preserve source skill name, raw text, lines, and sections.
@@ -869,6 +1009,12 @@ parser.
 7. Associate effects with the narrowest preceding condition scope.
 8. Preserve every unsupported fragment explicitly.
 9. Generate a coverage report by predicate/effect/status.
+
+The Super Attack pipeline runs independently: select the exact release/variant
+source, preserve effect and condition text, recognize only Gate A7 effect
+families, bind duration/chance/target/stacking to the matched source span, and
+retain every remaining token as an offset-backed residual. It never reparses a
+passive or Active Skill string as a Super Attack to increase coverage.
 
 Effect parsing is target-independent: first recognize source-neutral effect
 atoms, then apply the target resolved from the source prefix (`self`, all
@@ -925,6 +1071,12 @@ No global percentage alone is sufficient. Coverage reports must separate:
 - team-evaluable versus scenario/runtime-only rules;
 - scenario-containing versus fully scenario-evaluable rules.
 
+Gate A7 additionally reports attack/effect/condition status, typed and numeric
+effect counts, target scopes, duration and stacking resolution, explicit caps,
+probability provenance/qualitative terms, future calculation buckets, and
+unparsed Super Attack fragments. Passive rule totals retain their previous
+meaning and are not inflated by the sibling channel.
+
 ## 9. Validation and fixtures
 
 Required golden families:
@@ -977,7 +1129,7 @@ Suggested manifest:
   "uncompressedSizeBytes": 0,
   "stateCount": 0,
   "rulesVersion": "1",
-  "parserVersion": "1.6.0",
+  "parserVersion": "1.7.0",
   "sourceCharacterDatasetVersion": "...",
   "sourceCharacterPayloadSha256": "..."
 }
@@ -1031,6 +1183,14 @@ they now gain validated payload instances. Consumers that ignore unknown
 optional enrichment continue to read schema-1 payloads, while
 `parserVersion: "1.6.0"` allows calculation-aware consumers to feature-detect
 the event semantics. Older cached payloads may omit every Gate A6 field.
+
+Gate A7 also keeps `schemaVersion` at `1`. Optional `superAttacks` is a sibling
+enrichment on a state; all new attack/effect types, provenance fields, and
+coverage counters are additive. Existing passive fields, rule counts, and
+serialized meanings are unchanged. Consumers may ignore the sibling channel,
+and older cached schema-1 payloads may omit it entirely. `parserVersion:
+"1.7.0"` allows consumers to feature-detect the conservative Super Attack
+effect contract.
 
 - Upload immutable payload before mutable manifest.
 - Run publisher dry-run and report projected new bytes before upload.

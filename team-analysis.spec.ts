@@ -13,6 +13,7 @@ import {
   ConditionExpression,
   mapPassiveDetailsToSource,
   parsePassive,
+  parseSuperAttack,
   PassiveEffect,
   PassivePredicate,
   validateTeamAnalysisDataset,
@@ -276,6 +277,33 @@ interface GateA6Fixture {
   }>;
 }
 
+interface GateA7Fixture {
+  cases: Array<{
+    name: string;
+    source: "real" | "synthetic";
+    variant: "normal" | "ultra" | "extra" | "unit";
+    rawText: string;
+    conditionText: string;
+    expectedStatus: string;
+    expectedEffectStatus: string;
+    expectedConditionStatus?: string;
+    effects: Array<{
+      kind: string;
+      target: string;
+      selfInclusion?: string;
+      magnitude?: string;
+      value?: number;
+      unit?: string;
+      duration: { kind: string; turns?: number; source: string };
+      stacking?: { kind: string; source: string; capPercent?: number; capSource?: string };
+      activationChancePercent?: number;
+      qualitativeChanceTerm?: string;
+      probabilitySource?: string;
+      bucket?: string;
+    }>;
+  }>;
+}
+
 const fixtureRelativePath = "fixtures/team-analysis/foundation-golden.json";
 const sourceFixturePath = resolve(__dirname, fixtureRelativePath);
 const fixturePath = existsSync(sourceFixturePath)
@@ -336,6 +364,12 @@ const gateA6Path = existsSync(sourceGateA6Path)
   ? sourceGateA6Path
   : resolve(__dirname, "..", gateA6RelativePath);
 const gateA6Fixture = JSON.parse(readFileSync(gateA6Path, "utf8")) as GateA6Fixture;
+const gateA7RelativePath = "fixtures/team-analysis/gate-a7-golden.json";
+const sourceGateA7Path = resolve(__dirname, gateA7RelativePath);
+const gateA7Path = existsSync(sourceGateA7Path)
+  ? sourceGateA7Path
+  : resolve(__dirname, "..", gateA7RelativePath);
+const gateA7Fixture = JSON.parse(readFileSync(gateA7Path, "utf8")) as GateA7Fixture;
 
 const options = {
   generatedAt: "2026-08-03T12:00:00.000Z",
@@ -1205,6 +1239,143 @@ describe("team-analysis Gate A6 combat-event history and phase parser", function
   });
 });
 
+describe("team-analysis Gate A7 Super Attack effect channel", function () {
+  for (const fixtureCase of gateA7Fixture.cases) {
+    it(fixtureCase.name, () => {
+      const attack = parseSuperAttack("gate-a7:fixture:initial", {
+        variant: fixtureCase.variant,
+        ordinal: 0,
+        effectText: fixtureCase.rawText,
+        conditionText: fixtureCase.conditionText,
+      });
+
+      equal(attack.effectOrigin, "super_attack");
+      equal(attack.parseStatus, fixtureCase.expectedStatus);
+      equal(attack.effectStatus, fixtureCase.expectedEffectStatus);
+      equal(attack.condition.parseStatus, fixtureCase.expectedConditionStatus ?? "supported");
+      deepEqual(attack.effects.map(gateA7EffectShape), fixtureCase.effects);
+      attack.effects.forEach(effect => {
+        equal(effect.origin, "super_attack");
+        equal(effect.activationTiming.moment, "when_super_attack_effect_resolves");
+        equal(effect.activationTiming.source, "documented_domain_rule");
+      });
+    });
+  }
+
+  it("preserves raw effect and condition text with exact line offsets", () => {
+    for (const fixtureCase of gateA7Fixture.cases) {
+      const attack = parseSuperAttack("gate-a7:offsets:initial", {
+        variant: fixtureCase.variant,
+        ordinal: 0,
+        effectText: fixtureCase.rawText,
+        conditionText: fixtureCase.conditionText,
+      });
+      equal(
+        attack.sourceFragments.map(fragment => fragment.text).join("\n"),
+        fixtureCase.rawText.replace(/\r\n/g, "\n"),
+        fixtureCase.name,
+      );
+      equal(
+        attack.condition.sourceFragments.map(fragment => fragment.text).join("\n"),
+        fixtureCase.conditionText.replace(/\r\n/g, "\n"),
+        `${fixtureCase.name} condition`,
+      );
+      for (const effect of attack.effects) {
+        equal(
+          effect.source.map(fragment => fragment.text).join("\n").replace(/\s/g, ""),
+          effect.sourceText.replace(/\s/g, ""),
+          `${fixtureCase.name} effect`,
+        );
+      }
+    }
+  });
+
+  it("keeps base and EZA Super Attack sources on their matching release states", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters.find(item => item.id === "1004001") as Character;
+    character.superAttack = "Raises DEF for 1 turn";
+    character.superAttackDetails = { name: "Base SA", effect: character.superAttack, ki: 12 };
+    character.ezaSuperAttack = "Raises ATK & DEF for 3 turns";
+    character.ezaSuperAttackDetails = { name: "EZA SA", effect: character.ezaSuperAttack, ki: 12 };
+
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    const initial = state(dataset.states, "1004001:1004001:initial");
+    const eza = state(dataset.states, "1004001:1004001:eza");
+    equal(initial.superAttacks?.[0]?.name, "Base SA");
+    equal(initial.superAttacks?.[0]?.rawText, character.superAttack);
+    equal(eza.superAttacks?.[0]?.name, "EZA SA");
+    equal(eza.superAttacks?.[0]?.rawText, character.ezaSuperAttack);
+    deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
+  });
+
+  it("prefers an explicit EZA attack over the generic fallback in a sole current EZA state", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters[0];
+    character.ezaReleaseDate = "2026-01-01T00:00:00.000Z";
+    character.superAttack = "Raises DEF for 1 turn";
+    character.superAttackDetails = { name: "Generic current fallback", effect: character.superAttack, ki: 12 };
+    character.ezaSuperAttack = "Raises ATK for 3 turns";
+    character.ezaSuperAttackDetails = { name: "Explicit EZA", effect: character.ezaSuperAttack, ki: 12 };
+
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    const eza = state(dataset.states, "1001001:1001001:eza");
+    equal(eza.superAttacks?.[0]?.name, "Explicit EZA");
+    equal(eza.superAttacks?.[0]?.rawText, character.ezaSuperAttack);
+    deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
+  });
+
+  it("rejects cross-channel origin, invented probability, invalid duration/cap, bucket, and offsets", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    characters[0].superAttack = "Causes damage and 50% chance to stun the enemy";
+    characters[0].superAttackDetails = { effect: characters[0].superAttack, ki: 12 };
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    const attack = dataset.states.find(item => item.characterId === characters[0].id)?.superAttacks?.[0];
+    ok(attack);
+    const effect = attack.effects[0];
+    (attack as any).effectOrigin = "active_skill";
+    (effect as any).origin = "passive";
+    effect.probabilitySource = "unresolved";
+    effect.duration = { kind: "turns", turns: 1, source: "explicit_text" };
+    effect.stacking = { kind: "stackable", capPercent: -1, source: "explicit_text" };
+    effect.calculationBucket = { bucket: "super_attack_raise", source: "documented_domain_rule" };
+    effect.source[0].start = 1;
+    attack.unparsedFragments = [];
+
+    const codes = validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    for (const code of [
+      "super-attack-origin",
+      "super-attack-effect-origin",
+      "super-attack-probability-unresolved-value",
+      "super-attack-effect-parse-status",
+      "super-attack-duration-turns",
+      "super-attack-stacking-kind",
+      "super-attack-bucket-kind",
+      "fragment-text",
+      "super-attack-effect-partition-token-loss",
+    ]) {
+      ok(codes.includes(code), code);
+    }
+  });
+
+  it("reports additive Super Attack coverage without changing passive rule counts", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    characters[0].superAttack = "Raises ATK & DEF for 1 turn and lowers ATK";
+    characters[0].superAttackDetails = { effect: characters[0].superAttack, ki: 12 };
+    const baseline = buildTeamAnalysisCoverageReport(
+      buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options),
+    );
+    const coverage = buildTeamAnalysisCoverageReport(
+      buildTeamAnalysisDataset(characters, fixture.catalogEntries, options),
+    );
+    equal(coverage.parsedRuleCount, baseline.parsedRuleCount);
+    equal(coverage.superAttacks.attackCount, baseline.superAttacks.attackCount + 1);
+    equal(coverage.superAttacks.effectKindCounts.atk_raise, 1);
+    equal(coverage.superAttacks.effectKindCounts.def_raise, 1);
+    equal(coverage.superAttacks.effectKindCounts.enemy_atk_lowering, 1);
+  });
+});
+
 describe("team-analysis validation and artifacts", function () {
   it("validates structural evidence identity, hash, anchor, release, and serialized order", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
@@ -1895,7 +2066,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.6\.0/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.7\.0/);
   });
 });
 
@@ -1992,6 +2163,25 @@ function gateA6EffectShape(effect: PassiveEffect, expected?: { scalingKind?: str
         ? { scalingKind: effect.scaling.kind }
         : { scaling: effect.scaling }
       : {}),
+  };
+}
+
+function gateA7EffectShape(effect: ReturnType<typeof parseSuperAttack>["effects"][number]) {
+  return {
+    kind: effect.kind,
+    target: effect.target.scope,
+    ...(effect.target.selfInclusion ? { selfInclusion: effect.target.selfInclusion } : {}),
+    ...(effect.magnitude ? { magnitude: effect.magnitude } : {}),
+    ...(effect.value !== undefined ? { value: effect.value } : {}),
+    ...(effect.unit ? { unit: effect.unit } : {}),
+    duration: effect.duration,
+    ...(effect.stacking ? { stacking: effect.stacking } : {}),
+    ...(effect.activationChancePercent !== undefined
+      ? { activationChancePercent: effect.activationChancePercent }
+      : {}),
+    ...(effect.qualitativeChanceTerm ? { qualitativeChanceTerm: effect.qualitativeChanceTerm } : {}),
+    ...(effect.probabilitySource ? { probabilitySource: effect.probabilitySource } : {}),
+    ...(effect.calculationBucket ? { bucket: effect.calculationBucket.bucket } : {}),
   };
 }
 

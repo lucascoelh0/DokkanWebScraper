@@ -3,7 +3,9 @@ import {
     Character,
     PassiveConditionEvidence,
     PassiveDetails,
+    SuperAttackDetails,
     Transformation,
+    UnitSuperAttack,
 } from "./character";
 import { FyiCharacterCatalogEntry } from "./fyi-character-catalog";
 import {
@@ -15,7 +17,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.6.0";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.7.0";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
 export type ReleaseState = "initial" | "eza" | "seza";
@@ -69,6 +71,28 @@ export type PassiveActivationMoment =
 export type PassiveCalculationBucket =
     | "passive_start_of_turn"
     | "passive_on_attack"
+    | "unresolved";
+
+export type SuperAttackVariant = "normal" | "ultra" | "extra" | "unit";
+export type SuperAttackEffectKind =
+    | "atk_raise"
+    | "def_raise"
+    | "enemy_atk_lowering"
+    | "enemy_def_lowering"
+    | "stun"
+    | "super_attack_seal";
+export type SuperAttackEffectMagnitude =
+    | "raise"
+    | "greatly_raise"
+    | "massively_raise"
+    | "lower"
+    | "greatly_lower"
+    | "massively_lower";
+export type SuperAttackChanceTerm = QualitativeChanceTerm | "may";
+export type SuperAttackActivationMoment = "when_super_attack_effect_resolves" | "unresolved";
+export type SuperAttackCalculationBucket =
+    | "super_attack_raise"
+    | "super_attack_enemy_stat_lowering"
     | "unresolved";
 
 export type CombatEventType =
@@ -210,6 +234,80 @@ export interface CharacterStateAnalysis {
     releaseState: ReleaseState,
     displayName: string,
     passive?: ParsedPassive,
+    superAttacks?: ParsedSuperAttack[],
+}
+
+export interface ParsedSuperAttack {
+    id: string,
+    variant: SuperAttackVariant,
+    ordinal: number,
+    name?: string,
+    ki?: number,
+    attackType?: string,
+    style?: string,
+    effectOrigin: "super_attack",
+    rawText: string,
+    condition: ParsedSuperAttackCondition,
+    effects: SuperAttackEffect[],
+    effectStatus: ParseStatus,
+    parseStatus: ParseStatus,
+    sourceFragments: SourceFragment[],
+    unparsedFragments: SourceFragment[],
+}
+
+export interface ParsedSuperAttackCondition {
+    rawText: string,
+    expression: ConditionExpression,
+    parseStatus: ParseStatus,
+    sourceFragments: SourceFragment[],
+    unparsedFragments: SourceFragment[],
+}
+
+export interface SuperAttackEffect {
+    kind: SuperAttackEffectKind,
+    origin: "super_attack",
+    target: SuperAttackEffectTarget,
+    magnitude?: SuperAttackEffectMagnitude,
+    value?: number,
+    unit?: "percent",
+    activationChancePercent?: number,
+    qualitativeChanceTerm?: SuperAttackChanceTerm,
+    probabilitySource?: ProbabilitySource,
+    duration: SuperAttackEffectDuration,
+    stacking?: SuperAttackEffectStacking,
+    activationTiming: SuperAttackActivationTiming,
+    calculationBucket?: SuperAttackCalculationBucketAssignment,
+    parseStatus: ParseStatus,
+    sourceText: string,
+    source: SourceFragment[],
+}
+
+export interface SuperAttackEffectTarget {
+    scope: "self" | "allies" | "current_target" | "all_enemies" | "unknown",
+    selfInclusion?: SelfInclusion,
+}
+
+export interface SuperAttackEffectDuration {
+    kind: "current_turn" | "turns" | "permanent" | "unknown",
+    turns?: number,
+    source: CalculationPhaseResolutionSource,
+}
+
+export interface SuperAttackEffectStacking {
+    kind: "stackable" | "not_stackable" | "unknown",
+    capPercent?: number,
+    source: CalculationPhaseResolutionSource,
+    capSource?: CalculationPhaseResolutionSource,
+}
+
+export interface SuperAttackActivationTiming {
+    moment: SuperAttackActivationMoment,
+    source: CalculationPhaseResolutionSource,
+}
+
+export interface SuperAttackCalculationBucketAssignment {
+    bucket: SuperAttackCalculationBucket,
+    source: CalculationPhaseResolutionSource,
 }
 
 export interface ParsedPassive {
@@ -443,6 +541,24 @@ export interface TeamAnalysisCoverageReport {
         countScopeCounts: Record<string, number>,
         relativeTimingCounts: Record<string, number>,
     },
+    superAttacks: {
+        attackCount: number,
+        attackStatusCounts: Record<ParseStatus, number>,
+        conditionStatusCounts: Record<ParseStatus, number>,
+        effectStatusCounts: Record<ParseStatus, number>,
+        typedEffectCount: number,
+        numericStatEffectCount: number,
+        effectKindCounts: Record<string, number>,
+        targetScopeCounts: Record<string, number>,
+        durationKindCounts: Record<string, number>,
+        stackingKindCounts: Record<string, number>,
+        cappedStackingEffectCount: number,
+        probabilitySourceCounts: Record<ProbabilitySource, number>,
+        qualitativeChanceTermCounts: Record<string, number>,
+        numericProbabilityEffectCount: number,
+        calculationBucketCounts: Record<string, number>,
+        unparsedFragmentCount: number,
+    },
     runtimeOnlyRuleCount: number,
     identity: {
         variantGroupAssignedStateCount: number,
@@ -466,6 +582,19 @@ interface AnalysisFormSource {
     ezaPassive?: string,
     ezaPassiveDetails?: PassiveDetails,
     sezaPassive?: string,
+    superAttack?: string,
+    ezaSuperAttack?: string,
+    ultraSuperAttack?: string,
+    ezaUltraSuperAttack?: string,
+    exSuperAttack?: string,
+    ezaExSuperAttack?: string,
+    superAttackDetails?: SuperAttackDetails,
+    ezaSuperAttackDetails?: SuperAttackDetails,
+    ultraSuperAttackDetails?: SuperAttackDetails,
+    ezaUltraSuperAttackDetails?: SuperAttackDetails,
+    exSuperAttackDetails?: SuperAttackDetails,
+    ezaExSuperAttackDetails?: SuperAttackDetails,
+    unitSuperAttacks?: UnitSuperAttack[],
     ezaReleaseDate?: string,
     sezaReleaseDate?: string,
 }
@@ -475,6 +604,17 @@ interface AnalysisReleaseSource {
     passiveText: string,
     passiveName?: string,
     passiveDetails?: PassiveDetails,
+}
+
+export interface AnalysisSuperAttackSource {
+    variant: SuperAttackVariant,
+    ordinal: number,
+    name?: string,
+    ki?: number,
+    attackType?: string,
+    style?: string,
+    effectText: string,
+    conditionText: string,
 }
 
 interface ResolvedIdentity {
@@ -554,7 +694,9 @@ function buildCharacterStates(
     const rootForm: AnalysisFormSource = character;
     const forms: AnalysisFormSource[] = [rootForm, ...(character.transformations ?? [])];
 
-    return forms.flatMap(form => analysisReleaseSources(form).map(releaseSource => {
+    return forms.flatMap(form => {
+        const releaseSources = analysisReleaseSources(form);
+        return releaseSources.map(releaseSource => {
         const identity = resolveIdentity(character, form, catalogEntry, releaseSource.releaseState);
         const stateKey = buildStateKey(identity.characterId, identity.formId, identity.releaseState);
         const passive = releaseSource.passiveText
@@ -570,6 +712,11 @@ function buildCharacterStates(
                 },
             )
             : undefined;
+        const superAttacks = analysisSuperAttackSources(
+            form,
+            releaseSource.releaseState,
+            releaseSources.length === 1,
+        ).map(source => parseSuperAttack(stateKey, source));
 
         return {
             stateKey,
@@ -584,8 +731,10 @@ function buildCharacterStates(
             releaseState: identity.releaseState,
             displayName: form.name,
             ...(passive ? { passive } : {}),
+            ...(superAttacks.length > 0 ? { superAttacks } : {}),
         };
-    }));
+        });
+    });
 }
 
 function resolveIdentity(
@@ -645,11 +794,486 @@ function analysisReleaseSources(form: AnalysisFormSource): AnalysisReleaseSource
     return releases;
 }
 
+function analysisSuperAttackSources(
+    form: AnalysisFormSource,
+    releaseState: ReleaseState,
+    singleReleaseState: boolean,
+): AnalysisSuperAttackSource[] {
+    const useBaseFields = releaseState === "initial" || singleReleaseState;
+    const slots: Array<{
+        variant: Exclude<SuperAttackVariant, "unit">,
+        baseText?: string,
+        ezaText?: string,
+        baseDetails?: SuperAttackDetails,
+        ezaDetails?: SuperAttackDetails,
+    }> = [
+        {
+            variant: "normal",
+            baseText: form.superAttack,
+            ezaText: form.ezaSuperAttack,
+            baseDetails: form.superAttackDetails,
+            ezaDetails: form.ezaSuperAttackDetails,
+        },
+        {
+            variant: "ultra",
+            baseText: form.ultraSuperAttack,
+            ezaText: form.ezaUltraSuperAttack,
+            baseDetails: form.ultraSuperAttackDetails,
+            ezaDetails: form.ezaUltraSuperAttackDetails,
+        },
+        {
+            variant: "extra",
+            baseText: form.exSuperAttack,
+            ezaText: form.ezaExSuperAttack,
+            baseDetails: form.exSuperAttackDetails,
+            ezaDetails: form.ezaExSuperAttackDetails,
+        },
+    ];
+    const attacks: AnalysisSuperAttackSource[] = [];
+
+    for (const slot of slots) {
+        const details = releaseState === "eza"
+            ? slot.ezaDetails ?? (singleReleaseState ? slot.baseDetails : undefined)
+            : useBaseFields
+                ? slot.baseDetails
+                : undefined;
+        const fallbackText = releaseState === "eza"
+            ? slot.ezaText ?? (singleReleaseState ? slot.baseText : undefined)
+            : useBaseFields
+                ? slot.baseText
+                : undefined;
+        const effectText = details?.effect ?? fallbackText ?? "";
+        if (!effectText) {
+            continue;
+        }
+        attacks.push({
+            variant: slot.variant,
+            ordinal: 0,
+            ...(details?.name ? { name: details.name } : {}),
+            ...(details?.ki !== undefined ? { ki: details.ki } : {}),
+            ...(details?.type !== undefined ? { attackType: String(details.type) } : {}),
+            ...(details?.style ? { style: details.style } : {}),
+            effectText,
+            conditionText: details?.condition ?? "",
+        });
+    }
+
+    if (releaseState === "initial" || singleReleaseState) {
+        (form.unitSuperAttacks ?? []).forEach((unit, ordinal) => {
+            const effectText = unit.effect ?? "";
+            if (!effectText) {
+                return;
+            }
+            attacks.push({
+                variant: "unit",
+                ordinal,
+                ...(unit.name ? { name: unit.name } : {}),
+                ...(unit.ki !== undefined ? { ki: unit.ki } : {}),
+                ...(unit.type !== undefined ? { attackType: String(unit.type) } : {}),
+                ...(unit.style ? { style: unit.style } : {}),
+                effectText,
+                conditionText: unit.unitSuperAttackCondition ?? "",
+            });
+        });
+    }
+    return attacks;
+}
+
 function compareAnalysisStates(left: CharacterStateAnalysis, right: CharacterStateAnalysis): number {
     const releaseOrder: Record<ReleaseState, number> = { initial: 0, eza: 1, seza: 2 };
     return left.characterId.localeCompare(right.characterId)
         || left.formId.localeCompare(right.formId)
         || releaseOrder[left.releaseState] - releaseOrder[right.releaseState];
+}
+
+interface SuperAttackEffectCandidate {
+    start: number,
+    end: number,
+    effects: Array<Omit<SuperAttackEffect, "sourceText" | "source">>,
+}
+
+export function parseSuperAttack(
+    stateKey: string,
+    source: AnalysisSuperAttackSource,
+): ParsedSuperAttack {
+    const rawText = source.effectText;
+    const candidates = superAttackEffectCandidates(rawText)
+        .sort((left, right) => left.start - right.start || right.end - left.end);
+    const accepted: SuperAttackEffectCandidate[] = [];
+    for (const candidate of candidates) {
+        if (!accepted.some(existing => candidate.start < existing.end && candidate.end > existing.start)) {
+            accepted.push(candidate);
+        }
+    }
+    accepted.sort((left, right) => left.start - right.start);
+
+    const effects = accepted.flatMap(candidate => {
+        const fragments = sourceFragmentsForAbsoluteRange(rawText, candidate.start, candidate.end);
+        const sourceText = rawText.slice(candidate.start, candidate.end);
+        return candidate.effects.map(effect => ({ ...effect, sourceText, source: fragments }));
+    });
+    const unparsedFragments = complementSourceFragments(
+        rawText,
+        accepted.map(candidate => ({ start: candidate.start, end: candidate.end })),
+    );
+    const effectStatus = superAttackEffectListStatus(effects);
+    const condition = parseSuperAttackCondition(source.conditionText);
+    const parseStatus = effects.length === 0
+        ? "unknown"
+        : unparsedFragments.length > 0 || condition.parseStatus !== "supported" || effectStatus !== "supported"
+            ? "partial"
+            : "supported";
+
+    return {
+        id: `${stateKey}:super-attack:${source.variant}:${source.ordinal}`,
+        variant: source.variant,
+        ordinal: source.ordinal,
+        ...(source.name ? { name: source.name } : {}),
+        ...(source.ki !== undefined ? { ki: source.ki } : {}),
+        ...(source.attackType ? { attackType: source.attackType } : {}),
+        ...(source.style ? { style: source.style } : {}),
+        effectOrigin: "super_attack",
+        rawText,
+        condition,
+        effects,
+        effectStatus,
+        parseStatus,
+        sourceFragments: wholeLineSourceFragments(rawText),
+        unparsedFragments,
+    };
+}
+
+function parseSuperAttackCondition(rawText: string): ParsedSuperAttackCondition {
+    const sourceFragments = wholeLineSourceFragments(rawText);
+    if (!rawText) {
+        return {
+            rawText,
+            expression: { op: "always" },
+            parseStatus: "supported",
+            sourceFragments,
+            unparsedFragments: [],
+        };
+    }
+    return {
+        rawText,
+        expression: { op: "unknown", sourceText: rawText },
+        parseStatus: "unknown",
+        sourceFragments,
+        unparsedFragments: sourceFragments,
+    };
+}
+
+function superAttackEffectCandidates(rawText: string): SuperAttackEffectCandidate[] {
+    const candidates: SuperAttackEffectCandidate[] = [];
+    const raisePattern = /(?:(greatly|massively)\s+)?raises?\s+(?:(?:all\s+)?allies['’]\s+)?(ATK|DEF)(?:\s*&\s*(ATK|DEF))?(?:\s+by\s+(\d+(?:\.\d+)?)%|\s*\+(\d+(?:\.\d+)?)%)?(?:\s+(?:for\s+\d+\s+turns?|in\s+battle|permanently|for\s+the\s+rest\s+of\s+(?:the\s+)?battle))?(?:\s+(?:per|with\s+each)\s+Super\s+Attack)?(?:\s*\(up\s+to\s+\d+(?:\.\d+)?%\)|,?\s*(?:stacking|stacks?|accumulating|accumulates?)\s+up\s+to\s+\d+(?:\.\d+)?%)?/gi;
+    for (const match of rawText.matchAll(raisePattern)) {
+        if (match.index === undefined) continue;
+        const text = match[0];
+        const target = /allies['’]/i.test(text)
+            ? { scope: "allies" as const, selfInclusion: "unknown" as const }
+            : { scope: "self" as const };
+        const magnitude = superAttackMagnitude(match[1], "raise");
+        const value = numericMatch(match[4] ?? match[5]);
+        const duration = superAttackDuration(text);
+        const stacking = superAttackStacking(text);
+        const stats = uniqueStrings([match[2], match[3]].filter(Boolean).map(value => value.toUpperCase()));
+        candidates.push({
+            start: match.index,
+            end: match.index + text.length,
+            effects: stats.map(stat => superAttackStatEffect(
+                stat === "ATK" ? "atk_raise" : "def_raise",
+                target,
+                magnitude,
+                value,
+                duration,
+                stacking,
+            )),
+        });
+    }
+
+    const boostPattern = /(?:(?:all\s+)?allies['’]\s+)?(ATK|DEF)(?:\s*&\s*(ATK|DEF))?\s*\+(\d+(?:\.\d+)?)%(?:\s+for\s+(?:all\s+)?allies)?(?:\s+(?:for\s+\d+\s+turns?|in\s+battle|permanently|for\s+the\s+rest\s+of\s+(?:the\s+)?battle))?(?:\s*\(up\s+to\s+\d+(?:\.\d+)?%\)|,?\s*(?:stacking|stacks?|accumulating|accumulates?)\s+up\s+to\s+\d+(?:\.\d+)?%)?/gi;
+    for (const match of rawText.matchAll(boostPattern)) {
+        if (match.index === undefined) continue;
+        const text = match[0];
+        const target = /allies/i.test(text)
+            ? { scope: "allies" as const, selfInclusion: "unknown" as const }
+            : { scope: "self" as const };
+        const duration = superAttackDuration(text);
+        const stacking = superAttackStacking(text);
+        const stats = uniqueStrings([match[1], match[2]].filter(Boolean).map(value => value.toUpperCase()));
+        candidates.push({
+            start: match.index,
+            end: match.index + text.length,
+            effects: stats.map(stat => superAttackStatEffect(
+                stat === "ATK" ? "atk_raise" : "def_raise",
+                target,
+                "raise",
+                numericMatch(match[3]),
+                duration,
+                stacking,
+            )),
+        });
+    }
+
+    const lowerPattern = /(?:(greatly|massively)\s+)?lowers?\s+(?!own\b)(ATK|DEF)(?:\s*&\s*(ATK|DEF))?(?:\s+by\s+(\d+(?:\.\d+)?)%)?(?:\s+(?:for\s+\d+\s+turns?|in\s+battle|permanently|for\s+the\s+rest\s+of\s+(?:the\s+)?battle))?(?:\s+(?:per|with\s+each)\s+Super\s+Attack)?(?:\s*\(up\s+to\s+\d+(?:\.\d+)?%\)|,?\s*(?:stacking|stacks?|accumulating|accumulates?)\s+up\s+to\s+\d+(?:\.\d+)?%)?/gi;
+    for (const match of rawText.matchAll(lowerPattern)) {
+        if (match.index === undefined) continue;
+        const text = match[0];
+        const target = superAttackEnemyTarget(rawText, match.index, match.index + text.length);
+        const magnitude = superAttackMagnitude(match[1], "lower");
+        const value = numericMatch(match[4]);
+        const duration = superAttackDuration(text);
+        const stacking = superAttackStacking(text);
+        const stats = uniqueStrings([match[2], match[3]].filter(Boolean).map(value => value.toUpperCase()));
+        candidates.push({
+            start: match.index,
+            end: match.index + text.length,
+            effects: stats.map(stat => ({
+                kind: stat === "ATK" ? "enemy_atk_lowering" as const : "enemy_def_lowering" as const,
+                origin: "super_attack" as const,
+                target,
+                magnitude,
+                ...(value !== undefined ? { value, unit: "percent" as const } : {}),
+                duration,
+                stacking,
+                activationTiming: superAttackActivationTiming(),
+                calculationBucket: {
+                    bucket: "super_attack_enemy_stat_lowering" as const,
+                    source: "documented_domain_rule" as const,
+                },
+                parseStatus: "supported" as const,
+            })),
+        });
+    }
+
+    collectSuperAttackStatusCandidates(
+        rawText,
+        /(?:(?:with|and)\s+)?(?:(?:\d+(?:\.\d+)?%|(?:a\s+)?(?:rare|medium|high|great))\s+chance\s+(?:of|to)\s+|a\s+chance\s+(?:of|to)\s+|may\s+)?(?:stunning|stuns?|stun)\s+(?:the\s+)?(?:enemy|enemies|them)(?:\s+for\s+\d+\s+turns?)?/gi,
+        "stun",
+        candidates,
+    );
+    collectSuperAttackStatusCandidates(
+        rawText,
+        /(?:(?:with|and)\s+)?(?:(?:\d+(?:\.\d+)?%|(?:a\s+)?(?:rare|medium|high|great))\s+chance\s+(?:of|to)\s+|a\s+chance\s+(?:of|to)\s+|may\s+)?(?:sealing|seals?|seal)\s+(?:(?:the\s+)?enemy(?:'s)?\s+)?Super\s+Attack(?:\s+for\s+\d+\s+turns?)?/gi,
+        "super_attack_seal",
+        candidates,
+    );
+    return candidates;
+}
+
+function superAttackStatEffect(
+    kind: "atk_raise" | "def_raise",
+    target: SuperAttackEffectTarget,
+    magnitude: SuperAttackEffectMagnitude,
+    value: number | undefined,
+    duration: SuperAttackEffectDuration,
+    stacking: SuperAttackEffectStacking,
+): Omit<SuperAttackEffect, "sourceText" | "source"> {
+    return {
+        kind,
+        origin: "super_attack",
+        target,
+        magnitude,
+        ...(value !== undefined ? { value, unit: "percent" as const } : {}),
+        duration,
+        stacking,
+        activationTiming: superAttackActivationTiming(),
+        calculationBucket: {
+            bucket: "super_attack_raise",
+            source: "documented_domain_rule",
+        },
+        parseStatus: "supported",
+    };
+}
+
+function collectSuperAttackStatusCandidates(
+    rawText: string,
+    pattern: RegExp,
+    kind: "stun" | "super_attack_seal",
+    candidates: SuperAttackEffectCandidate[],
+): void {
+    for (const match of rawText.matchAll(pattern)) {
+        if (match.index === undefined) continue;
+        const text = match[0];
+        const probability = superAttackProbability(text);
+        candidates.push({
+            start: match.index,
+            end: match.index + text.length,
+            effects: [{
+                kind,
+                origin: "super_attack",
+                target: superAttackEnemyTarget(rawText, match.index, match.index + text.length),
+                ...probability,
+                duration: superAttackDuration(text),
+                activationTiming: superAttackActivationTiming(),
+                parseStatus: probability.probabilitySource === "unresolved" ? "partial" : "supported",
+            }],
+        });
+    }
+}
+
+function superAttackActivationTiming(): SuperAttackActivationTiming {
+    return {
+        moment: "when_super_attack_effect_resolves",
+        source: "documented_domain_rule",
+    };
+}
+
+function superAttackMagnitude(
+    qualifier: string | undefined,
+    direction: "raise" | "lower",
+): SuperAttackEffectMagnitude {
+    const normalized = qualifier?.toLowerCase();
+    if (normalized === "greatly") return direction === "raise" ? "greatly_raise" : "greatly_lower";
+    if (normalized === "massively") return direction === "raise" ? "massively_raise" : "massively_lower";
+    return direction;
+}
+
+function superAttackDuration(sourceText: string): SuperAttackEffectDuration {
+    const turns = sourceText.match(/for\s+(\d+)\s+turns?/i);
+    if (turns) {
+        const value = Number(turns[1]);
+        return value === 1
+            ? { kind: "current_turn", source: "explicit_text" }
+            : { kind: "turns", turns: value, source: "explicit_text" };
+    }
+    if (/\b(?:in\s+battle|permanently|for\s+the\s+rest\s+of\s+(?:the\s+)?battle)\b/i.test(sourceText)) {
+        return { kind: "permanent", source: "explicit_text" };
+    }
+    return { kind: "unknown", source: "unresolved" };
+}
+
+function superAttackStacking(sourceText: string): SuperAttackEffectStacking {
+    if (/\bnot\s+stackable\b/i.test(sourceText)) {
+        return { kind: "not_stackable", source: "explicit_text" };
+    }
+    const cap = sourceText.match(/(?:up\s+to|maximum\s+of)\s+(\d+(?:\.\d+)?)%/i);
+    if (cap) {
+        return {
+            kind: "stackable",
+            capPercent: Number(cap[1]),
+            source: "explicit_text",
+            capSource: "explicit_text",
+        };
+    }
+    if (/\b(?:stackable|stacks?|stacking|accumulates?|accumulating|per\s+Super\s+Attack|with\s+each\s+Super\s+Attack)\b/i.test(sourceText)) {
+        return { kind: "stackable", source: "explicit_text" };
+    }
+    return { kind: "unknown", source: "unresolved" };
+}
+
+function superAttackProbability(sourceText: string): Pick<
+    SuperAttackEffect,
+    "activationChancePercent" | "qualitativeChanceTerm" | "probabilitySource"
+> {
+    const explicit = sourceText.match(/(\d+(?:\.\d+)?)%\s+chance/i);
+    if (explicit) {
+        return { activationChancePercent: Number(explicit[1]), probabilitySource: "explicit_text" };
+    }
+    const term = sourceText.match(/\b(rare|medium|high|great)\s+chance\b/i)?.[1]?.toLowerCase()
+        ?? (sourceText.match(/\ba\s+chance\b/i) ? "a chance" : undefined)
+        ?? (sourceText.match(/\bmay\b/i) ? "may" : undefined);
+    if (term) {
+        return {
+            qualitativeChanceTerm: term as SuperAttackChanceTerm,
+            probabilitySource: "unresolved",
+        };
+    }
+    return {};
+}
+
+function superAttackEnemyTarget(rawText: string, start: number, end: number): SuperAttackEffectTarget {
+    const effectText = rawText.slice(start, end);
+    if (/\b(?:the\s+enemy|enemy)\b/i.test(effectText) && !/\ball\s+enemies\b/i.test(effectText)) {
+        return { scope: "current_target" };
+    }
+    if (/\b(?:all\s+enemies|enemies|them)\b/i.test(effectText)) {
+        return { scope: "all_enemies" };
+    }
+    const previousBoundary = Math.max(
+        rawText.lastIndexOf(";", start - 1),
+        rawText.lastIndexOf(".", start - 1),
+        rawText.lastIndexOf("!", start - 1),
+        rawText.lastIndexOf("?", start - 1),
+    );
+    const followingBoundaries = [";", ".", "!", "?"]
+        .map(delimiter => rawText.indexOf(delimiter, end))
+        .filter(index => index >= 0);
+    const nextBoundary = followingBoundaries.length > 0 ? Math.min(...followingBoundaries) : rawText.length;
+    const clauseText = rawText.slice(previousBoundary + 1, nextBoundary);
+    return /\ball\s+enemies\b/i.test(clauseText)
+        ? { scope: "all_enemies" }
+        : { scope: "current_target" };
+}
+
+function superAttackEffectListStatus(effects: SuperAttackEffect[]): ParseStatus {
+    return aggregateStatuses(effects.map(effect => effect.parseStatus));
+}
+
+function wholeLineSourceFragments(rawText: string): SourceFragment[] {
+    return rawText.replace(/\r\n/g, "\n").split("\n").flatMap((text, lineIndex) => text.length > 0
+        ? [{ lineIndex, text, start: 0, end: text.length }]
+        : []);
+}
+
+function sourceFragmentsForAbsoluteRange(rawText: string, start: number, end: number): SourceFragment[] {
+    const fragments: SourceFragment[] = [];
+    const lines = rawText.split(/\r?\n/);
+    let absoluteStart = 0;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+        const line = lines[lineIndex];
+        const lineEnd = absoluteStart + line.length;
+        const fragmentStart = Math.max(start, absoluteStart);
+        const fragmentEnd = Math.min(end, lineEnd);
+        if (fragmentEnd > fragmentStart) {
+            const localStart = fragmentStart - absoluteStart;
+            const localEnd = fragmentEnd - absoluteStart;
+            fragments.push({
+                lineIndex,
+                text: line.slice(localStart, localEnd),
+                start: localStart,
+                end: localEnd,
+            });
+        }
+        const separatorLength = rawText.slice(lineEnd, lineEnd + 2) === "\r\n" ? 2 : 1;
+        absoluteStart = lineEnd + (lineIndex < lines.length - 1 ? separatorLength : 0);
+    }
+    return fragments;
+}
+
+function complementSourceFragments(
+    rawText: string,
+    ranges: Array<{ start: number, end: number }>,
+): SourceFragment[] {
+    const merged: Array<{ start: number, end: number }> = [];
+    for (const range of [...ranges].sort((left, right) => left.start - right.start)) {
+        const previous = merged[merged.length - 1];
+        if (previous && range.start <= previous.end) {
+            previous.end = Math.max(previous.end, range.end);
+        } else {
+            merged.push({ ...range });
+        }
+    }
+    const fragments: SourceFragment[] = [];
+    let cursor = 0;
+    for (const range of [...merged, { start: rawText.length, end: rawText.length }]) {
+        if (range.start > cursor && /\S/.test(rawText.slice(cursor, range.start))) {
+            fragments.push(...sourceFragmentsForAbsoluteRange(rawText, cursor, range.start)
+                .filter(fragment => /\S/.test(fragment.text)));
+        }
+        cursor = Math.max(cursor, range.end);
+    }
+    return fragments;
+}
+
+function numericMatch(value: string | undefined): number | undefined {
+    if (value === undefined) return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function uniqueStrings(values: string[]): string[] {
+    return Array.from(new Set(values));
 }
 
 interface LogicalPassiveBlock {
@@ -4167,8 +4791,60 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
     let combatScaledEffectCount = 0;
     let currentEventRuleCount = 0;
     let historyRuleCount = 0;
+    const superAttackStatusCounts: Record<ParseStatus, number> = { supported: 0, partial: 0, unknown: 0 };
+    const superAttackConditionStatusCounts: Record<ParseStatus, number> = { supported: 0, partial: 0, unknown: 0 };
+    const superAttackEffectStatusCounts: Record<ParseStatus, number> = { supported: 0, partial: 0, unknown: 0 };
+    const superAttackEffectKindCounts: Record<string, number> = {};
+    const superAttackTargetScopeCounts: Record<string, number> = {};
+    const superAttackDurationKindCounts: Record<string, number> = {};
+    const superAttackStackingKindCounts: Record<string, number> = {};
+    const superAttackProbabilitySourceCounts: Record<ProbabilitySource, number> = {
+        explicit_text: 0,
+        first_party_game_db: 0,
+        qualitative_lexicon: 0,
+        unresolved: 0,
+    };
+    const superAttackCalculationBucketCounts: Record<string, number> = {};
+    const superAttackQualitativeChanceTermCounts: Record<string, number> = {};
+    let superAttackCount = 0;
+    let superAttackTypedEffectCount = 0;
+    let superAttackNumericStatEffectCount = 0;
+    let superAttackCappedStackingEffectCount = 0;
+    let superAttackNumericProbabilityEffectCount = 0;
+    let superAttackUnparsedFragmentCount = 0;
 
     for (const state of dataset.states) {
+        for (const attack of state.superAttacks ?? []) {
+            superAttackCount += 1;
+            superAttackStatusCounts[attack.parseStatus] += 1;
+            superAttackConditionStatusCounts[attack.condition.parseStatus] += 1;
+            superAttackEffectStatusCounts[attack.effectStatus] += 1;
+            superAttackUnparsedFragmentCount += attack.unparsedFragments.length;
+            for (const effect of attack.effects) {
+                superAttackTypedEffectCount += 1;
+                if (effect.value !== undefined) superAttackNumericStatEffectCount += 1;
+                superAttackEffectKindCounts[effect.kind] = (superAttackEffectKindCounts[effect.kind] ?? 0) + 1;
+                superAttackTargetScopeCounts[effect.target.scope] = (superAttackTargetScopeCounts[effect.target.scope] ?? 0) + 1;
+                superAttackDurationKindCounts[effect.duration.kind] = (superAttackDurationKindCounts[effect.duration.kind] ?? 0) + 1;
+                if (effect.stacking) {
+                    superAttackStackingKindCounts[effect.stacking.kind] =
+                        (superAttackStackingKindCounts[effect.stacking.kind] ?? 0) + 1;
+                    if (effect.stacking.capPercent !== undefined) superAttackCappedStackingEffectCount += 1;
+                }
+                if (effect.probabilitySource) {
+                    superAttackProbabilitySourceCounts[effect.probabilitySource] += 1;
+                }
+                if (effect.qualitativeChanceTerm) {
+                    superAttackQualitativeChanceTermCounts[effect.qualitativeChanceTerm] =
+                        (superAttackQualitativeChanceTermCounts[effect.qualitativeChanceTerm] ?? 0) + 1;
+                }
+                if (effect.activationChancePercent !== undefined) superAttackNumericProbabilityEffectCount += 1;
+                if (effect.calculationBucket) {
+                    superAttackCalculationBucketCounts[effect.calculationBucket.bucket] =
+                        (superAttackCalculationBucketCounts[effect.calculationBucket.bucket] ?? 0) + 1;
+                }
+            }
+        }
         if (!state.passive) {
             continue;
         }
@@ -4370,6 +5046,24 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
             modeCounts: sortedRecord(combatModeCounts),
             countScopeCounts: sortedRecord(combatCountScopeCounts),
             relativeTimingCounts: sortedRecord(combatRelativeTimingCounts),
+        },
+        superAttacks: {
+            attackCount: superAttackCount,
+            attackStatusCounts: superAttackStatusCounts,
+            conditionStatusCounts: superAttackConditionStatusCounts,
+            effectStatusCounts: superAttackEffectStatusCounts,
+            typedEffectCount: superAttackTypedEffectCount,
+            numericStatEffectCount: superAttackNumericStatEffectCount,
+            effectKindCounts: sortedRecord(superAttackEffectKindCounts),
+            targetScopeCounts: sortedRecord(superAttackTargetScopeCounts),
+            durationKindCounts: sortedRecord(superAttackDurationKindCounts),
+            stackingKindCounts: sortedRecord(superAttackStackingKindCounts),
+            cappedStackingEffectCount: superAttackCappedStackingEffectCount,
+            probabilitySourceCounts: superAttackProbabilitySourceCounts,
+            qualitativeChanceTermCounts: sortedRecord(superAttackQualitativeChanceTermCounts),
+            numericProbabilityEffectCount: superAttackNumericProbabilityEffectCount,
+            calculationBucketCounts: sortedRecord(superAttackCalculationBucketCounts),
+            unparsedFragmentCount: superAttackUnparsedFragmentCount,
         },
         runtimeOnlyRuleCount,
         identity: {
@@ -4605,15 +5299,31 @@ function expectedStateIdentities(
 
 function expectedStateSources(
     characters: Character[],
-): Map<string, { displayName: string, passiveText: string, passiveDetails?: PassiveDetails }> {
-    const expected = new Map<string, { displayName: string, passiveText: string, passiveDetails?: PassiveDetails }>();
+): Map<string, {
+    displayName: string,
+    passiveText: string,
+    passiveDetails?: PassiveDetails,
+    superAttacks: AnalysisSuperAttackSource[],
+}> {
+    const expected = new Map<string, {
+        displayName: string,
+        passiveText: string,
+        passiveDetails?: PassiveDetails,
+        superAttacks: AnalysisSuperAttackSource[],
+    }>();
     for (const character of characters) {
         for (const form of [character, ...(character.transformations ?? [])] as AnalysisFormSource[]) {
-            for (const releaseSource of analysisReleaseSources(form)) {
+            const releaseSources = analysisReleaseSources(form);
+            for (const releaseSource of releaseSources) {
                 expected.set(buildStateKey(character.id, form.id, releaseSource.releaseState), {
                     displayName: form.name,
                     passiveText: releaseSource.passiveText,
                     ...(releaseSource.passiveDetails ? { passiveDetails: releaseSource.passiveDetails } : {}),
+                    superAttacks: analysisSuperAttackSources(
+                        form,
+                        releaseSource.releaseState,
+                        releaseSources.length === 1,
+                    ),
                 });
             }
         }
@@ -4647,7 +5357,12 @@ function validateStableIdentity(
 
 function validateStateSource(
     state: CharacterStateAnalysis,
-    expected: { displayName: string, passiveText: string, passiveDetails?: PassiveDetails } | undefined,
+    expected: {
+        displayName: string,
+        passiveText: string,
+        passiveDetails?: PassiveDetails,
+        superAttacks: AnalysisSuperAttackSource[],
+    } | undefined,
     issues: TeamAnalysisValidationIssue[],
 ): void {
     if (!expected) {
@@ -4698,6 +5413,310 @@ function validateStateSource(
         }
     } else if (state.passive) {
         issues.push({ code: "unexpected-passive", message: `Analysis contains a passive absent from the character form.`, stateKey: state.stateKey });
+    }
+    validateSuperAttacks(state, expected.superAttacks, issues);
+}
+
+function validateSuperAttacks(
+    state: CharacterStateAnalysis,
+    expectedSources: AnalysisSuperAttackSource[],
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const attacks = state.superAttacks ?? [];
+    if (attacks.length !== expectedSources.length) {
+        issues.push({
+            code: "super-attack-count",
+            message: `State has ${attacks.length} Super Attacks; expected ${expectedSources.length} from the character payload.`,
+            stateKey: state.stateKey,
+        });
+    }
+    const ids = new Set<string>();
+    attacks.forEach((attack, index) => {
+        const expected = expectedSources[index];
+        if (ids.has(attack.id)) {
+            issues.push({ code: "duplicate-super-attack-id", message: `Duplicate Super Attack ID ${attack.id}.`, stateKey: state.stateKey });
+        }
+        ids.add(attack.id);
+        const expectedId = `${state.stateKey}:super-attack:${attack.variant}:${attack.ordinal}`;
+        if (attack.id !== expectedId) {
+            issues.push({ code: "unstable-super-attack-id", message: `Expected Super Attack ID ${expectedId}.`, stateKey: state.stateKey });
+        }
+        if (expected) {
+            const fields: Array<[string, unknown, unknown]> = [
+                ["variant", attack.variant, expected.variant],
+                ["ordinal", attack.ordinal, expected.ordinal],
+                ["name", attack.name, expected.name],
+                ["ki", attack.ki, expected.ki],
+                ["attackType", attack.attackType, expected.attackType],
+                ["style", attack.style, expected.style],
+                ["rawText", attack.rawText, expected.effectText],
+                ["condition.rawText", attack.condition.rawText, expected.conditionText],
+            ];
+            for (const [field, actual, expectedValue] of fields) {
+                if (actual !== expectedValue) {
+                    issues.push({ code: "super-attack-source", message: `${field} does not match the character payload.`, stateKey: state.stateKey });
+                }
+            }
+        }
+        validateSuperAttack(attack, state, issues);
+    });
+}
+
+function validateSuperAttack(
+    attack: ParsedSuperAttack,
+    state: CharacterStateAnalysis,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const variants: SuperAttackVariant[] = ["normal", "ultra", "extra", "unit"];
+    if (!variants.includes(attack.variant)) {
+        issues.push({ code: "super-attack-variant", message: `Super Attack variant is not recognized.`, stateKey: state.stateKey });
+    }
+    if (!Number.isInteger(attack.ordinal) || attack.ordinal < 0) {
+        issues.push({ code: "super-attack-ordinal", message: `Super Attack ordinal must be a non-negative integer.`, stateKey: state.stateKey });
+    }
+    if (attack.ki !== undefined && (!Number.isInteger(attack.ki) || attack.ki < 0 || attack.ki > 24)) {
+        issues.push({ code: "super-attack-ki", message: `Super Attack Ki must be an integer within 0..24.`, stateKey: state.stateKey });
+    }
+    if (attack.effectOrigin !== "super_attack") {
+        issues.push({ code: "super-attack-origin", message: `Super Attack channel cannot contain passive or Active Skill effects.`, stateKey: state.stateKey });
+    }
+    const rawLines = attack.rawText.replace(/\r\n/g, "\n").split("\n");
+    validateFragmentList(attack.sourceFragments, rawLines, state, undefined, issues);
+    validateFragmentList(attack.unparsedFragments, rawLines, state, undefined, issues);
+    validateLosslessFragmentCoverage(attack.sourceFragments, rawLines, "super-attack-source-token-loss", state, issues);
+    validateLosslessFragmentCoverage(
+        uniqueOrderedFragments([
+            ...attack.effects.flatMap(effect => effect.source),
+            ...attack.unparsedFragments,
+        ]),
+        rawLines,
+        "super-attack-effect-partition-token-loss",
+        state,
+        issues,
+    );
+
+    const conditionLines = attack.condition.rawText.replace(/\r\n/g, "\n").split("\n");
+    validateFragmentList(attack.condition.sourceFragments, conditionLines, state, undefined, issues);
+    validateFragmentList(attack.condition.unparsedFragments, conditionLines, state, undefined, issues);
+    validateLosslessFragmentCoverage(
+        attack.condition.sourceFragments,
+        conditionLines,
+        "super-attack-condition-token-loss",
+        state,
+        issues,
+    );
+    if (!attack.condition.rawText) {
+        if (attack.condition.expression.op !== "always" || attack.condition.parseStatus !== "supported"
+            || attack.condition.unparsedFragments.length !== 0) {
+            issues.push({ code: "super-attack-condition-empty", message: `An empty Super Attack condition must be explicit always with no residual.`, stateKey: state.stateKey });
+        }
+    } else if (attack.condition.expression.op !== "unknown" || attack.condition.parseStatus !== "unknown") {
+        issues.push({ code: "super-attack-condition-unsupported", message: `Unmodeled Super Attack conditions must remain unknown.`, stateKey: state.stateKey });
+    }
+
+    const expectedEffectStatus = superAttackEffectListStatus(attack.effects);
+    if (attack.effectStatus !== expectedEffectStatus) {
+        issues.push({ code: "super-attack-effect-status", message: `Super Attack effectStatus does not match its effects.`, stateKey: state.stateKey });
+    }
+    const expectedParseStatus: ParseStatus = attack.effects.length === 0
+        ? "unknown"
+        : attack.unparsedFragments.length > 0
+            || attack.condition.parseStatus !== "supported"
+            || attack.effectStatus !== "supported"
+            ? "partial"
+            : "supported";
+    if (attack.parseStatus !== expectedParseStatus) {
+        issues.push({ code: "super-attack-status", message: `Super Attack parseStatus does not match condition/effect/residual status.`, stateKey: state.stateKey });
+    }
+    attack.effects.forEach(effect => validateSuperAttackEffect(effect, attack, state, issues));
+}
+
+function validateSuperAttackEffect(
+    effect: SuperAttackEffect,
+    attack: ParsedSuperAttack,
+    state: CharacterStateAnalysis,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const kinds: SuperAttackEffectKind[] = [
+        "atk_raise", "def_raise", "enemy_atk_lowering", "enemy_def_lowering", "stun", "super_attack_seal",
+    ];
+    const magnitudes: SuperAttackEffectMagnitude[] = [
+        "raise", "greatly_raise", "massively_raise", "lower", "greatly_lower", "massively_lower",
+    ];
+    const scopes: SuperAttackEffectTarget["scope"][] = ["self", "allies", "current_target", "all_enemies", "unknown"];
+    const sources: CalculationPhaseResolutionSource[] = [
+        "explicit_text", "first_party_game_db", "documented_domain_rule", "unresolved",
+    ];
+    if (!kinds.includes(effect.kind)) {
+        issues.push({ code: "super-attack-effect-kind", message: `Super Attack effect kind is not recognized.`, stateKey: state.stateKey });
+    }
+    if (effect.origin !== "super_attack") {
+        issues.push({ code: "super-attack-effect-origin", message: `Super Attack effects must retain super_attack origin.`, stateKey: state.stateKey });
+    }
+    if (!scopes.includes(effect.target.scope)) {
+        issues.push({ code: "super-attack-target", message: `Super Attack effect target is not recognized.`, stateKey: state.stateKey });
+    }
+    if (effect.target.scope === "allies" && effect.target.selfInclusion === undefined) {
+        issues.push({ code: "super-attack-target-self-inclusion", message: `Allies target must preserve self-inclusion uncertainty.`, stateKey: state.stateKey });
+    }
+    if (effect.target.scope !== "allies" && effect.target.selfInclusion !== undefined) {
+        issues.push({ code: "super-attack-target-self-inclusion-kind", message: `Self inclusion belongs only to the allies target.`, stateKey: state.stateKey });
+    }
+    const statRaise = effect.kind === "atk_raise" || effect.kind === "def_raise";
+    const enemyLowering = effect.kind === "enemy_atk_lowering" || effect.kind === "enemy_def_lowering";
+    const statEffect = statRaise || enemyLowering;
+    if (statRaise && !["self", "allies"].includes(effect.target.scope)) {
+        issues.push({ code: "super-attack-raise-target", message: `ATK/DEF raises must target self or source-stated allies.`, stateKey: state.stateKey });
+    }
+    if ((enemyLowering || effect.kind === "stun" || effect.kind === "super_attack_seal")
+        && !["current_target", "all_enemies"].includes(effect.target.scope)) {
+        issues.push({ code: "super-attack-enemy-target", message: `Enemy effects must target the current target or all enemies.`, stateKey: state.stateKey });
+    }
+    if (statEffect && (!effect.magnitude || !magnitudes.includes(effect.magnitude))) {
+        issues.push({ code: "super-attack-magnitude", message: `Stat effects require a recognized qualitative magnitude.`, stateKey: state.stateKey });
+    }
+    if (!statEffect && effect.magnitude !== undefined) {
+        issues.push({ code: "super-attack-magnitude-kind", message: `Magnitude belongs only to Super Attack stat effects.`, stateKey: state.stateKey });
+    }
+    if ((effect.value === undefined) !== (effect.unit === undefined)) {
+        issues.push({ code: "super-attack-value-unit", message: `Numeric Super Attack values and units must be paired.`, stateKey: state.stateKey });
+    }
+    if (effect.value !== undefined && (!Number.isFinite(effect.value) || effect.value < 0 || effect.unit !== "percent")) {
+        issues.push({ code: "super-attack-value", message: `Numeric Super Attack stat values must be non-negative percentages.`, stateKey: state.stateKey });
+    }
+    if (!statEffect && effect.value !== undefined) {
+        issues.push({ code: "super-attack-value-kind", message: `Numeric stat values belong only to raises or lowerings.`, stateKey: state.stateKey });
+    }
+    validateSuperAttackDuration(effect.duration, state, issues);
+    if (statEffect && !effect.stacking) {
+        issues.push({ code: "super-attack-stacking-required", message: `Stat effects must explicitly preserve stacking uncertainty.`, stateKey: state.stateKey });
+    }
+    if (!statEffect && effect.stacking) {
+        issues.push({ code: "super-attack-stacking-kind", message: `Stacking metadata belongs only to stat effects.`, stateKey: state.stateKey });
+    }
+    if (effect.stacking) {
+        const stackingKinds: SuperAttackEffectStacking["kind"][] = ["stackable", "not_stackable", "unknown"];
+        if (!stackingKinds.includes(effect.stacking.kind) || !sources.includes(effect.stacking.source)) {
+            issues.push({ code: "super-attack-stacking", message: `Stacking kind/source is not recognized.`, stateKey: state.stateKey });
+        }
+        if ((effect.stacking.kind === "unknown") !== (effect.stacking.source === "unresolved")) {
+            issues.push({ code: "super-attack-stacking-resolution", message: `Unknown stacking and unresolved provenance must be paired.`, stateKey: state.stateKey });
+        }
+        if (effect.stacking.capPercent !== undefined
+            && (effect.stacking.kind !== "stackable" || !Number.isFinite(effect.stacking.capPercent) || effect.stacking.capPercent < 0
+                || !effect.stacking.capSource || !sources.includes(effect.stacking.capSource))) {
+            issues.push({ code: "super-attack-stacking-cap", message: `A cap requires stackable semantics, a non-negative percentage, and provenance.`, stateKey: state.stateKey });
+        }
+        if (effect.stacking.capSource !== undefined && effect.stacking.capPercent === undefined) {
+            issues.push({ code: "super-attack-stacking-cap-source", message: `Cap provenance requires an explicit cap.`, stateKey: state.stateKey });
+        }
+    }
+    validateSuperAttackProbability(effect, state, issues);
+    const expectedParseStatus: ParseStatus = effect.probabilitySource === "unresolved" ? "partial" : "supported";
+    if (effect.parseStatus !== expectedParseStatus) {
+        issues.push({
+            code: "super-attack-effect-parse-status",
+            message: `Super Attack effect parse status does not match probability resolution.`,
+            stateKey: state.stateKey,
+        });
+    }
+    if (effect.activationTiming.moment !== "when_super_attack_effect_resolves"
+        || effect.activationTiming.source !== "documented_domain_rule") {
+        issues.push({ code: "super-attack-activation-timing", message: `Typed effects must remain in the Super Attack effect-resolution timing channel.`, stateKey: state.stateKey });
+    }
+    const expectedBucket = statRaise
+        ? "super_attack_raise"
+        : enemyLowering
+            ? "super_attack_enemy_stat_lowering"
+            : undefined;
+    if (expectedBucket === undefined && effect.calculationBucket !== undefined) {
+        issues.push({ code: "super-attack-bucket-kind", message: `Status effects do not receive a mathematical stat bucket.`, stateKey: state.stateKey });
+    }
+    if (expectedBucket !== undefined
+        && (effect.calculationBucket?.bucket !== expectedBucket
+            || effect.calculationBucket.source !== "documented_domain_rule")) {
+        issues.push({ code: "super-attack-bucket", message: `Stat effect has the wrong future Super Attack calculation bucket.`, stateKey: state.stateKey });
+    }
+    const rawLines = attack.rawText.replace(/\r\n/g, "\n").split("\n");
+    validateFragmentList(effect.source, rawLines, state, undefined, issues);
+    if (effect.source.length === 0
+        || effect.source.map(fragment => fragment.text).join("\n").replace(/\s/g, "") !== effect.sourceText.replace(/\s/g, "")) {
+        issues.push({ code: "super-attack-effect-source", message: `Effect source fragments must reconstruct sourceText losslessly.`, stateKey: state.stateKey });
+    }
+}
+
+function validateSuperAttackDuration(
+    duration: SuperAttackEffectDuration,
+    state: CharacterStateAnalysis,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const kinds: SuperAttackEffectDuration["kind"][] = ["current_turn", "turns", "permanent", "unknown"];
+    const sources: CalculationPhaseResolutionSource[] = [
+        "explicit_text", "first_party_game_db", "documented_domain_rule", "unresolved",
+    ];
+    if (!kinds.includes(duration.kind) || !sources.includes(duration.source)) {
+        issues.push({ code: "super-attack-duration", message: `Super Attack duration kind/source is not recognized.`, stateKey: state.stateKey });
+    }
+    if ((duration.kind === "unknown") !== (duration.source === "unresolved")) {
+        issues.push({ code: "super-attack-duration-resolution", message: `Unknown duration and unresolved provenance must be paired.`, stateKey: state.stateKey });
+    }
+    if (duration.kind === "turns") {
+        if (!Number.isInteger(duration.turns) || (duration.turns ?? 0) <= 1) {
+            issues.push({ code: "super-attack-duration-turns", message: `Multi-turn duration must declare an integer greater than 1.`, stateKey: state.stateKey });
+        }
+    } else if (duration.turns !== undefined) {
+        issues.push({ code: "super-attack-duration-turns-kind", message: `Only a multi-turn duration may declare turns.`, stateKey: state.stateKey });
+    }
+}
+
+function validateSuperAttackProbability(
+    effect: SuperAttackEffect,
+    state: CharacterStateAnalysis,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const hasProbability = effect.activationChancePercent !== undefined
+        || effect.qualitativeChanceTerm !== undefined
+        || effect.probabilitySource !== undefined;
+    if (hasProbability && effect.kind !== "stun" && effect.kind !== "super_attack_seal") {
+        issues.push({ code: "super-attack-probability-kind", message: `Gate A7 probability belongs only to stun or Super Attack seal.`, stateKey: state.stateKey });
+    }
+    if ((effect.activationChancePercent !== undefined || effect.qualitativeChanceTerm !== undefined)
+        && effect.probabilitySource === undefined) {
+        issues.push({ code: "super-attack-probability-source", message: `Probability metadata requires provenance.`, stateKey: state.stateKey });
+    }
+    if (effect.activationChancePercent !== undefined
+        && (!Number.isFinite(effect.activationChancePercent) || effect.activationChancePercent < 0 || effect.activationChancePercent > 100)) {
+        issues.push({ code: "super-attack-probability-range", message: `Probability must be within 0..100.`, stateKey: state.stateKey });
+    }
+    if (effect.probabilitySource === "unresolved" && effect.activationChancePercent !== undefined) {
+        issues.push({ code: "super-attack-probability-unresolved-value", message: `Unresolved probability cannot declare a percentage.`, stateKey: state.stateKey });
+    }
+    if (effect.probabilitySource !== undefined
+        && effect.probabilitySource !== "unresolved"
+        && effect.activationChancePercent === undefined) {
+        issues.push({ code: "super-attack-probability-missing-value", message: `Resolved probability requires an explicit percentage.`, stateKey: state.stateKey });
+    }
+}
+
+function validateLosslessFragmentCoverage(
+    fragments: SourceFragment[],
+    rawLines: string[],
+    code: string,
+    state: CharacterStateAnalysis,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const covered = rawLines.map(line => Array.from({ length: line.length }, () => false));
+    for (const fragment of fragments) {
+        if (fragment.start === undefined || fragment.end === undefined || !covered[fragment.lineIndex]) continue;
+        for (let index = fragment.start; index < fragment.end; index += 1) covered[fragment.lineIndex][index] = true;
+    }
+    for (let lineIndex = 0; lineIndex < rawLines.length; lineIndex += 1) {
+        for (let column = 0; column < rawLines[lineIndex].length; column += 1) {
+            if (!/\s/.test(rawLines[lineIndex][column]) && !covered[lineIndex][column]) {
+                issues.push({ code, message: `Source token at line ${lineIndex}, column ${column} is not referenced.`, stateKey: state.stateKey });
+                return;
+            }
+        }
     }
 }
 
