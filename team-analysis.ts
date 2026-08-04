@@ -15,7 +15,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.5.1";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.6.0";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
 export type ReleaseState = "initial" | "eza" | "seza";
@@ -56,8 +56,13 @@ export type PassiveActivationMoment =
     | "before_attacking"
     | "when_attacking"
     | "when_performing_super_attack"
+    | "before_incoming_attack"
+    | "when_targeted_by_attack"
+    | "when_attack_landed"
+    | "after_incoming_attack_resolved"
     | "after_attacking"
-    | "after_receiving_attack"
+    | "after_attack_landed"
+    | "when_evading"
     | "after_evading"
     | "after_final_blow"
     | "unresolved";
@@ -65,6 +70,40 @@ export type PassiveCalculationBucket =
     | "passive_start_of_turn"
     | "passive_on_attack"
     | "unresolved";
+
+export type CombatEventType =
+    | "attack_performed"
+    | "incoming_attack"
+    | "attack_landed"
+    | "attack_evaded"
+    | "final_blow_delivered";
+export type CombatEventActor = "self" | "enemy";
+export type CombatAttackKind = "normal_attack" | "super_attack" | "unknown";
+export type CombatAttackStyle = "ki_blast" | "unarmed" | "physical" | "unknown";
+export type CombatEventMode = "current_event" | "accumulated_count" | "per_event";
+export type CombatEventCountScope = "current_turn" | "battle" | "unknown";
+export type CombatEventRelativeTiming = "before_event" | "during_event" | "after_event" | "unknown";
+
+export interface CombatEventProvenance {
+    eventType: CalculationPhaseResolutionSource,
+    actor: CalculationPhaseResolutionSource,
+    attackKind: CalculationPhaseResolutionSource,
+    attackStyle?: CalculationPhaseResolutionSource,
+    mode: CalculationPhaseResolutionSource,
+    countScope?: CalculationPhaseResolutionSource,
+    relativeTiming: CalculationPhaseResolutionSource,
+}
+
+export interface CombatEventDescriptor {
+    eventType: CombatEventType,
+    actor: CombatEventActor,
+    attackKind: CombatAttackKind,
+    attackStyle?: CombatAttackStyle,
+    mode: CombatEventMode,
+    countScope?: CombatEventCountScope,
+    relativeTiming: CombatEventRelativeTiming,
+    provenance: CombatEventProvenance,
+}
 
 export type PassivePredicateKind =
     | "ally_category_present"
@@ -111,6 +150,8 @@ export type PassivePredicateKind =
     | "ki_amount"
     | "ki_spheres_obtained"
     | "ki_sphere_type_obtained"
+    | "incoming_attack"
+    | "incoming_super_attack"
     | "attacks_performed"
     | "attacks_received"
     | "attacks_evaded"
@@ -247,6 +288,7 @@ export interface PassivePredicate {
     excludedNames?: string[],
     excludedNameMatch?: EnemyNameMatch,
     enemyReference?: EnemyReference,
+    combatEvent?: CombatEventDescriptor,
     sourceText: string,
 }
 
@@ -289,12 +331,21 @@ export interface PassiveCalculationBucketAssignment {
     source: CalculationPhaseResolutionSource,
 }
 
-export interface PassiveEffectScaling {
+export interface KiSphereEffectScaling {
     kind: "per_ki_sphere",
     kiSphereTypes: KiSphereType[],
     spheresPerIncrement: number,
     kiContext: "collected_ki_spheres",
 }
+
+export interface CombatEventEffectScaling {
+    kind: "per_combat_event",
+    connector: "single" | "and" | "or",
+    eventsPerIncrement: number,
+    events: CombatEventDescriptor[],
+}
+
+export type PassiveEffectScaling = KiSphereEffectScaling | CombatEventEffectScaling;
 
 export interface KiSphereChange {
     sourceSelection: "listed_types" | "all" | "random_type",
@@ -378,6 +429,19 @@ export interface TeamAnalysisCoverageReport {
         bucketEligibleEffectCount: number,
         bucketCounts: Record<PassiveCalculationBucket, number>,
         bucketSourceCounts: Record<CalculationPhaseResolutionSource, number>,
+    },
+    combatEvents: {
+        predicateCount: number,
+        scaledEffectCount: number,
+        currentEventRuleCount: number,
+        historyRuleCount: number,
+        predicateKindCounts: Record<string, number>,
+        eventTypeCounts: Record<string, number>,
+        attackKindCounts: Record<string, number>,
+        attackStyleCounts: Record<string, number>,
+        modeCounts: Record<string, number>,
+        countScopeCounts: Record<string, number>,
+        relativeTimingCounts: Record<string, number>,
     },
     runtimeOnlyRuleCount: number,
     identity: {
@@ -649,6 +713,7 @@ export function parsePassive(
 
         const headerScaling = currentCondition
             ? parseKiSphereScalingHeader(currentCondition.text)
+                ?? parseCombatEventScalingHeader(currentCondition.text)
             : undefined;
         const headerConditionResult = currentCondition
             ? headerScaling
@@ -666,8 +731,12 @@ export function parsePassive(
             stateKey,
             rawText,
             ruleLineIndex: block.source[0]?.lineIndex ?? -1,
-            ...(currentCondition ? { phaseContextText: currentCondition.text } : {}),
-            ...(headerScaling ? { kiSphereScaling: headerScaling } : {}),
+            ...((currentCondition || inlineTemporal?.activationContextText) ? {
+                phaseContextText: [currentCondition?.text, inlineTemporal?.activationContextText]
+                    .filter((value): value is string => Boolean(value))
+                    .join(" "),
+            } : {}),
+            ...(headerScaling ? { headerScaling } : {}),
         });
         const source = uniqueOrderedFragments([
             ...(currentCondition?.source ?? []),
@@ -899,17 +968,29 @@ function combineConditionResults(
 function splitInlineTemporalCondition(sourceText: string): {
     effectText: string,
     conditionText: string,
+    activationContextText?: string,
 } | undefined {
     const temporalSuffix = /\s+((?:starting from the \d+(?:st|nd|rd|th) turn|for \d+ turn(?:s|\(s\))?) from (?:the start of battle|the character['â€™]s entry turn))$/i.exec(sourceText);
     const kiSuffix = /\s+((?:when|if) attacking with (?:(?:between\s+)?\d+\s+(?:and|to)\s+\d+|(?:(?:exactly|at least|at most)\s+)?\d+(?:\s+or\s+(?:more|less))?) Ki)$/i.exec(sourceText)
         ?? /\s+((?:when attacking with\s+|with\s+)(?:(?:between\s+)?\d+\s+(?:and|to)\s+\d+|(?:(?:exactly|at least|at most)\s+)?\d+(?:\s+or\s+(?:more|less))?)\s*(?:AGL|TEQ|INT|STR|PHY|Rainbow|non[- ]Rainbow|Type)?\s*Ki Spheres? obtained)$/i.exec(sourceText);
-    const suffix = temporalSuffix ?? kiSuffix;
+    const combatSuffix = /\s+((?:before|when|after)\s+(?:(?:performing|receiving|evading)(?:\s+(?:an?|the|\d+(?:\s+or\s+(?:more|less))?)\s+(?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:normal\s+|Super\s+)?attacks?)?|attacking|delivering\s+(?:a\s+|the\s+)?final blow)(?:\s+(?:in battle|within the turn))?)$/i.exec(sourceText);
+    const againstNormalAttack = /\s+(against normal attacks?)$/i.exec(sourceText);
+    const suffix = temporalSuffix ?? kiSuffix ?? combatSuffix ?? againstNormalAttack;
     if (!suffix || suffix.index === undefined) {
         return undefined;
     }
     const effectText = sourceText.slice(0, suffix.index).trim();
+    const conditionText = againstNormalAttack && suffix === againstNormalAttack
+        ? "When receiving a normal attack"
+        : suffix[1];
     return effectText
-        ? { effectText, conditionText: suffix[1] }
+        ? {
+            effectText,
+            conditionText,
+            ...(!(againstNormalAttack && suffix === againstNormalAttack)
+                ? { activationContextText: suffix[1] }
+                : {}),
+        }
         : undefined;
 }
 
@@ -1172,6 +1253,13 @@ function parseBooleanCondition(sourceText: string): ConditionExpression {
     const original = sourceText.trim();
     const withoutPrefix = original.replace(/^(?:when|if)\s+/i, "").trim();
     const text = stripOuterConditionParentheses(withoutPrefix);
+    const negated = /^not\s+(.+)$/i.exec(text);
+    if (negated && isCombatEventLanguage(negated[1])) {
+        const child = parseBooleanCondition(negated[1]);
+        if (child.op !== "unknown") {
+            return { op: "not", child };
+        }
+    }
     const exact = parseExactConditionClause(text, original);
     if (exact) {
         return exact;
@@ -1196,6 +1284,11 @@ function parseBooleanCondition(sourceText: string): ConditionExpression {
 }
 
 function parseExactConditionClause(text: string, sourceText: string): ConditionExpression | undefined {
+    const combatEvent = parseExactCombatEventCondition(text, sourceText);
+    if (combatEvent) {
+        return combatEvent;
+    }
+
     const ki = parseExactKiCondition(text, sourceText);
     if (ki) {
         return ki;
@@ -1299,6 +1392,237 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
     }
 
     return parseAllyConditionClause(text, sourceText);
+}
+
+interface ParsedCombatEventIdentity {
+    eventType: CombatEventType,
+    actor: CombatEventActor,
+    attackKind: CombatAttackKind,
+    attackStyle?: CombatAttackStyle,
+    predicateKind: PassivePredicateKind,
+    actorSource: CalculationPhaseResolutionSource,
+    attackKindSource: CalculationPhaseResolutionSource,
+    attackStyleSource?: CalculationPhaseResolutionSource,
+}
+
+function isCombatEventLanguage(sourceText: string): boolean {
+    return /\b(?:attacks?|Super Attacks?|evad(?:e|ed|ing)|final blow)\b/i.test(sourceText);
+}
+
+type CombatEventDirection = "performed" | "targeted" | "landed" | "evaded" | "final_blow";
+
+function combatEventIdentity(sourceText: string, direction: CombatEventDirection): ParsedCombatEventIdentity {
+    if (direction === "final_blow") {
+        return {
+            eventType: "final_blow_delivered",
+            actor: "self",
+            attackKind: "unknown",
+            predicateKind: "final_blow_delivered",
+            actorSource: "explicit_text",
+            attackKindSource: "unresolved",
+        };
+    }
+    const superAttack = /\b(?:Super|Ultra Super) Attacks?\b/i.test(sourceText);
+    const normalAttack = /\bnormal attacks?\b/i.test(sourceText);
+    const attackStyle: CombatAttackStyle | undefined = /\bKi Blast Super Attack\b/i.test(sourceText)
+        ? "ki_blast"
+        : /\bUnarmed Super Attack\b/i.test(sourceText)
+            ? "unarmed"
+            : /\bPhysical Super Attack\b/i.test(sourceText)
+                ? "physical"
+                : superAttack
+                    ? "unknown"
+                    : undefined;
+    const eventType: CombatEventType = direction === "performed"
+        ? "attack_performed"
+        : direction === "targeted"
+            ? "incoming_attack"
+            : direction === "landed"
+                ? "attack_landed"
+                : "attack_evaded";
+    const predicateKind: PassivePredicateKind = direction === "performed"
+        ? superAttack ? "super_attacks_performed" : "attacks_performed"
+        : direction === "targeted"
+            ? superAttack ? "incoming_super_attack" : "incoming_attack"
+            : direction === "landed"
+                ? superAttack ? "super_attack_received" : "attacks_received"
+                : "attacks_evaded";
+    return {
+        eventType,
+        actor: direction === "performed" ? "self" : "enemy",
+        attackKind: superAttack ? "super_attack" : normalAttack ? "normal_attack" : "unknown",
+        ...(attackStyle ? { attackStyle } : {}),
+        predicateKind,
+        actorSource: "documented_domain_rule",
+        attackKindSource: superAttack || normalAttack ? "explicit_text" : "unresolved",
+        ...(attackStyle ? { attackStyleSource: attackStyle === "unknown" ? "unresolved" : "explicit_text" } : {}),
+    };
+}
+
+function combatEventDescriptor(
+    identity: ParsedCombatEventIdentity,
+    mode: CombatEventMode,
+    relativeTiming: CombatEventRelativeTiming,
+    options?: {
+        countScope?: CombatEventCountScope,
+        countScopeSource?: CalculationPhaseResolutionSource,
+        relativeTimingSource?: CalculationPhaseResolutionSource,
+        modeSource?: CalculationPhaseResolutionSource,
+    },
+): CombatEventDescriptor {
+    return {
+        eventType: identity.eventType,
+        actor: identity.actor,
+        attackKind: identity.attackKind,
+        ...(identity.attackStyle ? { attackStyle: identity.attackStyle } : {}),
+        mode,
+        ...(options?.countScope ? { countScope: options.countScope } : {}),
+        relativeTiming,
+        provenance: {
+            eventType: "explicit_text",
+            actor: identity.actorSource,
+            attackKind: identity.attackKindSource,
+            ...(identity.attackStyleSource ? { attackStyle: identity.attackStyleSource } : {}),
+            mode: options?.modeSource ?? "explicit_text",
+            ...(options?.countScopeSource ? { countScope: options.countScopeSource } : {}),
+            relativeTiming: options?.relativeTimingSource ?? "explicit_text",
+        },
+    };
+}
+
+function combatPredicate(
+    identity: ParsedCombatEventIdentity,
+    descriptor: CombatEventDescriptor,
+    sourceText: string,
+    comparator?: PassivePredicate["comparator"],
+    value?: number,
+): ConditionExpression {
+    return predicateExpression({
+        kind: identity.predicateKind,
+        scope: "self",
+        ...(comparator ? { comparator } : {}),
+        ...(value !== undefined ? { value } : {}),
+        combatEvent: descriptor,
+        sourceText,
+    });
+}
+
+function parseCombatCountScope(sourceText: string): {
+    countScope: CombatEventCountScope,
+    source: CalculationPhaseResolutionSource,
+} {
+    if (/\b(?:within|in) (?:the )?(?:current )?turn\b/i.test(sourceText)) {
+        return { countScope: "current_turn", source: "explicit_text" };
+    }
+    if (/\b(?:in|throughout) (?:the )?battle\b/i.test(sourceText)) {
+        return { countScope: "battle", source: "explicit_text" };
+    }
+    return { countScope: "unknown", source: "unresolved" };
+}
+
+function parseExactCombatEventCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    if (/^Every time\b/i.test(text)) {
+        return undefined;
+    }
+
+    if (/^after receiving or evading an? attack$/i.test(text)) {
+        const received = combatEventIdentity("attack", "landed");
+        const evaded = combatEventIdentity("attack", "evaded");
+        return {
+            op: "any",
+            children: [received, evaded].map(identity => combatPredicate(
+                identity,
+                combatEventDescriptor(identity, "current_event", "after_event"),
+                sourceText,
+            )),
+        };
+    }
+
+    const interval = /^(?:after\s+)?(performing|receiving|evading)\s+between\s+(\d+)\s+and\s+(\d+)\s+((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attacks?)\s*((?:(?:in|throughout) (?:the )?battle|(?:within|in) (?:the )?(?:current )?turn)?)$/i.exec(text);
+    if (interval) {
+        const lower = Number(interval[2]);
+        const upper = Number(interval[3]);
+        if (!Number.isInteger(lower) || !Number.isInteger(upper) || lower < 0 || lower > upper) {
+            return undefined;
+        }
+        const direction = /^performing$/i.test(interval[1]) ? "performed" : /^receiving$/i.test(interval[1]) ? "landed" : "evaded";
+        const identity = combatEventIdentity(interval[4], direction);
+        const scope = parseCombatCountScope(interval[5]);
+        const descriptor = combatEventDescriptor(identity, "accumulated_count", "after_event", {
+            countScope: scope.countScope,
+            countScopeSource: scope.source,
+        });
+        return {
+            op: "all",
+            children: [
+                combatPredicate(identity, descriptor, sourceText, "gte", lower),
+                combatPredicate(identity, descriptor, sourceText, "lte", upper),
+            ],
+        };
+    }
+
+    const counted = /^(after|before)\s+(performing|receiving|evading)\s+(?:(exactly|at least|at most)\s+)?(\d+)(?:\s+or\s+(more|less))?\s+((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attacks?)\s*((?:(?:in|throughout) (?:the )?battle|(?:within|in) (?:the )?(?:current )?turn)?)$/i.exec(text);
+    if (counted) {
+        const value = Number(counted[4]);
+        if (!Number.isInteger(value) || value < 0) {
+            return undefined;
+        }
+        const direction = /^performing$/i.test(counted[2]) ? "performed" : /^receiving$/i.test(counted[2]) ? "landed" : "evaded";
+        const identity = combatEventIdentity(counted[6], direction);
+        const scope = parseCombatCountScope(counted[7]);
+        const comparator: PassivePredicate["comparator"] = counted[5]
+            ? /^more$/i.test(counted[5]) ? "gte" : "lte"
+            : /^at least$/i.test(counted[3] ?? "") ? "gte"
+                : /^at most$/i.test(counted[3] ?? "") ? "lte"
+                    : /^exactly$/i.test(counted[3] ?? "") ? "eq"
+            : /^before$/i.test(counted[1]) ? "lt" : "gte";
+        // "Before receiving N attacks" is a comparator over already resolved
+        // history (count < N), not proof that a landed outcome exists before
+        // resolution. Completed event counters therefore remain after-event.
+        return combatPredicate(
+            identity,
+            combatEventDescriptor(identity, "accumulated_count", "after_event", {
+                countScope: scope.countScope,
+                countScopeSource: scope.source,
+            }),
+            sourceText,
+            comparator,
+            value,
+        );
+    }
+
+    const currentPatterns: Array<{
+        pattern: RegExp,
+        direction: CombatEventDirection,
+        timing: CombatEventRelativeTiming,
+    }> = [
+        { pattern: /^(?:attacking|performing an? attack)$/i, direction: "performed", timing: "during_event" },
+        { pattern: /^before (?:attacking|performing an? attack)$/i, direction: "performed", timing: "before_event" },
+        { pattern: /^after (?:attacking|performing an? attack)$/i, direction: "performed", timing: "after_event" },
+        { pattern: /^(?:when )?performing an? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super|Ultra Super) Attack)$/i, direction: "performed", timing: "during_event" },
+        { pattern: /^after performing an? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super|Ultra Super) Attack)$/i, direction: "performed", timing: "after_event" },
+        { pattern: /^(?:when )?receiving an? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:normal|Super) attack)$/i, direction: "targeted", timing: "during_event" },
+        { pattern: /^(?:receiving|when receiving) an? attack$/i, direction: "targeted", timing: "during_event" },
+        { pattern: /^before receiving an? attack(?: within the turn)?$/i, direction: "targeted", timing: "before_event" },
+        { pattern: /^after (?:receiving|being hit by) an? attack$/i, direction: "landed", timing: "after_event" },
+        { pattern: /^(?:when )?evading an? attack$/i, direction: "evaded", timing: "during_event" },
+        { pattern: /^after evading an? attack$/i, direction: "evaded", timing: "after_event" },
+        { pattern: /^after delivering (?:a |the )?final blow$/i, direction: "final_blow", timing: "after_event" },
+        { pattern: /^(?:when )?delivering (?:a |the )?final blow$/i, direction: "final_blow", timing: "during_event" },
+    ];
+    for (const candidate of currentPatterns) {
+        const match = candidate.pattern.exec(text);
+        if (!match) {
+            continue;
+        }
+        const identity = combatEventIdentity(match[1] ?? text, candidate.direction);
+        return combatPredicate(
+            identity,
+            combatEventDescriptor(identity, "current_event", candidate.timing),
+            sourceText,
+        );
+    }
+    return undefined;
 }
 
 function parseExactKiCondition(text: string, sourceText: string): ConditionExpression | undefined {
@@ -2232,17 +2556,26 @@ function parseOrdinalValues(sourceText: string): number[] | undefined {
 
 function parseTemporalSuffixCondition(text: string): ConditionExpression | undefined {
     const suffix = /^(.*?)\s+(starting from the \d+(?:st|nd|rd|th) turn from (?:the start of battle|the character['â€™]s entry turn))$/i.exec(text);
-    if (!suffix || !suffix[1].trim()) {
-        return undefined;
+    if (suffix && suffix[1].trim()) {
+        const temporal = parseExactTemporalCondition(suffix[2], suffix[2]);
+        if (temporal) {
+            return {
+                op: "all",
+                children: [parseBooleanCondition(suffix[1]), temporal],
+            };
+        }
     }
-    const temporal = parseExactTemporalCondition(suffix[2], suffix[2]);
-    if (!temporal) {
-        return undefined;
+    const combatSuffix = /^(.*?)\s+((?:when|before|after)\s+(?:attacking|(?:performing|receiving|evading)(?:\s+(?:an?|the)\s+(?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:normal\s+|Super\s+)?attack)?|delivering\s+(?:a\s+|the\s+)?final blow))$/i.exec(text);
+    if (combatSuffix && combatSuffix[1].trim()) {
+        const combat = parseExactCombatEventCondition(combatSuffix[2], combatSuffix[2]);
+        if (combat) {
+            return {
+                op: "all",
+                children: [parseBooleanCondition(combatSuffix[1]), combat],
+            };
+        }
     }
-    return {
-        op: "all",
-        children: [parseBooleanCondition(suffix[1]), temporal],
-    };
+    return undefined;
 }
 
 function parseAllyConditionClause(sourceBody: string, sourceText: string): ConditionExpression | undefined {
@@ -2524,6 +2857,80 @@ function parseKiSphereScalingHeader(sourceText: string): PassiveEffectScaling | 
     };
 }
 
+function parseCombatEventScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const match = /^For every(?:\s+(\d+))?\s+(.+)$/i.exec(sourceText.trim());
+    if (!match) {
+        return undefined;
+    }
+    const eventsPerIncrement = Number(match[1] ?? 1);
+    if (!Number.isInteger(eventsPerIncrement) || eventsPerIncrement < 1) {
+        return undefined;
+    }
+    const body = match[2].trim();
+    const connectors = [...body.matchAll(/\s+(and|or)\s+/gi)].map(item => item[1].toLowerCase());
+    if (connectors.includes("and") && connectors.includes("or")) {
+        return undefined;
+    }
+    const connector: CombatEventEffectScaling["connector"] = connectors[0] as "and" | "or" | undefined ?? "single";
+    const parts = body.split(/\s+(?:and|or)\s+/i).map(part => part.trim());
+    const identities = parts.map((part, index) => {
+        const direct = parsePerEventIdentity(part);
+        if (direct) {
+            return direct;
+        }
+        if (/^evaded$/i.test(part) && index > 0 && /attack received$/i.test(parts[index - 1])) {
+            return combatEventIdentity("attack evaded", "evaded");
+        }
+        return undefined;
+    });
+    if (identities.some(identity => !identity)) {
+        return undefined;
+    }
+    return {
+        kind: "per_combat_event",
+        connector,
+        eventsPerIncrement,
+        events: (identities as ParsedCombatEventIdentity[]).map(identity => combatEventDescriptor(
+            identity,
+            "per_event",
+            "after_event",
+            {
+                countScope: "battle",
+                countScopeSource: "documented_domain_rule",
+                relativeTimingSource: "documented_domain_rule",
+            },
+        )),
+    };
+}
+
+function parsePerEventIdentity(sourceText: string): ParsedCombatEventIdentity | undefined {
+    if (/^((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack) performed$/i.test(sourceText)) {
+        return combatEventIdentity(sourceText, "performed");
+    }
+    if (/^((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack) received$/i.test(sourceText)) {
+        return combatEventIdentity(sourceText, "landed");
+    }
+    if (/^attack evaded$/i.test(sourceText)) {
+        return combatEventIdentity(sourceText, "evaded");
+    }
+    if (/^final blow delivered$/i.test(sourceText)) {
+        return combatEventIdentity(sourceText, "final_blow");
+    }
+    return undefined;
+}
+
+function clonePassiveEffectScaling(scaling: PassiveEffectScaling): PassiveEffectScaling {
+    return scaling.kind === "per_ki_sphere"
+        ? { ...scaling, kiSphereTypes: [...scaling.kiSphereTypes] }
+        : {
+            ...scaling,
+            events: scaling.events.map(event => ({
+                ...event,
+                provenance: { ...event.provenance },
+            })),
+        };
+}
+
 function parseSlotValues(sourceText: string): number[] {
     return [...sourceText.matchAll(/\b(1st|2nd|3rd)\b/gi)]
         .map(match => Number(match[1][0]));
@@ -2605,7 +3012,7 @@ function splitTopLevelCondition(sourceText: string, connector: "and" | "or"): st
             continue;
         }
         const right = sourceText.slice(index + match[0].length).trim();
-        if (!/^(?:when|if|as|attacking|with|between|ki\b|\d+\b|there|all|the\s+(?:team|character|enemy|target|attacked|selected|only)|this\s+character|that\s+enemy|an?\s+(?:enemy|["']|(?:Super|Extreme|AGL|TEQ|INT|STR|PHY)\b)|another|no|for\b|starting\b|on the\b|up to the\b|from the\b|HP\b|facing\b|\()/i.test(right)) {
+        if (!/^(?:when|if|not\b|after\b|before\b|as|attacking|with|between|ki\b|\d+\b|there|all|the\s+(?:team|character|enemy|target|attacked|selected|only)|this\s+character|that\s+enemy|an?\s+(?:enemy|["']|(?:Super|Extreme|AGL|TEQ|INT|STR|PHY)\b)|another|no|for\b|starting\b|on the\b|up to the\b|from the\b|HP\b|facing\b|\()/i.test(right)) {
             continue;
         }
         parts.push(sourceText.slice(lastIndex, index).replace(/[\s,]+$/g, "").trim());
@@ -2690,7 +3097,7 @@ interface EffectParseContext {
     rawText: string,
     ruleLineIndex: number,
     phaseContextText?: string,
-    kiSphereScaling?: PassiveEffectScaling,
+    headerScaling?: PassiveEffectScaling,
 }
 
 function parseEffects(sourceText: string, context: EffectParseContext): ParsedEffectResult {
@@ -2698,8 +3105,8 @@ function parseEffects(sourceText: string, context: EffectParseContext): ParsedEf
     const parsedAtoms = parseEffectAtoms(resolvedTarget.body, context);
     const effects = parsedAtoms.atoms.map(atom => enrichCalculationPhase(
         applyEffectTarget(
-            context.kiSphereScaling && atom.kind !== "ki_sphere_change" && !atom.scaling
-                ? { ...atom, scaling: { ...context.kiSphereScaling, kiSphereTypes: [...context.kiSphereScaling.kiSphereTypes] } }
+            context.headerScaling && atom.kind !== "ki_sphere_change" && !atom.scaling
+                ? { ...atom, scaling: clonePassiveEffectScaling(context.headerScaling) }
                 : atom,
             resolvedTarget,
         ),
@@ -3295,6 +3702,20 @@ function applyEffectModifiers(body: string, atoms: EffectAtomCandidate[]): Effec
             },
         });
     }
+    for (const match of body.matchAll(/\b(?:per|with each)\s+((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack\s+(?:performed|received)|attack\s+evaded|final blow\s+delivered)\b/gi)) {
+        const scaling = parseCombatEventScalingHeader(`For every ${match[1]}`);
+        if (!scaling || scaling.kind !== "per_combat_event") {
+            continue;
+        }
+        const start = match.index ?? 0;
+        candidates.push({
+            start,
+            end: start + match[0].length,
+            apply: atom => {
+                atom.scaling = clonePassiveEffectScaling(scaling);
+            },
+        });
+    }
 
     const applied: EffectModifierCandidate[] = [];
     for (const modifier of candidates.sort((left, right) => left.start - right.start || left.end - right.end)) {
@@ -3327,7 +3748,9 @@ function stripKnownModifierText(sourceText: string): string {
         .replace(/\bfor\s+\d+\s+turn(?:s\b|\(s\)(?!\w)|\b)/gi, "")
         .replace(/\b(?:for the rest of (?:the )?battle|throughout (?:the )?battle|permanently)\b/gi, "")
         .replace(/\(\s*up to\s+\+?\d+(?:\.\d+)?%?\s*\)/gi, "")
-        .replace(/\bper\s+(?:\d+\s+)?(?:AGL|TEQ|INT|STR|PHY|Rainbow|non[- ]Rainbow|Type)?\s*Ki Spheres? obtained\b/gi, "");
+        .replace(/\bper\s+(?:\d+\s+)?(?:AGL|TEQ|INT|STR|PHY|Rainbow|non[- ]Rainbow|Type)?\s*Ki Spheres? obtained\b/gi, "")
+        .replace(/\b(?:per|with each)\s+(?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack\s+(?:performed|received)\b/gi, "")
+        .replace(/\b(?:per|with each)\s+(?:attack\s+evaded|final blow\s+delivered)\b/gi, "");
 }
 
 function modifierText(body: string, modifier: EffectModifierCandidate): string {
@@ -3414,7 +3837,7 @@ function enrichCalculationPhase(
         ?? explicitActivationMoment(context.phaseContextText ?? "");
     const domainMoment = explicitMoment
         ? undefined
-        : domainActivationMoment(context.phaseContextText, context.kiSphereScaling);
+        : domainActivationMoment(context.phaseContextText, effect.scaling ?? context.headerScaling);
     const activationTiming: PassiveActivationTiming = explicitMoment
         ? { moment: explicitMoment, source: "explicit_text" }
         : domainMoment
@@ -3431,7 +3854,7 @@ function enrichCalculationPhase(
         calculationBucket: resolveCalculationBucket(
             effectSourceText,
             context.phaseContextText,
-            context.kiSphereScaling,
+            context.headerScaling,
         ),
     };
 }
@@ -3440,15 +3863,28 @@ function explicitActivationMoment(sourceText: string): PassiveActivationMoment |
     if (/\bwhen performing (?:a|an) (?:Super|Ultra Super) Attack\b/i.test(sourceText)) {
         return "when_performing_super_attack";
     }
-    if (/\bafter (?:performing (?:a|an) (?:Super|Ultra Super) Attack|attacking)\b/i.test(sourceText)
+    if (/\bafter (?:performing (?:a|an|\d+(?:\s+or\s+more)?) (?:Super |Ultra Super )?Attacks?|attacking)\b/i.test(sourceText)
         || /\bfor every (?:Super )?Attack performed\b/i.test(sourceText)) {
         return "after_attacking";
     }
-    if (/\bafter (?:receiving|being hit by) (?:an?|the) attack\b/i.test(sourceText)
-        || /\bfor every attack received\b/i.test(sourceText)) {
-        return "after_receiving_attack";
+    if (/\bbefore receiving (?:an?|the) attack\b/i.test(sourceText)) {
+        return "before_incoming_attack";
     }
-    if (/\bafter evading (?:an?|the) attack\b/i.test(sourceText)
+    if (/\bwhen receiving (?:an?|the) (?:(?:Ki Blast|Unarmed|Physical) )?(?:normal |Super )?Attack\b/i.test(sourceText)) {
+        return "when_targeted_by_attack";
+    }
+    if (/\bafter receiving or evading (?:an?|the) attack\b/i.test(sourceText)
+        || /\bfor every attack received or evaded\b/i.test(sourceText)) {
+        return "after_incoming_attack_resolved";
+    }
+    if (/\bafter (?:receiving|being hit by) (?:an?|the|\d+(?:\s+or\s+more)?) (?:(?:Ki Blast|Unarmed|Physical) )?(?:normal |Super )?Attacks?\b/i.test(sourceText)
+        || /\bfor every attack received(?!\s+or\s+evaded)\b/i.test(sourceText)) {
+        return "after_attack_landed";
+    }
+    if (/\bwhen evading (?:an?|the) attack\b/i.test(sourceText)) {
+        return "when_evading";
+    }
+    if (/\bafter evading (?:an?|the|\d+(?:\s+or\s+more)?) attacks?\b/i.test(sourceText)
         || /\bfor every attack evaded\b/i.test(sourceText)) {
         return "after_evading";
     }
@@ -3468,15 +3904,54 @@ function explicitActivationMoment(sourceText: string): PassiveActivationMoment |
     return undefined;
 }
 
+function activationMomentFromCombatEvent(event: CombatEventDescriptor): PassiveActivationMoment {
+    if (event.eventType === "final_blow_delivered") {
+        return event.relativeTiming === "after_event" ? "after_final_blow" : "unresolved";
+    }
+    if (event.eventType === "attack_evaded") {
+        return event.relativeTiming === "after_event" ? "after_evading"
+            : event.relativeTiming === "during_event" ? "when_evading"
+                : "unresolved";
+    }
+    if (event.eventType === "incoming_attack") {
+        return event.relativeTiming === "before_event" ? "before_incoming_attack"
+            : event.relativeTiming === "during_event" ? "when_targeted_by_attack"
+                : "unresolved";
+    }
+    if (event.eventType === "attack_landed") {
+        return event.relativeTiming === "during_event" ? "when_attack_landed"
+            : event.relativeTiming === "after_event" ? "after_attack_landed"
+                : "unresolved";
+    }
+    if (event.attackKind === "super_attack" && event.relativeTiming === "during_event") {
+        return "when_performing_super_attack";
+    }
+    return event.relativeTiming === "before_event" ? "before_attacking"
+        : event.relativeTiming === "during_event" ? "when_attacking"
+            : event.relativeTiming === "after_event" ? "after_attacking"
+                : "unresolved";
+}
+
 function domainActivationMoment(
     phaseContextText: string | undefined,
-    kiSphereScaling: PassiveEffectScaling | undefined,
+    headerScaling: PassiveEffectScaling | undefined,
 ): PassiveActivationMoment | undefined {
     if (/^Basic effect\(s\)$/i.test(phaseContextText?.trim() ?? "")) {
         return "start_of_turn";
     }
-    if (kiSphereScaling && /^For every\b/i.test(phaseContextText?.trim() ?? "")) {
+    if (headerScaling?.kind === "per_ki_sphere" && /^For every\b/i.test(phaseContextText?.trim() ?? "")) {
         return "start_of_turn";
+    }
+    if (headerScaling?.kind === "per_combat_event") {
+        const events = headerScaling.events;
+        if (events.length > 1
+            && events.every(event => event.relativeTiming === "after_event")
+            && events.some(event => event.eventType === "attack_landed")
+            && events.some(event => event.eventType === "attack_evaded")) {
+            return "after_incoming_attack_resolved";
+        }
+        const moments = [...new Set(events.map(activationMomentFromCombatEvent))];
+        return moments.length === 1 && moments[0] !== "unresolved" ? moments[0] : undefined;
     }
     return undefined;
 }
@@ -3484,7 +3959,7 @@ function domainActivationMoment(
 function resolveCalculationBucket(
     effectSourceText: string,
     phaseContextText: string | undefined,
-    kiSphereScaling: PassiveEffectScaling | undefined,
+    headerScaling: PassiveEffectScaling | undefined,
 ): PassiveCalculationBucketAssignment {
     const inlineMoment = explicitActivationMoment(effectSourceText);
     if (/\b(?:when|after) performing (?:a|an) (?:Super|Ultra Super) Attack\b/i.test(effectSourceText)) {
@@ -3505,7 +3980,7 @@ function resolveCalculationBucket(
     if (/^Basic effect\(s\)$/i.test(phaseContextText?.trim() ?? "")) {
         return { bucket: "passive_start_of_turn", source: "documented_domain_rule" };
     }
-    if (kiSphereScaling && /^For every\b/i.test(phaseContextText?.trim() ?? "")) {
+    if (headerScaling?.kind === "per_ki_sphere" && /^For every\b/i.test(phaseContextText?.trim() ?? "")) {
         return { bucket: "passive_start_of_turn", source: "documented_domain_rule" };
     }
     return { bucket: "unresolved", source: "unresolved" };
@@ -3625,6 +4100,13 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
     const kiPredicateContextCounts: Record<string, number> = {};
     const kiSphereTypePredicateCounts: Record<string, number> = {};
     const scaledEffectSphereTypeCounts: Record<string, number> = {};
+    const combatPredicateKindCounts: Record<string, number> = {};
+    const combatEventTypeCounts: Record<string, number> = {};
+    const combatAttackKindCounts: Record<string, number> = {};
+    const combatAttackStyleCounts: Record<string, number> = {};
+    const combatModeCounts: Record<string, number> = {};
+    const combatCountScopeCounts: Record<string, number> = {};
+    const combatRelativeTimingCounts: Record<string, number> = {};
     const conversionSourceSelectionCounts: Record<string, number> = {};
     const conversionDestinationTypeCounts: Record<string, number> = {};
     const activationMomentCounts: Record<PassiveActivationMoment, number> = {
@@ -3632,8 +4114,13 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
         before_attacking: 0,
         when_attacking: 0,
         when_performing_super_attack: 0,
+        before_incoming_attack: 0,
+        when_targeted_by_attack: 0,
+        when_attack_landed: 0,
+        after_incoming_attack_resolved: 0,
         after_attacking: 0,
-        after_receiving_attack: 0,
+        after_attack_landed: 0,
+        when_evading: 0,
         after_evading: 0,
         after_final_blow: 0,
         unresolved: 0,
@@ -3676,6 +4163,10 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
     let scaledEffectCount = 0;
     let activationEligibleEffectCount = 0;
     let bucketEligibleEffectCount = 0;
+    let combatPredicateCount = 0;
+    let combatScaledEffectCount = 0;
+    let currentEventRuleCount = 0;
+    let historyRuleCount = 0;
 
     for (const state of dataset.states) {
         if (!state.passive) {
@@ -3735,6 +4226,26 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
             collectPredicates(rule.condition, supportedPredicateCounts);
             collectEnemySelections(rule.condition, enemySelectionCounts);
             collectKiPredicateMetrics(rule.condition, kiPredicateContextCounts, kiSphereTypePredicateCounts);
+            const combatPredicates = collectCombatPredicates(rule.condition);
+            let ruleHasCurrentCombatEvent = false;
+            let ruleHasCombatHistory = false;
+            for (const predicate of combatPredicates) {
+                combatPredicateCount += 1;
+                combatPredicateKindCounts[predicate.kind] = (combatPredicateKindCounts[predicate.kind] ?? 0) + 1;
+                if (predicate.combatEvent) {
+                    collectCombatEventMetrics(
+                        predicate.combatEvent,
+                        combatEventTypeCounts,
+                        combatAttackKindCounts,
+                        combatAttackStyleCounts,
+                        combatModeCounts,
+                        combatCountScopeCounts,
+                        combatRelativeTimingCounts,
+                    );
+                    ruleHasCurrentCombatEvent ||= predicate.combatEvent.mode === "current_event";
+                    ruleHasCombatHistory ||= predicate.combatEvent.mode === "accumulated_count";
+                }
+            }
             for (const effect of rule.effects) {
                 if (effect.kind === "unknown") {
                     unknownEffectCount += 1;
@@ -3758,6 +4269,19 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
                         scaledEffectSphereTypeCounts[type] = (scaledEffectSphereTypeCounts[type] ?? 0) + 1;
                     }
                 }
+                if (effect.scaling?.kind === "per_combat_event") {
+                    combatScaledEffectCount += 1;
+                    ruleHasCombatHistory = true;
+                    effect.scaling.events.forEach(event => collectCombatEventMetrics(
+                        event,
+                        combatEventTypeCounts,
+                        combatAttackKindCounts,
+                        combatAttackStyleCounts,
+                        combatModeCounts,
+                        combatCountScopeCounts,
+                        combatRelativeTimingCounts,
+                    ));
+                }
                 if (effect.kiSphereChange) {
                     const selection = effect.kiSphereChange.sourceSelection;
                     const destination = effect.kiSphereChange.destinationType;
@@ -3774,6 +4298,12 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
                     bucketCounts[effect.calculationBucket?.bucket ?? "unresolved"] += 1;
                     bucketSourceCounts[effect.calculationBucket?.source ?? "unresolved"] += 1;
                 }
+            }
+            if (ruleHasCurrentCombatEvent) {
+                currentEventRuleCount += 1;
+            }
+            if (ruleHasCombatHistory) {
+                historyRuleCount += 1;
             }
         }
     }
@@ -3828,6 +4358,19 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
             bucketCounts,
             bucketSourceCounts,
         },
+        combatEvents: {
+            predicateCount: combatPredicateCount,
+            scaledEffectCount: combatScaledEffectCount,
+            currentEventRuleCount,
+            historyRuleCount,
+            predicateKindCounts: sortedRecord(combatPredicateKindCounts),
+            eventTypeCounts: sortedRecord(combatEventTypeCounts),
+            attackKindCounts: sortedRecord(combatAttackKindCounts),
+            attackStyleCounts: sortedRecord(combatAttackStyleCounts),
+            modeCounts: sortedRecord(combatModeCounts),
+            countScopeCounts: sortedRecord(combatCountScopeCounts),
+            relativeTimingCounts: sortedRecord(combatRelativeTimingCounts),
+        },
         runtimeOnlyRuleCount,
         identity: {
             variantGroupAssignedStateCount: dataset.states.filter(state => Boolean(state.variantGroupId)).length,
@@ -3853,7 +4396,8 @@ const SCENARIO_PREDICATES = new Set<PassivePredicateKind>([
 ]);
 
 const RUNTIME_PREDICATES = new Set<PassivePredicateKind>([
-    "ki_amount", "ki_spheres_obtained", "ki_sphere_type_obtained", "attacks_performed",
+    "ki_amount", "ki_spheres_obtained", "ki_sphere_type_obtained", "incoming_attack",
+    "incoming_super_attack", "attacks_performed",
     "attacks_received", "attacks_evaded", "super_attacks_performed", "super_attack_received",
     "final_blow_delivered", "chance_roll",
 ]);
@@ -3943,6 +4487,40 @@ function collectKiPredicateMetrics(
     }
 }
 
+function collectCombatPredicates(condition: ConditionExpression): PassivePredicate[] {
+    if (condition.op === "predicate") {
+        return condition.predicate.combatEvent ? [condition.predicate] : [];
+    }
+    if (condition.op === "not") {
+        return collectCombatPredicates(condition.child);
+    }
+    if (condition.op === "all" || condition.op === "any") {
+        return condition.children.flatMap(collectCombatPredicates);
+    }
+    return [];
+}
+
+function collectCombatEventMetrics(
+    event: CombatEventDescriptor,
+    eventTypeCounts: Record<string, number>,
+    attackKindCounts: Record<string, number>,
+    attackStyleCounts: Record<string, number>,
+    modeCounts: Record<string, number>,
+    countScopeCounts: Record<string, number>,
+    relativeTimingCounts: Record<string, number>,
+): void {
+    eventTypeCounts[event.eventType] = (eventTypeCounts[event.eventType] ?? 0) + 1;
+    attackKindCounts[event.attackKind] = (attackKindCounts[event.attackKind] ?? 0) + 1;
+    if (event.attackStyle) {
+        attackStyleCounts[event.attackStyle] = (attackStyleCounts[event.attackStyle] ?? 0) + 1;
+    }
+    modeCounts[event.mode] = (modeCounts[event.mode] ?? 0) + 1;
+    if (event.countScope) {
+        countScopeCounts[event.countScope] = (countScopeCounts[event.countScope] ?? 0) + 1;
+    }
+    relativeTimingCounts[event.relativeTiming] = (relativeTimingCounts[event.relativeTiming] ?? 0) + 1;
+}
+
 function sortedRecord(record: Record<string, number>): Record<string, number> {
     return Object.fromEntries(Object.entries(record).sort(([left], [right]) => left.localeCompare(right)));
 }
@@ -3999,7 +4577,10 @@ export function assertValidTeamAnalysisDataset(
 ): void {
     const issues = validateTeamAnalysisDataset(dataset, characters, catalogEntries);
     if (issues.length > 0) {
-        const summary = issues.slice(0, 10).map(issue => `${issue.code}: ${issue.message}`).join("\n");
+        const summary = issues.slice(0, 10).map(issue => {
+            const location = [issue.stateKey, issue.ruleId].filter(Boolean).join(" / ");
+            return `${issue.code}${location ? ` (${location})` : ""}: ${issue.message}`;
+        }).join("\n");
         throw new Error(`Team analysis validation failed with ${issues.length} issue(s):\n${summary}`);
     }
 }
@@ -4206,7 +4787,11 @@ function conditionExpressionStatus(condition: ConditionExpression): ParseStatus 
         if (condition.predicate.kind === "unknown") {
             return "unknown";
         }
-        return condition.predicate.enemySelection === "unknown" ? "partial" : "supported";
+        return condition.predicate.enemySelection === "unknown"
+            || condition.predicate.combatEvent?.countScope === "unknown"
+            || condition.predicate.combatEvent?.relativeTiming === "unknown"
+            ? "partial"
+            : "supported";
     }
     if (condition.op === "not") {
         return conditionExpressionStatus(condition.child);
@@ -4325,18 +4910,41 @@ function validateEffectContract(
         issues.push({ code: "missing-support-classification", message: `Beneficial typed ally effect must carry derived support classification.`, stateKey: state.stateKey, ruleId: rule.id });
     }
     if (effect.scaling) {
-        if (effect.scaling.kind !== "per_ki_sphere") {
+        if (effect.scaling.kind === "per_ki_sphere") {
+            if (effect.scaling.kiContext !== "collected_ki_spheres") {
+                issues.push({ code: "effect-scaling-context", message: `Ki Sphere scaling must use collected_ki_spheres context.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (!Number.isInteger(effect.scaling.spheresPerIncrement) || effect.scaling.spheresPerIncrement < 1) {
+                issues.push({ code: "effect-scaling-unit", message: `Ki Sphere scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            validateKiSphereTypes(effect.scaling.kiSphereTypes, "effect-scaling-sphere-types", state, rule, issues);
+        } else if (effect.scaling.kind === "per_combat_event") {
+            if (!["single", "and", "or"].includes(effect.scaling.connector)) {
+                issues.push({ code: "combat-scaling-connector", message: `Combat-event scaling connector is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (!Number.isInteger(effect.scaling.eventsPerIncrement) || effect.scaling.eventsPerIncrement < 1) {
+                issues.push({ code: "combat-scaling-unit", message: `Combat-event scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.events.length === 0) {
+                issues.push({ code: "combat-scaling-events", message: `Combat-event scaling requires at least one event.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if ((effect.scaling.connector === "single") !== (effect.scaling.events.length === 1)) {
+                issues.push({ code: "combat-scaling-arity", message: `Single scaling requires one event; logical scaling requires multiple events.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            effect.scaling.events.forEach(event => validateCombatEventDescriptor(event, state, rule, issues, true));
+        } else {
             issues.push({ code: "effect-scaling-kind", message: `Effect scaling kind is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+            const external = effect.scaling as unknown as Partial<KiSphereEffectScaling>;
+            if (external.kiContext !== "collected_ki_spheres") {
+                issues.push({ code: "effect-scaling-context", message: `Ki Sphere scaling must use collected_ki_spheres context.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (!Number.isInteger(external.spheresPerIncrement) || (external.spheresPerIncrement ?? 0) < 1) {
+                issues.push({ code: "effect-scaling-unit", message: `Ki Sphere scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            validateKiSphereTypes(external.kiSphereTypes, "effect-scaling-sphere-types", state, rule, issues);
         }
-        if (effect.scaling.kiContext !== "collected_ki_spheres") {
-            issues.push({ code: "effect-scaling-context", message: `Ki Sphere scaling must use collected_ki_spheres context.`, stateKey: state.stateKey, ruleId: rule.id });
-        }
-        if (!Number.isInteger(effect.scaling.spheresPerIncrement) || effect.scaling.spheresPerIncrement < 1) {
-            issues.push({ code: "effect-scaling-unit", message: `Ki Sphere scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
-        }
-        validateKiSphereTypes(effect.scaling.kiSphereTypes, "effect-scaling-sphere-types", state, rule, issues);
         if (effect.kind === "unknown" || effect.kind === "ki_sphere_change") {
-            issues.push({ code: "effect-scaling-effect-kind", message: `Ki Sphere scaling requires a scalable typed effect.`, stateKey: state.stateKey, ruleId: rule.id });
+            issues.push({ code: "effect-scaling-effect-kind", message: `Effect scaling requires a scalable typed effect.`, stateKey: state.stateKey, ruleId: rule.id });
         }
     }
     if (effect.kind === "ki_sphere_change" && !effect.kiSphereChange) {
@@ -4358,8 +4966,10 @@ function validateCalculationPhase(
 ): void {
     const activationMoments: PassiveActivationMoment[] = [
         "start_of_turn", "before_attacking", "when_attacking",
-        "when_performing_super_attack", "after_attacking", "after_receiving_attack",
-        "after_evading", "after_final_blow", "unresolved",
+        "when_performing_super_attack", "before_incoming_attack", "when_targeted_by_attack",
+        "when_attack_landed", "after_incoming_attack_resolved", "after_attacking",
+        "after_attack_landed", "when_evading", "after_evading",
+        "after_final_blow", "unresolved",
     ];
     const buckets: PassiveCalculationBucket[] = [
         "passive_start_of_turn", "passive_on_attack", "unresolved",
@@ -4563,6 +5173,7 @@ function validateCondition(
         }
         validateEnemyPredicate(condition.predicate, state, rule, issues);
         validateKiPredicate(condition.predicate, state, rule, issues);
+        validateCombatEventPredicate(condition.predicate, state, rule, issues);
         validateClassAndTypeValues(condition.predicate.classes, condition.predicate.types, state, rule, issues);
         validateScenarioPredicate(condition.predicate, state, rule, issues);
         if (condition.predicate.kind === "battle_slot" && condition.predicate.scope !== "self") {
@@ -4681,6 +5292,137 @@ function validateKiPredicate(
     }
     if (!isKiPredicate && (predicate.kiContext !== undefined || predicate.kiSphereTypes !== undefined)) {
         issues.push({ code: "ki-fields-kind", message: `Ki context and Ki Sphere types are valid only on Ki predicates.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+}
+
+const COMBAT_EVENT_PREDICATE_KINDS = new Set<PassivePredicateKind>([
+    "incoming_attack", "incoming_super_attack", "attacks_performed", "attacks_received",
+    "attacks_evaded", "super_attacks_performed", "super_attack_received", "final_blow_delivered",
+]);
+
+function validateCombatEventPredicate(
+    predicate: PassivePredicate,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const isCombatPredicate = COMBAT_EVENT_PREDICATE_KINDS.has(predicate.kind);
+    if (isCombatPredicate && !predicate.combatEvent) {
+        issues.push({ code: "combat-event-required", message: `Combat-event predicates require a structured event descriptor.`, stateKey: state.stateKey, ruleId: rule.id });
+        return;
+    }
+    if (!isCombatPredicate && predicate.combatEvent) {
+        issues.push({ code: "combat-event-kind", message: `Combat-event descriptors are valid only on combat-event predicates.`, stateKey: state.stateKey, ruleId: rule.id });
+        return;
+    }
+    if (!predicate.combatEvent) {
+        return;
+    }
+    if (predicate.scope !== "self") {
+        issues.push({ code: "combat-event-scope", message: `Combat-event predicates describe the current character and must use self scope.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    validateCombatEventDescriptor(predicate.combatEvent, state, rule, issues, false);
+    const expectedKind: Partial<Record<CombatEventType, PassivePredicateKind[]>> = {
+        attack_performed: predicate.combatEvent.attackKind === "super_attack" ? ["super_attacks_performed"] : ["attacks_performed"],
+        incoming_attack: predicate.combatEvent.attackKind === "super_attack" ? ["incoming_super_attack"] : ["incoming_attack"],
+        attack_landed: predicate.combatEvent.attackKind === "super_attack" ? ["super_attack_received"] : ["attacks_received"],
+        attack_evaded: ["attacks_evaded"],
+        final_blow_delivered: ["final_blow_delivered"],
+    };
+    if (!(expectedKind[predicate.combatEvent.eventType] ?? []).includes(predicate.kind)) {
+        issues.push({ code: "combat-event-predicate-kind", message: `Combat-event descriptor does not match its predicate kind.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.combatEvent.mode === "accumulated_count") {
+        if (!(["lt", "lte", "eq", "gte", "gt"] as Array<PassivePredicate["comparator"]>).includes(predicate.comparator)) {
+            issues.push({ code: "combat-event-comparator", message: `Accumulated combat-event conditions require an explicit scalar comparator.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (predicate.value === undefined || !Number.isInteger(predicate.value) || predicate.value < 0) {
+            issues.push({ code: "combat-event-count", message: `Accumulated combat-event conditions require a non-negative integer count.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+    } else if (predicate.comparator !== undefined || predicate.value !== undefined) {
+        issues.push({ code: "combat-current-event-count", message: `Current combat events cannot carry an accumulated comparator or count.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.combatEvent.mode === "per_event") {
+        issues.push({ code: "combat-predicate-per-event", message: `Per-event repetition belongs to effect scaling, not a condition predicate.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+}
+
+function validateCombatEventDescriptor(
+    event: CombatEventDescriptor,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+    scaling: boolean,
+): void {
+    const eventTypes: CombatEventType[] = ["attack_performed", "incoming_attack", "attack_landed", "attack_evaded", "final_blow_delivered"];
+    const actors: CombatEventActor[] = ["self", "enemy"];
+    const attackKinds: CombatAttackKind[] = ["normal_attack", "super_attack", "unknown"];
+    const attackStyles: CombatAttackStyle[] = ["ki_blast", "unarmed", "physical", "unknown"];
+    const modes: CombatEventMode[] = ["current_event", "accumulated_count", "per_event"];
+    const countScopes: CombatEventCountScope[] = ["current_turn", "battle", "unknown"];
+    const relativeTimings: CombatEventRelativeTiming[] = ["before_event", "during_event", "after_event", "unknown"];
+    const sources: CalculationPhaseResolutionSource[] = ["explicit_text", "first_party_game_db", "documented_domain_rule", "unresolved"];
+    if (!eventTypes.includes(event.eventType)) issues.push({ code: "combat-event-type", message: `Combat event type is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+    if (!actors.includes(event.actor)) issues.push({ code: "combat-event-actor", message: `Combat event actor is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+    if (!attackKinds.includes(event.attackKind)) issues.push({ code: "combat-attack-kind", message: `Combat attack kind is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+    if (event.attackStyle !== undefined && !attackStyles.includes(event.attackStyle)) issues.push({ code: "combat-attack-style", message: `Combat attack style is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+    if (!modes.includes(event.mode)) issues.push({ code: "combat-event-mode", message: `Combat event mode is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+    if (event.countScope !== undefined && !countScopes.includes(event.countScope)) issues.push({ code: "combat-count-scope", message: `Combat count scope is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+    if (!relativeTimings.includes(event.relativeTiming)) issues.push({ code: "combat-relative-timing", message: `Combat relative timing is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+    if (scaling ? event.mode !== "per_event" : event.mode === "per_event") {
+        issues.push({ code: "combat-event-mode-channel", message: `Combat event mode does not match its condition or scaling channel.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (event.mode === "current_event" && event.countScope !== undefined) {
+        issues.push({ code: "combat-current-count-scope", message: `A current combat event cannot declare a counter scope.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (event.mode !== "current_event" && event.countScope === undefined) {
+        issues.push({ code: "combat-history-count-scope", message: `Historical and per-event combat data require an explicit or unknown count scope.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (event.eventType === "incoming_attack" && event.mode !== "current_event") {
+        issues.push({ code: "combat-targeting-history", message: `Incoming targeting is a pre-resolution current event and cannot increment hit history or effect scaling.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (event.eventType === "incoming_attack" && event.relativeTiming === "after_event") {
+        issues.push({ code: "combat-targeting-timing", message: `Incoming targeting cannot prove a post-resolution outcome.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if ((event.eventType === "attack_landed" || event.eventType === "attack_evaded")
+        && event.relativeTiming === "before_event") {
+        issues.push({ code: "combat-outcome-timing", message: `A hit or evade outcome cannot be confirmed before resolution.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (event.attackStyle !== undefined && event.attackKind !== "super_attack") {
+        issues.push({ code: "combat-style-kind", message: `Attack style is valid only for Super Attacks.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (event.eventType === "final_blow_delivered" && (event.actor !== "self" || event.attackKind !== "unknown")) {
+        issues.push({ code: "combat-final-blow-shape", message: `Final-blow events must be self-authored without an invented attack kind.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (event.eventType === "attack_performed" && event.actor !== "self") {
+        issues.push({ code: "combat-performed-actor", message: `Performed attacks must use self as actor.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if ((event.eventType === "incoming_attack" || event.eventType === "attack_landed" || event.eventType === "attack_evaded") && event.actor !== "enemy") {
+        issues.push({ code: "combat-incoming-actor", message: `Targeted, landed, or evaded attacks must use enemy as actor.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    const provenanceEntries: Array<[string, CalculationPhaseResolutionSource | undefined]> = [
+        ["eventType", event.provenance?.eventType], ["actor", event.provenance?.actor],
+        ["attackKind", event.provenance?.attackKind], ["mode", event.provenance?.mode],
+        ["relativeTiming", event.provenance?.relativeTiming],
+        ...(event.attackStyle !== undefined ? [["attackStyle", event.provenance?.attackStyle] as [string, CalculationPhaseResolutionSource | undefined]] : []),
+        ...(event.countScope !== undefined ? [["countScope", event.provenance?.countScope] as [string, CalculationPhaseResolutionSource | undefined]] : []),
+    ];
+    for (const [field, source] of provenanceEntries) {
+        if (!source || !sources.includes(source)) {
+            issues.push({ code: "combat-provenance", message: `Combat ${field} requires recognized provenance.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+    }
+    if ((event.attackKind === "unknown") !== (event.provenance.attackKind === "unresolved")) {
+        issues.push({ code: "combat-attack-kind-resolution", message: `Unknown attack kind and unresolved provenance must be paired.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (event.attackStyle !== undefined && ((event.attackStyle === "unknown") !== (event.provenance.attackStyle === "unresolved"))) {
+        issues.push({ code: "combat-attack-style-resolution", message: `Unknown attack style and unresolved provenance must be paired.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (event.countScope !== undefined && ((event.countScope === "unknown") !== (event.provenance.countScope === "unresolved"))) {
+        issues.push({ code: "combat-count-scope-resolution", message: `Unknown count scope and unresolved provenance must be paired.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if ((event.relativeTiming === "unknown") !== (event.provenance.relativeTiming === "unresolved")) {
+        issues.push({ code: "combat-relative-timing-resolution", message: `Unknown relative timing and unresolved provenance must be paired.`, stateKey: state.stateKey, ruleId: rule.id });
     }
 }
 

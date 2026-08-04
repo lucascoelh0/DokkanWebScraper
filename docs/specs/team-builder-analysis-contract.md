@@ -208,6 +208,7 @@ export interface PassivePredicate {
   excludedNames?: string[];
   excludedNameMatch?: EnemyNameMatch;
   enemyReference?: EnemyReference;
+  combatEvent?: CombatEventDescriptor;
   sourceText: string;
 }
 
@@ -235,6 +236,38 @@ export type EnemyStatus =
   | "super_attack_sealed";
 export type EnemyNameMatch = "exact" | "includes";
 export type EnemyReference = "that_enemy";
+
+export type CombatEventType =
+  | "attack_performed"
+  | "incoming_attack"
+  | "attack_landed"
+  | "attack_evaded"
+  | "final_blow_delivered";
+export type CombatEventActor = "self" | "enemy";
+export type CombatAttackKind = "normal_attack" | "super_attack" | "unknown";
+export type CombatAttackStyle = "ki_blast" | "unarmed" | "physical" | "unknown";
+export type CombatEventMode = "current_event" | "accumulated_count" | "per_event";
+export type CombatEventCountScope = "current_turn" | "battle" | "unknown";
+export type CombatEventRelativeTiming = "before_event" | "during_event" | "after_event" | "unknown";
+
+export interface CombatEventDescriptor {
+  eventType: CombatEventType;
+  actor: CombatEventActor;
+  attackKind: CombatAttackKind;
+  attackStyle?: CombatAttackStyle;
+  mode: CombatEventMode;
+  countScope?: CombatEventCountScope;
+  relativeTiming: CombatEventRelativeTiming;
+  provenance: {
+    eventType: CalculationPhaseResolutionSource;
+    actor: CalculationPhaseResolutionSource;
+    attackKind: CalculationPhaseResolutionSource;
+    attackStyle?: CalculationPhaseResolutionSource;
+    mode: CalculationPhaseResolutionSource;
+    countScope?: CalculationPhaseResolutionSource;
+    relativeTiming: CalculationPhaseResolutionSource;
+  };
+}
 ```
 
 Every ally-related predicate must declare `selfInclusion`. `another ally` and
@@ -440,6 +473,8 @@ the required sibling proof.
 - `ki_spheres_obtained`
 - `ki_sphere_type_obtained`
 - `attacks_performed`
+- `incoming_attack`
+- `incoming_super_attack`
 - `attacks_received`
 - `attacks_evaded`
 - `super_attacks_performed`
@@ -449,6 +484,73 @@ the required sibling proof.
 
 Unknown or unsupported clauses use `op: "unknown"`; they are never coerced to
 `always` or false.
+
+### Gate A6 combat-event semantics
+
+The attack-event predicate kinds carry a source-neutral
+`CombatEventDescriptor`. `eventType` describes what happened, `actor`
+describes who initiated it, and `attackKind` constrains the attack only when
+the source does. Therefore bare `attack` serializes as `attackKind: "unknown"`
+with unresolved provenance and matches either normal or Super in a future
+tri-state evaluator; it is not an error and is never silently narrowed.
+Explicit `normal attack` and `Super Attack` serialize as `normal_attack` and
+`super_attack`. The audited Super subtypes `Ki Blast`, `Unarmed`, and `Physical`
+use the independent optional `attackStyle`; a bare Super keeps
+`attackStyle: "unknown"`.
+
+`mode` separates three different channels:
+
+- `current_event`: applicability or a trigger tied to the event now occurring;
+- `accumulated_count`: a threshold over runtime history and therefore an AST
+  scalar comparator plus a non-negative integer `value`;
+- `per_event`: repeated effect scaling and therefore valid only inside
+  `PassiveEffect.scaling`, never as a condition predicate.
+
+An accumulated count declares `countScope: "current_turn"`, `"battle"`, or
+`"unknown"`. Missing textual scope remains `unknown` and makes the condition
+partial; the parser does not assume battle scope. Closed count intervals are
+two predicates in one `all` node. Endpoints are copied as written without
+off-by-one conversion. In `before receiving N attacks`, `before` supplies the
+`count < N` comparator; the counter still observes resolved `attack_landed`
+events and therefore uses `after_event` rather than inventing a pre-resolution
+hit. `relativeTiming` otherwise records `before_event`,
+`during_event`, or `after_event` independently from both the condition and the
+effect's `activationTiming`.
+
+Incoming resolution is intentionally split into three source-neutral events:
+
+- `incoming_attack` means the character has been selected as the target and the
+  attack is pending resolution. It is true before impact whether the later
+  result is a hit or a dodge and it never increments received-hit history;
+- `attack_landed` means the incoming attack actually hit. `After receiving`,
+  `after being hit`, received-attack counters, and per-received scaling use this
+  event only;
+- `attack_evaded` means the incoming attack was evaded. It is independent from
+  `attack_landed`.
+
+Consequently, `after receiving or evading an attack` is an explicit `any` AST
+over `attack_landed` and `attack_evaded`; it is not collapsed into one event.
+The shared `after_incoming_attack_resolved` activation moment is allowed only as
+timing metadata for that proved union. It does not erase either branch.
+
+Normal-only damage reduction is represented once: the typed
+`damage_reduction` effect remains unchanged and its rule receives a
+`current_event`/`incoming_attack`/`normal_attack` condition with
+`before_event` timing, because applicability must be known before damage is
+calculated. Attack kind is not duplicated on the effect. `For every attack
+...` and unambiguous `with each attack ...` modifiers instead use
+`per_combat_event` scaling, leave the rule condition `always`, and keep cap and
+duration on the corresponding effect. First-party passive rows establish the
+repeated battle accumulation rule used for these audited headers; this is
+recorded as `documented_domain_rule`, not as an invented textual fact.
+
+Future runtime context must separately expose the announced/targeted incoming
+attack (including known kind/style), its resolved outcome (landed or evaded),
+current-turn hit/evade counters, and battle hit/evade counters. Targeting alone
+must never satisfy or increment a landed-hit counter. Missing event identity,
+outcome, counter, or count scope evaluates to `Unknown`, never true or false.
+Conditions, activation timing, and calculation bucket remain three independent
+facts: targeting, being hit, or evading does not imply an On Attack bucket.
 
 ### Gate A5 Ki and Ki Sphere semantics
 
@@ -546,8 +648,13 @@ export type PassiveActivationMoment =
   | "before_attacking"
   | "when_attacking"
   | "when_performing_super_attack"
+  | "before_incoming_attack"
+  | "when_targeted_by_attack"
+  | "when_attack_landed"
+  | "after_incoming_attack_resolved"
   | "after_attacking"
-  | "after_receiving_attack"
+  | "after_attack_landed"
+  | "when_evading"
   | "after_evading"
   | "after_final_blow"
   | "unresolved";
@@ -567,12 +674,23 @@ export interface PassiveCalculationBucketAssignment {
   source: CalculationPhaseResolutionSource;
 }
 
-export interface PassiveEffectScaling {
+export interface KiSphereEffectScaling {
   kind: "per_ki_sphere";
   kiSphereTypes: KiSphereType[];
   spheresPerIncrement: number;
   kiContext: "collected_ki_spheres";
 }
+
+export interface CombatEventEffectScaling {
+  kind: "per_combat_event";
+  connector: "single" | "and" | "or";
+  eventsPerIncrement: number;
+  events: CombatEventDescriptor[];
+}
+
+export type PassiveEffectScaling =
+  | KiSphereEffectScaling
+  | CombatEventEffectScaling;
 
 export interface KiSphereChange {
   sourceSelection: "listed_types" | "all" | "random_type";
@@ -859,7 +977,7 @@ Suggested manifest:
   "uncompressedSizeBytes": 0,
   "stateCount": 0,
   "rulesVersion": "1",
-  "parserVersion": "1.5.1",
+  "parserVersion": "1.6.0",
   "sourceCharacterDatasetVersion": "...",
   "sourceCharacterPayloadSha256": "..."
 }
@@ -904,6 +1022,15 @@ statuses do not change, and consumers may ignore the new fields.
 generator emits explicit `unresolved` assignments where a calculation consumer
 would otherwise be tempted to infer a phase from absent data; older cached
 schema-1 payloads may omit the enrichment entirely.
+
+Gate A6 keeps `schemaVersion` at `1`. The optional `combatEvent` descriptor,
+the new `per_combat_event` member of the additive scaling union, additional
+activation moments, and combat coverage counters do not remove or reinterpret
+any Gate A1-A5.1 field. The attack predicate enum values were already reserved;
+they now gain validated payload instances. Consumers that ignore unknown
+optional enrichment continue to read schema-1 payloads, while
+`parserVersion: "1.6.0"` allows calculation-aware consumers to feature-detect
+the event semantics. Older cached payloads may omit every Gate A6 field.
 
 - Upload immutable payload before mutable manifest.
 - Run publisher dry-run and report projected new bytes before upload.

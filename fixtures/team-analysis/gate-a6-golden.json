@@ -1,0 +1,662 @@
+{
+  "cases": [
+    {
+      "name": "current attack performed with unknown kind",
+      "source": "real",
+      "rawText": "When attacking\n- ATK 50%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "predicate",
+        "kind": "attacks_performed",
+        "scope": "self",
+        "combatEvent": {
+          "eventType": "attack_performed",
+          "actor": "self",
+          "attackKind": "unknown",
+          "mode": "current_event",
+          "relativeTiming": "during_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "attack count accumulated in battle",
+      "source": "real",
+      "rawText": "After performing 5 or more attacks in battle\n- ATK & DEF 70%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "predicate",
+        "kind": "attacks_performed",
+        "scope": "self",
+        "comparator": "gte",
+        "value": 5,
+        "combatEvent": {
+          "eventType": "attack_performed",
+          "actor": "self",
+          "attackKind": "unknown",
+          "mode": "accumulated_count",
+          "countScope": "battle",
+          "relativeTiming": "after_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "countScope": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "per attack performed scaling",
+      "source": "real",
+      "rawText": "For every attack performed\n- ATK 12% (up to 120%)",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effects": [
+        {
+          "kind": "atk",
+          "stackCap": 120,
+          "scaling": {
+            "kind": "per_combat_event",
+            "connector": "single",
+            "eventsPerIncrement": 1,
+            "events": [
+              {
+                "eventType": "attack_performed",
+                "actor": "self",
+                "attackKind": "unknown",
+                "mode": "per_event",
+                "countScope": "battle",
+                "relativeTiming": "after_event",
+                "provenance": {
+                  "eventType": "explicit_text",
+                  "actor": "documented_domain_rule",
+                  "attackKind": "unresolved",
+                  "mode": "explicit_text",
+                  "countScope": "documented_domain_rule",
+                  "relativeTiming": "documented_domain_rule"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "current incoming attack targeted",
+      "source": "real",
+      "rawText": "When receiving an attack\n- DEF 100%",
+      "expectedStatus": "supported",
+      "outcomeMatches": { "hit": true, "dodge": true },
+      "activationMoment": "when_targeted_by_attack",
+      "condition": {
+        "op": "predicate",
+        "kind": "incoming_attack",
+        "scope": "self",
+        "combatEvent": {
+          "eventType": "incoming_attack",
+          "actor": "enemy",
+          "attackKind": "unknown",
+          "mode": "current_event",
+          "relativeTiming": "during_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "current landed attack after receiving",
+      "source": "real",
+      "rawText": "After receiving an attack\n- DEF 100%",
+      "expectedStatus": "supported",
+      "outcomeMatches": { "hit": true, "dodge": false },
+      "activationMoment": "after_attack_landed",
+      "condition": {
+        "op": "predicate",
+        "kind": "attacks_received",
+        "scope": "self",
+        "combatEvent": {
+          "eventType": "attack_landed",
+          "actor": "enemy",
+          "attackKind": "unknown",
+          "mode": "current_event",
+          "relativeTiming": "after_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "received attack count accumulated in battle",
+      "source": "real",
+      "rawText": "After receiving 7 or more attacks in battle\n- Ki +2",
+      "expectedStatus": "supported",
+      "counterCountsOutcomes": { "hit": true, "dodge": false },
+      "condition": {
+        "op": "predicate",
+        "kind": "attacks_received",
+        "scope": "self",
+        "comparator": "gte",
+        "value": 7,
+        "combatEvent": {
+          "eventType": "attack_landed",
+          "actor": "enemy",
+          "attackKind": "unknown",
+          "mode": "accumulated_count",
+          "countScope": "battle",
+          "relativeTiming": "after_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "countScope": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "before received threshold counts only resolved hits",
+      "source": "real",
+      "rawText": "Before receiving 3 attacks in battle\n- Damage reduction rate 66%",
+      "expectedStatus": "supported",
+      "counterCountsOutcomes": { "hit": true, "dodge": false },
+      "condition": {
+        "op": "predicate",
+        "kind": "attacks_received",
+        "scope": "self",
+        "comparator": "lt",
+        "value": 3,
+        "combatEvent": {
+          "eventType": "attack_landed",
+          "actor": "enemy",
+          "attackKind": "unknown",
+          "mode": "accumulated_count",
+          "countScope": "battle",
+          "relativeTiming": "after_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "countScope": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "current attack evaded",
+      "source": "real",
+      "rawText": "After evading an attack\n- ATK 80% for 3 turns",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "predicate",
+        "kind": "attacks_evaded",
+        "scope": "self",
+        "combatEvent": {
+          "eventType": "attack_evaded",
+          "actor": "enemy",
+          "attackKind": "unknown",
+          "mode": "current_event",
+          "relativeTiming": "after_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      },
+      "effectDuration": { "kind": "turns", "turns": 3 }
+    },
+    {
+      "name": "evaded attack count accumulated in battle",
+      "source": "real",
+      "rawText": "After evading 5 or more attacks in battle\n- DEF 50%",
+      "expectedStatus": "supported",
+      "counterCountsOutcomes": { "hit": false, "dodge": true },
+      "condition": {
+        "op": "predicate",
+        "kind": "attacks_evaded",
+        "scope": "self",
+        "comparator": "gte",
+        "value": 5,
+        "combatEvent": {
+          "eventType": "attack_evaded",
+          "actor": "enemy",
+          "attackKind": "unknown",
+          "mode": "accumulated_count",
+          "countScope": "battle",
+          "relativeTiming": "after_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "countScope": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "current Super Attack performed",
+      "source": "real",
+      "rawText": "After performing a Super Attack\n- DEF 40%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "predicate",
+        "kind": "super_attacks_performed",
+        "scope": "self",
+        "combatEvent": {
+          "eventType": "attack_performed",
+          "actor": "self",
+          "attackKind": "super_attack",
+          "attackStyle": "unknown",
+          "mode": "current_event",
+          "relativeTiming": "after_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "explicit_text",
+            "attackStyle": "unresolved",
+            "mode": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "current incoming Super Attack targeted",
+      "source": "real",
+      "rawText": "When receiving a Super Attack\n- DEF 50%",
+      "expectedStatus": "supported",
+      "outcomeMatches": { "hit": true, "dodge": true },
+      "activationMoment": "when_targeted_by_attack",
+      "condition": {
+        "op": "predicate",
+        "kind": "incoming_super_attack",
+        "scope": "self",
+        "combatEvent": {
+          "eventType": "incoming_attack",
+          "actor": "enemy",
+          "attackKind": "super_attack",
+          "attackStyle": "unknown",
+          "mode": "current_event",
+          "relativeTiming": "during_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "explicit_text",
+            "attackStyle": "unresolved",
+            "mode": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "current final blow",
+      "source": "real",
+      "rawText": "After delivering a final blow\n- ATK 25% for 3 turns",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "predicate",
+        "kind": "final_blow_delivered",
+        "scope": "self",
+        "combatEvent": {
+          "eventType": "final_blow_delivered",
+          "actor": "self",
+          "attackKind": "unknown",
+          "mode": "current_event",
+          "relativeTiming": "after_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "explicit_text",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      },
+      "effectDuration": { "kind": "turns", "turns": 3 }
+    },
+    {
+      "name": "counter scoped to current turn",
+      "source": "synthetic",
+      "rawText": "After receiving 2 attacks within the turn\n- DEF 30%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "predicate",
+        "kind": "attacks_received",
+        "scope": "self",
+        "comparator": "gte",
+        "value": 2,
+        "combatEvent": {
+          "eventType": "attack_landed",
+          "actor": "enemy",
+          "attackKind": "unknown",
+          "mode": "accumulated_count",
+          "countScope": "current_turn",
+          "relativeTiming": "after_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "countScope": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "closed attack count interval",
+      "source": "synthetic",
+      "rawText": "After performing between 2 and 4 attacks in battle\n- ATK 30%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          {
+            "op": "predicate",
+            "kind": "attacks_performed",
+            "scope": "self",
+            "comparator": "gte",
+            "value": 2,
+            "combatEvent": {
+              "eventType": "attack_performed",
+              "actor": "self",
+              "attackKind": "unknown",
+              "mode": "accumulated_count",
+              "countScope": "battle",
+              "relativeTiming": "after_event",
+              "provenance": {
+                "eventType": "explicit_text",
+                "actor": "documented_domain_rule",
+                "attackKind": "unresolved",
+                "mode": "explicit_text",
+                "countScope": "explicit_text",
+                "relativeTiming": "explicit_text"
+              }
+            }
+          },
+          {
+            "op": "predicate",
+            "kind": "attacks_performed",
+            "scope": "self",
+            "comparator": "lte",
+            "value": 4,
+            "combatEvent": {
+              "eventType": "attack_performed",
+              "actor": "self",
+              "attackKind": "unknown",
+              "mode": "accumulated_count",
+              "countScope": "battle",
+              "relativeTiming": "after_event",
+              "provenance": {
+                "eventType": "explicit_text",
+                "actor": "documented_domain_rule",
+                "attackKind": "unresolved",
+                "mode": "explicit_text",
+                "countScope": "explicit_text",
+                "relativeTiming": "explicit_text"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "incoming normal attack without effect duplication",
+      "source": "real",
+      "rawText": "When receiving a normal attack\n- Damage reduction rate 70%",
+      "expectedStatus": "supported",
+      "outcomeMatches": { "hit": true, "dodge": true },
+      "activationMoment": "when_targeted_by_attack",
+      "expectBeforeDamage": true,
+      "condition": {
+        "op": "predicate",
+        "kind": "incoming_attack",
+        "scope": "self",
+        "combatEvent": {
+          "eventType": "incoming_attack",
+          "actor": "enemy",
+          "attackKind": "normal_attack",
+          "mode": "current_event",
+          "relativeTiming": "during_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "explicit_text",
+            "mode": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "Ki Blast Super Attack style",
+      "source": "real",
+      "rawText": "When receiving a Ki Blast Super Attack\n- Damage reduction rate 30%",
+      "expectedStatus": "supported",
+      "outcomeMatches": { "hit": true, "dodge": true },
+      "activationMoment": "when_targeted_by_attack",
+      "expectBeforeDamage": true,
+      "condition": {
+        "op": "predicate",
+        "kind": "incoming_super_attack",
+        "scope": "self",
+        "combatEvent": {
+          "eventType": "incoming_attack",
+          "actor": "enemy",
+          "attackKind": "super_attack",
+          "attackStyle": "ki_blast",
+          "mode": "current_event",
+          "relativeTiming": "during_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "explicit_text",
+            "attackStyle": "explicit_text",
+            "mode": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "per received or evaded attack scaling",
+      "source": "real",
+      "rawText": "For every attack received or evaded\n- ATK & DEF 10% (up to 50%)",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effectScalingEvents": ["attack_landed", "attack_evaded"],
+      "effectScalingConnector": "or",
+      "scalingCountsOutcomes": { "hit": true, "dodge": true }
+    },
+    {
+      "name": "per landed attack scaling excludes dodge",
+      "source": "real",
+      "rawText": "For every attack received\n- ATK 10% (up to 50%)",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effectScalingEvents": ["attack_landed"],
+      "effectScalingConnector": "single",
+      "scalingCountsOutcomes": { "hit": true, "dodge": false }
+    },
+    {
+      "name": "per evaded attack scaling excludes hit",
+      "source": "real",
+      "rawText": "For every attack evaded\n- DEF 10% (up to 50%)",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effectScalingEvents": ["attack_evaded"],
+      "effectScalingConnector": "single",
+      "scalingCountsOutcomes": { "hit": false, "dodge": true }
+    },
+    {
+      "name": "landed or evaded current outcome",
+      "source": "real",
+      "rawText": "After receiving or evading an attack\n- ATK 20%",
+      "expectedStatus": "supported",
+      "conditionOp": "any",
+      "predicateKinds": ["attacks_received", "attacks_evaded"],
+      "outcomeMatches": { "hit": true, "dodge": true },
+      "activationMoment": "after_incoming_attack_resolved"
+    },
+    {
+      "name": "event history composed with HP",
+      "source": "synthetic",
+      "rawText": "HP is 50% or less and after receiving 3 or more attacks in battle\n- ATK 30%",
+      "expectedStatus": "supported",
+      "predicateKinds": ["hp_percent", "attacks_received"]
+    },
+    {
+      "name": "nested AND OR NOT composition",
+      "source": "synthetic",
+      "rawText": "(after performing 3 attacks in battle or after receiving 5 attacks in battle) and not after evading 2 attacks in battle\n- DEF 30%",
+      "expectedStatus": "supported",
+      "conditionOp": "all",
+      "predicateKinds": ["attacks_performed", "attacks_received", "attacks_evaded"]
+    },
+    {
+      "name": "event scaling keeps cap and duration on effect",
+      "source": "synthetic",
+      "rawText": "For every attack performed\n- ATK 10% within the turn (up to 50%)",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effects": [
+        {
+          "kind": "atk",
+          "stackCap": 50,
+          "duration": { "kind": "within_turn" },
+          "scalingKind": "per_combat_event"
+        }
+      ]
+    },
+    {
+      "name": "wrapped accumulated history",
+      "source": "real",
+      "rawText": "After performing 3 or more\nattacks in battle\n- ATK & DEF 20%",
+      "expectedStatus": "supported",
+      "conditionKind": "attacks_performed"
+    },
+    {
+      "name": "counter scope omitted remains unresolved",
+      "source": "synthetic",
+      "rawText": "After receiving 3 attacks\n- DEF 30%",
+      "expectedStatus": "partial",
+      "condition": {
+        "op": "predicate",
+        "kind": "attacks_received",
+        "scope": "self",
+        "comparator": "gte",
+        "value": 3,
+        "combatEvent": {
+          "eventType": "attack_landed",
+          "actor": "enemy",
+          "attackKind": "unknown",
+          "mode": "accumulated_count",
+          "countScope": "unknown",
+          "relativeTiming": "after_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "countScope": "unresolved",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "inline with each attack scaling",
+      "source": "synthetic",
+      "rawText": "Basic effect(s)\n- ATK 10% with each attack performed (up to 50%)",
+      "expectedStatus": "supported",
+      "condition": { "op": "always" },
+      "effects": [
+        {
+          "kind": "atk",
+          "stackCap": 50,
+          "scalingKind": "per_combat_event"
+        }
+      ]
+    },
+    {
+      "name": "inline normal attack applicability",
+      "source": "synthetic",
+      "rawText": "Basic effect(s)\n- Damage reduction rate 30% against normal attacks",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "predicate",
+        "kind": "incoming_attack",
+        "scope": "self",
+        "combatEvent": {
+          "eventType": "incoming_attack",
+          "actor": "enemy",
+          "attackKind": "normal_attack",
+          "mode": "current_event",
+          "relativeTiming": "during_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "explicit_text",
+            "mode": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "Zamasu Shall Rule All targeting hit and landed counter channels",
+      "source": "real",
+      "rawText": "When receiving an attack\n- DEF 50%\nAfter receiving an attack\n- Launches an additional attack\nFor every attack received\n- ATK 25% (up to 150%)",
+      "expectedStatus": "supported",
+      "allPredicateKinds": ["incoming_attack", "attacks_received"],
+      "allScalingEvents": ["attack_landed"],
+      "allActivationMoments": ["when_targeted_by_attack", "after_attack_landed", "after_attack_landed"]
+    },
+    {
+      "name": "God-on-God Showdown landed within-turn channel",
+      "source": "real",
+      "rawText": "After receiving an attack\n- ATK & DEF 70% within the turn",
+      "expectedStatus": "supported",
+      "allPredicateKinds": ["attacks_received"],
+      "allActivationMoments": ["after_attack_landed", "after_attack_landed"]
+    },
+    {
+      "name": "ambiguous repeated threshold remains unknown",
+      "source": "real",
+      "rawText": "Every time the character performs 3 or more attacks in battle\n- ATK 20%",
+      "expectedStatus": "partial",
+      "condition": {
+        "op": "unknown",
+        "sourceText": "Every time the character performs 3 or more attacks in battle"
+      }
+    }
+  ]
+}

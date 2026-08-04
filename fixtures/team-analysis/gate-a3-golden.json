@@ -296,12 +296,36 @@
       "condition": { "op": "unknown", "sourceText": "The less HP remaining" }
     },
     {
-      "name": "HP after receiving attack stays unknown",
+      "name": "HP combines with received attack event",
       "source": "synthetic",
       "rawText": "When HP is 50% or less after receiving an attack\n- ATK 20%",
-      "expectedStatus": "partial",
-      "conditionStatus": "unknown",
-      "condition": { "op": "unknown", "sourceText": "When HP is 50% or less after receiving an attack" }
+      "expectedStatus": "supported",
+      "conditionStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "hp_percent", "scope": "team", "comparator": "lte", "value": 50 },
+          {
+            "op": "predicate",
+            "kind": "attacks_received",
+            "scope": "self",
+            "combatEvent": {
+              "eventType": "attack_landed",
+              "actor": "enemy",
+              "attackKind": "unknown",
+              "mode": "current_event",
+              "relativeTiming": "after_event",
+              "provenance": {
+                "eventType": "explicit_text",
+                "actor": "documented_domain_rule",
+                "attackKind": "unresolved",
+                "mode": "explicit_text",
+                "relativeTiming": "explicit_text"
+              }
+            }
+          }
+        ]
+      }
     },
     {
       "name": "ambiguous temporal quantity stays unknown",

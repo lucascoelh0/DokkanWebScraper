@@ -35,7 +35,7 @@
       "name": "when attacking preserves ambiguous bucket",
       "source": "real",
       "rawText": "When attacking\n- ATK 50%",
-      "expectedStatus": "partial",
+      "expectedStatus": "supported",
       "effects": [
         {
           "kind": "atk",
@@ -48,7 +48,7 @@
       "name": "when performing a Super Attack",
       "source": "synthetic",
       "rawText": "When performing a Super Attack\n- ATK & DEF 50%",
-      "expectedStatus": "partial",
+      "expectedStatus": "supported",
       "effects": [
         {
           "kind": "atk",
@@ -66,7 +66,7 @@
       "name": "after performing a Super Attack",
       "source": "real",
       "rawText": "After performing a Super Attack\n- DEF 40%",
-      "expectedStatus": "partial",
+      "expectedStatus": "supported",
       "effects": [
         {
           "kind": "def",
@@ -79,7 +79,7 @@
       "name": "after attacking timing without bucket inference",
       "source": "synthetic",
       "rawText": "After attacking\n- ATK 20% for 2 turns",
-      "expectedStatus": "partial",
+      "expectedStatus": "supported",
       "effects": [
         {
           "kind": "atk",
@@ -92,16 +92,16 @@
       "name": "after receiving is not automatically On Attack",
       "source": "real",
       "rawText": "After receiving an attack\n- ATK & DEF 40% for 3 turns",
-      "expectedStatus": "partial",
+      "expectedStatus": "supported",
       "effects": [
         {
           "kind": "atk",
-          "activationTiming": { "moment": "after_receiving_attack", "source": "explicit_text" },
+          "activationTiming": { "moment": "after_attack_landed", "source": "explicit_text" },
           "calculationBucket": { "bucket": "unresolved", "source": "unresolved" }
         },
         {
           "kind": "def",
-          "activationTiming": { "moment": "after_receiving_attack", "source": "explicit_text" },
+          "activationTiming": { "moment": "after_attack_landed", "source": "explicit_text" },
           "calculationBucket": { "bucket": "unresolved", "source": "unresolved" }
         }
       ]
@@ -110,7 +110,7 @@
       "name": "after evading timing",
       "source": "real",
       "rawText": "After evading an attack\n- DEF 50%",
-      "expectedStatus": "partial",
+      "expectedStatus": "supported",
       "effects": [
         {
           "kind": "def",
@@ -123,7 +123,7 @@
       "name": "after final blow timing",
       "source": "real",
       "rawText": "After delivering a final blow\n- ATK 40% for the rest of battle",
-      "expectedStatus": "partial",
+      "expectedStatus": "supported",
       "effects": [
         {
           "kind": "atk",
@@ -149,7 +149,7 @@
       "name": "explicit inline timing overrides basic header",
       "source": "synthetic",
       "rawText": "Basic effect(s)\n- ATK 50% when performing a Super Attack",
-      "expectedStatus": "partial",
+      "expectedStatus": "supported",
       "effects": [
         {
           "kind": "atk",
@@ -162,7 +162,7 @@
       "name": "separate Start of Turn and On Attack contributions",
       "source": "synthetic",
       "rawText": "Basic effect(s)\n- ATK 100%\nWhen performing a Super Attack\n- ATK 50%",
-      "expectedStatus": "partial",
+      "expectedStatus": "supported",
       "effects": [
         {
           "kind": "atk",

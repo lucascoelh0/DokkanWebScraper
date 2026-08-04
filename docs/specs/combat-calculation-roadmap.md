@@ -116,7 +116,7 @@ does not by itself prove every incoming-damage rounding boundary.
 - `passive_start_of_turn` and `passive_on_attack` are mathematical buckets for
   passive ATK/DEF contributions.
 - `activationTiming` is a battle event and is not a bucket alias. For example,
-  `after_receiving_attack` may still require a separately proven Start of Turn
+  `after_attack_landed` may still require a separately proven Start of Turn
   bucket.
 - `when_performing_super_attack` normally activates a passive On Attack
   contribution, under a versioned domain rule.
@@ -125,6 +125,12 @@ does not by itself prove every incoming-damage rounding boundary.
 - Old Ki-threshold passives have documented timing differences. A threshold
   only proves the runtime condition and attack timing; it does not universally
   prove the calculation bucket.
+- Gate A6 distinguishes an attack targeting the character
+  (`incoming_attack`) from its resolved outcome (`attack_landed` or
+  `attack_evaded`). Targeting is available before damage and remains true when
+  the later outcome is a dodge; only `attack_landed` increments received-hit
+  history. A future engine must retain both the announced attack and outcome
+  rather than deriving one from the other.
 
 ## Data already available
 
@@ -188,9 +194,9 @@ the compatible character/team-analysis version and a `combatRulesVersion`.
 Changing a global mechanic must not require rewriting immutable character
 identity or passive source text.
 
-## Gate A6 and future evaluator
+## Gate A6 combat events and future evaluator
 
-Gate A6 remains a parser gate. It extends combat-history conditions and timing
+Gate A6 is a parser gate. It extends combat-history conditions and timing
 for attacks performed, received or evaded, Super Attacks, and final blows. The
 current incoming event must distinguish at least normal attack from Super
 Attack whenever the source text proves it, because normal-only damage reduction
@@ -198,6 +204,15 @@ and Super-specific behavior cannot share one undifferentiated received-attack
 predicate. Gate A6 must preserve `condition`, `activationTiming`, and
 `calculationBucket` as three separate facts and must not select active
 contributions or calculate stats.
+
+The serialized `CombatEventDescriptor` separates current-event applicability,
+accumulated counters, and per-event scaling. Counts are scoped to the current
+turn, the battle, or explicitly unknown; current-event attack kind remains
+unknown for bare `attack`. Explicit normal/Super distinctions and audited Ki
+Blast/Unarmed/Physical Super styles are runtime facts, not damage-formula
+modifiers. Caps and durations remain attached to the typed effect. This keeps
+normal-only damage reduction as one effect guarded by one incoming-event
+condition instead of duplicating attack-kind metadata across channels.
 
 A later data gate must type Super Attack effects and calculation channels,
 including SA-effect ATK lowering, ATK/DEF raises and damage-kind-specific

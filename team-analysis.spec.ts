@@ -125,6 +125,24 @@ type GoldenConditionShape =
     excludedNames?: string[];
     excludedNameMatch?: string;
     enemyReference?: string;
+    combatEvent?: {
+      eventType: string;
+      actor: string;
+      attackKind: string;
+      attackStyle?: string;
+      mode: string;
+      countScope?: string;
+      relativeTiming: string;
+      provenance: {
+        eventType: string;
+        actor: string;
+        attackKind: string;
+        attackStyle?: string;
+        mode: string;
+        countScope?: string;
+        relativeTiming: string;
+      };
+    };
   };
 
 interface GateA2Fixture {
@@ -227,6 +245,37 @@ interface GateA51Fixture {
   }>;
 }
 
+interface GateA6Fixture {
+  cases: Array<{
+    name: string;
+    source: "real" | "synthetic";
+    rawText: string;
+    expectedStatus: string;
+    condition?: GoldenConditionShape;
+    conditionOp?: string;
+    conditionKind?: string;
+    predicateKinds?: string[];
+    effectDuration?: { kind: string; turns?: number };
+    effectScalingEvents?: string[];
+    effectScalingConnector?: string;
+    outcomeMatches?: { hit: boolean; dodge: boolean };
+    counterCountsOutcomes?: { hit: boolean; dodge: boolean };
+    scalingCountsOutcomes?: { hit: boolean; dodge: boolean };
+    activationMoment?: string;
+    expectBeforeDamage?: boolean;
+    allPredicateKinds?: string[];
+    allScalingEvents?: string[];
+    allActivationMoments?: string[];
+    effects?: Array<{
+      kind: string;
+      stackCap?: number;
+      duration?: { kind: string; turns?: number };
+      scaling?: unknown;
+      scalingKind?: string;
+    }>;
+  }>;
+}
+
 const fixtureRelativePath = "fixtures/team-analysis/foundation-golden.json";
 const sourceFixturePath = resolve(__dirname, fixtureRelativePath);
 const fixturePath = existsSync(sourceFixturePath)
@@ -281,6 +330,12 @@ const gateA51Path = existsSync(sourceGateA51Path)
   ? sourceGateA51Path
   : resolve(__dirname, "..", gateA51RelativePath);
 const gateA51Fixture = JSON.parse(readFileSync(gateA51Path, "utf8")) as GateA51Fixture;
+const gateA6RelativePath = "fixtures/team-analysis/gate-a6-golden.json";
+const sourceGateA6Path = resolve(__dirname, gateA6RelativePath);
+const gateA6Path = existsSync(sourceGateA6Path)
+  ? sourceGateA6Path
+  : resolve(__dirname, "..", gateA6RelativePath);
+const gateA6Fixture = JSON.parse(readFileSync(gateA6Path, "utf8")) as GateA6Fixture;
 
 const options = {
   generatedAt: "2026-08-03T12:00:00.000Z",
@@ -367,7 +422,7 @@ describe("team-analysis passive foundation", function () {
     const passive = parsePassive(
       "101:101:initial",
       undefined,
-      "Basic effect(s)\n- Ki +3; performs a mysterious action\nWhen attacking\n- ATK 100%",
+      "Basic effect(s)\n- Ki +3; performs a mysterious action\nWhen the moon is blue\n- ATK 100%",
     );
 
     equal(passive.parseStatus, "partial");
@@ -382,7 +437,7 @@ describe("team-analysis passive foundation", function () {
     equal(passive.rules[1].effects[0].kind, "atk");
     deepEqual(passive.unparsedFragments.map(fragment => fragment.text), [
       "- Ki +3; performs a mysterious action",
-      "When attacking",
+      "When the moon is blue",
     ]);
   });
 
@@ -1026,6 +1081,130 @@ describe("team-analysis Gate A5.1 calculation-phase foundation", function () {
   });
 });
 
+describe("team-analysis Gate A6 combat-event history and phase parser", function () {
+  for (const fixtureCase of gateA6Fixture.cases) {
+    it(`matches Gate A6 golden case: ${fixtureCase.name}`, () => {
+      const passive = parsePassive(`gate-a6:${fixtureCase.name}:initial`, fixtureCase.name, fixtureCase.rawText);
+      const rule = passive.rules[0];
+      equal(passive.parseStatus, fixtureCase.expectedStatus);
+      if (fixtureCase.condition) {
+        deepEqual(conditionShape(rule.condition), fixtureCase.condition);
+      }
+      if (fixtureCase.conditionOp) {
+        equal(rule.condition.op, fixtureCase.conditionOp);
+      }
+      if (fixtureCase.conditionKind) {
+        const predicates = flattenPredicates(rule.condition);
+        equal(predicates[0]?.kind, fixtureCase.conditionKind);
+      }
+      if (fixtureCase.predicateKinds) {
+        deepEqual(flattenPredicates(rule.condition).map(predicate => predicate.kind), fixtureCase.predicateKinds);
+      }
+      if (fixtureCase.effectDuration) {
+        deepEqual(rule.effects.find(effect => effect.kind !== "unknown")?.duration, fixtureCase.effectDuration);
+      }
+      if (fixtureCase.effectScalingEvents) {
+        const scaling = rule.effects.find(effect => effect.scaling?.kind === "per_combat_event")?.scaling;
+        ok(scaling?.kind === "per_combat_event");
+        deepEqual(scaling.events.map(event => event.eventType), fixtureCase.effectScalingEvents);
+        equal(scaling.connector, fixtureCase.effectScalingConnector);
+      }
+      if (fixtureCase.effects) {
+        deepEqual(
+          rule.effects.filter(effect => effect.kind !== "unknown")
+            .map((effect, index) => gateA6EffectShape(effect, fixtureCase.effects?.[index])),
+          fixtureCase.effects,
+        );
+      }
+      if (fixtureCase.outcomeMatches) {
+        deepEqual(combatOutcomeShape(rule.condition), fixtureCase.outcomeMatches);
+      }
+      if (fixtureCase.counterCountsOutcomes) {
+        deepEqual(combatOutcomeShape(rule.condition), fixtureCase.counterCountsOutcomes);
+      }
+      if (fixtureCase.scalingCountsOutcomes) {
+        const scaling = rule.effects.find(effect => effect.scaling?.kind === "per_combat_event")?.scaling;
+        ok(scaling?.kind === "per_combat_event");
+        deepEqual(combatScalingOutcomeShape(scaling), fixtureCase.scalingCountsOutcomes);
+      }
+      if (fixtureCase.activationMoment) {
+        equal(rule.effects.find(effect => effect.kind !== "unknown")?.activationTiming?.moment, fixtureCase.activationMoment);
+      }
+      if (fixtureCase.expectBeforeDamage) {
+        const event = flattenPredicates(rule.condition)[0]?.combatEvent;
+        equal(event?.eventType, "incoming_attack");
+        equal(event?.relativeTiming, "during_event");
+        equal(rule.effects.find(effect => effect.kind !== "unknown")?.activationTiming?.moment, "when_targeted_by_attack");
+      }
+      if (fixtureCase.allPredicateKinds) {
+        deepEqual(
+          passive.rules.flatMap(item => flattenPredicates(item.condition)).map(predicate => predicate.kind),
+          fixtureCase.allPredicateKinds,
+        );
+      }
+      if (fixtureCase.allScalingEvents) {
+        deepEqual(
+          passive.rules.flatMap(item => item.effects)
+            .flatMap(effect => effect.scaling?.kind === "per_combat_event" ? effect.scaling.events : [])
+            .map(event => event.eventType),
+          fixtureCase.allScalingEvents,
+        );
+      }
+      if (fixtureCase.allActivationMoments) {
+        deepEqual(
+          passive.rules.flatMap(item => item.effects)
+            .filter(effect => effect.kind !== "unknown")
+            .map(effect => effect.activationTiming?.moment),
+          fixtureCase.allActivationMoments,
+        );
+      }
+    });
+  }
+
+  it("never infers normal or Super from generic attack text", () => {
+    for (const rawText of [
+      "When receiving an attack\n- DEF 30%",
+      "When attacking\n- ATK 30%",
+      "After evading an attack\n- DEF 30%",
+    ]) {
+      const descriptors = parsePassive("gate-a6:generic:initial", undefined, rawText).rules
+        .flatMap(rule => flattenPredicates(rule.condition))
+        .map(predicate => predicate.combatEvent)
+        .filter(Boolean);
+      ok(descriptors.length > 0);
+      descriptors.forEach(descriptor => equal(descriptor?.attackKind, "unknown"));
+    }
+  });
+
+  it("keeps targeting, landed hits, and evades as mutually distinct runtime facts", () => {
+    const targeted = parsePassive("gate-a6:targeted:initial", undefined, "When receiving an attack\n- DEF 30%").rules[0];
+    const landed = parsePassive("gate-a6:landed:initial", undefined, "After being hit by an attack\n- DEF 30%").rules[0];
+    const evaded = parsePassive("gate-a6:evaded:initial", undefined, "After evading an attack\n- DEF 30%").rules[0];
+
+    deepEqual(combatOutcomeShape(targeted.condition), { hit: true, dodge: true });
+    deepEqual(combatOutcomeShape(landed.condition), { hit: true, dodge: false });
+    deepEqual(combatOutcomeShape(evaded.condition), { hit: false, dodge: true });
+    equal(flattenPredicates(targeted.condition)[0].combatEvent?.eventType, "incoming_attack");
+    equal(flattenPredicates(landed.condition)[0].combatEvent?.eventType, "attack_landed");
+    equal(flattenPredicates(evaded.condition)[0].combatEvent?.eventType, "attack_evaded");
+  });
+
+  it("reconstructs every Gate A6 source token in original order", () => {
+    for (const fixtureCase of gateA6Fixture.cases) {
+      const passive = parsePassive("gate-a6:tokens:initial", undefined, fixtureCase.rawText);
+      const fragments = uniqueFragments([
+        ...passive.rules.flatMap(rule => rule.source),
+        ...passive.unparsedFragments,
+      ]);
+      equal(
+        fragments.map(fragment => fragment.text).join("\n").replace(/\s/g, ""),
+        fixtureCase.rawText.replace(/\s/g, ""),
+        fixtureCase.name,
+      );
+    }
+  });
+});
+
 describe("team-analysis validation and artifacts", function () {
   it("validates structural evidence identity, hash, anchor, release, and serialized order", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
@@ -1065,7 +1244,7 @@ describe("team-analysis validation and artifacts", function () {
     const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
     const coverage = buildTeamAnalysisCoverageReport(dataset);
 
-    deepEqual(coverage.passiveStatusCounts, { supported: 10, partial: 2, unknown: 1 });
+    deepEqual(coverage.passiveStatusCounts, { supported: 11, partial: 1, unknown: 1 });
     equal(coverage.identity.variantGroupOmittedStateCount, 2);
     ok(coverage.ruleStatusCounts.supported > 0);
     ok(coverage.ruleStatusCounts.unknown > 0);
@@ -1113,6 +1292,98 @@ describe("team-analysis validation and artifacts", function () {
     ok(codes.includes("calculation-bucket-resolution"));
     ok(codes.includes("calculation-bucket-effect-kind"));
     ok(codes.includes("unknown-effect-calculation-phase"));
+  });
+
+  it("rejects impossible combat-event predicates, provenance, and scaling", () => {
+    const broken = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
+    const rule = broken.states.flatMap(item => item.passive?.rules ?? [])[0];
+    const effect = rule.effects.find(item => item.kind !== "unknown");
+    ok(rule && effect);
+    rule.condition = {
+      op: "predicate",
+      predicate: {
+        kind: "attacks_received",
+        scope: "self",
+        comparator: "gte",
+        value: -1,
+        combatEvent: {
+          eventType: "attack_landed",
+          actor: "enemy",
+          attackKind: "normal_attack",
+          mode: "accumulated_count",
+          relativeTiming: "after_event",
+          provenance: {
+            eventType: "explicit_text",
+            actor: "documented_domain_rule",
+            attackKind: "unresolved",
+            mode: "explicit_text",
+            relativeTiming: "explicit_text",
+          },
+        },
+        sourceText: "invalid external payload",
+      },
+    };
+    effect.scaling = {
+      kind: "per_combat_event",
+      connector: "or",
+      eventsPerIncrement: 0,
+      events: [
+        {
+          eventType: "incoming_attack",
+          actor: "enemy",
+          attackKind: "unknown",
+          mode: "per_event",
+          countScope: "battle",
+          relativeTiming: "after_event",
+          provenance: {
+            eventType: "explicit_text",
+            actor: "documented_domain_rule",
+            attackKind: "unresolved",
+            mode: "explicit_text",
+            countScope: "documented_domain_rule",
+            relativeTiming: "explicit_text",
+          },
+        },
+        {
+          eventType: "attack_performed",
+          actor: "self",
+          attackKind: "unknown",
+          mode: "current_event",
+          relativeTiming: "after_event",
+          provenance: {
+            eventType: "explicit_text",
+            actor: "documented_domain_rule",
+            attackKind: "unresolved",
+            mode: "explicit_text",
+            relativeTiming: "explicit_text",
+          },
+        },
+        {
+          eventType: "attack_landed",
+          actor: "enemy",
+          attackKind: "unknown",
+          mode: "current_event",
+          relativeTiming: "before_event",
+          provenance: {
+            eventType: "explicit_text",
+            actor: "documented_domain_rule",
+            attackKind: "unresolved",
+            mode: "explicit_text",
+            relativeTiming: "explicit_text",
+          },
+        },
+      ],
+    };
+    const codes = validateTeamAnalysisDataset(broken, fixture.characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(codes.includes("combat-event-count"));
+    ok(codes.includes("combat-history-count-scope"));
+    ok(codes.includes("combat-attack-kind-resolution"));
+    ok(codes.includes("combat-scaling-unit"));
+    ok(codes.includes("combat-event-mode-channel"));
+    ok(codes.includes("combat-targeting-history"));
+    ok(codes.includes("combat-targeting-timing"));
+    ok(codes.includes("combat-outcome-timing"));
   });
 
   it("separates scenario-containing rules from fully scenario-evaluable rules", () => {
@@ -1624,7 +1895,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.5\.1/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.6\.0/);
   });
 });
 
@@ -1684,6 +1955,7 @@ function conditionShape(condition: ConditionExpression): GoldenConditionShape {
     ...(predicate.excludedNames ? { excludedNames: predicate.excludedNames } : {}),
     ...(predicate.excludedNameMatch ? { excludedNameMatch: predicate.excludedNameMatch } : {}),
     ...(predicate.enemyReference ? { enemyReference: predicate.enemyReference } : {}),
+    ...(predicate.combatEvent ? { combatEvent: predicate.combatEvent } : {}),
   };
 }
 
@@ -1708,6 +1980,70 @@ function gateA51EffectShape(effect: PassiveEffect) {
     ...(effect.target.scope !== "self" ? { target: effect.target.scope } : {}),
     ...(effect.classifications ? { classifications: effect.classifications } : {}),
   };
+}
+
+function gateA6EffectShape(effect: PassiveEffect, expected?: { scalingKind?: string }) {
+  return {
+    kind: effect.kind,
+    ...(effect.stackCap !== undefined ? { stackCap: effect.stackCap } : {}),
+    ...(effect.duration ? { duration: effect.duration } : {}),
+    ...(effect.scaling
+      ? expected?.scalingKind
+        ? { scalingKind: effect.scaling.kind }
+        : { scaling: effect.scaling }
+      : {}),
+  };
+}
+
+type CombatOutcome = "hit" | "dodge";
+type CombatScaling = Extract<NonNullable<PassiveEffect["scaling"]>, { kind: "per_combat_event" }>;
+
+function combatEventMatchesOutcome(
+  event: NonNullable<PassivePredicate["combatEvent"]>,
+  outcome: CombatOutcome,
+): boolean {
+  if (event.eventType === "incoming_attack") {
+    return true;
+  }
+  if (event.eventType === "attack_landed") {
+    return outcome === "hit";
+  }
+  if (event.eventType === "attack_evaded") {
+    return outcome === "dodge";
+  }
+  return false;
+}
+
+function combatConditionMatchesOutcome(condition: ConditionExpression, outcome: CombatOutcome): boolean {
+  if (condition.op === "predicate") {
+    return condition.predicate.combatEvent
+      ? combatEventMatchesOutcome(condition.predicate.combatEvent, outcome)
+      : true;
+  }
+  if (condition.op === "any") {
+    return condition.children.some(child => combatConditionMatchesOutcome(child, outcome));
+  }
+  if (condition.op === "all") {
+    return condition.children.every(child => combatConditionMatchesOutcome(child, outcome));
+  }
+  if (condition.op === "not") {
+    return !combatConditionMatchesOutcome(condition.child, outcome);
+  }
+  return false;
+}
+
+function combatOutcomeShape(condition: ConditionExpression): { hit: boolean; dodge: boolean } {
+  return {
+    hit: combatConditionMatchesOutcome(condition, "hit"),
+    dodge: combatConditionMatchesOutcome(condition, "dodge"),
+  };
+}
+
+function combatScalingOutcomeShape(scaling: CombatScaling): { hit: boolean; dodge: boolean } {
+  const matches = (outcome: CombatOutcome) => scaling.connector === "and"
+    ? scaling.events.every(event => combatEventMatchesOutcome(event, outcome))
+    : scaling.events.some(event => combatEventMatchesOutcome(event, outcome));
+  return { hit: matches("hit"), dodge: matches("dodge") };
 }
 
 function unique<T>(values: T[]): T[] {

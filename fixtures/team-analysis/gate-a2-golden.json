@@ -128,15 +128,33 @@
       "condition": { "op": "predicate", "kind": "battle_slot", "scope": "self", "slots": [3] }
     },
     {
-      "name": "slot qualifier remains partial",
+      "name": "received attack combines with slot",
       "source": "real",
       "rawText": "After receiving an attack as the 1st attacker in a turn\n- ATK 20%",
-      "expectedStatus": "partial",
-      "conditionStatus": "partial",
+      "expectedStatus": "supported",
+      "conditionStatus": "supported",
       "condition": {
         "op": "all",
         "children": [
-          { "op": "unknown", "sourceText": "After receiving an attack" },
+          {
+            "op": "predicate",
+            "kind": "attacks_received",
+            "scope": "self",
+            "combatEvent": {
+              "eventType": "attack_landed",
+              "actor": "enemy",
+              "attackKind": "unknown",
+              "mode": "current_event",
+              "relativeTiming": "after_event",
+              "provenance": {
+                "eventType": "explicit_text",
+                "actor": "documented_domain_rule",
+                "attackKind": "unresolved",
+                "mode": "explicit_text",
+                "relativeTiming": "explicit_text"
+              }
+            }
+          },
           { "op": "predicate", "kind": "battle_slot", "scope": "self", "slots": [1] }
         ]
       }
