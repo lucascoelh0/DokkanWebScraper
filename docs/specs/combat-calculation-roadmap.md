@@ -23,6 +23,14 @@ and its [Reddit index thread](https://www.reddit.com/r/DBZDokkanBattle/comments/
 are useful historical explanations, but are not normative game data. Character
 names are never evidence keys.
 
+The community [damage-taken guide](https://docs.google.com/document/d/11S78tMJsqVr-_bQuvdwi4uR6M5sDB51gpKpnPwzwiZA/edit)
+and its [in-game example workbook](https://docs.google.com/spreadsheets/d/1Fk5jVGUxSAnupWcBNAC5WuqFBaSQYBPsCTMkj7Plyzs/edit)
+provide a more precise candidate model for incoming damage. The workbook is
+valuable corroborating evidence because its formulas are tied to observed
+in-game examples, but both sources remain community evidence and must be
+validated against first-party data or reproducible runtime tests before their
+constants become normative `combatRulesVersion` data.
+
 ## Future calculation order
 
 The initial order to validate for ATK is:
@@ -52,6 +60,56 @@ Percentages inside one passive bucket are accumulated as independent active
 contributions before that bucket is applied. Contributions from different
 buckets must never be merged. Multiple conditional contributions remain
 separate so the scenario evaluator can activate each one independently.
+
+## Candidate damage-received model
+
+The damage-taken guide and example workbook support this candidate equation:
+
+```text
+(
+  enemy ATK
+  * adjusted Super Attack multiplier
+  * product of non-SA ATK-lowering source groups
+  * (1 - general damage reduction)
+  * (1 - attack-kind-specific damage reduction)
+  * Class/Type alignment multiplier
+  * variance
+  - resolved character DEF
+)
+* guard coefficient
+```
+
+The model has several non-interchangeable channels:
+
+- ATK lowering from a Super Attack effect reduces the enemy Super Attack
+  multiplier when the incoming hit is a Super Attack. Against a normal attack,
+  it behaves as an ATK-stat reduction because the Super Attack multiplier is 1.
+- ATK-lowering contributions from the same origin group add. Different origin
+  groups, such as passive, item and Super Attack effect, apply as separate
+  multiplicative reductions.
+- General damage reduction contributions add inside their shared group.
+  Reduction that applies only to normal attacks is a distinct multiplicative
+  group and must not be silently added to general reduction.
+- Support-memory reduction belongs to the support-item channel for calculation
+  purposes according to the guide. This is a global rule, not character data.
+- Class and Type determine the base alignment multiplier. Natural type
+  advantage and passive guard both use a separate 0.5 guard coefficient after
+  DEF subtraction, but passive guard uses its own alignment behavior.
+- Type Defense Boost reduces the alignment multiplier by 0.01 per level only
+  when the character has actual Type advantage. Passive guard alone does not
+  activate Type Defense Boost.
+- Enemy variance is modeled over 1.00 through 1.03. The workbook uses 1.015 as
+  a midpoint example; that value must not be labeled an expected value without
+  validating the game's distribution.
+- The guide reports a special minimum-damage path when the equation result is
+  below 150, producing incoming values in the 9 through 132 range for enemies
+  with zero Ki. This is not a simple numeric clamp and requires a separate,
+  validated rule.
+
+Multiplication is algebraically reorderable only in real-number arithmetic.
+The implementation must preserve the game's integer truncation boundaries;
+the workbook explicitly rounds DEF down after each DEF calculation stage, but
+does not by itself prove every incoming-damage rounding boundary.
 
 ## Start of Turn, On Attack and Super Attack raises
 
@@ -91,9 +149,15 @@ versioned:
 
 - Super Attack base multiplier and progression by Super Attack level;
 - typed Super Attack ATK/DEF raises, including duration and stacking rules;
-- Hidden Potential, Total Ability Boost (TAB) and Total Defense Boost (TDB);
-- type advantage, guard, critical, variance and related modifier order;
-- boss ATK/DEF, damage reduction and immunity data by phase;
+- Hidden Potential, Type Attack Boost (TAB) and Type Defense Boost (TDB);
+- the versioned Class/Type alignment table, natural/passive guard behavior,
+  guard coefficient and Type Defense Boost interaction;
+- enemy variance distribution and the special minimum-damage rule;
+- typed applicability for general, normal-only and Super-only damage reduction;
+- source grouping for ATK lowering and damage reduction so additive and
+  multiplicative channels cannot be confused;
+- boss base ATK, Super Attack multiplier, DEF, Class/Type or no-Class state,
+  damage reduction, attack kind and immunity data by phase;
 - active-skill attack and stat-buff calculation channels;
 - counter, nullification and reflected-damage calculation channels;
 - exact integer rounding/truncation rules and their boundaries;
@@ -127,9 +191,19 @@ identity or passive source text.
 ## Gate A6 and future evaluator
 
 Gate A6 remains a parser gate. It extends combat-history conditions and timing
-for attacks performed, received or evaded, Super Attacks, and final blows. It
-must preserve `condition`, `activationTiming`, and `calculationBucket` as three
-separate facts and must not select active contributions or calculate stats.
+for attacks performed, received or evaded, Super Attacks, and final blows. The
+current incoming event must distinguish at least normal attack from Super
+Attack whenever the source text proves it, because normal-only damage reduction
+and Super-specific behavior cannot share one undifferentiated received-attack
+predicate. Gate A6 must preserve `condition`, `activationTiming`, and
+`calculationBucket` as three separate facts and must not select active
+contributions or calculate stats.
+
+A later data gate must type Super Attack effects and calculation channels,
+including SA-effect ATK lowering, ATK/DEF raises and damage-kind-specific
+reduction. Boss-phase combat facts should be a separate source-neutral dataset.
+Neither concern should be folded into Gate A6 merely to increase parser
+coverage.
 
 A later Android evaluator will consume those three inputs with tri-state logic,
 produce a list of active contributions, and pass only resolved ATK/DEF effects
