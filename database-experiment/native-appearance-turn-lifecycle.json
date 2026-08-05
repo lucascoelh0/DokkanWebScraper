@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "counterOffset": 572,
+  "gateOffset": 576,
+  "symbols": [
+    { "role": "constructor", "symbol": "_ZN15InGameCharaDataC1Ev", "vma": 46592456, "sizeBytes": 808, "codeSha256": "8290d703c3ebf2282c366b68cf6c38c2a674c8bced443460b7e1b1aa0e919748", "observation": "counter_zero_and_gate_zero" },
+    { "role": "appear", "symbol": "_ZN15InGameCharaData6appearEv", "vma": 46603636, "sizeBytes": 256, "codeSha256": "51edc8954e05b6d989d9b8b21b0d7c7c265593a90b0a2c6a68b5295f36898d22", "observation": "counter_one_and_gate_one" },
+    { "role": "increment", "symbol": "_ZN15InGameCharaData32incrementTurnCountFromAppearanceEv", "vma": 46603240, "sizeBytes": 32, "codeSha256": "984b48cf75d6f86f7305bf1a85130b8af74e8014280374983bc982d87976af40", "observation": "increment_only_when_gate_nonzero" },
+    { "role": "reset", "symbol": "_ZN15InGameCharaData28resetTurnCountFromAppearanceEv", "vma": 46604136, "sizeBytes": 240, "codeSha256": "694e1925fc44e8aa26b24558dc269aafc7b56bb703dc0601439f610cee2b2993", "observation": "gate_zero" },
+    { "role": "under_handler", "symbol": "_ZN20AbilityCausalityFunc30isUnderTurnCountFromAppearanceERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE", "vma": 64201368, "sizeBytes": 192, "codeSha256": "102555b80f2a492d7049c6a8ef23fe6d7ba0d264e1ba2eb60b7a5c18aef2faa3", "observation": "false_when_gate_zero_else_counter_lte_threshold" },
+    { "role": "over_handler", "symbol": "_ZN20AbilityCausalityFunc29isOverTurnCountFromAppearanceERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE", "vma": 64202148, "sizeBytes": 192, "codeSha256": "bd771a7d5a8ce64a7db3c278c4c9ecb02cc61d3ca2c0aa6d8c3022a15cfbc150", "observation": "false_when_gate_zero_else_counter_gt_threshold" }
+  ],
+  "scope": "normal_runtime_lifecycle_with_appearance_gate",
+  "limitation": "Does not prove exhaustive absence of alternate writers, restored malformed state, or memory corruption."
+}
