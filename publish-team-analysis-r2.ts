@@ -329,7 +329,12 @@ export function buildTeamAnalysisR2PublishPlan(
     const plannedActions: string[] = [];
     if (payloadUploadNeeded) plannedActions.push(`put ${datasetObjectKey}`);
     if (payloadUploadNeeded && !options.skipUploadVerification) plannedActions.push(`verify ${datasetObjectKey}`);
-    if (manifestUpdateNeeded) plannedActions.push(`put ${TEAM_ANALYSIS_MANIFEST_OBJECT_KEY} last`);
+    if (manifestUpdateNeeded) {
+        plannedActions.push(`put ${TEAM_ANALYSIS_MANIFEST_OBJECT_KEY} last`);
+        if (!options.skipUploadVerification) {
+            plannedActions.push(`verify ${TEAM_ANALYSIS_MANIFEST_OBJECT_KEY}`);
+        }
+    }
     if (stateUpdateNeeded || manifestUpdateNeeded || payloadUploadNeeded || cleanupCandidates.length > 0) {
         plannedActions.push(`update local state ${options.statePath}`);
     }
@@ -400,8 +405,9 @@ export async function publishTeamAnalysisR2(
     if (plan.manifestUpdateNeeded) {
         const temporaryDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-team-analysis-manifest-"));
         const temporaryManifestPath = resolve(temporaryDirectory, TEAM_ANALYSIS_MANIFEST_OBJECT_KEY);
+        const manifestBuffer = serializeManifest(plan.remoteManifest);
         try {
-            await writeFile(temporaryManifestPath, serializeManifest(plan.remoteManifest));
+            await writeFile(temporaryManifestPath, manifestBuffer);
             await putObject(
                 runner,
                 options,
@@ -410,6 +416,9 @@ export async function publishTeamAnalysisR2(
                 "application/json",
                 TEAM_ANALYSIS_MANIFEST_CACHE_CONTROL,
             );
+            if (!options.skipUploadVerification) {
+                await assertRemoteManifestMatches(runner, options, plan.remoteManifest, manifestBuffer);
+            }
         } finally {
             await rm(temporaryDirectory, { recursive: true, force: true });
         }
@@ -621,6 +630,27 @@ async function assertRemotePayloadMatches(
     });
     if (!matches) {
         throw new Error(`Uploaded Team Analysis payload failed size/SHA-256 verification: ${objectKey}`);
+    }
+}
+
+async function assertRemoteManifestMatches(
+    runner: TeamAnalysisCommandRunner,
+    options: TeamAnalysisR2PublishOptions,
+    expectedManifest: TeamAnalysisManifest,
+    expectedBuffer: Buffer,
+): Promise<void> {
+    const remote = await tryGetJsonObject<TeamAnalysisManifest>(
+        runner,
+        options,
+        TEAM_ANALYSIS_MANIFEST_OBJECT_KEY,
+        "uploaded Team Analysis manifest",
+    );
+    const matches = remote
+        && remote.bytes === expectedBuffer.byteLength
+        && remote.sha256 === sha256(expectedBuffer)
+        && manifestsExactlyMatch(remote.value, expectedManifest);
+    if (!matches) {
+        throw new Error("Uploaded Team Analysis manifest failed content/size/SHA-256 verification.");
     }
 }
 

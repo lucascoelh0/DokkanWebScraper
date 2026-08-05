@@ -27,6 +27,7 @@ class FakeRunner implements TeamAnalysisCommandRunner {
     readonly objects = new Map<string, Buffer>();
     readonly commands: string[][] = [];
     failPutKey?: string;
+    ignorePutKey?: string;
     failDeleteKey?: string;
     failAllDeletes = false;
     failBucketInfo = false;
@@ -49,6 +50,7 @@ class FakeRunner implements TeamAnalysisCommandRunner {
         }
         if (operation === "put") {
             if (this.failPutKey === objectKey) return failure(`put failed for ${objectKey}`);
+            if (this.ignorePutKey === objectKey) return success();
             this.objects.set(objectKey, await readFile(args[args.indexOf("--file") + 1]));
             return success();
         }
@@ -237,6 +239,19 @@ describe("Team Analysis R2 delivery gate", function () {
         fixture.runner.failPutKey = TEAM_ANALYSIS_MANIFEST_OBJECT_KEY;
 
         await rejects(() => publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock), /put failed/);
+        equal(await fileExists(fixture.options.statePath), false);
+        equal(fixture.runner.objects.has(old.datasetObjectKey), true);
+        equal(fixture.runner.commands.some(args => args[2] === "delete"), false);
+    });
+
+    it("does not update state when the manifest put reports success without persisting bytes", async () => {
+        const old = installPreviousRemote(fixture, "characters-v0:parser-1.7.1", "old-one");
+        fixture.runner.ignorePutKey = TEAM_ANALYSIS_MANIFEST_OBJECT_KEY;
+
+        await rejects(
+            () => publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock),
+            /manifest failed content\/size\/SHA-256 verification/,
+        );
         equal(await fileExists(fixture.options.statePath), false);
         equal(fixture.runner.objects.has(old.datasetObjectKey), true);
         equal(fixture.runner.commands.some(args => args[2] === "delete"), false);

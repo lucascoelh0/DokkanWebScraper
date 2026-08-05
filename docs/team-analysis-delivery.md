@@ -47,7 +47,8 @@ the separate explicit `--allow-unknown-bucket-size` recovery flag.
 
 The immutable gzip is made ready and optionally downloaded for size/SHA-256
 verification before the mutable manifest is promoted. The manifest is always
-the last public write. Local state is updated only after that promotion, and
+the last public write and is downloaded again to verify its exact content,
+size, and SHA-256. Local state is updated only after that verification, and
 old-release cleanup runs afterward. A cleanup failure is recorded for a later
 retry and does not invalidate the newly active manifest.
 
