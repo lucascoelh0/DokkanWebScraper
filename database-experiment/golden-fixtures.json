@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "cardId": "1032521",
+      "label": "LR EZA and SEZA route with first-party dates",
+      "requires": ["growth-steps", "eza", "seza", "release-date", "ultra-attack"]
+    },
+    {
+      "cardId": "1025731",
+      "label": "Standby, Finish and form transition",
+      "requires": ["standby", "finish", "transformation", "ultra-attack"]
+    },
+    {
+      "cardId": "1033061",
+      "label": "Exchange/tag form",
+      "requires": ["reversible-exchange", "ultra-attack"]
+    },
+    {
+      "cardId": "1017491",
+      "label": "Active transformation",
+      "requires": ["active", "transformation"]
+    },
+    {
+      "cardId": "1020221",
+      "label": "Unit and Ultra attacks with growth variants",
+      "requires": ["unit-attack", "ultra-attack", "growth-steps", "eza", "release-date"]
+    },
+    {
+      "cardId": "1032551",
+      "label": "EX Attack",
+      "requires": ["ex-attack", "ultra-attack"]
+    },
+    {
+      "cardId": "1000030",
+      "label": "Pre-Z low-rarity card has no Super or Extreme class",
+      "requires": ["unawakened-class"]
+    },
+    {
+      "cardId": "1005541",
+      "label": "Terminal first-party collection card",
+      "requires": ["projected-primary"]
+    },
+    {
+      "cardId": "1000010",
+      "label": "Non-terminal first-party collection card",
+      "requires": ["nonterminal-collection"]
+    },
+    {
+      "cardId": "1027161",
+      "label": "Preloaded future EZA remains unavailable at snapshot cutoff",
+      "requires": ["eza", "future-state", "release-date"]
+    },
+    {
+      "cardId": "1010900",
+      "label": "Unjoined growth route remains conservatively unknown",
+      "requires": ["growth-steps", "unknown-release-state"]
+    }
+  ]
+}

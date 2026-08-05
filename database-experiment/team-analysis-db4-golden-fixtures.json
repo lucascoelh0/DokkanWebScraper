@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "name": "nested AND OR remains partially typed",
+      "stateKey": "1023301:1023301:eza",
+      "ruleKey": "4308:43080007:7004308",
+      "conditionOp": "all",
+      "firstChildOp": "any",
+      "conditionStatus": "partial"
+    },
+    {
+      "name": "type 40 upgrades efficacy 98 Super scaling",
+      "stateKey": "1027601:1027601:initial",
+      "ruleKey": "3964:39640008:8003964",
+      "conditionOp": "always",
+      "conditionStatus": "supported",
+      "effectKind": "atk",
+      "scalingKind": "per_combat_event",
+      "scalingEvent": "super_attack_performed",
+      "effectStatus": "supported"
+    }
+  ],
+  "series": [
+    {
+      "name": "category ally contiguous series",
+      "stateKey": "1005581:1005581:eza",
+      "projectionKey": "threshold-series:1928:19280001:1001928:7",
+      "status": "supported",
+      "causalityType": 34,
+      "effectKind": "ki",
+      "scalingKind": "per_qualifying_unit_threshold_series",
+      "maxIncrements": 7,
+      "selectorKind": "category",
+      "selectorName": "Bond of Master and Disciple"
+    },
+    {
+      "name": "Ki Sphere contiguous series",
+      "stateKey": "1003801:1003801:seza",
+      "projectionKey": "threshold-series:4252:42520007:7004252:5",
+      "status": "supported",
+      "causalityType": 42,
+      "effectKind": "ki",
+      "scalingKind": "per_ki_sphere_threshold_series",
+      "maxIncrements": 5,
+      "kiSphereTypes": ["rainbow"]
+    },
+    {
+      "name": "name selector series stays partial",
+      "stateKey": "1033701:1033701:initial",
+      "projectionKey": "threshold-series:4901:49010009:9004901:3",
+      "status": "partial",
+      "causalityType": 41,
+      "effectKind": "ki",
+      "scalingKind": "per_qualifying_unit_threshold_series",
+      "maxIncrements": 3,
+      "selectorKind": "name_selector_unknown",
+      "unknown": "name_selector_domain_unknown"
+    },
+    {
+      "name": "class mask series stays partial",
+      "stateKey": "1012161:1012161:eza",
+      "projectionKey": "threshold-series:3084:30840003:3003084:5",
+      "status": "partial",
+      "causalityType": 46,
+      "effectKind": "ki",
+      "scalingKind": "per_qualifying_unit_threshold_series",
+      "maxIncrements": 5,
+      "selectorKind": "class_type_mask_unknown",
+      "unknown": "class_type_mask_unknown"
+    }
+  ]
+}

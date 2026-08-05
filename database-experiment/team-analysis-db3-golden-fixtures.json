@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    { "name": "random AGL to STR spheres", "setId": "2950", "skillId": "2950", "effectKinds": ["ki_sphere_change"], "sphereChange": { "sourceSelection": "random_type", "sourceTypes": ["AGL"], "destinationType": "STR" }, "effectStatus": "supported" },
+    { "name": "ATK per any sphere", "setId": "649", "skillId": "649", "effectKinds": ["atk"], "values": [10], "units": ["percent"], "sphereSelectors": ["any"], "effectStatus": "supported" },
+    { "name": "Ki per any sphere", "setId": "816", "skillId": "816", "effectKinds": ["ki"], "values": [1], "units": ["ki"], "sphereSelectors": ["any"], "effectStatus": "supported" },
+    { "name": "ATK stacking after attacks received", "setId": "844", "skillId": "844", "effectKinds": ["atk"], "values": [20], "units": ["percent"], "stackCaps": [100], "scalingEvents": ["attack_received"], "conditionOp": "always", "effectStatus": "supported" },
+    { "name": "HP at least", "setId": "20", "skillId": "20", "predicate": { "kind": "hp_percent", "comparator": "gte", "value": 50 } },
+    { "name": "HP at most", "setId": "4", "skillId": "4", "predicate": { "kind": "hp_percent", "comparator": "lte", "value": 30 } },
+    { "name": "battle turn offset", "setId": "2743", "skillId": "2743", "predicate": { "kind": "battle_turn", "comparator": "gte", "value": 4 } },
+    { "name": "enemy count minimum", "setId": "17", "skillId": "17", "predicate": { "kind": "enemy_count", "comparator": "gte", "value": 3 } },
+    { "name": "only one enemy", "setId": "37", "skillId": "37", "predicate": { "kind": "enemy_count", "comparator": "lte", "value": 1 } },
+    { "name": "first slot zero-based", "setId": "29", "skillId": "29", "predicate": { "kind": "battle_slot", "comparator": "eq", "value": 1 } },
+    { "name": "guard activated", "setId": "34", "skillId": "34", "predicate": { "kind": "guard_activated", "eventMode": "current_event" } },
+    { "name": "enemy ATK down status mask", "setId": "1291", "skillId": "2001291", "predicate": { "kind": "enemy_status", "enemyStatuses": ["atk_down"] } },
+    { "name": "four or more any spheres", "setId": "2090", "skillId": "2090", "predicate": { "kind": "ki_spheres_obtained", "comparator": "gte", "count": 4, "kiSphereTypes": ["any"] } },
+    { "name": "compiled operator remains unknown", "setId": "1566", "skillId": "2001566", "conditionOp": "unknown", "conditionStatus": "unknown" }
+  ]
+}

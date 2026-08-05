@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "auditedAt": "2026-08-05",
+  "entries": [
+    {
+      "cardId": "1027621",
+      "url": "https://dokkan.fyi/characters/1027621",
+      "finding": "local-leader-text-stale",
+      "note": "Current site includes the additional Ki +1 present in the database."
+    },
+    {
+      "cardId": "1028161",
+      "url": "https://dokkan.fyi/characters/1028161",
+      "finding": "local-leader-text-stale",
+      "note": "Current site includes the additional Ki +1 present in the database."
+    },
+    {
+      "cardId": "1009010",
+      "url": "https://dokkan.fyi/characters/1009010",
+      "finding": "local-character-snapshot-stale",
+      "note": "Character page exists on the current site."
+    },
+    {
+      "cardId": "1009020",
+      "url": "https://dokkan.fyi/characters/1009020",
+      "finding": "local-character-snapshot-stale",
+      "note": "Character page exists on the current site."
+    },
+    {
+      "cardId": "1032710",
+      "url": "https://dokkan.fyi/characters/1032710",
+      "finding": "local-character-snapshot-stale",
+      "note": "Character page exists on the current site."
+    },
+    {
+      "cardId": "1002230",
+      "url": "https://dokkan.fyi/characters/1002230",
+      "finding": "collection-cards-omission",
+      "note": "Valid character page and database card row exist despite no collection_cards row."
+    },
+    {
+      "cardId": "1015411",
+      "url": "https://dokkan.fyi/characters/1015411",
+      "finding": "collection-cards-omission",
+      "note": "Valid character page and database card row exist despite no collection_cards row."
+    },
+    {
+      "cardId": "1017860",
+      "url": "https://dokkan.fyi/characters/1017860",
+      "finding": "collection-cards-omission",
+      "note": "Valid character page and database card row exist despite no collection_cards row."
+    },
+    {
+      "cardId": "1029870",
+      "url": "https://dokkan.fyi/characters/1029870",
+      "finding": "collection-cards-omission",
+      "note": "Valid character page and database card row exist despite no collection_cards row."
+    },
+    {
+      "cardId": "4005130",
+      "url": "https://dokkan.fyi/characters/4005130",
+      "finding": "z-awakened-form-projection",
+      "note": "The database form relation targets the SSR; the compatibility projection displays its Z-Awakened UR form 4005131."
+    }
+  ],
+  "formProjectionAliases": [
+    {
+      "databaseCardId": "4005130",
+      "projectedCardId": "4005131",
+      "url": "https://dokkan.fyi/characters/4005131",
+      "evidence": "user-confirmed-z-awakened-pair"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    { "name": "self ATK and DEF percent", "setId": "176", "skillId": "176", "effectKinds": ["atk", "def"], "values": [25, 25], "units": ["percent", "percent"], "targetScope": "self", "mappingStatus": "supported" },
+    { "name": "all-enemy stun probability", "setId": "39", "skillId": "39", "effectKinds": ["stun_chance"], "activationChances": [7], "targetScope": "all_enemies", "mappingStatus": "supported" },
+    { "name": "damage reduction remaining-factor encoding", "setId": "34", "skillId": "34", "effectKinds": ["damage_reduction"], "values": [30], "units": ["percent"], "targetScope": "self", "mappingStatus": "supported" },
+    { "name": "PHY to Rainbow sphere change", "setId": "350", "skillId": "350", "effectKinds": ["ki_sphere_change"], "sphereChange": ["PHY", "rainbow"], "targetScope": "self", "mappingStatus": "supported" },
+    { "name": "effective against all types", "setId": "457", "skillId": "457", "effectKinds": ["effective_against_all_types"], "values": [1], "units": ["boolean"], "targetScope": "self", "mappingStatus": "supported" },
+    { "name": "guard", "setId": "459", "skillId": "459", "effectKinds": ["guard"], "values": [1], "units": ["boolean"], "targetScope": "self", "mappingStatus": "supported" },
+    { "name": "two additional attempts and conversion chance", "setId": "725", "skillId": "725", "effectKinds": ["additional_attack", "additional_attack"], "values": [1, 1], "activationChances": [100, 50], "additionalToSuperChances": [7, 7], "targetScope": "self", "mappingStatus": "supported" },
+    { "name": "critical chance", "setId": "968", "skillId": "1000968", "effectKinds": ["critical_chance"], "values": [30], "units": ["percent"], "targetScope": "self", "mappingStatus": "supported" },
+    { "name": "evade chance", "setId": "1019", "skillId": "1019", "effectKinds": ["evade_chance"], "values": [50], "units": ["percent"], "targetScope": "self", "mappingStatus": "supported" },
+    { "name": "scouter", "setId": "1106", "skillId": "2001106", "effectKinds": ["scouter"], "values": [1], "units": ["boolean"], "targetScope": "team_allies", "mappingStatus": "supported" },
+    { "name": "unconfirmed counter efficacy remains unknown", "setId": "4222", "skillId": "4222", "effectKinds": ["unknown"], "targetScope": "self", "mappingStatus": "unknown" }
+  ]
+}
