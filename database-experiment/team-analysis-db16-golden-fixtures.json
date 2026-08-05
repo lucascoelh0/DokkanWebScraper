@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "expectedResidualAttributionCount": 526,
+  "turnOnePair": {
+    "stateKey": "1028761:1028761:initial",
+    "databaseRuleKey": "4099:40990002:2004099",
+    "currentRuleKey": "1028761:1028761:initial:r4:0:32",
+    "databaseComparator": "lte",
+    "currentComparator": "eq",
+    "value": 1
+  }
+}
