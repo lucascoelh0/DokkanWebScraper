@@ -41,6 +41,10 @@ import { buildDatabaseTeamAnalysisDb9Coverage, buildDatabaseTeamAnalysisDb9Datas
 import { DatabaseTeamAnalysisDb9ArtifactManifest } from "./team-analysis-db9-contract";
 import { readDb9NativeLayout, resolveDb9NativeLayoutPath, validateDatabaseTeamAnalysisDb9Goldens } from "./team-analysis-db9-golden";
 import { renderDatabaseTeamAnalysisDb9Report } from "./team-analysis-db9-report";
+import { buildDatabaseTeamAnalysisDb10Coverage, buildDatabaseTeamAnalysisDb10Dataset } from "./team-analysis-db10-builder";
+import { DatabaseTeamAnalysisDb10ArtifactManifest } from "./team-analysis-db10-contract";
+import { parseDb10NativeSemantics, resolveDb10NativeSemanticsPath, validateDatabaseTeamAnalysisDb10Goldens } from "./team-analysis-db10-golden";
+import { renderDatabaseTeamAnalysisDb10Report } from "./team-analysis-db10-report";
 
 const DEFAULT_DATABASE = "D:\\Dokkan\\database\\decrypted\\dokkan-global-current.db";
 const DEFAULT_CURRENT_DATASET = "D:\\Dokkan\\DokkanWebScraper\\data\\fyi-characters\\latest\\characters.json.gz";
@@ -119,6 +123,7 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
     teamAnalysisDb7Manifest: DatabaseTeamAnalysisDb7ArtifactManifest,
     teamAnalysisDb8Manifest: DatabaseTeamAnalysisDb8ArtifactManifest,
     teamAnalysisDb9Manifest: DatabaseTeamAnalysisDb9ArtifactManifest,
+    teamAnalysisDb10Manifest: DatabaseTeamAnalysisDb10ArtifactManifest,
     outputDir: string,
     deterministicRebuildSha256: string,
 }> {
@@ -293,6 +298,18 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
     const teamAnalysisDb9Coverage = buildDatabaseTeamAnalysisDb9Coverage(teamAnalysisDb9Dataset); const teamAnalysisDb9Goldens = await validateDatabaseTeamAnalysisDb9Goldens(teamAnalysisDb9Dataset);
     if (teamAnalysisDb9Goldens.failures.length > 0) throw new Error(`DB9 golden fixture validation failed: ${JSON.stringify(teamAnalysisDb9Goldens.failures)}`);
     const teamAnalysisDb9Report = renderDatabaseTeamAnalysisDb9Report(teamAnalysisDb9Dataset, teamAnalysisDb9Coverage);
+    const nativeSemanticsBytes = await readFile(resolveDb10NativeSemanticsPath()); const nativeSemantics = parseDb10NativeSemantics(nativeSemanticsBytes); const nativeSemanticsSha256 = sha256(nativeSemanticsBytes);
+    const buildTeamAnalysisDb10 = () => buildDatabaseTeamAnalysisDb10Dataset({
+        db8: teamAnalysisDb8Dataset, db8Sha256: sha256(teamAnalysisDb8Gzip), db9: teamAnalysisDb9Dataset, db9Sha256: sha256(teamAnalysisDb9Gzip),
+        inspection: nativeInspection, layout: nativeSemantics, layoutSha256: nativeSemanticsSha256, nativeSha256: nativeBefore.sha256,
+    });
+    const teamAnalysisDb10Dataset = buildTeamAnalysisDb10(); const firstTeamAnalysisDb10Json = `${JSON.stringify(teamAnalysisDb10Dataset)}\n`; const secondTeamAnalysisDb10Json = `${JSON.stringify(buildTeamAnalysisDb10())}\n`;
+    if (sha256(firstTeamAnalysisDb10Json) !== sha256(secondTeamAnalysisDb10Json)) throw new Error("DB10 determinism check failed: two native-semantic projections differ");
+    const teamAnalysisDb10Gzip = gzipSync(Buffer.from(firstTeamAnalysisDb10Json, "utf8"), { level: 9 }); const secondTeamAnalysisDb10Gzip = gzipSync(Buffer.from(secondTeamAnalysisDb10Json, "utf8"), { level: 9 });
+    if (!teamAnalysisDb10Gzip.equals(secondTeamAnalysisDb10Gzip)) throw new Error("DB10 determinism check failed: gzip bytes differ");
+    const teamAnalysisDb10Coverage = buildDatabaseTeamAnalysisDb10Coverage(teamAnalysisDb10Dataset, teamAnalysisDb8Dataset); const teamAnalysisDb10Goldens = await validateDatabaseTeamAnalysisDb10Goldens(teamAnalysisDb10Dataset);
+    if (teamAnalysisDb10Goldens.failures.length > 0) throw new Error(`DB10 golden fixture validation failed: ${JSON.stringify(teamAnalysisDb10Goldens.failures)}`);
+    const teamAnalysisDb10Report = renderDatabaseTeamAnalysisDb10Report(teamAnalysisDb10Dataset, teamAnalysisDb10Coverage);
     const sourceManifest: DatabaseExperimentSourceManifest = {
         schemaVersion: 1,
         sourceKind: "first-party-global-sqlite",
@@ -432,6 +449,11 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
         fileName: "team-analysis-db9-runtime-evidence.json.gz", compression: "gzip", sha256: sha256(teamAnalysisDb9Gzip), sizeBytes: teamAnalysisDb9Gzip.byteLength, uncompressedSizeBytes: Buffer.byteLength(firstTeamAnalysisDb9Json, "utf8"),
         semanticPromotionCount: 0, runtimeIdentityResolutionCount: teamAnalysisDb9Dataset.runtimeIdentityResolutionCount, sourceDatabaseSha256: before.sha256, sourceDb8Sha256: sha256(teamAnalysisDb8Gzip), nativeRuntimeSha256: nativeBefore.sha256, nativeRuntimeLayoutSha256: nativeLayoutSha256,
         coverageFile: "team-analysis-db9-coverage.json", reportFile: "team-analysis-db9-report.md", goldenValidationFile: "team-analysis-db9-golden-validation.json" };
+    const teamAnalysisDb10Manifest: DatabaseTeamAnalysisDb10ArtifactManifest = { schemaVersion: 1, contractVersion: "0.9.0", generatedAt: options.generatedAt,
+        fileName: "team-analysis-db10-semantic-evidence.json.gz", compression: "gzip", sha256: sha256(teamAnalysisDb10Gzip), sizeBytes: teamAnalysisDb10Gzip.byteLength, uncompressedSizeBytes: Buffer.byteLength(firstTeamAnalysisDb10Json, "utf8"),
+        semanticPromotionCount: 3, promotedOccurrenceCount: teamAnalysisDb10Dataset.promotedOccurrenceCount, sourceDatabaseSha256: before.sha256,
+        sourceDb8Sha256: sha256(teamAnalysisDb8Gzip), sourceDb9Sha256: sha256(teamAnalysisDb9Gzip), nativeRuntimeSha256: nativeBefore.sha256, nativeSemanticsLayoutSha256: nativeSemanticsSha256,
+        coverageFile: "team-analysis-db10-coverage.json", reportFile: "team-analysis-db10-report.md", goldenValidationFile: "team-analysis-db10-golden-validation.json" };
 
     const after = await fingerprint(options.databasePath);
     const nativeAfter = await fingerprint(options.nativeRuntimePath);
@@ -495,8 +517,13 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
         writeFile(resolve(options.outputDir, teamAnalysisDb9Manifest.coverageFile), `${JSON.stringify(teamAnalysisDb9Coverage, null, 2)}\n`, "utf8"),
         writeFile(resolve(options.outputDir, teamAnalysisDb9Manifest.reportFile), teamAnalysisDb9Report, "utf8"),
         writeFile(resolve(options.outputDir, teamAnalysisDb9Manifest.goldenValidationFile), `${JSON.stringify(teamAnalysisDb9Goldens, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb10Manifest.fileName), teamAnalysisDb10Gzip),
+        writeFile(resolve(options.outputDir, "team-analysis-db10-manifest.json"), `${JSON.stringify(teamAnalysisDb10Manifest, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb10Manifest.coverageFile), `${JSON.stringify(teamAnalysisDb10Coverage, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb10Manifest.reportFile), teamAnalysisDb10Report, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb10Manifest.goldenValidationFile), `${JSON.stringify(teamAnalysisDb10Goldens, null, 2)}\n`, "utf8"),
     ]);
-    return { manifest, sourceManifest, teamAnalysisManifest, teamAnalysisDb3Manifest, teamAnalysisDb4Manifest, teamAnalysisDb5Manifest, teamAnalysisDb6Manifest, teamAnalysisDb7Manifest, teamAnalysisDb8Manifest, teamAnalysisDb9Manifest, outputDir: options.outputDir, deterministicRebuildSha256: sha256(secondGzip) };
+    return { manifest, sourceManifest, teamAnalysisManifest, teamAnalysisDb3Manifest, teamAnalysisDb4Manifest, teamAnalysisDb5Manifest, teamAnalysisDb6Manifest, teamAnalysisDb7Manifest, teamAnalysisDb8Manifest, teamAnalysisDb9Manifest, teamAnalysisDb10Manifest, outputDir: options.outputDir, deterministicRebuildSha256: sha256(secondGzip) };
 }
 
 async function main() {
@@ -512,6 +539,7 @@ async function main() {
         teamAnalysisDb7Artifact: result.teamAnalysisDb7Manifest,
         teamAnalysisDb8Artifact: result.teamAnalysisDb8Manifest,
         teamAnalysisDb9Artifact: result.teamAnalysisDb9Manifest,
+        teamAnalysisDb10Artifact: result.teamAnalysisDb10Manifest,
         sourceSha256: result.sourceManifest.sha256,
         deterministicRebuildSha256: result.deterministicRebuildSha256,
     }, null, 2));

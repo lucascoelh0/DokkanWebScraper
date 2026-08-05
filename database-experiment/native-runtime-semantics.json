@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "payloadLayout": {
+    "containerOffset": 8,
+    "elementSizeBytes": 4,
+    "indexColumns": ["cau_val1", "cau_val2", "cau_val3"],
+    "constructorSymbol": "_ZN14SkillCausalityC1Eiiii",
+    "constructorVma": 46457368,
+    "constructorSizeBytes": 636,
+    "constructorCodeSha256": "88658544bbf49bbbbef71b4ff961adb30dc1da38ec949111f5c750c5a27bf9d2",
+    "rowConstructorSymbol": "_ZN14SkillCausalityC1EPN7SQLite33RowE",
+    "rowConstructorVma": 46456188,
+    "rowConstructorSizeBytes": 1180,
+    "rowConstructorCodeSha256": "c81a17636c289911f497c3a863c99151b7166274b628b87a22cde02bde0733dc"
+  },
+  "handlers": [
+    {
+      "causalityType": 3,
+      "symbol": "_ZN20AbilityCausalityFunc12isOverEnergyERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE",
+      "vma": 64181168,
+      "sizeBytes": 268,
+      "codeSha256": "43137e4626c427c0a20db6bde08adec9e6bdb5e3d1fbfbd4dad0d1a4a057e668",
+      "status": "partial",
+      "operation": "runtime_gauge_ratio_threshold",
+      "comparator": "gte",
+      "parameterReads": ["cau_val1"],
+      "ignoredParameters": ["cau_val2", "cau_val3"],
+      "valueExpression": "trunc(runtime_gauge_value / unnamed_virtual_denominator * 100)",
+      "gate": null,
+      "unknowns": ["runtime_metric_identity", "denominator_identity", "threshold_unit"]
+    },
+    {
+      "causalityType": 43,
+      "symbol": "_ZN20AbilityCausalityFunc14isDodgeSuccessERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE",
+      "vma": 64197112,
+      "sizeBytes": 212,
+      "codeSha256": "db195aaab5be668ca3371e01aeefe786d67112fce4845605ce6b1eca099196b4",
+      "status": "supported",
+      "operation": "dodge_success",
+      "comparator": "eq_true",
+      "parameterReads": [],
+      "ignoredParameters": ["cau_val1", "cau_val2", "cau_val3"],
+      "valueExpression": "ability_status_causality.dodge_success_flag",
+      "gate": null,
+      "unknowns": []
+    },
+    {
+      "causalityType": 51,
+      "symbol": "_ZN20AbilityCausalityFunc30isUnderTurnCountFromAppearanceERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE",
+      "vma": 64201368,
+      "sizeBytes": 192,
+      "codeSha256": "102555b80f2a492d7049c6a8ef23fe6d7ba0d264e1ba2eb60b7a5c18aef2faa3",
+      "status": "supported",
+      "operation": "turns_from_appearance",
+      "comparator": "lte",
+      "parameterReads": ["cau_val1"],
+      "ignoredParameters": ["cau_val2", "cau_val3"],
+      "valueExpression": "appearance_turn_count",
+      "gate": "appearance_initialized",
+      "unknowns": []
+    },
+    {
+      "causalityType": 55,
+      "symbol": "_ZN20AbilityCausalityFunc29isOverTurnCountFromAppearanceERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE",
+      "vma": 64202148,
+      "sizeBytes": 192,
+      "codeSha256": "bd771a7d5a8ce64a7db3c278c4c9ecb02cc61d3ca2c0aa6d8c3022a15cfbc150",
+      "status": "supported",
+      "operation": "turns_from_appearance",
+      "comparator": "gt",
+      "parameterReads": ["cau_val1"],
+      "ignoredParameters": ["cau_val2", "cau_val3"],
+      "valueExpression": "appearance_turn_count",
+      "gate": "appearance_initialized",
+      "unknowns": []
+    }
+  ]
+}

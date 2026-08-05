@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    { "name": "runtime gauge remains partial", "causalityType": 3, "status": "partial", "comparator": "gte", "occurrenceCount": 1262, "parameterReads": ["cau_val1"], "ignoredParameters": ["cau_val2", "cau_val3"], "requiredUnknown": "threshold_unit" },
+    { "name": "dodge success ignores tuple", "causalityType": 43, "status": "supported", "comparator": "eq_true", "occurrenceCount": 184, "parameterReads": [], "ignoredParameters": ["cau_val1", "cau_val2", "cau_val3"] },
+    { "name": "appearance turn inclusive under", "causalityType": 51, "status": "supported", "comparator": "lte", "occurrenceCount": 373, "parameterReads": ["cau_val1"], "ignoredParameters": ["cau_val2", "cau_val3"], "gate": "appearance_initialized" },
+    { "name": "appearance turn strict over", "causalityType": 55, "status": "supported", "comparator": "gt", "occurrenceCount": 344, "parameterReads": ["cau_val1"], "ignoredParameters": ["cau_val2", "cau_val3"], "gate": "appearance_initialized" }
+  ]
+}

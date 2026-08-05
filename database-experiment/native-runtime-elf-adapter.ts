@@ -2,7 +2,7 @@ import { readFile } from "fs/promises";
 
 export interface ElfSymbol { name: string, value: number, size: number }
 export interface ElfRelocation { offset: number, type: number, symbolName?: string, symbolValue?: number, addend: number }
-export interface NativeRuntimeElfInspection { elfClass: 64, endian: "little", machine: 183, symbols: ElfSymbol[], relocations: ElfRelocation[], readVirtualUint64(vma: number): bigint }
+export interface NativeRuntimeElfInspection { elfClass: 64, endian: "little", machine: 183, symbols: ElfSymbol[], relocations: ElfRelocation[], readVirtualBytes(vma: number, size: number): Buffer, readVirtualUint64(vma: number): bigint }
 
 function number(value: bigint, label: string): number {
     const parsed = Number(value); if (!Number.isSafeInteger(parsed)) throw new Error(`${label} exceeds JavaScript safe integer range`); return parsed;
@@ -40,12 +40,14 @@ export function parseNativeRuntimeElf(buffer: Buffer): NativeRuntimeElfInspectio
             relocations.push({ offset: relocationOffset, type, symbolName: symbol?.name || undefined, symbolValue: symbol?.value, addend: number(buffer.readBigInt64LE(offset + 16), "relocation addend") });
         }
     }
-    const readVirtualUint64 = (vma: number): bigint => {
-        const section = named.find(value => value.type !== 8 && vma >= value.address && vma + 8 <= value.address + value.size);
-        if (!section) throw new Error(`Dispatch slot VMA 0x${vma.toString(16)} is not file-backed`);
-        return buffer.readBigUInt64LE(section.offset + vma - section.address);
+    const readVirtualBytes = (vma: number, size: number): Buffer => {
+        if (!Number.isSafeInteger(vma) || !Number.isSafeInteger(size) || size < 0) throw new Error("Invalid virtual byte range");
+        const section = named.find(value => value.type !== 8 && vma >= value.address && vma + size <= value.address + value.size);
+        if (!section) throw new Error(`Native VMA range 0x${vma.toString(16)}+${size} is not file-backed`);
+        return buffer.subarray(section.offset + vma - section.address, section.offset + vma - section.address + size);
     };
-    return { elfClass: 64, endian: "little", machine: 183, symbols, relocations, readVirtualUint64 };
+    const readVirtualUint64 = (vma: number): bigint => readVirtualBytes(vma, 8).readBigUInt64LE();
+    return { elfClass: 64, endian: "little", machine: 183, symbols, relocations, readVirtualBytes, readVirtualUint64 };
 }
 
 export async function inspectNativeRuntimeElf(path: string): Promise<NativeRuntimeElfInspection> {
