@@ -1,7 +1,7 @@
-export const COMBAT_RULES_SCHEMA_VERSION = 1;
-export const COMBAT_RULES_VERSION = "1.0.0";
-export const COMBAT_RULES_GENERATED_AT = "2026-08-04T00:00:00.000Z";
-export const COMBAT_RULES_EVIDENCE_POLICY_VERSION = "1";
+export const COMBAT_RULES_SCHEMA_VERSION = 2;
+export const COMBAT_RULES_VERSION = "1.1.0";
+export const COMBAT_RULES_GENERATED_AT = "2026-08-04T12:00:00.000Z";
+export const COMBAT_RULES_EVIDENCE_POLICY_VERSION = "2";
 export const COMPATIBLE_TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const MINIMUM_TEAM_ANALYSIS_PARSER_VERSION = "1.7.1";
 export const REQUIRED_TEAM_ANALYSIS_CAPABILITIES = ["sa-stat-raise-lifecycle-v1"] as const;
@@ -11,6 +11,7 @@ export const COMPATIBLE_TEAM_ANALYSIS_RULES_VERSION_RANGE = {
 } as const;
 
 export type CombatRuleStatus = "verified" | "corroborated" | "candidate";
+export type CombatRuleConsumptionPolicy = "normative" | "explicit_assumption_required" | "return_unknown";
 export type CombatRuleChannel =
     | "atk_pipeline"
     | "def_pipeline"
@@ -35,6 +36,7 @@ export type CombatRuleUnit =
     | "percent"
     | "probability"
     | "probability_per_level"
+    | "percent_points_per_level"
     | "turns"
     | "damage"
     | "ordered_stages"
@@ -44,6 +46,7 @@ export type CombatRuleUnit =
     | "none";
 export type CombatEvidenceSource =
     | "first_party_export"
+    | "first_party_game_db_table"
     | "first_party_structural_join"
     | "reproducible_fixture"
     | "community_guide"
@@ -95,6 +98,13 @@ export interface CombatRuleRounding {
     notes?: string;
 }
 
+export interface CombatRuleStructuralException {
+    id: string;
+    kind: "exclude" | "override" | "conflict";
+    structuralKeys: string[];
+    notes: string;
+}
+
 export interface CombatPipelineStep {
     id: string;
     order: number;
@@ -123,13 +133,17 @@ export interface CombatRule {
     version: string;
     status: CombatRuleStatus;
     normative: boolean;
+    consumptionPolicy: Exclude<CombatRuleConsumptionPolicy, "return_unknown">;
     value: CombatRuleValue;
     unit: CombatRuleUnit;
-    applicationOrder?: CombatRuleOrder;
-    rounding?: CombatRuleRounding;
+    dimensions: string[];
+    applicationOrder: CombatRuleOrder;
+    rounding: CombatRuleRounding;
     provenance: CombatRuleProvenance[];
     evidenceLevel: CombatEvidenceLevel;
     structuralReferences: string[];
+    structuralExceptions: CombatRuleStructuralException[];
+    requiredRuntimeInputs: string[];
     compatibilityNotes: string[];
     risk: "low" | "medium" | "high";
 }
@@ -140,10 +154,16 @@ export interface UnresolvedCombatRule {
     version: string;
     status: "unresolved";
     normative: false;
+    consumptionPolicy: "return_unknown";
+    dimensions: string[];
+    applicationOrder: CombatRuleOrder;
+    rounding: CombatRuleRounding;
     requiredEvidence: string;
     blockedOutputs: string[];
     provenance: CombatRuleProvenance[];
     structuralReferences: string[];
+    structuralExceptions: CombatRuleStructuralException[];
+    requiredRuntimeInputs: string[];
     compatibilityNotes: string[];
     risk: "medium" | "high";
 }
@@ -188,6 +208,7 @@ export interface CombatRulesValidationIssue {
 }
 
 const GLOBAL_EXPORT = "game-db/data/game-db-acquisition/first-party/latest/metadata.json";
+const GLOBAL_GAME_DB = "game-db/data/game-db-acquisition/downloads/emulator-assets-sqlite-current-en/database.decrypted.sqlite";
 const TEAM_CONTRACT = "docs/specs/team-builder-analysis-contract.md";
 const ROADMAP = "docs/specs/combat-calculation-roadmap.md";
 const A7_AUDIT = "docs/specs/team-analysis-gate-a7-audit.md";
@@ -222,11 +243,33 @@ const firstPartyJoin = (id: string, supports: CombatEvidenceSupport[], reference
         notes,
     });
 
+const firstPartyTable = (id: string, supports: CombatEvidenceSupport[], locator: string, notes: string) =>
+    provenance(id, "first_party_game_db_table", "direct", GLOBAL_GAME_DB, supports, {
+        snapshotVersion: "db-1782367825/asset-1782367204",
+        locator,
+        notes,
+    });
+
+type CombatRuleDraft = Omit<CombatRule, "consumptionPolicy" | "dimensions" | "applicationOrder" | "rounding" | "structuralExceptions" | "requiredRuntimeInputs">
+    & Partial<Pick<CombatRule, "dimensions" | "applicationOrder" | "rounding" | "structuralExceptions" | "requiredRuntimeInputs">>;
+
+function finalizeRule(rule: CombatRuleDraft): CombatRule {
+    return {
+        ...rule,
+        consumptionPolicy: rule.status === "verified" ? "normative" : "explicit_assumption_required",
+        dimensions: rule.dimensions ?? [],
+        applicationOrder: rule.applicationOrder ?? { status: "unresolved", notes: "No application order is asserted by this rule." },
+        rounding: rule.rounding ?? { status: "unresolved", mode: "unresolved", boundaries: [], notes: "No rounding boundary is asserted by this rule." },
+        structuralExceptions: rule.structuralExceptions ?? [],
+        requiredRuntimeInputs: rule.requiredRuntimeInputs ?? [],
+    };
+}
+
 export function buildCombatRulesDataset(options: {
     generatedAt?: string;
     combatRulesVersion?: string;
 } = {}): CombatRulesDataset {
-    const rules: CombatRule[] = [
+    const ruleDrafts: CombatRuleDraft[] = [
         {
             id: "compat.sa-stat-raise-lifecycle",
             channel: "compatibility",
@@ -316,11 +359,230 @@ export function buildCombatRulesDataset(options: {
         },
         ...hiddenPotentialRules(),
         {
+            id: "super-attack.first-party-coefficient-fields",
+            channel: "super_attack",
+            version: "1",
+            status: "verified",
+            normative: true,
+            dimensions: ["resolved_super_attack_definition", "super_attack_skill_level"],
+            value: {
+                kind: "structured",
+                fields: {
+                    exactSelection: "resolved_super_attack_definition",
+                    initialCoefficientInput: "resolved_initial_coefficient_percent_points",
+                    perLevelCoefficientInput: "resolved_per_level_coefficient_percent_points",
+                    resultingMultiplierFormula: "unresolved",
+                },
+            },
+            unit: "none",
+            applicationOrder: { status: "unresolved", notes: "The tables expose inputs but not the formula or application bucket." },
+            rounding: { status: "unresolved", mode: "unresolved", boundaries: [] },
+            provenance: [
+                firstPartyTable("global-special-set-coefficients", ["identity", "structure", "value"], "card_specials.special_set_id; special_sets.id,increase_rate,lv_bonus", "All 19,142 card_special rows join an exact special_set row in the audited snapshot."),
+            ],
+            evidenceLevel: "direct",
+            structuralReferences: ["card_specials.special_set_id", "special_sets.id", "special_sets.increase_rate", "special_sets.lv_bonus"],
+            structuralExceptions: [
+                { id: "noncanonical-tier-coefficients", kind: "override", structuralKeys: ["special_sets.id", "special_sets.increase_rate", "special_sets.lv_bonus"], notes: "The exact row overrides any textual tier default; many descriptions share a tier while using different coefficients." },
+            ],
+            requiredRuntimeInputs: ["superAttackSkillLevel"],
+            compatibilityNotes: ["Consumers must use the exact joined record and must not derive coefficients from animation or tier text."],
+            risk: "low",
+        },
+        {
+            id: "super-attack.canonical-tier-increase-rate",
+            channel: "super_attack",
+            version: "1",
+            status: "candidate",
+            normative: false,
+            dimensions: ["damage_tier"],
+            value: {
+                kind: "mapping",
+                dimensions: ["damage_tier"],
+                completeness: "partial",
+                entries: [
+                    { key: ["huge"], amount: 100 },
+                    { key: ["extreme"], amount: 120 },
+                    { key: ["supreme"], amount: 150 },
+                    { key: ["immense"], amount: 180 },
+                    { key: ["colossal"], amount: 200 },
+                    { key: ["mega_colossal"], amount: 250 },
+                    { key: ["destructive"], amount: 100 },
+                ],
+            },
+            unit: "mapping",
+            applicationOrder: { status: "unresolved", notes: "The meaning of increase_rate in the final multiplier remains unresolved." },
+            rounding: { status: "unresolved", mode: "unresolved", boundaries: [] },
+            provenance: [
+                firstPartyTable("global-special-set-tier-modes", ["structure", "value", "conflict"], "special_sets.description,increase_rate grouped by damage wording", "These are the modal values, not universal tier constants; the same wording has explicit counterexamples."),
+                communityCalculationGuide("ultimate-sa-tier-table", ["corroboration"], "Super Attack multipliers"),
+            ],
+            evidenceLevel: "direct",
+            structuralReferences: ["special_sets.description", "special_sets.increase_rate"],
+            structuralExceptions: [
+                { id: "tier-wording-not-identity", kind: "exclude", structuralKeys: ["special_sets.id=114", "special_sets.id=614", "special_sets.id=847", "special_sets.id=1440", "special_sets.id=2206"], notes: "Representative rows whose numeric value differs from the modal value for their wording." },
+                { id: "ultimate-not-stable", kind: "exclude", structuralKeys: ["special_sets.id=8226", "special_sets.id=8242", "special_sets.id=8274", "special_sets.id=8293", "special_sets.id=8344"], notes: "Ultimate wording has multiple first-party values and no canonical entry here." },
+            ],
+            requiredRuntimeInputs: [],
+            compatibilityNotes: ["Partial candidate metadata cannot be used as a fallback for a missing special_set join."],
+            risk: "high",
+        },
+        {
+            id: "super-attack.canonical-tier-level-bonus",
+            channel: "super_attack",
+            version: "1",
+            status: "candidate",
+            normative: false,
+            dimensions: ["damage_tier"],
+            value: {
+                kind: "mapping",
+                dimensions: ["damage_tier"],
+                completeness: "partial",
+                entries: [
+                    { key: ["huge"], amount: 10 },
+                    { key: ["extreme"], amount: 15 },
+                    { key: ["supreme"], amount: 20 },
+                    { key: ["immense"], amount: 25 },
+                    { key: ["colossal"], amount: 5 },
+                    { key: ["mega_colossal"], amount: 10 },
+                    { key: ["destructive"], amount: 10 },
+                ],
+            },
+            unit: "percent_points_per_level",
+            applicationOrder: { status: "unresolved", notes: "Neither the level origin nor the formula is promoted." },
+            rounding: { status: "unresolved", mode: "unresolved", boundaries: [] },
+            provenance: [firstPartyTable("global-special-set-level-bonus-modes", ["structure", "value", "conflict"], "special_sets.description,lv_bonus grouped by damage wording", "The values are modal source fields and include first-party exceptions.")],
+            evidenceLevel: "direct",
+            structuralReferences: ["special_sets.description", "special_sets.lv_bonus"],
+            structuralExceptions: [
+                { id: "tier-level-bonus-exceptions", kind: "exclude", structuralKeys: ["special_sets.id=761", "special_sets.id=1633", "special_sets.id=214", "special_sets.id=2813", "special_sets.id=7504"], notes: "Representative rows demonstrate that tier wording alone does not universally determine lv_bonus." },
+            ],
+            requiredRuntimeInputs: ["superAttackSkillLevel"],
+            compatibilityNotes: ["This candidate mapping does not authorize multiplier calculation."],
+            risk: "high",
+        },
+        {
+            id: "super-attack.level-progression-formula",
+            channel: "super_attack",
+            version: "1",
+            status: "candidate",
+            normative: false,
+            dimensions: ["resolved_super_attack_definition", "super_attack_skill_level", "active_special_bonus", "hidden_potential_super_attack_boost_level"],
+            value: {
+                kind: "formula",
+                expression: "candidate_multiplier_percent = 100 + increase_rate + lv_bonus * (super_attack_skill_level - 1) + active_special_bonus + hidden_potential_super_attack_boost_value",
+                variables: ["increase_rate", "lv_bonus", "super_attack_skill_level", "active_special_bonus", "hidden_potential_super_attack_boost_value"],
+            },
+            unit: "formula",
+            applicationOrder: { status: "candidate", notes: "Community calculations corroborate addition, but first-party table names do not prove this executable order." },
+            rounding: { status: "unresolved", mode: "unresolved", boundaries: [] },
+            provenance: [
+                firstPartyTable("global-sa-formula-inputs", ["structure", "value"], "special_sets.increase_rate,lv_bonus; special_bonuses.eff_value1; potential_skill_lv_values.value", "The inputs are direct; their combination is not."),
+                communityCalculationGuide("ultimate-sa-level-formula", ["value", "order"], "Super Attack multipliers"),
+            ],
+            evidenceLevel: "corroborating",
+            structuralReferences: ["special_sets.increase_rate", "special_sets.lv_bonus", "card_specials.special_bonus_id", "potential_skill_lv_values.value"],
+            structuralExceptions: [
+                { id: "application-formula-unverified", kind: "conflict", structuralKeys: ["special_sets.id", "card_specials.special_bonus_id"], notes: "No first-party executable formula or reproducible in-game fixture proves the complete expression." },
+            ],
+            requiredRuntimeInputs: ["superAttackSkillLevel", "hiddenPotentialSuperAttackBoostLevel"],
+            compatibilityNotes: ["Must remain disabled unless a consumer explicitly opts into candidate assumptions."],
+            risk: "high",
+        },
+        {
+            id: "super-attack.skill-level-cap-source",
+            channel: "super_attack",
+            version: "1",
+            status: "verified",
+            normative: true,
+            dimensions: ["exact_card_release_state", "awakening_growth_step"],
+            value: {
+                kind: "structured",
+                fields: {
+                    cardCapInput: "resolved_release_skill_level_cap",
+                    growthCapInput: "resolved_awakening_growth_skill_level_cap",
+                    resolution: "use_exact_release_state_record",
+                    ezaSezaClassification: "unresolved",
+                },
+            },
+            unit: "none",
+            applicationOrder: { status: "unresolved", notes: "A cap constrains input validity and is not a combat calculation stage." },
+            rounding: { status: "unresolved", mode: "unresolved", boundaries: [] },
+            provenance: [firstPartyTable("global-sa-level-caps", ["identity", "structure", "value"], "cards.rarity,skill_lv_max,optimal_awakening_grow_type; optimal_awakening_growths.step,skill_lv_max", "The snapshot exposes exact caps 10, 15, 20 and 25 on cards and step-specific growth caps, but no EZA/SEZA enum.")],
+            evidenceLevel: "direct",
+            structuralReferences: ["cards.skill_lv_max", "cards.optimal_awakening_grow_type", "optimal_awakening_growths.step", "optimal_awakening_growths.skill_lv_max"],
+            structuralExceptions: [
+                { id: "rarity-does-not-determine-cap", kind: "exclude", structuralKeys: ["cards.rarity=3", "cards.rarity=4", "cards.rarity=5"], notes: "Each listed rarity has more than one observed cap; rarity-only inference is invalid." },
+            ],
+            requiredRuntimeInputs: ["resolvedCharacterReleaseState", "superAttackSkillLevel"],
+            compatibilityNotes: ["EZA and SEZA labels remain unresolved; consumers resolve the exact source record rather than infer a cap from a label."],
+            risk: "low",
+        },
+        {
+            id: "super-attack.first-party-effect-row-selection",
+            channel: "super_attack",
+            version: "1",
+            status: "verified",
+            normative: true,
+            dimensions: ["resolved_super_attack_definition", "effect_type", "effect_channel"],
+            value: {
+                kind: "structured",
+                fields: {
+                    definitionJoin: "resolved_super_attack_definition_to_all_matching_effect_definitions",
+                    identityConstraint: "same_super_attack_definition_identity",
+                    selection: "filter_matching_effect_type_target_and_efficacy_channel",
+                },
+            },
+            unit: "none",
+            applicationOrder: { status: "unresolved", notes: "Source-row selection precedes rule decoding but does not assert a combat calculation order." },
+            rounding: { status: "unresolved", mode: "unresolved", boundaries: [] },
+            provenance: [firstPartyTable("global-special-effect-row-join", ["identity", "structure", "value"], "card_specials.special_set_id = specials.special_set_id; specials.id,type,efficacy_type,target_type,calc_option", "The exact one-to-many join retains all effect rows for the resolved Super Attack definition; effect type/channel filters select the applicable numeric row without using display text.")],
+            evidenceLevel: "direct",
+            structuralReferences: ["card_specials.special_set_id", "specials.special_set_id", "specials.id", "specials.type", "specials.efficacy_type", "specials.target_type", "specials.calc_option"],
+            structuralExceptions: [
+                { id: "one-to-many-effect-set", kind: "exclude", structuralKeys: ["specials.special_set_id", "specials.id"], notes: "A Super Attack definition can have multiple effect rows; selecting an arbitrary first row is forbidden." },
+            ],
+            requiredRuntimeInputs: [],
+            compatibilityNotes: ["Team Analysis must expose the resolved source effect identity before numeric raise values can be consumed."],
+            risk: "low",
+        },
+        {
+            id: "super-attack.first-party-stat-raise-values",
+            channel: "super_attack",
+            version: "1",
+            status: "verified",
+            normative: true,
+            dimensions: ["effect_record", "affected_stats", "duration_turns"],
+            value: {
+                kind: "structured",
+                fields: {
+                    atk: "resolved_atk_raise_percent",
+                    def: "resolved_def_raise_percent",
+                    atkAndDef: "resolved_atk_and_def_raise_percent_pair",
+                    duration: "resolved_duration_turns",
+                    selection: "super-attack.first-party-effect-row-selection",
+                },
+            },
+            unit: "percent",
+            applicationOrder: { status: "unresolved", notes: "The table resolves effect magnitudes and duration, not their combat bucket order." },
+            rounding: { status: "unresolved", mode: "unresolved", boundaries: [] },
+            provenance: [firstPartyTable("global-special-stat-raises", ["identity", "structure", "value"], "specials.type='Special::NormalEfficacySpecial', efficacy_type IN (1,2,3), target_type=1, calc_option=2, turn,eff_value1,eff_value2", "Joined descriptions and numeric columns distinguish ATK, DEF, ATK & DEF, finite duration and turn=99 persistent records.")],
+            evidenceLevel: "direct",
+            structuralReferences: ["super-attack.first-party-effect-row-selection", "specials.special_set_id", "specials.efficacy_type", "specials.target_type", "specials.calc_option", "specials.turn", "specials.eff_value1", "specials.eff_value2"],
+            structuralExceptions: [
+                { id: "exact-row-over-wording", kind: "override", structuralKeys: ["specials.id", "special_sets.id"], notes: "Explicit percentages and unequal ATK/DEF values override qualitative wording; no universal word-to-number fallback is allowed." },
+            ],
+            requiredRuntimeInputs: [],
+            compatibilityNotes: ["Preserves sa-stat-raise-lifecycle-v1; Team Analysis must add numeric source fields before a consumer can use this rule."],
+            risk: "low",
+        },
+        {
             id: "super-attack.qualitative-stat-raise-mapping",
             channel: "super_attack",
             version: "1",
             status: "candidate",
             normative: false,
+            dimensions: ["qualitative_term", "affected_stats", "duration_family", "explicit_numeric_override"],
             value: {
                 kind: "mapping",
                 dimensions: ["magnitude", "affected_stats", "duration_family"],
@@ -335,9 +597,16 @@ export function buildCombatRulesDataset(options: {
                 ],
             },
             unit: "mapping",
-            provenance: [firstPartyJoin("a7-special-text-joins", ["identity", "structure"], A7_AUDIT, "§3 First-party cross-check", "1,913/1,922 attacks join exact first-party text/identity, but no numeric effect table is exposed."), communityCalculationGuide("ultimate-sa-raise-terms", ["value"], "Super Attack Effect Raises")],
+            applicationOrder: { status: "unresolved", notes: "The mapping resolves candidate magnitudes only." },
+            rounding: { status: "unresolved", mode: "unresolved", boundaries: [] },
+            provenance: [firstPartyTable("global-qualitative-raise-cross-check", ["structure", "value", "conflict"], "special_sets.description -> specials by special_set_id", "Canonical rows corroborate the listed values, while explicit numeric and mixed-stat rows prove the mapping is partial."), communityCalculationGuide("ultimate-sa-raise-terms", ["value"], "Super Attack Effect Raises")],
             evidenceLevel: "corroborating",
             structuralReferences: ["SuperAttackEffect.magnitude", "SuperAttackEffect.duration", "SuperAttackEffect.target"],
+            structuralExceptions: [
+                { id: "explicit-numeric-raise", kind: "override", structuralKeys: ["specials.id", "specials.eff_value1", "specials.eff_value2"], notes: "Exact first-party numeric values override qualitative wording." },
+                { id: "mixed-stat-raise", kind: "exclude", structuralKeys: ["specials.efficacy_type=3", "specials.eff_value1!=specials.eff_value2"], notes: "ATK and DEF must remain separate dimensions when values differ." },
+            ],
+            requiredRuntimeInputs: [],
             compatibilityNotes: ["Partial mapping must never be used as a universal fallback.", "Gate A7.1 lifecycle is unchanged."],
             risk: "high",
         },
@@ -347,12 +616,19 @@ export function buildCombatRulesDataset(options: {
             version: "1",
             status: "candidate",
             normative: false,
+            dimensions: ["raised_stats", "duration_family", "super_attack_ordinal", "structural_exception"],
             value: { kind: "formula", expression: "adjusted_sa_multiplier = base_sa_multiplier - persistent_atk_raise_per_application", variables: ["base_sa_multiplier", "persistent_atk_raise_per_application"] },
             unit: "formula",
             applicationOrder: { status: "candidate", notes: "Candidate penalty applies before the first persistent ATK raise contributes." },
+            rounding: { status: "unresolved", mode: "unresolved", boundaries: [] },
             provenance: [communityCalculationGuide("ultimate-atk-stack-penalty", ["value", "order", "conflict"], "Attack Stacking")],
             evidenceLevel: "corroborating",
             structuralReferences: ["SuperAttackEffect.kind=atk_raise", "SuperAttackEffect.duration=permanent"],
+            structuralExceptions: [
+                { id: "community-exception-special-sets", kind: "override", structuralKeys: ["special_sets.id=114", "special_sets.id=288", "special_sets.id=435"], notes: "The first-party rows carry 67-point persistent ATK raises while the community source reports a 50-point penalty; no reproducible fixture proves the override." },
+                { id: "def-only-no-penalty", kind: "exclude", structuralKeys: ["specials.efficacy_type=2"], notes: "The claim concerns persistent ATK, not DEF-only raises." },
+            ],
+            requiredRuntimeInputs: ["superAttackOrdinalInStackLifecycle"],
             compatibilityNotes: ["Known community-described exceptions prevent universal application."],
             risk: "high",
         },
@@ -478,8 +754,13 @@ export function buildCombatRulesDataset(options: {
         },
     ];
 
+    const rules = ruleDrafts.map(finalizeRule);
+
     const unresolvedRules: UnresolvedCombatRule[] = [
-        unresolved("super-attack.base-and-level-progression", "super_attack", "First-party or reproducible tables for base multiplier and level progression across Super, Ultra, Unit and EX.", ["exact ATK stat", "damage dealt"], ["ParsedSuperAttack.variant", "ParsedSuperAttack.ki"]),
+        unresolved("super-attack.base-and-level-progression", "super_attack", "An extractable first-party formula or reproducible in-game fixtures proving how increase_rate, lv_bonus, level origin and bonuses combine.", ["exact Super Attack multiplier", "exact ATK stat", "damage dealt"], ["special_sets.increase_rate", "special_sets.lv_bonus", "runtime.superAttackSkillLevel"]),
+        unresolved("super-attack.variant-selection", "super_attack", "A first-party enum/join proving how Normal, Hyper, Condition, Extra and FullPower source styles map to Super, Ultra, Unit and EX variants, including Ki thresholds.", ["exact Super/Ultra/Unit/EX multiplier selection"], ["card_specials.style", "card_specials.eball_num_start", "ParsedSuperAttack.variant", "ParsedSuperAttack.ki"]),
+        unresolved("super-attack.release-state-eza-seza", "super_attack", "A first-party release-state discriminator that joins regular, EZA and SEZA states to the applicable special_set and skill-level cap.", ["exact EZA/SEZA multiplier", "exact EZA/SEZA level cap"], ["cards.skill_lv_max", "cards.optimal_awakening_grow_type", "optimal_awakening_growths.step", "card_specials.special_set_id"]),
+        unresolved("super-attack.special-bonus-application", "super_attack", "An extractable first-party formula or reproduced fixtures proving when special_bonuses values enter the multiplier and whether they are additive.", ["exact level-threshold multiplier", "exact ATK stat"], ["card_specials.special_bonus_id", "card_specials.lv", "special_bonuses.eff_value1"]),
         unresolved("super-attack.qualitative-mapping-exceptions", "super_attack", "First-party effect values or exhaustive reproducible fixtures for every wording/stat/duration combination and exceptions.", ["exact ATK", "exact DEF"], ["SuperAttackEffect.magnitude", "SuperAttackEffect.duration"]),
         unresolved("super-attack.attack-stacking-penalty-exceptions", "super_attack", "Stable structural exception identifiers and reproduced first-hit/next-hit behavior.", ["exact ATK after persistent raises"], ["SuperAttackEffect.kind=atk_raise"]),
         unresolved("type-class.complete-alignment-table", "type_class_alignment", "A complete first-party or reproducible matrix over attacker/defender Class, Type, advantage state and no-Class state.", ["damage dealt", "damage received"], ["Character.class", "Character.type", "runtime.enemyClass", "runtime.enemyType"]),
@@ -507,8 +788,8 @@ export function buildCombatRulesDataset(options: {
     };
 }
 
-function hiddenPotentialRules(): CombatRule[] {
-    return [
+function hiddenPotentialRules(): CombatRuleDraft[] {
+    const probabilityRules: CombatRuleDraft[] = [
         ["hidden-potential.critical-rate", "hidden_potential_critical", 0.02, "Critical"],
         ["hidden-potential.additional-rate", "hidden_potential_additional", 0.02, "Additional"],
         ["hidden-potential.dodge-rate", "hidden_potential_dodge", 0.01, "Dodge"],
@@ -529,6 +810,44 @@ function hiddenPotentialRules(): CombatRule[] {
         compatibilityNotes: [`${label} Hidden Potential rolls remain separate from passive probability channels.`],
         risk: "medium" as const,
     }));
+
+    return [
+        ...probabilityRules,
+        {
+            id: "hidden-potential.super-attack-boost-rate",
+            channel: "super_attack",
+            version: "1",
+            status: "verified",
+            normative: true,
+            dimensions: ["hidden_potential_super_attack_boost_level"],
+            value: { kind: "rate_per_level", amountPerLevel: 5, levelUnit: "hidden_potential_skill_level" },
+            unit: "percent_points_per_level",
+            applicationOrder: {
+                status: "unresolved",
+                notes: "The first-party table proves the level/value lookup, not the exact multiplier bucket or integer-operation order.",
+            },
+            rounding: { status: "unresolved", mode: "unresolved", boundaries: [] },
+            provenance: [
+                firstPartyTable(
+                    "global-potential-sa-boost-values",
+                    ["identity", "structure", "value"],
+                    "potential_skills.id=6; potential_skill_lv_values.potential_skill_id=6, lv=1..50",
+                    "All 50 rows are linear: value = skill level x 5. The first-party description states that additional Super Attack effects do not change.",
+                ),
+                communityCalculationGuide("ultimate-sa-boost", ["corroboration", "order"], "Super Attack Boost Node and Super Attack multipliers"),
+            ],
+            evidenceLevel: "direct",
+            structuralReferences: ["potential_skills.id=6", "potential_skill_lv_values.potential_skill_id=6", "runtime.hiddenPotential.superAttackBoostLevel"],
+            structuralExceptions: [],
+            requiredRuntimeInputs: ["hiddenPotentialSuperAttackBoostLevel"],
+            compatibilityNotes: [
+                "This rule resolves only the first-party level/value lookup.",
+                "The application bucket remains unresolved and must not be inferred from the verified lookup.",
+                "Additional Super Attack effects are explicitly outside this boost.",
+            ],
+            risk: "medium",
+        },
+    ];
 }
 
 function unresolved(
@@ -544,6 +863,10 @@ function unresolved(
         version: "1",
         status: "unresolved",
         normative: false,
+        consumptionPolicy: "return_unknown",
+        dimensions: [...structuralReferences],
+        applicationOrder: { status: "unresolved", notes: "The missing evidence blocks an application-order claim." },
+        rounding: { status: "unresolved", mode: "unresolved", boundaries: [] },
         requiredEvidence,
         blockedOutputs,
         provenance: [
@@ -554,6 +877,8 @@ function unresolved(
             }),
         ],
         structuralReferences,
+        structuralExceptions: [],
+        requiredRuntimeInputs: structuralReferences.filter(reference => reference.startsWith("runtime.")),
         compatibilityNotes: ["Consumers must return unknown or request explicit assumptions."],
         risk: "high",
     };
@@ -616,6 +941,8 @@ export function validateCombatRulesDataset(value: unknown): CombatRulesValidatio
         if (!isEnum(rawRule.status, RULE_STATUSES)) issue("rule-status", `${path}.status`, "Unknown rule status.");
         if (typeof rawRule.normative !== "boolean") issue("rule-normative", `${path}.normative`, "normative must be boolean.");
         if (rawRule.normative !== (rawRule.status === "verified")) issue("normative-status", `${path}.normative`, "Only verified rules may be normative and every verified rule must be normative.");
+        const expectedConsumptionPolicy = rawRule.status === "verified" ? "normative" : "explicit_assumption_required";
+        if (rawRule.consumptionPolicy !== expectedConsumptionPolicy) issue("consumption-policy", `${path}.consumptionPolicy`, "Consumption policy must match verified versus assumption-only status.");
         validateRuleValue(rawRule.value, `${path}.value`, issue);
         if (!isEnum(rawRule.unit, RULE_UNITS)) issue("rule-unit", `${path}.unit`, "Unknown rule unit.");
         else validateValueUnitCompatibility(rawRule.value, rawRule.unit, `${path}.value`, issue);
@@ -632,6 +959,7 @@ export function validateCombatRulesDataset(value: unknown): CombatRulesValidatio
         }
         validateCommonRule(rawRule, path, ids, issue);
         if (rawRule.status !== "unresolved" || rawRule.normative !== false) issue("unresolved-normative", path, "Unresolved rules must be non-normative and have unresolved status.");
+        if (rawRule.consumptionPolicy !== "return_unknown") issue("consumption-policy", `${path}.consumptionPolicy`, "Unresolved rules must require an unknown result.");
         if (!nonEmptyString(rawRule.requiredEvidence)) issue("unresolved-required-evidence", `${path}.requiredEvidence`, "requiredEvidence is required.");
         if (!isNonEmptyStringArray(rawRule.blockedOutputs)) issue("unresolved-blocked-outputs", `${path}.blockedOutputs`, "blockedOutputs must be non-empty.");
     });
@@ -648,8 +976,8 @@ export function assertValidCombatRulesDataset(value: unknown): asserts value is 
 
 const RULE_STATUSES: CombatRuleStatus[] = ["verified", "corroborated", "candidate"];
 const RULE_CHANNELS: CombatRuleChannel[] = ["atk_pipeline", "def_pipeline", "super_attack", "hidden_potential_critical", "hidden_potential_additional", "hidden_potential_dodge", "hidden_potential_type_attack_boost", "hidden_potential_type_defense_boost", "type_class_alignment", "guard", "damage_dealt", "damage_received", "atk_lowering", "damage_reduction", "variance", "minimum_damage", "rounding", "compatibility"];
-const RULE_UNITS: CombatRuleUnit[] = ["coefficient", "percent", "probability", "probability_per_level", "turns", "damage", "ordered_stages", "formula", "mapping", "reference", "none"];
-const EVIDENCE_SOURCES: CombatEvidenceSource[] = ["first_party_export", "first_party_structural_join", "reproducible_fixture", "community_guide", "community_workbook", "versioned_contract", "unresolved"];
+const RULE_UNITS: CombatRuleUnit[] = ["coefficient", "percent", "probability", "probability_per_level", "percent_points_per_level", "turns", "damage", "ordered_stages", "formula", "mapping", "reference", "none"];
+const EVIDENCE_SOURCES: CombatEvidenceSource[] = ["first_party_export", "first_party_game_db_table", "first_party_structural_join", "reproducible_fixture", "community_guide", "community_workbook", "versioned_contract", "unresolved"];
 const EVIDENCE_LEVELS: CombatEvidenceLevel[] = ["direct", "structural", "reproduced", "corroborating", "unresolved"];
 const EVIDENCE_SUPPORTS: CombatEvidenceSupport[] = ["identity", "structure", "value", "order", "rounding", "corroboration", "conflict"];
 
@@ -661,10 +989,32 @@ function validateCommonRule(rawRule: Record<string, unknown>, path: string, ids:
     else ids.add(rawRule.id);
     if (!isEnum(rawRule.channel, RULE_CHANNELS)) issue("rule-channel", `${path}.channel`, "Unknown rule channel.");
     if (!nonEmptyString(rawRule.version)) issue("rule-version", `${path}.version`, "Rule version is required.");
+    if (!isStringArray(rawRule.dimensions)) issue("rule-dimensions", `${path}.dimensions`, "dimensions must be a declared string array.");
+    if (rawRule.applicationOrder === undefined) issue("order-required", `${path}.applicationOrder`, "Every rule must declare application order, including unresolved order.");
+    if (rawRule.rounding === undefined) issue("rounding-required", `${path}.rounding`, "Every rule must declare rounding, including unresolved rounding.");
     validateProvenance(rawRule.provenance, `${path}.provenance`, issue);
     if (!isNonEmptyStringArray(rawRule.structuralReferences)) issue("structural-references", `${path}.structuralReferences`, "At least one structural reference is required.");
     if (!isNonEmptyStringArray(rawRule.compatibilityNotes)) issue("compatibility-notes", `${path}.compatibilityNotes`, "At least one compatibility note is required.");
+    validateStructuralExceptions(rawRule.structuralExceptions, `${path}.structuralExceptions`, issue);
+    if (!isStringArray(rawRule.requiredRuntimeInputs)) issue("runtime-inputs", `${path}.requiredRuntimeInputs`, "requiredRuntimeInputs must be a declared string array.");
     if (!isEnum(rawRule.risk, ["low", "medium", "high"])) issue("rule-risk", `${path}.risk`, "Unknown risk.");
+}
+
+function validateStructuralExceptions(raw: unknown, path: string, issue: (code: string, path: string, message: string) => void): void {
+    if (!Array.isArray(raw)) {
+        issue("structural-exceptions", path, "structuralExceptions must be an array.");
+        return;
+    }
+    raw.forEach((entry, index) => {
+        const entryPath = `${path}[${index}]`;
+        if (!isRecord(entry)
+            || !nonEmptyString(entry.id)
+            || !isEnum(entry.kind, ["exclude", "override", "conflict"])
+            || !isNonEmptyStringArray(entry.structuralKeys)
+            || !nonEmptyString(entry.notes)) {
+            issue("structural-exception-schema", entryPath, "Structural exception requires ID, known kind, structural keys, and notes.");
+        }
+    });
 }
 
 function validateProvenance(raw: unknown, path: string, issue: (code: string, path: string, message: string) => void): void {
@@ -683,6 +1033,10 @@ function validateProvenance(raw: unknown, path: string, issue: (code: string, pa
         if (!isEnum(entry.evidenceLevel, EVIDENCE_LEVELS)) issue("provenance-level", `${entryPath}.evidenceLevel`, "Unknown provenance evidence level.");
         if (!nonEmptyString(entry.reference)) issue("provenance-reference", `${entryPath}.reference`, "Provenance reference is required.");
         if (!Array.isArray(entry.supports) || entry.supports.length === 0 || entry.supports.some(item => !isEnum(item, EVIDENCE_SUPPORTS))) issue("provenance-supports", `${entryPath}.supports`, "Provenance supports must use known non-empty enums.");
+        if (entry.source === "first_party_game_db_table") {
+            if (!nonEmptyString(entry.snapshotVersion)) issue("provenance-snapshot", `${entryPath}.snapshotVersion`, "Direct first-party table evidence requires a snapshot version.");
+            if (!nonEmptyString(entry.locator)) issue("provenance-locator", `${entryPath}.locator`, "Direct first-party table evidence requires an exact locator.");
+        }
     });
 }
 
@@ -700,7 +1054,6 @@ function validateRuleValue(raw: unknown, path: string, issue: (code: string, pat
     } else if (raw.kind === "rate_per_level") {
         validateFinite(raw.amountPerLevel, `${path}.amountPerLevel`, issue);
         if (raw.levelUnit !== "hidden_potential_skill_level") issue("rate-level-unit", `${path}.levelUnit`, "Unknown per-level unit.");
-        if (typeof raw.amountPerLevel === "number" && (raw.amountPerLevel < -1 || raw.amountPerLevel > 1)) issue("percentage-range", `${path}.amountPerLevel`, "Per-level coefficient must be within -1..1.");
     } else if (raw.kind === "pipeline") {
         if (!Array.isArray(raw.steps) || raw.steps.length === 0) issue("pipeline-steps", `${path}.steps`, "Pipeline requires steps.");
         else {
@@ -737,8 +1090,12 @@ function validateValueUnitCompatibility(raw: unknown, unit: CombatRuleUnit, path
         if (values.some(value => typeof value !== "number" || value < 0 || value > 1)) issue("probability-range", path, "Probabilities must be within 0..1.");
     }
     if (unit === "percent") {
-        const values = raw.kind === "scalar" ? [raw.amount] : raw.kind === "range" ? [raw.min, raw.max] : [];
+        const values = raw.kind === "scalar" ? [raw.amount] : raw.kind === "range" ? [raw.min, raw.max] : raw.kind === "mapping" && Array.isArray(raw.entries) ? raw.entries.filter(isRecord).map(entry => entry.amount) : [];
         if (values.some(value => typeof value !== "number" || value < -100 || value > 100)) issue("percent-range", path, "Percent values must be within -100..100.");
+    }
+    if (unit === "percent_points_per_level") {
+        const values = raw.kind === "rate_per_level" ? [raw.amountPerLevel] : raw.kind === "mapping" && Array.isArray(raw.entries) ? raw.entries.filter(isRecord).map(entry => entry.amount) : [];
+        if (values.some(value => typeof value !== "number" || value < 0 || value > 100)) issue("percentage-range", path, "Per-level percent points must be within 0..100.");
     }
 }
 
@@ -804,18 +1161,21 @@ function hasSufficientNormativeEvidence(rule: Record<string, unknown>): boolean 
         && Array.isArray(entry.supports)
         && entry.supports.includes("structure"));
 
+    const normativeValueSources: CombatEvidenceSource[] = ["first_party_export", "first_party_game_db_table", "reproducible_fixture"];
     const numericKinds = ["scalar", "range", "rate_per_level", "mapping", "formula"];
-    if (numericKinds.includes(String(value.kind)) && !direct(["first_party_export", "reproducible_fixture"], "value")) return false;
-    if (value.kind === "pipeline" && !direct(["first_party_export", "reproducible_fixture"], "order")) return false;
+    if (numericKinds.includes(String(value.kind)) && !direct(normativeValueSources, "value")) return false;
+    if (value.kind === "formula" && !direct(normativeValueSources, "order")) return false;
+    if (value.kind === "pipeline" && !direct(normativeValueSources, "order")) return false;
     if (value.kind === "reference" && !structuralContract()) return false;
     if (value.kind === "structured") {
-        if (!isRecord(value.fields) || Object.values(value.fields).some(field => typeof field === "number")) return false;
-        if (!structuralContract()) return false;
+        if (!isRecord(value.fields)) return false;
+        if (!structuralContract()
+            && (!direct(["first_party_game_db_table"], "structure") || !direct(["first_party_game_db_table"], "value"))) return false;
     }
     const order = isRecord(rule.applicationOrder) ? rule.applicationOrder : undefined;
-    if (order?.status === "verified" && !direct(["first_party_export", "reproducible_fixture"], "order")) return false;
+    if (order?.status === "verified" && !direct(normativeValueSources, "order")) return false;
     const rounding = isRecord(rule.rounding) ? rule.rounding : undefined;
-    if (rounding?.status === "verified" && !direct(["first_party_export", "reproducible_fixture"], "rounding")) return false;
+    if (rounding?.status === "verified" && !direct(normativeValueSources, "rounding")) return false;
     return true;
 }
 
@@ -864,6 +1224,10 @@ function nonEmptyString(value: unknown): value is string {
 
 function isNonEmptyStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.length > 0 && value.every(nonEmptyString);
+}
+
+function isStringArray(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every(nonEmptyString);
 }
 
 function isEnum<T extends string>(value: unknown, allowed: readonly T[]): value is T {

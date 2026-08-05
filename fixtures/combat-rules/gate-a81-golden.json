@@ -1,0 +1,80 @@
+{
+  "fixtureVersion": 1,
+  "snapshotVersion": "db-1782367825/asset-1782367204",
+  "sourceEvidence": {
+    "relativePath": "game-db/data/game-db-acquisition/downloads/emulator-assets-sqlite-current-en/database.decrypted.sqlite",
+    "sha256": "75c997e8efd5141ad00d6f5049c150b350bb6abb019dd88797bcb0fee59d0bec",
+    "queries": [
+      { "id": "coefficient-fields", "sql": "SELECT id,increase_rate,lv_bonus,description FROM special_sets WHERE id IN (1,3,76,270,331,384,448,8226);" },
+      { "id": "attack-styles", "sql": "SELECT cs.id,cs.style,cs.eball_num_start,cs.special_set_id FROM card_specials cs WHERE cs.id IN (1,1351,10380,18761,19448);" },
+      { "id": "release-caps", "sql": "SELECT id,rarity,skill_lv_max FROM cards WHERE id IN (1000011,1004171,1007470,9507470); SELECT optimal_awakening_grow_type,step,skill_lv_max FROM optimal_awakening_growths WHERE optimal_awakening_grow_type=1001 AND step IN (1,2,3);" },
+      { "id": "raise-values", "sql": "SELECT id,special_set_id,efficacy_type,turn,eff_value1,eff_value2 FROM specials WHERE id IN (405,509,617,619,755,764,1030,1613);" },
+      { "id": "sa-boost-values", "sql": "SELECT potential_skill_id,lv,value FROM potential_skill_lv_values WHERE potential_skill_id=6 AND lv IN (1,10,15,50);" },
+      { "id": "stacking-exception-source-values", "sql": "SELECT id,special_set_id,efficacy_type,turn,eff_value1 FROM specials WHERE special_set_id IN (114,288,435) AND efficacy_type IN (1,3);" }
+    ]
+  },
+  "coefficientFieldSamples": [
+    { "tier": "huge", "specialSetId": 3, "increaseRate": 100, "levelBonus": 10, "status": "candidate" },
+    { "tier": "extreme", "specialSetId": 1, "increaseRate": 120, "levelBonus": 15, "status": "candidate" },
+    { "tier": "supreme", "specialSetId": 76, "increaseRate": 150, "levelBonus": 20, "status": "candidate" },
+    { "tier": "immense", "specialSetId": 270, "increaseRate": 180, "levelBonus": 25, "status": "candidate" },
+    { "tier": "colossal", "specialSetId": 384, "increaseRate": 200, "levelBonus": 5, "status": "candidate" },
+    { "tier": "mega_colossal", "specialSetId": 448, "increaseRate": 250, "levelBonus": 10, "status": "candidate" },
+    { "tier": "destructive", "specialSetId": 331, "increaseRate": 100, "levelBonus": 10, "status": "candidate" },
+    { "tier": "ultimate", "specialSetId": 8226, "increaseRate": 500, "levelBonus": 10, "status": "unresolved" }
+  ],
+  "skillLevelSamples": [
+    { "phase": "initial", "skillLevel": 1 },
+    { "phase": "intermediate", "skillLevel": 5 },
+    { "phase": "regularMaximum", "skillLevel": 10 },
+    { "phase": "observedHigherCap", "skillLevel": 15 },
+    { "phase": "observedLrCap", "skillLevel": 20 },
+    { "phase": "observedGrowthCap", "skillLevel": 25 }
+  ],
+  "attackStyleSamples": [
+    { "cardSpecialId": 1, "style": "Normal", "kiThreshold": 12, "requestedVariantAudit": "super", "variantMappingStatus": "unresolved" },
+    { "cardSpecialId": 1351, "style": "Hyper", "kiThreshold": 18, "requestedVariantAudit": "ultra", "variantMappingStatus": "unresolved" },
+    { "cardSpecialId": 10380, "style": "Condition", "kiThreshold": 12, "requestedVariantAudit": "unit", "variantMappingStatus": "unresolved" },
+    { "cardSpecialId": 18761, "style": "Extra", "kiThreshold": 24, "requestedVariantAudit": "ex", "variantMappingStatus": "unresolved" },
+    { "cardSpecialId": 19448, "style": "FullPower", "kiThreshold": 12, "requestedVariantAudit": "other", "variantMappingStatus": "unresolved" }
+  ],
+  "releaseCapSamples": [
+    { "source": "cards", "rarity": 4, "skillLevelCap": 10, "sampleRecordId": 1000011, "releaseLabel": "regular_candidate" },
+    { "source": "cards", "rarity": 4, "skillLevelCap": 15, "sampleRecordId": 1004171, "releaseLabel": "eza_unresolved" },
+    { "source": "cards", "rarity": 5, "skillLevelCap": 20, "sampleRecordId": 1007470, "releaseLabel": "lr_regular_candidate" },
+    { "source": "cards", "rarity": 5, "skillLevelCap": 25, "sampleRecordId": 9507470, "releaseLabel": "seza_unresolved" },
+    { "source": "optimal_awakening_growths", "growthType": 1001, "step": 1, "skillLevelCap": 22, "releaseLabel": "seza_step_unresolved" },
+    { "source": "optimal_awakening_growths", "growthType": 1001, "step": 2, "skillLevelCap": 24, "releaseLabel": "seza_step_unresolved" },
+    { "source": "optimal_awakening_growths", "growthType": 1001, "step": 3, "skillLevelCap": 25, "releaseLabel": "seza_step_unresolved" }
+  ],
+  "raiseSamples": [
+    { "specialId": 617, "stats": "atk", "turns": 1, "atkPercent": 30, "defPercent": 0, "kind": "raise" },
+    { "specialId": 619, "stats": "atk", "turns": 1, "atkPercent": 50, "defPercent": 0, "kind": "greatly_raise" },
+    { "specialId": 405, "stats": "atk", "turns": 1, "atkPercent": 100, "defPercent": 0, "kind": "massively_raise" },
+    { "specialId": 755, "stats": "def", "turns": 1, "atkPercent": 0, "defPercent": 30, "kind": "raise" },
+    { "specialId": 1030, "stats": "def", "turns": 1, "atkPercent": 0, "defPercent": 50, "kind": "greatly_raise" },
+    { "specialId": 1613, "stats": "def", "turns": 1, "atkPercent": 0, "defPercent": 100, "kind": "massively_raise" },
+    { "specialId": 764, "stats": "atk_def", "turns": 1, "atkPercent": 30, "defPercent": 30, "kind": "raise" },
+    { "specialId": 509, "stats": "atk_def", "turns": 99, "atkPercent": 20, "defPercent": 20, "kind": "raise" }
+  ],
+  "hiddenPotentialSuperAttackBoostSamples": [
+    { "skillLevel": 1, "firstPartyValue": 5 },
+    { "skillLevel": 10, "firstPartyValue": 50 },
+    { "skillLevel": 15, "firstPartyValue": 75 },
+    { "skillLevel": 50, "firstPartyValue": 250 }
+  ],
+  "stackingPenaltyExamples": [
+    { "id": "community-general-first-super", "superAttackOrdinal": 1, "status": "candidate", "productionCalculatorEvidence": false },
+    { "id": "community-general-later-super", "superAttackOrdinal": 2, "status": "candidate", "productionCalculatorEvidence": false },
+    { "id": "community-exception-67-vs-50", "specialSetIds": [114, 288, 435], "raisePercent": 67, "claimedPenaltyPercent": 50, "status": "candidate", "productionCalculatorEvidence": false }
+  ],
+  "evidenceBoundaries": {
+    "conflictingFirstPartyRows": [
+      { "tier": "huge", "canonicalSpecialSetId": 3, "conflictingSpecialSetId": 114, "canonicalIncreaseRate": 100, "conflictingIncreaseRate": 50 },
+      { "tier": "ultimate", "firstSpecialSetId": 8226, "secondSpecialSetId": 8274, "firstIncreaseRate": 500, "secondIncreaseRate": 550 }
+    ],
+    "partialTableRuleId": "super-attack.canonical-tier-increase-rate",
+    "communityOnlyRuleId": "super-attack.attack-stacking-penalty",
+    "missingDimensionRuleId": "super-attack.variant-selection"
+  }
+}

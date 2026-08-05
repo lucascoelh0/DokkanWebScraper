@@ -1,7 +1,8 @@
 # Combat calculation roadmap
 
-Status: Gate A8 versioned global combat-rules foundation. This document describes
-data and rule boundaries; it does not define an implemented calculator.
+Status: Gate A8.1 versioned numeric Super Attack evidence. This document
+describes data and rule boundaries; it does not define an implemented
+calculator.
 
 ## Gate A8 combat-rules foundation
 
@@ -27,6 +28,41 @@ condition/timing/bucket/duration/stacking/runtime/result, and a compatibility
 reference to `sa-stat-raise-lifecycle-v1`. Numeric mechanics from the community
 guides and workbook are not promoted to production rules without stronger
 first-party or reproducible runtime evidence.
+
+## Gate A8.1 numeric Super Attack evidence
+
+Gate A8.1 advances the independent dataset to schema `2`, combat-rules version
+`1.1.0`, and evidence-policy version `2`. Every rule now explicitly declares
+dimensions, application order, rounding, structural exceptions, and required
+runtime inputs. Direct numeric mechanics extracted from the first-party Global
+game-database tables use a distinct `first_party_game_db_table` provenance
+channel; structural joins and community corroboration cannot impersonate it.
+
+Five Super Attack facts are newly verified and normative:
+
+- exact `card_specials.special_set_id -> special_sets.id` selection of the
+  `increase_rate` and `lv_bonus` source fields, without asserting their final
+  formula;
+- exact `cards.skill_lv_max` or awakening-growth cap selection, without
+  inferring an EZA/SEZA label from rarity;
+- exact one-to-many selection of typed effect rows that share the resolved
+  Super Attack definition, without selecting an arbitrary first row;
+- exact `specials` numeric ATK/DEF effect fields and duration, without a
+  qualitative wording fallback;
+- Hidden Potential Super Attack Boost's first-party level/value lookup of five
+  percentage points per skill level, without asserting its final multiplier
+  bucket or rounding.
+
+Tier defaults, the level-progression formula, Normal/Ultra/Unit/EX selection,
+EZA/SEZA state mapping, special-bonus placement, qualitative raise defaults,
+and the permanent-ATK stacking penalty remain candidate or unresolved. The
+full matrix, first-party conflicts, representative IDs, and before/after
+coverage are in
+[`combat-rules-gate-a81-audit.md`](combat-rules-gate-a81-audit.md).
+
+Consumption policy is serialized rather than implied: verified rules are
+`normative`, corroborated/candidate rules require
+`explicit_assumption_required`, and unresolved rules require `return_unknown`.
 
 ## Evidence policy
 
@@ -200,16 +236,24 @@ The independent Gate A8 Combat Rules dataset additionally provides:
 - deterministic JSON, manifest, and coverage generation with size/SHA-256
   validation.
 
+Gate A8.1 additionally provides direct first-party provenance for exact Super
+Attack coefficient fields, cap fields, numeric ATK/DEF raise fields and Hidden
+Potential Super Attack Boost values. These are source-value rules, not an
+executable multiplier formula.
+
 ## Data still missing
 
 No production calculator should be enabled until these inputs move from
 candidate/unresolved evidence to sufficiently proven normative rules, or are
 provided by a compatible typed runtime dataset:
 
-- Super Attack base multiplier and progression by Super Attack level;
-- numeric mappings for qualitative Super Attack raise/lowering terms, caps,
-  and first-party mechanics outside the narrow versioned canonical-raise rule;
-- Hidden Potential, Type Attack Boost (TAB) and Type Defense Boost (TDB);
+- the executable Super Attack base/level formula, bonus placement and rounding;
+- Normal/Ultra/Unit/EX selection and an explicit EZA/SEZA release-state join;
+- universal qualitative Super Attack raise/lowering mappings; exact joined
+  first-party raise fields are available, but wording defaults remain partial;
+- Hidden Potential Critical/Additional/Dodge production proof, Type Attack
+  Boost (TAB), Type Defense Boost (TDB), and the exact application bucket for
+  the verified Super Attack Boost lookup;
 - the versioned Class/Type alignment table, natural/passive guard behavior,
   guard coefficient and Type Defense Boost interaction;
 - enemy variance distribution and the special minimum-damage rule;
