@@ -1,0 +1,87 @@
+# Team Analysis delivery
+
+Team Analysis is optional enrichment distributed independently from the
+character dataset. Combat Rules are not part of this flow.
+
+## Commands
+
+Generate the bundle from the current local character payload and catalog:
+
+```powershell
+npm run run:fyi-team-analysis
+```
+
+Validate the gzip, JSON, manifest integrity, parser/rules contract, unique
+state identifiers, and exact compatibility with the local character bundle:
+
+```powershell
+npm run validate:team-analysis
+```
+
+Inspect the plan against Wrangler's local R2 storage without writing:
+
+```powershell
+npm run publish:team-analysis-r2 -- --dry-run --local
+```
+
+Inspect the production bucket without writing:
+
+```powershell
+npm run publish:team-analysis-r2 -- --dry-run --remote --bucket dokkanpanion-data
+```
+
+The following command is destructive and must be run only with separate,
+explicit authorization for a real R2 publication:
+
+```powershell
+npm run publish:team-analysis-r2 -- --remote --bucket dokkanpanion-data
+```
+
+The publisher always passes either `--remote` or `--local` to Wrangler object
+operations. `--skip-remote-manifest-check` and `--skip-upload-verification` are
+explicit recovery flags and are not defaults. Real remote writes also fail
+closed when Wrangler cannot report bucket size; bypassing that guard requires
+the separate explicit `--allow-unknown-bucket-size` recovery flag.
+
+## Publication and retention
+
+The immutable gzip is made ready and optionally downloaded for size/SHA-256
+verification before the mutable manifest is promoted. The manifest is always
+the last public write. Local state is updated only after that promotion, and
+old-release cleanup runs afterward. A cleanup failure is recorded for a later
+retry and does not invalidate the newly active manifest.
+
+The namespace retains the active release and the immediately previous verified
+release. Older releases tracked by the local state are deterministic cleanup
+candidates. The state lives under the ignored `data/` tree. It is an aid, not
+the source of truth: the publisher reads the remote manifest and verifies every
+tracked payload it plans to retain or delete. Wrangler's object command does
+not provide a namespace listing, so untracked objects cannot be included in the
+cleanup plan; the dry-run reports this limitation.
+
+Rollback is operational and non-destructive: select the previous immutable
+payload from `retainedReleases`, reconstruct and validate the corresponding
+manifest metadata, then promote only `team-analysis-manifest.json`. Do not
+delete the currently active payload during rollback.
+
+## Keys, caching, and budget
+
+Payload keys have this form:
+
+```text
+team-analysis/releases/{version-slug}/{payload-sha256}/team-analysis.json.gz
+```
+
+The payload uses `public, max-age=31536000, immutable`; the manifest uses
+`no-store`. The namespace guard defaults to 50,000,000 bytes and the global
+guard to 10,000,000,000 bytes. The namespace budget is checked at the peak
+before post-promotion cleanup, so it includes the new payload, manifest,
+retained releases, and verified cleanup candidates still present. For remote
+runs, Wrangler exposes only a human-readable bucket size; the publisher rounds
+that upward conservatively for the global guard and explicitly reports that it
+is not an exact bucket byte inventory.
+
+Expected public endpoints:
+
+- `https://assets.dkbcompanion.com/team-analysis-manifest.json`
+- `https://assets.dkbcompanion.com/team-analysis/releases/{version-slug}/{payload-sha256}/team-analysis.json.gz`

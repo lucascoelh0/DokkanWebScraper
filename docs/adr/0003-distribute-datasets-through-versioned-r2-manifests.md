@@ -21,6 +21,13 @@ and content-stable assets use cache-appropriate object keys. Publishers run a
 dry-run first, enforce storage budgets, upload the payload before the manifest,
 and preserve the last known-good release on failure.
 
+Small optional datasets with content-hashed payload keys, beginning with Team
+Analysis, retain a bounded window of two verified releases: the active release
+and its immediately previous valid release. Cleanup beyond that window happens
+only after manifest promotion. Rollback is an explicit operational manifest
+promotion to the retained immutable key; publishers do not perform destructive
+automatic rollback.
+
 ## Alternatives Considered
 
 ### Alternative 1: Commit generated data to GitHub

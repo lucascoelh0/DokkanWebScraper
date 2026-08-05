@@ -5785,6 +5785,87 @@ export function assertValidTeamAnalysisDataset(
     }
 }
 
+/**
+ * Validates a serialized delivery bundle against the exact character payload
+ * without requiring the catalog that was used while generating it. Catalog-
+ * derived identity values must remain internally consistent for every card;
+ * all character/form/release sources are still validated by the normal
+ * validator below.
+ */
+export function validateTeamAnalysisDatasetForDelivery(
+    dataset: TeamAnalysisDataset,
+    characters: Character[],
+): TeamAnalysisValidationIssue[] {
+    const issues: TeamAnalysisValidationIssue[] = [];
+    const catalogEntries: FyiCharacterCatalogEntry[] = [];
+
+    for (const character of characters) {
+        const characterStates = dataset.states.filter(state => state.characterId === character.id);
+        const firstState = characterStates[0];
+        if (!firstState) {
+            continue;
+        }
+
+        const expectedIdentity = JSON.stringify({
+            canonicalId: firstState.canonicalId,
+            gameCharacterId: firstState.gameCharacterId,
+            baseCharacterId: firstState.baseCharacterId,
+            variantGroupId: firstState.variantGroupId,
+            awakeningFamilyId: firstState.awakeningFamilyId,
+        });
+        for (const state of characterStates.slice(1)) {
+            const actualIdentity = JSON.stringify({
+                canonicalId: state.canonicalId,
+                gameCharacterId: state.gameCharacterId,
+                baseCharacterId: state.baseCharacterId,
+                variantGroupId: state.variantGroupId,
+                awakeningFamilyId: state.awakeningFamilyId,
+            });
+            if (actualIdentity !== expectedIdentity) {
+                issues.push({
+                    code: "inconsistent-delivery-identity",
+                    message: "Catalog-derived identity values differ across states of the same character.",
+                    stateKey: state.stateKey,
+                });
+            }
+        }
+
+        catalogEntries.push({
+            id: character.id,
+            ...(firstState.canonicalId ? { canonicalId: firstState.canonicalId } : {}),
+            ...(firstState.gameCharacterId ? { characterId: firstState.gameCharacterId } : {}),
+            // The catalog type requires this field, but delivery validation must
+            // preserve an actually absent catalog identity as undefined.
+            baseCharacterId: firstState.baseCharacterId as string,
+            name: character.name,
+            hasEza: false,
+            hasSeza: false,
+            isReversiblyExchanged: false,
+            isFreelyObtainable: false,
+            isStageDropReward: false,
+            isWorldTournamentReward: false,
+            hasBattleMotion: false,
+            sourceUrl: "",
+        });
+    }
+
+    return [...issues, ...validateTeamAnalysisDataset(dataset, characters, catalogEntries)];
+}
+
+export function assertValidTeamAnalysisDatasetForDelivery(
+    dataset: TeamAnalysisDataset,
+    characters: Character[],
+): void {
+    const issues = validateTeamAnalysisDatasetForDelivery(dataset, characters);
+    if (issues.length > 0) {
+        const summary = issues.slice(0, 10).map(issue => {
+            const location = [issue.stateKey, issue.ruleId].filter(Boolean).join(" / ");
+            return `${issue.code}${location ? ` (${location})` : ""}: ${issue.message}`;
+        }).join("\n");
+        throw new Error(`Team analysis delivery validation failed with ${issues.length} issue(s):\n${summary}`);
+    }
+}
+
 function expectedStateIdentities(
     characters: Character[],
     catalogEntries: FyiCharacterCatalogEntry[],
