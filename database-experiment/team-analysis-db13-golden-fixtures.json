@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "expectedCounts": {
+    "ruleAlignments": 5667,
+    "exactEffectSets": 4045,
+    "uniqueEffectAnchors": 1622,
+    "alignedExactTurnCandidates": 9,
+    "unalignedExactTurnCandidates": 9
+  },
+  "aligned": { "stateKey": "1028761:1028761:initial", "value": 3, "databaseRuleKey": "4099:40990002:2004099" },
+  "unaligned": { "stateKey": "1028761:1028761:initial", "value": 3, "databaseRuleKey": "4099:40990005:5004099" }
+}
