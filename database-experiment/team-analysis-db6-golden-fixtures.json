@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    { "name": "attacks received history", "stateKey": "1003311:1003311:seza", "ruleKey": "4157:41570015:15004157", "causalityId": "2403", "kind": "attacks_received", "count": 2, "rawTiming": 7, "rawCalculation": 2, "rawTurn": 99, "rawIsOnce": 0 },
+    { "name": "attacks performed history", "stateKey": "1007101:1007101:eza", "ruleKey": "4058:40580008:8004058", "causalityId": "2609", "kind": "attacks_performed", "count": 2, "rawTiming": 5, "rawCalculation": 0, "rawTurn": 1, "rawIsOnce": 0 },
+    { "name": "Super Attacks performed history", "stateKey": "1008541:1008541:eza", "ruleKey": "2331:23310001:1002331", "causalityId": "778", "kind": "super_attacks_performed", "count": 3, "rawTiming": 5, "rawCalculation": 2, "rawTurn": 99, "rawIsOnce": 0 },
+    { "name": "attacks evaded history", "stateKey": "1019711:1019711:eza", "ruleKey": "4056:40560030:30004056", "causalityId": "1578", "kind": "attacks_evaded", "count": 6, "rawTiming": 7, "rawCalculation": 2, "rawTurn": 2, "rawIsOnce": 0 },
+    { "name": "guard activations history", "stateKey": "1024291:4024301:initial", "ruleKey": "4562:45620014:14004562", "causalityId": "1445", "kind": "guard_activated", "count": 2, "rawTiming": 7, "rawCalculation": 2, "rawTurn": 99, "rawIsOnce": 0 }
+  ]
+}
