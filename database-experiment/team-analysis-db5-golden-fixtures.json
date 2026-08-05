@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "projections": [
+    {
+      "name": "category selector retains joined identity without asserting cap",
+      "stateKey": "1005581:1005581:eza",
+      "projectionKey": "threshold-series:1928:19280001:1001928:7",
+      "status": "supported",
+      "selectorKind": "category",
+      "scope": "team",
+      "categoryName": "Bond of Master and Disciple",
+      "observedSeriesLength": 7,
+      "observedMaximumContribution": 7
+    },
+    {
+      "name": "Ki Sphere selector retains observed boundary",
+      "stateKey": "1003801:1003801:seza",
+      "projectionKey": "threshold-series:4252:42520007:7004252:5",
+      "status": "supported",
+      "selectorKind": "ki_sphere",
+      "observedSeriesLength": 5,
+      "observedMaximumContribution": 5
+    },
+    {
+      "name": "name selector is an opaque first-party token",
+      "stateKey": "1033701:1033701:initial",
+      "projectionKey": "threshold-series:4901:49010009:9004901:3",
+      "status": "partial",
+      "selectorKind": "name_match_token",
+      "scope": "rotation",
+      "token": 126,
+      "observedSeriesLength": 3,
+      "observedMaximumContribution": 9,
+      "unknown": "name_token_dictionary_unavailable"
+    },
+    {
+      "name": "Extreme Class bit is fully decoded",
+      "stateKey": "1012161:1012161:eza",
+      "projectionKey": "threshold-series:3084:30840003:3003084:5",
+      "status": "supported",
+      "selectorKind": "class_type_mask",
+      "scope": "team",
+      "rawMask": 64,
+      "classes": ["Extreme"],
+      "types": [],
+      "unknownMask": 0,
+      "observedSeriesLength": 5,
+      "observedMaximumContribution": 5
+    }
+  ]
+}
