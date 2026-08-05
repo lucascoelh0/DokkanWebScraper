@@ -20,6 +20,7 @@ export interface Db13ExactTurnRuleAssessment {
     value: number,
     databaseRuleKey: string,
     databaseLogicalContext: string,
+    databaseNegated: boolean,
     currentExactRuleKeys: string[],
     alignedCurrentRuleKeys: string[],
     alignmentKinds: Db13RuleAlignmentKind[],
@@ -36,7 +37,7 @@ export interface Db13AmbiguousEffectSignature {
 export interface DatabaseTeamAnalysisDb13Dataset {
     schemaVersion: 1,
     contract: "dokkan-team-analysis-rule-alignment-experiment",
-    contractVersion: "0.12.0",
+    contractVersion: "0.12.1",
     generatedAt: string,
     sourceDb11: { fileName: "team-analysis-db11-experiment.json.gz", sha256: string, contractVersion: "0.10.0" },
     sourceDb12: { fileName: "team-analysis-db12-divergence-attribution.json.gz", sha256: string, contractVersion: "0.11.0" },
@@ -73,7 +74,7 @@ export interface DatabaseTeamAnalysisDb13Coverage {
 
 export interface DatabaseTeamAnalysisDb13ArtifactManifest {
     schemaVersion: 1,
-    contractVersion: "0.12.0",
+    contractVersion: "0.12.1",
     generatedAt: string,
     fileName: "team-analysis-db13-rule-alignment.json.gz",
     compression: "gzip",

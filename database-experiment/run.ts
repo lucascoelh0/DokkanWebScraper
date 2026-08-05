@@ -58,6 +58,10 @@ import { buildDatabaseTeamAnalysisDb13Coverage, buildDatabaseTeamAnalysisDb13Dat
 import { DatabaseTeamAnalysisDb13ArtifactManifest } from "./team-analysis-db13-contract";
 import { validateDatabaseTeamAnalysisDb13Goldens } from "./team-analysis-db13-golden";
 import { renderDatabaseTeamAnalysisDb13Report } from "./team-analysis-db13-report";
+import { buildDatabaseTeamAnalysisDb14Coverage, buildDatabaseTeamAnalysisDb14Dataset } from "./team-analysis-db14-builder";
+import { DatabaseTeamAnalysisDb14ArtifactManifest } from "./team-analysis-db14-contract";
+import { validateDatabaseTeamAnalysisDb14Goldens } from "./team-analysis-db14-golden";
+import { renderDatabaseTeamAnalysisDb14Report } from "./team-analysis-db14-report";
 
 const DEFAULT_DATABASE = "D:\\Dokkan\\database\\decrypted\\dokkan-global-current.db";
 const DEFAULT_CURRENT_DATASET = "D:\\Dokkan\\DokkanWebScraper\\data\\fyi-characters\\latest\\characters.json.gz";
@@ -140,6 +144,7 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
     teamAnalysisDb11Manifest: DatabaseTeamAnalysisDb11ArtifactManifest,
     teamAnalysisDb12Manifest: DatabaseTeamAnalysisDb12ArtifactManifest,
     teamAnalysisDb13Manifest: DatabaseTeamAnalysisDb13ArtifactManifest,
+    teamAnalysisDb14Manifest: DatabaseTeamAnalysisDb14ArtifactManifest,
     outputDir: string,
     deterministicRebuildSha256: string,
 }> {
@@ -360,6 +365,18 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
     const teamAnalysisDb13Goldens = await validateDatabaseTeamAnalysisDb13Goldens(teamAnalysisDb13Dataset, teamAnalysisDb13Coverage);
     if (teamAnalysisDb13Goldens.failures.length > 0) throw new Error(`DB13 golden fixture validation failed: ${JSON.stringify(teamAnalysisDb13Goldens.failures)}`);
     const teamAnalysisDb13Report = renderDatabaseTeamAnalysisDb13Report(teamAnalysisDb13Dataset, teamAnalysisDb13Coverage);
+    const buildTeamAnalysisDb14 = () => buildDatabaseTeamAnalysisDb14Dataset({
+        db11: teamAnalysisDb11Dataset, db11Sha256: sha256(teamAnalysisDb11Gzip), db12: teamAnalysisDb12Dataset, db12Sha256: sha256(teamAnalysisDb12Gzip),
+        db13: teamAnalysisDb13Dataset, db13Sha256: sha256(teamAnalysisDb13Gzip), currentSha256: currentTeamAnalysis.sha256, siteAudit,
+    });
+    const teamAnalysisDb14Dataset = buildTeamAnalysisDb14(); const firstTeamAnalysisDb14Json = `${JSON.stringify(teamAnalysisDb14Dataset)}\n`; const secondTeamAnalysisDb14Json = `${JSON.stringify(buildTeamAnalysisDb14())}\n`;
+    if (sha256(firstTeamAnalysisDb14Json) !== sha256(secondTeamAnalysisDb14Json)) throw new Error("DB14 determinism check failed: two exact-turn compatibility projections differ");
+    const teamAnalysisDb14Gzip = gzipSync(Buffer.from(firstTeamAnalysisDb14Json, "utf8"), { level: 9 }); const secondTeamAnalysisDb14Gzip = gzipSync(Buffer.from(secondTeamAnalysisDb14Json, "utf8"), { level: 9 });
+    if (!teamAnalysisDb14Gzip.equals(secondTeamAnalysisDb14Gzip)) throw new Error("DB14 determinism check failed: gzip bytes differ");
+    const teamAnalysisDb14Coverage = buildDatabaseTeamAnalysisDb14Coverage(teamAnalysisDb14Dataset, teamAnalysisDb13Dataset);
+    const teamAnalysisDb14Goldens = await validateDatabaseTeamAnalysisDb14Goldens(teamAnalysisDb14Dataset, teamAnalysisDb14Coverage);
+    if (teamAnalysisDb14Goldens.failures.length > 0) throw new Error(`DB14 golden fixture validation failed: ${JSON.stringify(teamAnalysisDb14Goldens.failures)}`);
+    const teamAnalysisDb14Report = renderDatabaseTeamAnalysisDb14Report(teamAnalysisDb14Dataset, teamAnalysisDb14Coverage);
     const sourceManifest: DatabaseExperimentSourceManifest = {
         schemaVersion: 1,
         sourceKind: "first-party-global-sqlite",
@@ -515,11 +532,16 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
         exactTurnEncodingCandidateCount: teamAnalysisDb12Dataset.exactTurnEncodingCandidates.length, semanticPromotionCount: 0, sourceDatabaseSha256: before.sha256,
         sourceDb11Sha256: sha256(teamAnalysisDb11Gzip), sourceDb11ParitySha256: sha256(teamAnalysisDb11ParityJson), currentTeamAnalysisSha256: currentTeamAnalysis.sha256,
         coverageFile: "team-analysis-db12-coverage.json", reportFile: "team-analysis-db12-report.md", goldenValidationFile: "team-analysis-db12-golden-validation.json" };
-    const teamAnalysisDb13Manifest: DatabaseTeamAnalysisDb13ArtifactManifest = { schemaVersion: 1, contractVersion: "0.12.0", generatedAt: options.generatedAt,
+    const teamAnalysisDb13Manifest: DatabaseTeamAnalysisDb13ArtifactManifest = { schemaVersion: 1, contractVersion: "0.12.1", generatedAt: options.generatedAt,
         fileName: "team-analysis-db13-rule-alignment.json.gz", compression: "gzip", sha256: sha256(teamAnalysisDb13Gzip), sizeBytes: teamAnalysisDb13Gzip.byteLength, uncompressedSizeBytes: Buffer.byteLength(firstTeamAnalysisDb13Json, "utf8"),
         matchedStateCount: teamAnalysisDb13Dataset.matchedStateCount, ruleAlignmentCount: teamAnalysisDb13Dataset.ruleAlignments.length, exactTurnRuleAlignedCount: teamAnalysisDb13Coverage.exactTurnRuleAlignedCount, semanticPromotionCount: 0,
         sourceDatabaseSha256: before.sha256, sourceDb11Sha256: sha256(teamAnalysisDb11Gzip), sourceDb12Sha256: sha256(teamAnalysisDb12Gzip), currentTeamAnalysisSha256: currentTeamAnalysis.sha256,
         coverageFile: "team-analysis-db13-coverage.json", reportFile: "team-analysis-db13-report.md", goldenValidationFile: "team-analysis-db13-golden-validation.json" };
+    const teamAnalysisDb14Manifest: DatabaseTeamAnalysisDb14ArtifactManifest = { schemaVersion: 1, contractVersion: "0.13.0", generatedAt: options.generatedAt,
+        fileName: "team-analysis-db14-exact-turn-compatibility.json.gz", compression: "gzip", sha256: sha256(teamAnalysisDb14Gzip), sizeBytes: teamAnalysisDb14Gzip.byteLength, uncompressedSizeBytes: Buffer.byteLength(firstTeamAnalysisDb14Json, "utf8"),
+        compatibilityAliasCount: teamAnalysisDb14Dataset.exactTurnCompatibilityAliases.length, semanticPromotionCount: 0, sourceDatabaseSha256: before.sha256,
+        sourceDb11Sha256: sha256(teamAnalysisDb11Gzip), sourceDb12Sha256: sha256(teamAnalysisDb12Gzip), sourceDb13Sha256: sha256(teamAnalysisDb13Gzip), currentTeamAnalysisSha256: currentTeamAnalysis.sha256,
+        coverageFile: "team-analysis-db14-coverage.json", reportFile: "team-analysis-db14-report.md", goldenValidationFile: "team-analysis-db14-golden-validation.json" };
 
     const after = await fingerprint(options.databasePath);
     const nativeAfter = await fingerprint(options.nativeRuntimePath);
@@ -604,8 +626,13 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
         writeFile(resolve(options.outputDir, teamAnalysisDb13Manifest.coverageFile), `${JSON.stringify(teamAnalysisDb13Coverage, null, 2)}\n`, "utf8"),
         writeFile(resolve(options.outputDir, teamAnalysisDb13Manifest.reportFile), teamAnalysisDb13Report, "utf8"),
         writeFile(resolve(options.outputDir, teamAnalysisDb13Manifest.goldenValidationFile), `${JSON.stringify(teamAnalysisDb13Goldens, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb14Manifest.fileName), teamAnalysisDb14Gzip),
+        writeFile(resolve(options.outputDir, "team-analysis-db14-manifest.json"), `${JSON.stringify(teamAnalysisDb14Manifest, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb14Manifest.coverageFile), `${JSON.stringify(teamAnalysisDb14Coverage, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb14Manifest.reportFile), teamAnalysisDb14Report, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb14Manifest.goldenValidationFile), `${JSON.stringify(teamAnalysisDb14Goldens, null, 2)}\n`, "utf8"),
     ]);
-    return { manifest, sourceManifest, teamAnalysisManifest, teamAnalysisDb3Manifest, teamAnalysisDb4Manifest, teamAnalysisDb5Manifest, teamAnalysisDb6Manifest, teamAnalysisDb7Manifest, teamAnalysisDb8Manifest, teamAnalysisDb9Manifest, teamAnalysisDb10Manifest, teamAnalysisDb11Manifest, teamAnalysisDb12Manifest, teamAnalysisDb13Manifest, outputDir: options.outputDir, deterministicRebuildSha256: sha256(secondGzip) };
+    return { manifest, sourceManifest, teamAnalysisManifest, teamAnalysisDb3Manifest, teamAnalysisDb4Manifest, teamAnalysisDb5Manifest, teamAnalysisDb6Manifest, teamAnalysisDb7Manifest, teamAnalysisDb8Manifest, teamAnalysisDb9Manifest, teamAnalysisDb10Manifest, teamAnalysisDb11Manifest, teamAnalysisDb12Manifest, teamAnalysisDb13Manifest, teamAnalysisDb14Manifest, outputDir: options.outputDir, deterministicRebuildSha256: sha256(secondGzip) };
 }
 
 async function main() {
@@ -625,6 +652,7 @@ async function main() {
         teamAnalysisDb11Artifact: result.teamAnalysisDb11Manifest,
         teamAnalysisDb12Artifact: result.teamAnalysisDb12Manifest,
         teamAnalysisDb13Artifact: result.teamAnalysisDb13Manifest,
+        teamAnalysisDb14Artifact: result.teamAnalysisDb14Manifest,
         sourceSha256: result.sourceManifest.sha256,
         deterministicRebuildSha256: result.deterministicRebuildSha256,
     }, null, 2));
