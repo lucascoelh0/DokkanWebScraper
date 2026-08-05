@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    { "name": "type 3 non-universal numeric domain", "stateKey": "1000200:1000200:initial", "ruleKey": "18:180000:18", "causalityId": "19", "causalityType": 3, "cauVal1": 100 },
+    { "name": "type 34 residual composite", "stateKey": "1004251:1004251:seza", "ruleKey": "4254:42540013:13004254", "causalityId": "137", "causalityType": 34, "cauVal1": 1 },
+    { "name": "type 43 empty tuple", "stateKey": "1003211:1003211:seza", "ruleKey": "4070:40700012:12004070", "causalityId": "365", "causalityType": 43, "cauVal1": 0 },
+    { "name": "type 51 undictionaried value", "stateKey": "1019071:1019071:seza", "ruleKey": "4653:46530005:5004653", "causalityId": "1380", "causalityType": 51, "cauVal1": 4 },
+    { "name": "type 55 undictionaried value", "stateKey": "1020371:4020381:initial", "ruleKey": "4038:40380009:9004038", "causalityId": "10", "causalityType": 55, "cauVal1": 0 },
+    { "name": "type 41 partial name token", "mode": "partial_selector", "stateKey": "1005391:1005391:eza", "ruleKey": "1927:19270002:2001927", "causalityId": "367", "causalityType": 41, "cauVal1": 2, "cauVal2": 13, "cauVal3": 1 },
+    { "name": "type 46 unknown mask", "stateKey": "1010711:1010711:eza", "ruleKey": "3434:34340007:7003434", "causalityId": "2275", "causalityType": 46, "cauVal1": 0, "cauVal2": 1, "cauVal3": 1 },
+    { "name": "type 44 combat history provenance", "mode": "combat_history", "stateKey": "1003311:1003311:seza", "ruleKey": "4157:41570015:15004157", "causalityId": "2403", "causalityType": 44, "cauVal1": 3, "cauVal2": 2, "cauVal3": 0 }
+  ]
+}

@@ -32,6 +32,10 @@ import { buildDatabaseTeamAnalysisDb7Coverage, buildDatabaseTeamAnalysisDb7Datas
 import { DatabaseTeamAnalysisDb7ArtifactManifest } from "./team-analysis-db7-contract";
 import { validateDatabaseTeamAnalysisDb7Goldens } from "./team-analysis-db7-golden";
 import { compareDatabaseTeamAnalysisDb7, renderDatabaseTeamAnalysisDb7Report } from "./team-analysis-db7-parity";
+import { buildDatabaseTeamAnalysisDb8Coverage, buildDatabaseTeamAnalysisDb8Dataset } from "./team-analysis-db8-builder";
+import { DatabaseTeamAnalysisDb8ArtifactManifest } from "./team-analysis-db8-contract";
+import { validateDatabaseTeamAnalysisDb8Goldens } from "./team-analysis-db8-golden";
+import { renderDatabaseTeamAnalysisDb8Report } from "./team-analysis-db8-report";
 
 const DEFAULT_DATABASE = "D:\\Dokkan\\database\\decrypted\\dokkan-global-current.db";
 const DEFAULT_CURRENT_DATASET = "D:\\Dokkan\\DokkanWebScraper\\data\\fyi-characters\\latest\\characters.json.gz";
@@ -105,6 +109,7 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
     teamAnalysisDb5Manifest: DatabaseTeamAnalysisDb5ArtifactManifest,
     teamAnalysisDb6Manifest: DatabaseTeamAnalysisDb6ArtifactManifest,
     teamAnalysisDb7Manifest: DatabaseTeamAnalysisDb7ArtifactManifest,
+    teamAnalysisDb8Manifest: DatabaseTeamAnalysisDb8ArtifactManifest,
     outputDir: string,
     deterministicRebuildSha256: string,
 }> {
@@ -250,6 +255,18 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
     if (teamAnalysisDb7Goldens.failures.length > 0) throw new Error(`DB7 golden fixture validation failed: ${JSON.stringify(teamAnalysisDb7Goldens.failures)}`);
     const teamAnalysisDb7Parity = compareDatabaseTeamAnalysisDb7(teamAnalysisDb7Dataset, currentTeamAnalysis.dataset, siteAudit);
     const teamAnalysisDb7Report = renderDatabaseTeamAnalysisDb7Report(teamAnalysisDb7Coverage, teamAnalysisDb7Parity, currentTeamAnalysis.dataset.parserVersion);
+    const buildTeamAnalysisDb8 = () => buildDatabaseTeamAnalysisDb8Dataset({ db7: teamAnalysisDb7Dataset, tables });
+    const teamAnalysisDb8Dataset = buildTeamAnalysisDb8();
+    const firstTeamAnalysisDb8Json = `${JSON.stringify(teamAnalysisDb8Dataset)}\n`;
+    const secondTeamAnalysisDb8Json = `${JSON.stringify(buildTeamAnalysisDb8())}\n`;
+    if (sha256(firstTeamAnalysisDb8Json) !== sha256(secondTeamAnalysisDb8Json)) throw new Error("DB8 determinism check failed: two evidence-gap projections differ");
+    const teamAnalysisDb8Gzip = gzipSync(Buffer.from(firstTeamAnalysisDb8Json, "utf8"), { level: 9 });
+    const secondTeamAnalysisDb8Gzip = gzipSync(Buffer.from(secondTeamAnalysisDb8Json, "utf8"), { level: 9 });
+    if (!teamAnalysisDb8Gzip.equals(secondTeamAnalysisDb8Gzip)) throw new Error("DB8 determinism check failed: gzip bytes differ");
+    const teamAnalysisDb8Coverage = buildDatabaseTeamAnalysisDb8Coverage(teamAnalysisDb8Dataset);
+    const teamAnalysisDb8Goldens = await validateDatabaseTeamAnalysisDb8Goldens(teamAnalysisDb8Dataset, teamAnalysisDb7Dataset);
+    if (teamAnalysisDb8Goldens.failures.length > 0) throw new Error(`DB8 golden fixture validation failed: ${JSON.stringify(teamAnalysisDb8Goldens.failures)}`);
+    const teamAnalysisDb8Report = renderDatabaseTeamAnalysisDb8Report(teamAnalysisDb8Dataset, teamAnalysisDb8Coverage);
     const sourceManifest: DatabaseExperimentSourceManifest = {
         schemaVersion: 1,
         sourceKind: "first-party-global-sqlite",
@@ -377,6 +394,14 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
         stateCount: teamAnalysisDb7Dataset.states.length, sourceSha256: before.sha256, currentTeamAnalysisSha256: currentTeamAnalysis.sha256,
         coverageFile: "team-analysis-db7-coverage.json", parityFile: "team-analysis-db7-parity.json", reportFile: "team-analysis-db7-report.md", goldenValidationFile: "team-analysis-db7-golden-validation.json",
     };
+    const teamAnalysisDb8Manifest: DatabaseTeamAnalysisDb8ArtifactManifest = {
+        schemaVersion: 1, contractVersion: "0.7.0", generatedAt: options.generatedAt,
+        fileName: "team-analysis-db8-evidence-experiment.json.gz", compression: "gzip", sha256: sha256(teamAnalysisDb8Gzip),
+        sizeBytes: teamAnalysisDb8Gzip.byteLength, uncompressedSizeBytes: Buffer.byteLength(firstTeamAnalysisDb8Json, "utf8"),
+        sourceStateCount: teamAnalysisDb8Dataset.sourceStateCount, semanticPromotionCount: 0, sourceSha256: before.sha256,
+        sourceDb7Sha256: sha256(teamAnalysisDb7Gzip), coverageFile: "team-analysis-db8-coverage.json", reportFile: "team-analysis-db8-report.md",
+        goldenValidationFile: "team-analysis-db8-golden-validation.json",
+    };
 
     const after = await fingerprint(options.databasePath);
     if (before.sizeBytes !== after.sizeBytes || before.sha256 !== after.sha256 || before.modifiedAtMs !== after.modifiedAtMs) {
@@ -428,8 +453,13 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
         writeFile(resolve(options.outputDir, teamAnalysisDb7Manifest.parityFile), `${JSON.stringify(teamAnalysisDb7Parity, null, 2)}\n`, "utf8"),
         writeFile(resolve(options.outputDir, teamAnalysisDb7Manifest.reportFile), teamAnalysisDb7Report, "utf8"),
         writeFile(resolve(options.outputDir, teamAnalysisDb7Manifest.goldenValidationFile), `${JSON.stringify(teamAnalysisDb7Goldens, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb8Manifest.fileName), teamAnalysisDb8Gzip),
+        writeFile(resolve(options.outputDir, "team-analysis-db8-manifest.json"), `${JSON.stringify(teamAnalysisDb8Manifest, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb8Manifest.coverageFile), `${JSON.stringify(teamAnalysisDb8Coverage, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb8Manifest.reportFile), teamAnalysisDb8Report, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb8Manifest.goldenValidationFile), `${JSON.stringify(teamAnalysisDb8Goldens, null, 2)}\n`, "utf8"),
     ]);
-    return { manifest, sourceManifest, teamAnalysisManifest, teamAnalysisDb3Manifest, teamAnalysisDb4Manifest, teamAnalysisDb5Manifest, teamAnalysisDb6Manifest, teamAnalysisDb7Manifest, outputDir: options.outputDir, deterministicRebuildSha256: sha256(secondGzip) };
+    return { manifest, sourceManifest, teamAnalysisManifest, teamAnalysisDb3Manifest, teamAnalysisDb4Manifest, teamAnalysisDb5Manifest, teamAnalysisDb6Manifest, teamAnalysisDb7Manifest, teamAnalysisDb8Manifest, outputDir: options.outputDir, deterministicRebuildSha256: sha256(secondGzip) };
 }
 
 async function main() {
@@ -443,6 +473,7 @@ async function main() {
         teamAnalysisDb5Artifact: result.teamAnalysisDb5Manifest,
         teamAnalysisDb6Artifact: result.teamAnalysisDb6Manifest,
         teamAnalysisDb7Artifact: result.teamAnalysisDb7Manifest,
+        teamAnalysisDb8Artifact: result.teamAnalysisDb8Manifest,
         sourceSha256: result.sourceManifest.sha256,
         deterministicRebuildSha256: result.deterministicRebuildSha256,
     }, null, 2));
