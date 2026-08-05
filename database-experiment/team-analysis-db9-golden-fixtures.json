@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "efficacy": [
+    { "enumValue": 24, "status": "identified", "label": "guard_break" },
+    { "enumValue": 61, "status": "identified", "label": "ki_sphere_proportional_atk_def" },
+    { "enumValue": 79, "status": "null" },
+    { "enumValue": 98, "status": "identified", "label": "incremental_status" },
+    { "enumValue": 103, "status": "null" },
+    { "enumValue": 110, "status": "identified", "label": "remove_efficacy_and_inactivate_status" },
+    { "enumValue": 111, "status": "identified", "label": "attack_break_condition" },
+    { "enumValue": 119, "status": "null" },
+    { "enumValue": 120, "status": "identified", "label": "counterattack_behavior" },
+    { "enumValue": 131, "status": "identified", "label": "reversible_battle_transition" }
+  ],
+  "causality": [
+    { "enumValue": 3, "status": "identified", "label": "energy_over_threshold" },
+    { "enumValue": 34, "status": "identified", "label": "team_category_count_over_threshold" },
+    { "enumValue": 41, "status": "identified", "label": "team_unique_card_count_over_threshold" },
+    { "enumValue": 43, "status": "identified", "label": "dodge_success" },
+    { "enumValue": 44, "status": "identified", "label": "count_up" },
+    { "enumValue": 46, "status": "identified", "label": "contains_specified_elements" },
+    { "enumValue": 51, "status": "identified", "label": "turns_from_appearance_under_threshold" },
+    { "enumValue": 55, "status": "identified", "label": "turns_from_appearance_over_threshold" }
+  ]
+}

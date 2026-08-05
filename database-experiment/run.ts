@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { createReadStream } from "fs";
-import { mkdir, stat, writeFile } from "fs/promises";
+import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import { basename, resolve } from "path";
 import { gzipSync } from "zlib";
 import { buildCoverage, buildDatabaseExperimentDataset, CONSUMED_TABLE_COLUMNS, loadDatabaseExperimentTables } from "./builder";
@@ -36,10 +36,16 @@ import { buildDatabaseTeamAnalysisDb8Coverage, buildDatabaseTeamAnalysisDb8Datas
 import { DatabaseTeamAnalysisDb8ArtifactManifest } from "./team-analysis-db8-contract";
 import { validateDatabaseTeamAnalysisDb8Goldens } from "./team-analysis-db8-golden";
 import { renderDatabaseTeamAnalysisDb8Report } from "./team-analysis-db8-report";
+import { inspectNativeRuntimeElf } from "./native-runtime-elf-adapter";
+import { buildDatabaseTeamAnalysisDb9Coverage, buildDatabaseTeamAnalysisDb9Dataset } from "./team-analysis-db9-builder";
+import { DatabaseTeamAnalysisDb9ArtifactManifest } from "./team-analysis-db9-contract";
+import { readDb9NativeLayout, resolveDb9NativeLayoutPath, validateDatabaseTeamAnalysisDb9Goldens } from "./team-analysis-db9-golden";
+import { renderDatabaseTeamAnalysisDb9Report } from "./team-analysis-db9-report";
 
 const DEFAULT_DATABASE = "D:\\Dokkan\\database\\decrypted\\dokkan-global-current.db";
 const DEFAULT_CURRENT_DATASET = "D:\\Dokkan\\DokkanWebScraper\\data\\fyi-characters\\latest\\characters.json.gz";
 const DEFAULT_CURRENT_TEAM_ANALYSIS = "D:\\Dokkan\\DokkanWebScraper\\data\\fyi-characters\\latest\\team-analysis.json.gz";
+const DEFAULT_NATIVE_RUNTIME = "D:\\Dokkan\\database\\apk\\extracted\\lib\\arm64-v8a\\libcocos2dcpp.so";
 const DEFAULT_OUTPUT = resolve(process.cwd(), "data", "database-experiment");
 const DEFAULT_GENERATED_AT = "2026-08-05T00:00:00.000Z";
 const DEFAULT_RELEASE_CUTOFF = "2026-08-05 23:59:59";
@@ -48,6 +54,7 @@ interface RunOptions {
     databasePath: string,
     currentDatasetPath: string,
     currentTeamAnalysisPath: string,
+    nativeRuntimePath: string,
     outputDir: string,
     generatedAt: string,
     releaseCutoff: string,
@@ -71,6 +78,7 @@ function parseArgs(argv: string[]): RunOptions {
         databasePath: resolve(values.get("--database") ?? DEFAULT_DATABASE),
         currentDatasetPath: resolve(values.get("--current-dataset") ?? DEFAULT_CURRENT_DATASET),
         currentTeamAnalysisPath: resolve(values.get("--current-team-analysis") ?? DEFAULT_CURRENT_TEAM_ANALYSIS),
+        nativeRuntimePath: resolve(values.get("--native-runtime") ?? DEFAULT_NATIVE_RUNTIME),
         outputDir: resolve(values.get("--output-dir") ?? DEFAULT_OUTPUT),
         generatedAt: values.get("--generated-at") ?? DEFAULT_GENERATED_AT,
         releaseCutoff: values.get("--release-cutoff") ?? DEFAULT_RELEASE_CUTOFF,
@@ -110,10 +118,12 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
     teamAnalysisDb6Manifest: DatabaseTeamAnalysisDb6ArtifactManifest,
     teamAnalysisDb7Manifest: DatabaseTeamAnalysisDb7ArtifactManifest,
     teamAnalysisDb8Manifest: DatabaseTeamAnalysisDb8ArtifactManifest,
+    teamAnalysisDb9Manifest: DatabaseTeamAnalysisDb9ArtifactManifest,
     outputDir: string,
     deterministicRebuildSha256: string,
 }> {
     const before = await fingerprint(options.databasePath);
+    const nativeBefore = await fingerprint(options.nativeRuntimePath);
     const adapter = new ReadOnlySqliteAdapter(options.databasePath);
     const inspection = await adapter.inspect();
     const tableByName = new Map(inspection.tables.map(table => [table.name, table]));
@@ -267,6 +277,22 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
     const teamAnalysisDb8Goldens = await validateDatabaseTeamAnalysisDb8Goldens(teamAnalysisDb8Dataset, teamAnalysisDb7Dataset);
     if (teamAnalysisDb8Goldens.failures.length > 0) throw new Error(`DB8 golden fixture validation failed: ${JSON.stringify(teamAnalysisDb8Goldens.failures)}`);
     const teamAnalysisDb8Report = renderDatabaseTeamAnalysisDb8Report(teamAnalysisDb8Dataset, teamAnalysisDb8Coverage);
+    const nativeLayout = await readDb9NativeLayout();
+    const nativeLayoutSha256 = sha256(await readFile(resolveDb9NativeLayoutPath()));
+    if (nativeBefore.sha256 !== nativeLayout.sourceSha256 || nativeBefore.sizeBytes !== nativeLayout.sourceSizeBytes) throw new Error("DB9 native runtime does not match the audited layout fingerprint");
+    const nativeInspection = await inspectNativeRuntimeElf(options.nativeRuntimePath);
+    const requiredNativeSymbols = [nativeLayout.tables.efficacy.dispatchSymbol, nativeLayout.tables.causality.dispatchSymbol, nativeLayout.tables.causality.tableSymbol];
+    for (const symbol of requiredNativeSymbols) if (!nativeInspection.symbols.some(value => value.name === symbol)) throw new Error(`DB9 required native symbol missing: ${symbol}`);
+    const causalityTableSymbol = nativeInspection.symbols.find(value => value.name === nativeLayout.tables.causality.tableSymbol)!;
+    if (causalityTableSymbol.value !== nativeLayout.tables.causality.baseVma || causalityTableSymbol.size !== nativeLayout.tables.causality.slotCount * 8) throw new Error("DB9 causality dispatch table layout mismatch");
+    const buildTeamAnalysisDb9 = () => buildDatabaseTeamAnalysisDb9Dataset({ db8: teamAnalysisDb8Dataset, db8Sha256: sha256(teamAnalysisDb8Gzip), inspection: nativeInspection, layout: nativeLayout, layoutSha256: nativeLayoutSha256, nativePath: options.nativeRuntimePath, nativeSizeBytes: nativeBefore.sizeBytes, nativeSha256: nativeBefore.sha256 });
+    const teamAnalysisDb9Dataset = buildTeamAnalysisDb9(); const firstTeamAnalysisDb9Json = `${JSON.stringify(teamAnalysisDb9Dataset)}\n`; const secondTeamAnalysisDb9Json = `${JSON.stringify(buildTeamAnalysisDb9())}\n`;
+    if (sha256(firstTeamAnalysisDb9Json) !== sha256(secondTeamAnalysisDb9Json)) throw new Error("DB9 determinism check failed: two runtime-evidence projections differ");
+    const teamAnalysisDb9Gzip = gzipSync(Buffer.from(firstTeamAnalysisDb9Json, "utf8"), { level: 9 }); const secondTeamAnalysisDb9Gzip = gzipSync(Buffer.from(secondTeamAnalysisDb9Json, "utf8"), { level: 9 });
+    if (!teamAnalysisDb9Gzip.equals(secondTeamAnalysisDb9Gzip)) throw new Error("DB9 determinism check failed: gzip bytes differ");
+    const teamAnalysisDb9Coverage = buildDatabaseTeamAnalysisDb9Coverage(teamAnalysisDb9Dataset); const teamAnalysisDb9Goldens = await validateDatabaseTeamAnalysisDb9Goldens(teamAnalysisDb9Dataset);
+    if (teamAnalysisDb9Goldens.failures.length > 0) throw new Error(`DB9 golden fixture validation failed: ${JSON.stringify(teamAnalysisDb9Goldens.failures)}`);
+    const teamAnalysisDb9Report = renderDatabaseTeamAnalysisDb9Report(teamAnalysisDb9Dataset, teamAnalysisDb9Coverage);
     const sourceManifest: DatabaseExperimentSourceManifest = {
         schemaVersion: 1,
         sourceKind: "first-party-global-sqlite",
@@ -402,11 +428,17 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
         sourceDb7Sha256: sha256(teamAnalysisDb7Gzip), coverageFile: "team-analysis-db8-coverage.json", reportFile: "team-analysis-db8-report.md",
         goldenValidationFile: "team-analysis-db8-golden-validation.json",
     };
+    const teamAnalysisDb9Manifest: DatabaseTeamAnalysisDb9ArtifactManifest = { schemaVersion: 1, contractVersion: "0.8.0", generatedAt: options.generatedAt,
+        fileName: "team-analysis-db9-runtime-evidence.json.gz", compression: "gzip", sha256: sha256(teamAnalysisDb9Gzip), sizeBytes: teamAnalysisDb9Gzip.byteLength, uncompressedSizeBytes: Buffer.byteLength(firstTeamAnalysisDb9Json, "utf8"),
+        semanticPromotionCount: 0, runtimeIdentityResolutionCount: teamAnalysisDb9Dataset.runtimeIdentityResolutionCount, sourceDatabaseSha256: before.sha256, sourceDb8Sha256: sha256(teamAnalysisDb8Gzip), nativeRuntimeSha256: nativeBefore.sha256, nativeRuntimeLayoutSha256: nativeLayoutSha256,
+        coverageFile: "team-analysis-db9-coverage.json", reportFile: "team-analysis-db9-report.md", goldenValidationFile: "team-analysis-db9-golden-validation.json" };
 
     const after = await fingerprint(options.databasePath);
+    const nativeAfter = await fingerprint(options.nativeRuntimePath);
     if (before.sizeBytes !== after.sizeBytes || before.sha256 !== after.sha256 || before.modifiedAtMs !== after.modifiedAtMs) {
         throw new Error("Read-only source guarantee failed: source database fingerprint or mtime changed");
     }
+    if (nativeBefore.sizeBytes !== nativeAfter.sizeBytes || nativeBefore.sha256 !== nativeAfter.sha256 || nativeBefore.modifiedAtMs !== nativeAfter.modifiedAtMs) throw new Error("Read-only native runtime guarantee failed: fingerprint or mtime changed");
     await mkdir(options.outputDir, { recursive: true });
     await Promise.all([
         writeFile(resolve(options.outputDir, manifest.fileName), gzip),
@@ -458,8 +490,13 @@ export async function runDatabaseExperiment(options: RunOptions): Promise<{
         writeFile(resolve(options.outputDir, teamAnalysisDb8Manifest.coverageFile), `${JSON.stringify(teamAnalysisDb8Coverage, null, 2)}\n`, "utf8"),
         writeFile(resolve(options.outputDir, teamAnalysisDb8Manifest.reportFile), teamAnalysisDb8Report, "utf8"),
         writeFile(resolve(options.outputDir, teamAnalysisDb8Manifest.goldenValidationFile), `${JSON.stringify(teamAnalysisDb8Goldens, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb9Manifest.fileName), teamAnalysisDb9Gzip),
+        writeFile(resolve(options.outputDir, "team-analysis-db9-manifest.json"), `${JSON.stringify(teamAnalysisDb9Manifest, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb9Manifest.coverageFile), `${JSON.stringify(teamAnalysisDb9Coverage, null, 2)}\n`, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb9Manifest.reportFile), teamAnalysisDb9Report, "utf8"),
+        writeFile(resolve(options.outputDir, teamAnalysisDb9Manifest.goldenValidationFile), `${JSON.stringify(teamAnalysisDb9Goldens, null, 2)}\n`, "utf8"),
     ]);
-    return { manifest, sourceManifest, teamAnalysisManifest, teamAnalysisDb3Manifest, teamAnalysisDb4Manifest, teamAnalysisDb5Manifest, teamAnalysisDb6Manifest, teamAnalysisDb7Manifest, teamAnalysisDb8Manifest, outputDir: options.outputDir, deterministicRebuildSha256: sha256(secondGzip) };
+    return { manifest, sourceManifest, teamAnalysisManifest, teamAnalysisDb3Manifest, teamAnalysisDb4Manifest, teamAnalysisDb5Manifest, teamAnalysisDb6Manifest, teamAnalysisDb7Manifest, teamAnalysisDb8Manifest, teamAnalysisDb9Manifest, outputDir: options.outputDir, deterministicRebuildSha256: sha256(secondGzip) };
 }
 
 async function main() {
@@ -474,6 +511,7 @@ async function main() {
         teamAnalysisDb6Artifact: result.teamAnalysisDb6Manifest,
         teamAnalysisDb7Artifact: result.teamAnalysisDb7Manifest,
         teamAnalysisDb8Artifact: result.teamAnalysisDb8Manifest,
+        teamAnalysisDb9Artifact: result.teamAnalysisDb9Manifest,
         sourceSha256: result.sourceManifest.sha256,
         deterministicRebuildSha256: result.deterministicRebuildSha256,
     }, null, 2));

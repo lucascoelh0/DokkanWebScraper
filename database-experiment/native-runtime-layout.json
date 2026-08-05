@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "sourceSizeBytes": 95662296,
+  "architecture": "elf64-little-aarch64",
+  "tables": {
+    "efficacy": { "enumName": "SkillEfficacyType", "baseVma": 92049840, "slotCount": 132, "dispatchSymbol": "_ZN19AbilityEfficacyCore16callEfficacyFuncE17SkillEfficacyTypeNSt6__ndk110shared_ptrI22AbilityStatusCausalityEE" },
+    "causality": { "enumName": "SkillCausalityType", "baseVma": 95588720, "slotCount": 68, "tableSymbol": "s_AbilityCausalityFuncTable", "dispatchSymbol": "_ZN20AbilityCausalityFunc38executeCausalityFuncBySkillCausalityIdEiRKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEEbNS0_8functionIFvRKNS1_I14SkillCausalityEEEEE" }
+  }
+}
