@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "expectedAppliedAliasCount": 9,
+  "expectedResolvedNativeSignatureCount": 18,
+  "exactPair": {
+    "stateKey": "1028761:1028761:initial",
+    "databaseRuleKey": "4099:40990015:15004099",
+    "currentRuleKey": "1028761:1028761:initial:r11:0:32",
+    "expectedAliasCount": 5,
+    "expectedStatus": "exact"
+  },
+  "residualPair": {
+    "stateKey": "1028761:1028761:initial",
+    "databaseRuleKey": "4099:40990002:2004099",
+    "currentRuleKey": "1028761:1028761:initial:r4:0:32",
+    "expectedAliasCount": 4,
+    "expectedDatabaseOnlyCount": 1,
+    "expectedCurrentOnlyCount": 1
+  }
+}
