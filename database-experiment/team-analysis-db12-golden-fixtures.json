@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "expectedCounts": {
+    "databaseOnlySignatures": 306,
+    "currentOnlySignatures": 411,
+    "exactStructuralMatches": 123,
+    "exactTurnEncodingCandidates": 18
+  },
+  "exactTurnCandidate": { "stateKey": "1028761:1028761:initial", "value": 3 },
+  "databaseOnlyStateKey": "1009010:1009010:initial",
+  "currentOnlyStateKey": "1001870:1001870:initial"
+}
