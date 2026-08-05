@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    { "name": "INT team count", "stateKey": "1014991:1014991:eza", "ruleKey": "4010:40100009:9004010", "causalityId": "3052", "status": "supported", "selectorKind": "type", "selectorValue": "INT", "scope": "team", "minimumCount": 4, "rawSelector": 4 },
+    { "name": "STR team count", "stateKey": "1015211:1015211:eza", "ruleKey": "4014:40140009:9004014", "causalityId": "3054", "status": "supported", "selectorKind": "type", "selectorValue": "STR", "scope": "team", "minimumCount": 4, "rawSelector": 8 },
+    { "name": "PHY rotation count", "stateKey": "1009731:1009731:eza", "ruleKey": "2893:28930004:4002893", "causalityId": "1533", "status": "supported", "selectorKind": "type", "selectorValue": "PHY", "scope": "rotation", "minimumCount": 3, "rawSelector": 16 },
+    { "name": "Super enemy count", "stateKey": "1004651:1004651:seza", "ruleKey": "4527:45270009:9004527", "causalityId": "976", "status": "supported", "selectorKind": "class", "selectorValue": "Super", "scope": "enemy", "minimumCount": 1, "rawSelector": 32 },
+    { "name": "Extreme rotation count", "stateKey": "1004651:1004651:seza", "ruleKey": "4527:45270012:12004527", "causalityId": "3468", "status": "supported", "selectorKind": "class", "selectorValue": "Extreme", "scope": "rotation", "minimumCount": 2, "rawSelector": 64 },
+    { "name": "name token remains partial", "stateKey": "1005391:1005391:eza", "ruleKey": "1927:19270002:2001927", "causalityId": "367", "status": "partial", "selectorKind": "name_token", "scope": "rotation", "minimumCount": 1, "rawSelector": 13, "unknown": "name_token_dictionary_unavailable" },
+    { "name": "AGL TEQ bit remains unknown", "stateKey": "1010711:1010711:eza", "ruleKey": "3434:34340007:7003434", "causalityId": "2275", "status": "unknown", "selectorKind": "unknown_mask", "scope": "team", "minimumCount": 1, "rawSelector": 1, "unknown": "class_type_mask_identity_unknown" },
+    { "name": "Extreme Type bit remains unknown", "stateKey": "1024631:1024631:eza", "ruleKey": "4547:45470008:8004547", "causalityId": "3476", "status": "unknown", "selectorKind": "unknown_mask", "scope": "team", "minimumCount": 1, "rawSelector": 131072, "unknown": "class_type_mask_identity_unknown" }
+  ]
+}
