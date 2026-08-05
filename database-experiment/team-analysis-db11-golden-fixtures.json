@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "projections": [
+    { "name": "SEZA dodge success", "stateKey": "1003211:1003211:seza", "causalityId": "365", "causalityType": 43, "kind": "attacks_evaded", "eventMode": "current_event" },
+    { "name": "SEZA appearance inclusive window", "stateKey": "1003211:1003211:seza", "causalityId": "2266", "causalityType": 51, "kind": "turn_from_entry", "comparator": "lte", "value": 1 },
+    { "name": "SEZA appearance strict lower bound", "stateKey": "1003211:1003211:seza", "causalityId": "2631", "causalityType": 55, "kind": "turn_from_entry", "comparator": "gte", "value": 8, "nativeComparator": "gt", "nativeThreshold": 7 }
+  ],
+  "unknown": { "name": "runtime gauge remains unknown", "stateKey": "1000030:1000030:initial", "causalityId": "31", "causalityType": 3 }
+}
