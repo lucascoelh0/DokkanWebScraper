@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "passive-skill-turn-is-once-sqlite-runtime-lifecycle",
+  "sqliteBinding": {
+    "table": "passive_skills",
+    "turn": { "column": "turn", "passiveSkillOffset": 76, "createStatusOffset": 176 },
+    "isOnce": { "column": "is_once", "rowNormalization": "nonzero_to_true", "passiveSkillOffset": 80, "createStatusOffset": 180 }
+  },
+  "runtimeStorage": {
+    "isOnceOffset": 284,
+    "currentTurnOffset": 352,
+    "maximumTurnOffset": 356,
+    "internalTurnGateOffset": 360,
+    "execCountOffset": 364,
+    "executedThisTurnOffset": 368
+  },
+  "onceOnly": {
+    "viabilityExpression": "is_once == 0 || exec_count < 1",
+    "successfulExecMutation": "executed_this_turn = true; exec_count += 1",
+    "parametersRead": ["is_once", "exec_count"],
+    "parametersIgnored": ["turn", "exec_timing_type", "target_type", "calc_option"],
+    "return": "boolean viability gate composed after independent status and availability gates"
+  },
+  "duration": {
+    "constructor": "current_turn = maximum_turn = raw turn",
+    "successfulExecMutation": "current_turn = maximum_turn",
+    "endTurnMutation": "after active, available and internal-turn gates, raw -1 bypasses decrement; otherwise decrement one, clamp to zero and deactivate when result <= 0",
+    "isEndTurnExpression": "current_turn < 1",
+    "parametersRead": ["current_turn", "maximum_turn", "status", "available", "internal_turn_gate"],
+    "parametersIgnored": ["is_once", "exec_count", "exec_timing_type", "target_type", "calc_option"]
+  },
+  "executedThisTurn": {
+    "successfulExecMutation": "set true",
+    "endTurnMutation": "set false after updateTurn loop",
+    "independentFromExecCount": true
+  },
+  "resetBoundary": {
+    "clearExecCountOperation": "set every status exec_count to zero",
+    "trigger": "unknown",
+    "boundedStaticCallerAudit": "no direct caller established in this DSO; dynamic or external dispatch remains possible",
+    "executedThisTurnResetIsNotExecCountReset": true
+  },
+  "vtable": {
+    "symbol": "_ZTV22AbilityStatusCausality",
+    "vma": 92058432,
+    "sizeBytes": 360,
+    "rawSha256": "d3df611a0ed2e328b050d285287637c60643ba96ec09e4aaefaad7f2cd114b77",
+    "relocations": [
+      { "offset": 232, "symbol": "_ZNK21AbilityStatusEfficacy9getIsOnceEv" },
+      { "offset": 240, "symbol": "_ZN21AbilityStatusEfficacy9setIsOnceEb" },
+      { "offset": 264, "symbol": "_ZN22AbilityStatusCausality10updateTurnEv" },
+      { "offset": 272, "symbol": "_ZNK22AbilityStatusCausality7getTurnEv" },
+      { "offset": 288, "symbol": "_ZN22AbilityStatusCausality23execCausalityConditionsEv" },
+      { "offset": 296, "symbol": "_ZN22AbilityStatusCausality4execEv" },
+      { "offset": 304, "symbol": "_ZNK22AbilityStatusCausality8isViableEv" },
+      { "offset": 320, "symbol": "_ZN22AbilityStatusCausality8drawLotsEv" },
+      { "offset": 328, "symbol": "_ZNK22AbilityStatusCausality12getExecCountEv" },
+      { "offset": 336, "symbol": "_ZN22AbilityStatusCausality12setExecCountEi" }
+    ]
+  },
+  "codeRegions": [
+    { "role": "passive_skill_row_constructor", "symbol": "_ZN12PassiveSkillC1EPN7SQLite33RowE", "vma": 46449820, "sizeBytes": 2248, "codeSha256": "7cec861db0b338c586868fc49b008da0c08950d1f5656fceebf2dd1acea5843e" },
+    { "role": "create_passive_skill", "symbol": "_ZN14AbilityManager18createPassiveSkillEiiNSt6__ndk110shared_ptrI15PassiveSkillSetEE", "vma": 64383460, "sizeBytes": 1524, "codeSha256": "b56f963ad641d1d9e67027199b0529fb56cf7039b5dc206209eb359a9bb2d04d" },
+    { "role": "status_causality_constructor", "symbol": "_ZN22AbilityStatusCausalityC2EP28CreateAbilityStatusCausality", "vma": 64484464, "sizeBytes": 284, "codeSha256": "a124f4b274a60436dba01bf70971c096e1981ed4b498a7671c7cd8a288e8f85f" },
+    { "role": "get_is_once", "symbol": "_ZNK21AbilityStatusEfficacy9getIsOnceEv", "vma": 64480352, "sizeBytes": 8, "codeSha256": "99e95b2d624118baf7db5d5e8af7351227463c455833d39b4656589df43e1c0c" },
+    { "role": "set_is_once", "symbol": "_ZN21AbilityStatusEfficacy9setIsOnceEb", "vma": 64480360, "sizeBytes": 8, "codeSha256": "981ec03e626e5b8f5c95a18586d7ab3ece53c36df015d06c93eb8eb8c19850ff" },
+    { "role": "once_viability_gate", "symbol": "_ZNK22AbilityStatusCausality8isViableEv", "vma": 64485156, "sizeBytes": 64, "codeSha256": "01abf94a16ab9f174c1858d070036f53c5aaa40a5f94e3f670ecc6e43c4e3853" },
+    { "role": "draw_lots", "symbol": "_ZN22AbilityStatusCausality8drawLotsEv", "vma": 64484828, "sizeBytes": 64, "codeSha256": "9b6a84a572403b3bed147c2c6b2c8fe2cfc21e8679565593eafa5b5bde03491c" },
+    { "role": "exec_causality_conditions", "symbol": "_ZN22AbilityStatusCausality23execCausalityConditionsEv", "vma": 64484900, "sizeBytes": 256, "codeSha256": "a15efe19275a3d7a4abd41b6b922bc76d18af8d999bcdb3f855f801cc1f7075b" },
+    { "role": "successful_execution", "symbol": "_ZN22AbilityStatusCausality4execEv", "vma": 64485444, "sizeBytes": 380, "codeSha256": "d0f2551f2910791a0154f249c507a6a6530f74c625282b4727bfe1630e627596" },
+    { "role": "get_exec_count", "symbol": "_ZNK22AbilityStatusCausality12getExecCountEv", "vma": 64480408, "sizeBytes": 8, "codeSha256": "b7e245f31c286c4f19d085b57c1282c8f764d4a82d98d45e05500925c9991033" },
+    { "role": "set_exec_count", "symbol": "_ZN22AbilityStatusCausality12setExecCountEi", "vma": 64480416, "sizeBytes": 8, "codeSha256": "27382928501c013ddaab9c668a8e8f6fbc11e1d8ec77d15dab2def8f491c422e" },
+    { "role": "increment_exec_count", "symbol": "_ZN22AbilityStatusCausality18incrementExecCountEv", "vma": 64486788, "sizeBytes": 24, "codeSha256": "405403512f77c39d207e5fad8fc3e9947223761e5766d09b785e3e02d4debf4e" },
+    { "role": "update_turn", "symbol": "_ZN22AbilityStatusCausality10updateTurnEv", "vma": 64486828, "sizeBytes": 336, "codeSha256": "6b99feffce760378248812d37b5b6bf300979689d2c410e20814ebcb5cd2dfcf" },
+    { "role": "update_turn_internal", "symbol": "_ZN22AbilityStatusCausality18updateTurnInternalEv", "vma": 64487164, "sizeBytes": 60, "codeSha256": "ea41a5069cad70938484a226984a1f105c645f216d9a297387670053b80562e7" },
+    { "role": "is_end_turn", "symbol": "_ZN22AbilityStatusCausality9isEndTurnEv", "vma": 64487488, "sizeBytes": 16, "codeSha256": "5477e554513a5989dd0256e899f3e99407c158031b8b34b152e1093fc970c3cc" },
+    { "role": "ability_manager_end_turn", "symbol": "_ZN14AbilityManager7endTurnEv", "vma": 64406968, "sizeBytes": 280, "codeSha256": "8aefd5c41527567ff425f9fa678317544d77fe6f088da523a0efa9e9c1478ed8" },
+    { "role": "clear_exec_count", "symbol": "_ZN14AbilityManager14clearExecCountEv", "vma": 64440520, "sizeBytes": 128, "codeSha256": "2b60281189f73b7d1422a9fc07bdf50205a4c18f7a56355d2febaa3bb8e8dcfb" },
+    { "role": "reset_executed_this_turn", "symbol": "_ZN14AbilityManager34resetAbilityStatusExecutedThisTurnEv", "vma": 64369612, "sizeBytes": 108, "codeSha256": "516e2ba62feda3eb9c13a9f2f5293f9eda1d0965f44367545618bc05691660b5" },
+    { "role": "update_all_status_turns", "symbol": "_ZN14AbilityManager23updateAbilityStatusTurnEv", "vma": 64369552, "sizeBytes": 60, "codeSha256": "a499a016c854ab60b7a92c04aa532a7534631e888e01cc417ff454d239d0de20" },
+    { "role": "availability_reactivation_gate", "symbol": "_ZN14AbilityManager25setAvailableAbilityStatusEi17SkillCategoryType9SkillTypeib", "vma": 64420644, "sizeBytes": 536, "codeSha256": "0dd36bbb8b380dd75bf5cb93579790b70b1b579e1454127d9025c3b3c6f535ae" }
+  ],
+  "unknowns": [
+    "clear_exec_count_trigger_and_epoch",
+    "all_status_removal_paths",
+    "cross_status_recurrence",
+    "stacking",
+    "calculation_bucket",
+    "timing",
+    "target",
+    "unit"
+  ]
+}

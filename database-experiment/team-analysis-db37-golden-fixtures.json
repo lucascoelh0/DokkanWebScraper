@@ -1,0 +1,13 @@
+[
+  { "id": "repeatable", "turn": 1, "isOnce": 0, "onceStatus": "supported", "enabled": false, "durationStatus": "supported" },
+  { "id": "once", "turn": 1, "isOnce": 1, "onceStatus": "supported", "enabled": true, "durationStatus": "supported" },
+  { "id": "nonzero-normalized", "turn": 2, "isOnce": -7, "onceStatus": "supported", "enabled": true, "durationStatus": "supported" },
+  { "id": "zero-turn", "turn": 0, "isOnce": 0, "onceStatus": "supported", "enabled": false, "durationStatus": "supported" },
+  { "id": "minus-one-sentinel", "turn": -1, "isOnce": 1, "onceStatus": "supported", "enabled": true, "durationStatus": "partial" },
+  { "id": "invalid-negative-turn", "turn": -2, "isOnce": 1, "onceStatus": "supported", "enabled": true, "durationStatus": "unknown" },
+  { "id": "invalid-once", "turn": 3, "isOnce": "bad", "onceStatus": "unknown", "enabled": null, "durationStatus": "supported" },
+  { "id": "invalid-turn", "turn": null, "isOnce": 0, "onceStatus": "supported", "enabled": false, "durationStatus": "unknown" },
+  { "id": "int32-max", "turn": 2147483647, "isOnce": 2147483647, "onceStatus": "supported", "enabled": true, "durationStatus": "supported" },
+  { "id": "above-int32", "turn": 2147483648, "isOnce": 4294967296, "onceStatus": "unknown", "enabled": null, "durationStatus": "unknown" },
+  { "id": "below-int32", "turn": -2147483649, "isOnce": -2147483649, "onceStatus": "unknown", "enabled": null, "durationStatus": "unknown" }
+]
