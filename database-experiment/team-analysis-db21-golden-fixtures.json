@@ -1,0 +1,7 @@
+{
+  "expectedVerifiedSymbols": 6,
+  "expectedAuditedCandidates": 120,
+  "expectedExactNumericMatches": 112,
+  "expectedNumericMismatches": 8,
+  "expectedUnresolvedSemantics": ["runtime_consumer", "start_point", "unit", "end_inclusivity", "efficacy_dependencies", "is_once_interaction"]
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "bounded_exported-symbol-and-first-party-row-linkage-audit",
+  "symbols": [
+    { "role": "passive_skill_row_constructor", "symbol": "_ZN12PassiveSkillC1EPN7SQLite33RowE", "vma": 46449820, "sizeBytes": 2248, "codeSha256": "7cec861db0b338c586868fc49b008da0c08950d1f5656fceebf2dd1acea5843e", "observation": "deserializes_sqlite_row_without_proven_turn_offset" },
+    { "role": "passive_skill_effect_row_constructor", "symbol": "_ZN12PassiveSkill11SkillEffectC1EPN7SQLite33RowE", "vma": 46452932, "sizeBytes": 444, "codeSha256": "d8397bede514b38b30546d8b64738cda7f921e90f531b113164f942e5cd11aef", "observation": "deserializes_sqlite_row_without_proven_turn_offset" },
+    { "role": "ability_set_is_once", "symbol": "_ZN19AbilityEfficacyInfo9setIsOnceEb", "vma": 64353384, "sizeBytes": 8, "codeSha256": "525490d17fbdb7a82a823d4a82d7829c51d1c751e9080bfb96f9f6a5e95e2c92", "observation": "runtime_api_not_linked_to_passive_skill_column" },
+    { "role": "ability_get_exec_timing", "symbol": "_ZNK19AbilityEfficacyInfo13getExecTimingEv", "vma": 64353216, "sizeBytes": 8, "codeSha256": "6f1929ee2376e6ada94db6d2aafe012dfc8382613e73b99aea0c7dea270fac13", "observation": "runtime_api_not_linked_to_passive_skill_column" },
+    { "role": "ability_get_modifier_turn_value", "symbol": "_ZNK19AbilityEfficacyInfo20getModifierTurnValueEv", "vma": 64354272, "sizeBytes": 40, "codeSha256": "e487ee8723a0e71b3540afb8df648777bb61c476fa7834ecb89bfea7a5d412fa", "observation": "runtime_api_not_linked_to_passive_skill_column" },
+    { "role": "ability_add_turn_value", "symbol": "_ZN28AbilityEfficacyInfoGenerator31addAbilityEfficacyInfoTurnValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64268652, "sizeBytes": 328, "codeSha256": "d69a743459da5e90e5c37a52d14b0a475625df36fb98dda9672cb6c230175b6f", "observation": "accepts_turn_value_without_proven_passive_skill_source" }
+  ],
+  "unresolvedSemantics": ["runtime_consumer", "start_point", "unit", "end_inclusivity", "efficacy_dependencies", "is_once_interaction"],
+  "limitation": "The bounded audit does not prove exhaustive absence of an inlined, unnamed, indirect, or alternate consumer. It establishes no field-to-runtime linkage and therefore authorizes no semantic promotion."
+}
