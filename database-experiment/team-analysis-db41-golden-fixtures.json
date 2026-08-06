@@ -1,0 +1,7 @@
+[
+  {"id":"seza-category-17","stateKey":"1004251:1004251:seza","ruleKey":"4254:42540013:13004254","causalityId":"137","categoryId":17,"threshold":1},
+  {"id":"initial-category-8","stateKey":"1006430:1006430:initial","ruleKey":"3039:30390004:4003039","causalityId":"1864","categoryId":8,"threshold":1},
+  {"id":"multi-category-rule-5","stateKey":"1006521:1006521:eza","ruleKey":"4670:46700009:9004670","causalityId":"153","categoryId":5,"threshold":1},
+  {"id":"multi-category-rule-72","stateKey":"1006521:1006521:eza","ruleKey":"4670:46700009:9004670","causalityId":"865","categoryId":72,"threshold":1},
+  {"id":"initial-category-17-reused","stateKey":"1007770:1007770:initial","ruleKey":"2678:26780002:2002678","causalityId":"1204","categoryId":17,"threshold":1}
+]

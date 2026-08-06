@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "causality-type-34-enemy-category-count-threshold",
+  "dispatch": {
+    "tableVma": 95588720,
+    "entrySizeBytes": 8,
+    "causalityType": 34,
+    "slotVma": 95588992,
+    "handlerRole": "enemy_category_count_handler"
+  },
+  "sqliteBinding": {
+    "table": "skill_causalities",
+    "groupModeColumn": "cau_val1",
+    "categoryIdColumn": "cau_val2",
+    "thresholdColumn": "cau_val3",
+    "payloadContainerOffset": 8,
+    "elementSizeBytes": 4,
+    "parameterOrder": ["cau_val1", "cau_val2", "cau_val3"]
+  },
+  "groupDispatch": {
+    "function": "AbilityCausalityFunc::findSpecificGroup",
+    "supportedRawMode": 1,
+    "modeFunctionVtableVma": 92047720,
+    "invokeRelocationOffset": 48,
+    "invokeVma": 64220784,
+    "unsupportedRawModes": "unknown"
+  },
+  "enemySelection": {
+    "container": "InGamePuzzleData enemy entries",
+    "entryGetterSymbol": "_ZNK16InGamePuzzleData18getPuzzleEnemyDataEi",
+    "nullEntries": "ignored",
+    "eligibilityFieldOffsetBytes": 332,
+    "eligibilityComparison": "signed_int32_gte_1",
+    "eligibilityFieldSemanticName": "unknown",
+    "cardResolutionSymbol": "_ZNK9CardModel17getMasterCardByIdEm",
+    "acceptedPartnerType": "PuzzleEnemyData"
+  },
+  "categoryFilter": {
+    "callbackVtableVma": 92048200,
+    "invokeRelocationOffset": 48,
+    "invokeVma": 64225020,
+    "cardCategoryGetterSymbol": "_ZNK4Card17getCardCategoriesEv",
+    "selectedIds": "single_int32_vector_containing_cau_val2",
+    "returnValue": "matching_card_category_count",
+    "acceptance": "callback_return_nonzero"
+  },
+  "threshold": {
+    "source": "cau_val3",
+    "unit": "matching_enemy_characters",
+    "comparison": "unsigned_size_gte_sign_extended_int32_threshold",
+    "collectionShortCircuit": "stop_when_partner_size_unsigned_gte_sign_extended_cau_val3",
+    "finalReturn": "JudgeStatus(comparison_result)"
+  },
+  "codeRegions": [
+    { "role": "enemy_category_count_handler", "symbol": "_ZN20AbilityCausalityFunc21isOverTeamCategoryNumERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE", "vma": 64190140, "sizeBytes": 520, "codeSha256": "c4df5f9b049aff17442790ba2a2e8176dda08dc7e36878451a75b7f1ac67882f" },
+    { "role": "find_specific_group", "symbol": "_ZN20AbilityCausalityFunc17findSpecificGroupEiRKNSt6__ndk16vectorIiNS0_9allocatorIiEEEEiRKNS0_8functionIFiRKNS0_10shared_ptrI4CardEES6_EEESG_", "vma": 64212824, "sizeBytes": 2536, "codeSha256": "6186f493b95aa825350d2e637e32f4717af670a7dda886f678e431d7d95a22e7" },
+    { "role": "mode_1_enemy_group_invoke", "symbol": "local_function_object_invoke_mode_1", "vma": 64220784, "sizeBytes": 756, "codeSha256": "7b7000dc2a9503db864a0518b3aaafb5a4742d44f122c833f4d8bf5320b5376d" },
+    { "role": "category_membership_callback", "symbol": "local_function_object_category_count_invoke", "vma": 64225020, "sizeBytes": 420, "codeSha256": "edfc065ac2abbe718338e028ab61f77d73d4018bd885233ff872f1b8487a1856" },
+    { "role": "get_card_categories", "symbol": "_ZNK4Card17getCardCategoriesEv", "vma": 46422528, "sizeBytes": 56, "codeSha256": "5a2869a6a3daf25884103e0a4b186d8eb0ccfbbe4be3343a05d89f9b07aa1a67" },
+    { "role": "get_puzzle_enemy_data", "symbol": "_ZNK16InGamePuzzleData18getPuzzleEnemyDataEi", "vma": 50059092, "sizeBytes": 36, "codeSha256": "0126cd4fff11d96cafe920b0eba7295da1e67966c8785f4fc4e755f7f6d1fba7" },
+    { "role": "get_master_card_by_id", "symbol": "_ZNK9CardModel17getMasterCardByIdEm", "vma": 52308240, "sizeBytes": 224, "codeSha256": "33f8fc823c5e74a75670c8ce2a50b22b03e9bc1fef79e3eb2b0219d75ec94bae" },
+    { "role": "push_enemy_characters", "symbol": "_ZN24AbilityCausalityPartners14pushCharactersERKNSt6__ndk16vectorIP15PuzzleEnemyDataNS0_9allocatorIS3_EEEE", "vma": 64234748, "sizeBytes": 228, "codeSha256": "5bd1c6756b817938ed1b5877a75d51dd50c78e1051870a7a72d0f1b426a637bc" },
+    { "role": "partner_size", "symbol": "_ZNK24AbilityCausalityPartners4sizeEv", "vma": 64234504, "sizeBytes": 16, "codeSha256": "65b78cf9fb7abe8efc0016f9a9a5572463a6f7a8bd2fd7a866083ebe27a10429" }
+  ],
+  "unknowns": [
+    "raw_group_modes_other_than_1",
+    "enemy_eligibility_field_product_name",
+    "condition_evaluation_timing",
+    "duration",
+    "recurrence",
+    "reset_and_expiry",
+    "calculation_bucket"
+  ]
+}
