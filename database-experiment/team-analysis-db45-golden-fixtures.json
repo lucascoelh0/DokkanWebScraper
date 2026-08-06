@@ -1,0 +1,19 @@
+[
+  { "kind": "timing", "name": "timing-5-supported", "raw": 5, "status": "supported", "event": "player_attack_post_damage_setup" },
+  { "kind": "timing", "name": "timing-4-not-overlaid", "raw": 4, "status": "not_overlaid" },
+  { "kind": "modifier", "name": "positive-modifier", "raw": 25, "status": "supported", "float32": 25 },
+  { "kind": "modifier", "name": "negative-modifier", "raw": -12.5, "status": "supported", "float32": -12.5 },
+  { "kind": "modifier", "name": "zero-modifier", "raw": 0, "status": "supported", "float32": 0 },
+  { "kind": "modifier", "name": "invalid-modifier", "raw": "invalid", "status": "unknown", "float32": null },
+  { "kind": "arithmetic", "name": "single-positive-hp-factor", "modifiers": [25], "damage": 1000, "aggregate": 25, "hpFactor": 250 },
+  { "kind": "arithmetic", "name": "additive-float32-hp-factor", "modifiers": [10, 15], "damage": 999, "aggregate": 25, "hpFactor": 249 },
+  { "kind": "arithmetic", "name": "negative-hp-factor", "modifiers": [-10], "damage": 999, "aggregate": -10, "hpFactor": -99 },
+  { "kind": "arithmetic", "name": "zero-hp-factor", "modifiers": [0], "damage": 999, "aggregate": 0, "hpFactor": 0 },
+  { "kind": "arithmetic", "name": "invalid-damage", "modifiers": [25], "damage": "invalid", "aggregate": 25, "hpFactor": null },
+  { "kind": "rule", "name": "timing-5-flat-option-preserved", "stateKey": "1000200:1000200:initial", "ruleKey": "18:180000:18", "passiveSkillId": "18", "modifier": 15, "rawCalcOption": 0, "operation": "add", "timing": "player_attack_post_damage_setup", "probability": 100 },
+  { "kind": "rule", "name": "timing-5-percent-option-not-applied", "stateKey": "1001230:1001230:initial", "ruleKey": "89:890000:89", "passiveSkillId": "89", "modifier": 25, "rawCalcOption": 2, "operation": "add_percent_of_lhs", "timing": "player_attack_post_damage_setup", "probability": 30 },
+  { "kind": "rule", "name": "inherited-timing-4", "stateKey": "1031431:4031441:initial", "ruleKey": "4630:46300000:4630", "passiveSkillId": "4630", "modifier": 6, "rawCalcOption": 2, "operation": "add_percent_of_lhs", "timing": "player_attack_setup", "probability": 100 },
+  { "kind": "rule", "name": "timing-15-remains-unknown", "stateKey": "1033841:1033841:initial", "ruleKey": "4966:49660001:1004966", "passiveSkillId": "1004966", "modifier": 5, "rawCalcOption": 2, "operation": "add_percent_of_lhs", "timing": "unknown", "probability": 100 },
+  { "kind": "rule", "name": "same-state-first-record", "stateKey": "1025201:1025201:eza", "ruleKey": "2999:29990006:6002999", "passiveSkillId": "6002999", "modifier": 15, "rawCalcOption": 2, "operation": "add_percent_of_lhs", "timing": "player_attack_post_damage_setup", "probability": 100 },
+  { "kind": "rule", "name": "same-state-second-record", "stateKey": "1025201:1025201:eza", "ruleKey": "2999:29990008:8002999", "passiveSkillId": "8002999", "modifier": 5, "rawCalcOption": 2, "operation": "add_percent_of_lhs", "timing": "player_attack_post_damage_setup", "probability": 100 }
+]
