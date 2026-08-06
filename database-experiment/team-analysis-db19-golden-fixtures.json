@@ -1,0 +1,1 @@
+{ "schemaVersion": 1, "expectedComparablePairs": 309, "expectedResidualPairs": 220, "expectedResidualAttributions": 395, "expectedDatabaseResiduals": 106, "expectedCurrentResiduals": 289, "resolvedPair": { "stateKey": "1028761:1028761:initial", "databaseRuleKey": "4099:40990002:2004099", "currentRuleKey": "1028761:1028761:initial:r4:0:32" } }
