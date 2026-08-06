@@ -1,0 +1,4 @@
+[
+  { "name": "owner-revival-executed", "stateKey": "1020311:1020311:eza", "ruleKey": "4059:40590012:12004059", "causalityId": "1019", "causalityType": 47, "scope": "ability_owner_pure_current_record", "expected": true },
+  { "name": "party-revival-executed", "stateKey": "1020311:1020311:eza", "ruleKey": "4059:40590010:10004059", "causalityId": "2129", "causalityType": 54, "scope": "party_pure_and_back_current_records", "expected": true }
+]

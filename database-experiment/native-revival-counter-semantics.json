@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "causality-types-47-54-revival-activation-counter",
+  "skillCausalityPayload": {
+    "containerOffset": 8,
+    "elementSizeBytes": 4,
+    "indexColumns": ["cau_val1", "cau_val2", "cau_val3"],
+    "constructorSymbol": "_ZN14SkillCausalityC1Eiiii",
+    "constructorVma": 46457368,
+    "constructorSizeBytes": 636,
+    "constructorCodeSha256": "88658544bbf49bbbbef71b4ff961adb30dc1da38ec949111f5c750c5a27bf9d2",
+    "rowConstructorSymbol": "_ZN14SkillCausalityC1EPN7SQLite33RowE",
+    "rowConstructorVma": 46456188,
+    "rowConstructorSizeBytes": 1180,
+    "rowConstructorCodeSha256": "c81a17636c289911f497c3a863c99151b7166274b628b87a22cde02bde0733dc"
+  },
+  "abilityStatusVtable": {
+    "symbol": "_ZTV22AbilityStatusCausality",
+    "vma": 92058432,
+    "sizeBytes": 360,
+    "deckIndexSlotOffset": 88,
+    "deckIndexSymbol": "_ZNK13AbilityStatus12getDeckIndexEv"
+  },
+  "inGameDataVtable": {
+    "symbol": "_ZTV10InGameData",
+    "vma": 89644704,
+    "sizeBytes": 472,
+    "pureCurrentSlotOffset": 40,
+    "pureCurrentSymbol": "_ZN10InGameData23getPureCharaDataCurrentEi",
+    "backCurrentSlotOffset": 88,
+    "backCurrentSymbol": "_ZN10InGameData23getBackCharaDataCurrentEi"
+  },
+  "counter": {
+    "inGameCharaDataOffset": 616,
+    "widthBits": 32,
+    "incrementWriter": {
+      "symbol": "_ZN16DPuzzleGameLayer22onActionBankStateEndedEv",
+      "vma": 47681636,
+      "sizeBytes": 1548,
+      "codeSha256": "1edb6ac9296343ce6644187ed1f3170c83a1173a87e9394344f5bff1b58ae447",
+      "observation": "available_revival_efficacy_setup_callback_increments_pure_current_record_counter"
+    },
+    "availabilityReader": {
+      "symbol": "_ZN10InGameData23isAvailableRevivalSkillEv",
+      "vma": 49926076,
+      "sizeBytes": 492,
+      "codeSha256": "a624adaf8a2eca4fff18eb16b9ca1f7818fe1d8a91969c0a3afd354de3e99253",
+      "observation": "revival_availability_rejects_positive_counters_across_party_records"
+    },
+    "resetWriter": {
+      "symbol": "_ZN10InGameData30resetActivateRevivalSkillCountEv",
+      "vma": 49876608,
+      "sizeBytes": 632,
+      "codeSha256": "218ea831934e3567e8bd5a6b7730d1ba26e55991b840a5b48528103fcb92ffbf",
+      "observation": "zeros_same_counter_across_in_game_character_records"
+    }
+  },
+  "handlers": [
+    {
+      "causalityType": 47,
+      "symbol": "_ZN20AbilityCausalityFunc22isExecutedRevivalSkillERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE",
+      "vma": 64199788,
+      "sizeBytes": 152,
+      "codeSha256": "20e6ae8293bd80f128d568a115bbeb1c11a19c9463c09edcd808a6fe135adca4",
+      "scope": "ability_owner_deck_index_pure_current_record",
+      "predicate": "revival_skill_activation_count_gt_zero",
+      "parameterReads": [],
+      "ignoredParameters": ["cau_val1", "cau_val2", "cau_val3"]
+    },
+    {
+      "causalityType": 54,
+      "symbol": "_ZN20AbilityCausalityFunc27isPartyExecutedRevivalSkillERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE",
+      "vma": 64201884,
+      "sizeBytes": 264,
+      "codeSha256": "963f49d3b9a780423e3b5dcf124ef0b309792677e9265deaa8c24a5e5857c990",
+      "scope": "deck_indices_0_through_6_pure_and_back_current_records",
+      "predicate": "any_revival_skill_activation_count_gt_zero",
+      "parameterReads": ["cau_val1"],
+      "ignoredParameters": ["cau_val2", "cau_val3"],
+      "cauVal1Polarity": "zero_requires_any_nonzero_requires_none"
+    }
+  ],
+  "conclusions": [
+    "counter_is_incremented_after_available_revival_skill_view_callback",
+    "counter_is_consulted_by_revival_availability_and_reset_by_named_runtime_writer",
+    "type_47_tests_ability_owner_pure_current_record_counter_gt_zero",
+    "type_54_tests_party_pure_and_back_current_records_with_cau_val1_polarity"
+  ],
+  "unknowns": [
+    "reset_trigger_and_history_window",
+    "activation_timing",
+    "recurrence",
+    "calculation_bucket",
+    "counter_overflow_behavior"
+  ]
+}
