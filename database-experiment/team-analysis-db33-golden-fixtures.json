@@ -1,0 +1,8 @@
+[
+  { "id": "inherited-turn-start", "raw": 1, "expected": "not_newly_promoted" },
+  { "id": "player-attack-setup-number", "raw": 4, "expected": "player_attack_setup" },
+  { "id": "player-attack-setup-string", "raw": "4", "expected": "player_attack_setup" },
+  { "id": "unknown-observed", "raw": 3, "expected": "unknown" },
+  { "id": "unknown-fractional", "raw": 4.5, "expected": "unknown" },
+  { "id": "unknown-invalid", "raw": "attack", "expected": "unknown" }
+]
