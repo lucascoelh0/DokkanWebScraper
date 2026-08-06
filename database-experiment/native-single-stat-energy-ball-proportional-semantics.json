@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "efficacyTypes": [59, 60],
+  "auditScope": "passive-efficacy-59-60-single-stat-per-obtained-ball-raw-type-11",
+  "sqliteBinding": {
+    "table": "passive_skills",
+    "enumColumn": "efficacy_type",
+    "eff_value1": { "callChangeParamOffset": 40, "role": "single_stat_modifier_per_count" },
+    "eff_value2": { "callChangeParamOffset": 48, "role": "ignored_by_both_pure_handlers" },
+    "eff_value3": { "callChangeParamOffset": 56, "role": "ignored_by_both_pure_handlers" },
+    "calc_option": { "callChangeParamOffset": 24, "role": "post_scaling_stat_operation" }
+  },
+  "dispatch": {
+    "tableVma": 92049840,
+    "entrySizeBytes": 8,
+    "entries": [
+      { "efficacyType": 59, "slotVma": 92050312, "handlerRole": "efficacy_59_handler" },
+      { "efficacyType": 60, "slotVma": 92050320, "handlerRole": "efficacy_60_handler" }
+    ]
+  },
+  "handlerBehavior": {
+    "proportionalFlag": { "callChangeParamOffset": 28, "writtenValue": 1 },
+    "efficacy59": { "stat": "attack", "tailTargetRole": "pure_attack_handler" },
+    "efficacy60": { "stat": "defense", "tailTargetRole": "pure_defense_handler" },
+    "parametersRead": ["call_change_param_pointer"],
+    "numericParametersReadDirectly": [],
+    "returnBehavior": "tail_return_of_pure_stat_handler"
+  },
+  "pureHandlerBehavior": {
+    "input": "eff_value1_double_at_call_change_param_offset_40",
+    "conversion": "double_to_float32",
+    "efficacy59Output": "apply_attack",
+    "efficacy60Output": "apply_defense",
+    "ignoredInputs": ["eff_value2_at_offset_48", "eff_value3_at_offset_56"],
+    "returnBehavior": "tail_return_of_apply_stat_handler"
+  },
+  "sharedConsumerEvidence": {
+    "sourceContractVersion": "0.38.0",
+    "sourceArtifactSha256": "a74482a1350fb2f750b1f5cd583133afd69f17116d7d8fe1c79866e19c060c01",
+    "sourceNativeEvidenceSha256": "72ccd099961126240abbda125e5cf909f544a0e883edd00a1b146cafd7a6c836",
+    "proportionalFlagAbilityEfficacyInfoOffset": 40,
+    "defaultRawBallType": 11,
+    "defaultRawBitpattern": 0,
+    "mapGetter": "_ZNK15InGameCharaData26getObtainedBallTypeNumbersEv",
+    "mapKey": 11,
+    "missingMapKeyValue": 0,
+    "arithmetic": "handler_float32_modifier_widened_to_double_times_signed_int32_map_count_before_calc_option",
+    "inheritedProofRoles": [
+      "apply_attack",
+      "apply_defense",
+      "create_efficacy_info",
+      "efficacy_info_default_constructor",
+      "generate_attack",
+      "generate_defense",
+      "stat_diff_consumer",
+      "get_is_proportional",
+      "get_raw_ball_type",
+      "get_raw_bitpattern",
+      "get_obtained_ball_type_numbers",
+      "build_obtained_ball_type_numbers"
+    ],
+    "rawBallTypeSemanticName": "unknown"
+  },
+  "branchSites": [
+    { "sourceRole": "efficacy_59_handler", "instructionVma": 64331884, "instructionHex": "cdba5d14", "targetPltVma": 88902560, "gotRelocationOffset": 95413368, "targetRole": "pure_attack_handler" },
+    { "sourceRole": "efficacy_60_handler", "instructionVma": 64331896, "instructionHex": "ceba5d14", "targetPltVma": 88902576, "gotRelocationOffset": 95413376, "targetRole": "pure_defense_handler" },
+    { "sourceRole": "pure_attack_handler", "instructionVma": 64320488, "instructionHex": "9ac65d14", "targetPltVma": 88903248, "gotRelocationOffset": 95413712, "targetRole": "apply_attack" },
+    { "sourceRole": "pure_defense_handler", "instructionVma": 64320500, "instructionHex": "9bc65d14", "targetPltVma": 88903264, "gotRelocationOffset": 95413720, "targetRole": "apply_defense" }
+  ],
+  "codeRegions": [
+    { "role": "efficacy_59_handler", "symbol": "_ZN39AbilityEfficacyStatusUpByEnergyBallFunc39callChangeEnergyBallProportionalAtkFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64331876, "sizeBytes": 12, "codeSha256": "9e020042cf60ac1905f7b4f7586068689c0f3b9458faefa2e55cbb743437de5b" },
+    { "role": "efficacy_60_handler", "symbol": "_ZN39AbilityEfficacyStatusUpByEnergyBallFunc39callChangeEnergyBallProportionalDefFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64331888, "sizeBytes": 12, "codeSha256": "0380e6d6788c79c624c10d1db26529f6c7b6f6577e02c80dd516688be148d1a8" },
+    { "role": "pure_attack_handler", "symbol": "_ZN31AbilityEfficacyPureStatusUpFunc22callChangeAtkParamFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64320480, "sizeBytes": 12, "codeSha256": "d99470373faf26bc750fde3608e2522e2573ca4839efcd10ddc33df43a689403" },
+    { "role": "pure_defense_handler", "symbol": "_ZN31AbilityEfficacyPureStatusUpFunc22callChangeDefParamFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64320492, "sizeBytes": 12, "codeSha256": "28d5f46e5d04b1c441617477ff732e5ac3f001355c79f4c44b3ac83afbad2638" }
+  ],
+  "unknowns": [
+    "raw_ball_type_11_semantic_name",
+    "obtained_ball_count_population_and_reset_window",
+    "consumer_boolean_argument_product_name",
+    "cross_bucket_final_formula_order",
+    "recurrence_and_expiry",
+    "cross_status_stacking_order"
+  ]
+}

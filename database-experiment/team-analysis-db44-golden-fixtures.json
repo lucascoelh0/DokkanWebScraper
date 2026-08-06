@@ -1,0 +1,11 @@
+[
+  { "kind": "actual", "name": "attack-percent-former", "stateKey": "1004460:1004460:initial", "ruleKey": "413:4130000:413", "passiveSkillId": "413", "efficacyType": 59, "stat": "attack", "modifier": 5, "operation": "add_percent_of_lhs", "bucket": "former_passive_stat" },
+  { "kind": "actual", "name": "defense-percent-former", "stateKey": "1008421:1008421:eza", "ruleKey": "2720:27200001:1002720", "passiveSkillId": "1002720", "efficacyType": 60, "stat": "defense", "modifier": 15, "operation": "add_percent_of_lhs", "bucket": "former_passive_stat" },
+  { "kind": "actual", "name": "defense-subtract-percent", "stateKey": "1011171:1011171:eza", "ruleKey": "2164:21640002:2002164", "passiveSkillId": "2002164", "efficacyType": 60, "stat": "defense", "modifier": 6, "operation": "subtract_percent_of_lhs_floor_zero", "bucket": "former_passive_stat" },
+  { "kind": "actual", "name": "attack-flat-add", "stateKey": "1012361:1012361:seza", "ruleKey": "4839:48390014:14004839", "passiveSkillId": "14004839", "efficacyType": 59, "stat": "attack", "modifier": 2000, "operation": "add", "bucket": "former_passive_stat" },
+  { "kind": "actual", "name": "attack-latter-bucket", "stateKey": "1021921:1021921:eza", "ruleKey": "4530:45300002:2004530", "passiveSkillId": "2004530", "efficacyType": 59, "stat": "attack", "modifier": 30, "operation": "add_percent_of_lhs", "bucket": "latter_passive_stat" },
+  { "kind": "modifier", "name": "synthetic-negative", "efficacyType": 59, "value": -7, "status": "supported", "stat": "attack", "float32": -7 },
+  { "kind": "modifier", "name": "synthetic-zero", "efficacyType": 60, "value": 0, "status": "supported", "stat": "defense", "float32": 0 },
+  { "kind": "modifier", "name": "synthetic-invalid", "efficacyType": 59, "value": "bad", "status": "unknown", "stat": "attack", "float32": null },
+  { "kind": "modifier", "name": "synthetic-unknown-efficacy", "efficacyType": 99, "value": 10, "status": "unknown", "stat": "unknown", "float32": null }
+]
