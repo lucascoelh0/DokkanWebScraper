@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "efficacyType": 111,
+  "auditScope": "efficacy-111-attack-break-marker-target-and-multiplicity",
+  "conditionMasksRaw": [16777216, 33554432],
+  "codeRegions": [
+    { "role": "attack_break_handler", "symbol": "_ZN31AbilityEfficacyBadConditionFunc34callChangeConditionAttackBreakFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64279504, "sizeBytes": 496, "codeSha256": "edd7ab755c8dc39147dd977df316e79520cbaf1b54551c0355ad083f18791b88", "observation": "enemy_index_at_call_param_offset_0_then_raw_condition_check_and_none_value_type_111_registration" },
+    { "role": "condition_checker", "symbol": "_ZN31AbilityEfficacyBadConditionFunc20checkEnableConditionEPN19AbilityEfficacyCore15CallChangeParamEN12InGameBattle9ConditionES4_", "vma": 64273856, "sizeBytes": 1856, "codeSha256": "895bde1d5707dd3f183ec5311af23020b547e954b7825791a60a7bc6966e413f", "observation": "consumes_two_raw_condition_masks_without_proven_human_names" },
+    { "role": "generic_info_creator", "symbol": "_ZN28AbilityEfficacyInfoGenerator18createEfficacyInfoEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyType", "vma": 64265256, "sizeBytes": 564, "codeSha256": "cf1465ba21a967ebc6e8baf54f61e7524d99d12c2170e9cd5d2546b1e0ae7907", "observation": "copies_call_param_identity_and_three_generic_values_into_efficacy_info" },
+    { "role": "none_value_registration", "symbol": "_ZN28AbilityEfficacyInfoGenerator31addAbilityEfficacyInfoNoneValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyType", "vma": 64266668, "sizeBytes": 232, "codeSha256": "deb4ecb4c4e6e20110447a0b77aa5e3f8f8fdba430cc0dcba4d4c9bbc687a16a", "observation": "registers_generic_efficacy_info_without_value_specific_mutation" },
+    { "role": "breaking_action_selector", "symbol": "_ZN14AbilityManager24getAttackBreakingActionsEi", "vma": 64449308, "sizeBytes": 684, "codeSha256": "085dcfa8e741672c182e17109c5f279937db5c598a1bb97bb78630ce350af896", "observation": "counts_type_111_entries_matching_enemy_index_and_selects_first_n_eligible_current_actions" },
+    { "role": "break_action_bank_setup", "symbol": "_ZN16AttackBreakUtils33setupEnemyActionBreakedActionBankEiRKNSt6__ndk16vectorINS0_10shared_ptrIN15PuzzleEnemyData6ActionEEENS0_9allocatorIS5_EEEEN12InGameBattle9ConditionE", "vma": 48079872, "sizeBytes": 2316, "codeSha256": "48591f07846d0f129e0d7be58725f08a02b77646efa52cf8e8c3d1bcf8d031d6", "observation": "marks_selected_actions_and_registers_attack_break_action_bank_while_one_raw_condition_path_removes_markers" },
+    { "role": "separate_invalidation_handler", "symbol": "_ZN31AbilityEfficacyBadConditionFunc35callChangeInvalidateAttackBreakFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64280000, "sizeBytes": 216, "codeSha256": "01d89f47ca521a1fc7e0cabe2c972dd3625ef85acab5482b09d225a86cf00031", "observation": "efficacy_112_uses_shared_raw_condition_mask_as_separate_invalidation_family" }
+  ],
+  "abilityEfficacyInfoVtable": {
+    "symbol": "_ZTV19AbilityEfficacyInfo",
+    "vma": 92053824,
+    "sizeBytes": 624,
+    "deckIndexSlotOffset": 48,
+    "deckIndexSymbol": "_ZNK19AbilityEfficacyInfo10getDeckIdxEv",
+    "efficacyTypeSlotOffset": 144,
+    "efficacyTypeSymbol": "_ZNK19AbilityEfficacyInfo15getEfficacyTypeEv"
+  },
+  "consumer": {
+    "target": "enemy_index",
+    "targetSource": "call_change_param_offset_0_copied_to_efficacy_info_deck_index",
+    "multiplicity": "one_eligible_current_action_per_matching_type_111_entry",
+    "selectionOrder": "current_action_order_first_n",
+    "eligibility": [
+      { "actionOffset": 8, "predicate": "int32_nonzero", "semanticName": "unknown" },
+      { "actionOffset": 44, "predicate": "byte_bit_0_clear", "semanticName": "unknown" }
+    ],
+    "removedOnRawConditionMask": 16777216
+  },
+  "conclusions": [
+    "efficacy_111_is_attack_break_marker",
+    "eff_value1_2_3_are_not_consumed_by_attack_break_selection",
+    "target_is_runtime_enemy_index",
+    "each_matching_marker_selects_up_to_one_eligible_current_action_in_order"
+  ],
+  "unknowns": [
+    "condition_mask_16777216_human_name",
+    "condition_mask_33554432_human_name",
+    "target_type_enum_3_4",
+    "execution_timing_type_4_5",
+    "calculation_option_0_2",
+    "probability_application_order",
+    "action_eligibility_field_names",
+    "exact_duration_and_recurrence",
+    "efficacy_112_invalidation_interaction"
+  ]
+}

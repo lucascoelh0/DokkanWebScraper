@@ -1,0 +1,38 @@
+[
+  {
+    "name": "distinct structured target variant",
+    "stateKey": "1029401:4029411:initial",
+    "ruleKey": "4214:42140014:14004214",
+    "passiveSkillId": "14004214",
+    "conditionStatus": "unknown",
+    "executionTimingType": 5,
+    "targetType": 4,
+    "calculationOption": 0,
+    "isOnce": 0,
+    "probability": 100
+  },
+  {
+    "name": "timing four calculation option two",
+    "stateKey": "1032691:1032691:initial",
+    "ruleKey": "4851:48510009:9004851",
+    "passiveSkillId": "9004851",
+    "conditionStatus": "partial",
+    "executionTimingType": 4,
+    "targetType": 3,
+    "calculationOption": 2,
+    "isOnce": 0,
+    "probability": 100
+  },
+  {
+    "name": "probabilistic attack break",
+    "stateKey": "1032741:1032741:initial",
+    "ruleKey": "4775:47750016:16004775",
+    "passiveSkillId": "16004775",
+    "conditionStatus": "supported",
+    "executionTimingType": 5,
+    "targetType": 3,
+    "calculationOption": 0,
+    "isOnce": 0,
+    "probability": 30
+  }
+]
