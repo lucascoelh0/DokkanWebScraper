@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "efficacyType": 61,
+  "auditScope": "passive-efficacy-61-atk-def-per-obtained-ball-raw-type-11",
+  "sqliteBinding": {
+    "table": "passive_skills",
+    "eff_value1": { "callChangeParamOffset": 40, "role": "attack_modifier_per_count" },
+    "eff_value2": { "callChangeParamOffset": 48, "role": "defense_modifier_per_count" },
+    "eff_value3": { "callChangeParamOffset": 56, "role": "ignored_by_handler" },
+    "calc_option": { "callChangeParamOffset": 24, "role": "post_scaling_stat_operation" }
+  },
+  "dispatch": {
+    "tableVma": 92049840,
+    "slotVma": 92050328,
+    "symbol": "_ZN39AbilityEfficacyStatusUpByEnergyBallFunc42callChangeEnergyBallProportionalAtkDefFuncEPN19AbilityEfficacyCore15CallChangeParamE",
+    "handlerVma": 64331900
+  },
+  "emittedFields": {
+    "attack": "eff_value1 converted double_to_float32 and emitted through modifier_attack",
+    "defense": "eff_value2 converted double_to_float32 and emitted through modifier_defense",
+    "skillEfficacyType": 1
+  },
+  "proportionalFlag": {
+    "callChangeParamOffset": 28,
+    "writtenValue": 1,
+    "abilityEfficacyInfoOffset": 40,
+    "defaultRawBallType": 11,
+    "defaultRawBitpattern": 0
+  },
+  "countConsumer": {
+    "function": "_ZN25AbilityManagerStatHelpers27getDiffFromEfficacyInfoListERKNSt6__ndk18functionIFbR19AbilityEfficacyInfoEEEN14AbilityManager8CoefTypeEii17SkillCategoryTypeb",
+    "enabledWhen": "is_energy_ball_proportional_true_and_consumer_boolean_argument_zero",
+    "mapGetter": "_ZNK15InGameCharaData26getObtainedBallTypeNumbersEv",
+    "mapKey": 11,
+    "missingMapKeyValue": 0,
+    "modifierArithmetic": "SQLite numeric to double; handler narrows to float32; consumer widens to double and multiplies by signed int32 map count before calc_option",
+    "rawBallTypeSemanticName": "unknown"
+  },
+  "inheritedBuckets": {
+    "sourceContractVersion": "0.33.0",
+    "timing1": "former_passive_stat",
+    "timing4": "latter_passive_stat"
+  },
+  "codeRegions": [
+    { "role": "efficacy_61_handler", "symbol": "_ZN39AbilityEfficacyStatusUpByEnergyBallFunc42callChangeEnergyBallProportionalAtkDefFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64331900, "sizeBytes": 12, "codeSha256": "908ebce4adbff98de6f66fa4ecef552ed753883c92d3e374b56af9791c2cb6eb" },
+    { "role": "pure_attack_defense_handler", "symbol": "_ZN31AbilityEfficacyPureStatusUpFunc25callChangeAtkDefParamFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64320504, "sizeBytes": 60, "codeSha256": "4bc50a098b7dd425a1f41aad66a41111f142aa73526ce64b4095a5fbfbb0a677" },
+    { "role": "apply_attack", "symbol": "_ZN21AbilityEfficacyHelper15applyAttackFuncEPN19AbilityEfficacyCore15CallChangeParamEf", "vma": 64338252, "sizeBytes": 412, "codeSha256": "165444e45ecb8e5a44dbd8bfd7dcb41f7d854d653eda178f1fe4d5763fe2a645" },
+    { "role": "apply_defense", "symbol": "_ZN21AbilityEfficacyHelper16applyDefenseFuncEPN19AbilityEfficacyCore15CallChangeParamEf", "vma": 64338664, "sizeBytes": 412, "codeSha256": "8bf6031c0ba23fab2faae7957f13fc21ada865875222cecc40ab471d34be357b" },
+    { "role": "create_efficacy_info", "symbol": "_ZN28AbilityEfficacyInfoGenerator18createEfficacyInfoEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyType", "vma": 64265256, "sizeBytes": 564, "codeSha256": "cf1465ba21a967ebc6e8baf54f61e7524d99d12c2170e9cd5d2546b1e0ae7907" },
+    { "role": "efficacy_info_default_constructor", "symbol": "_ZN19AbilityEfficacyInfoC2Ev", "vma": 64265820, "sizeBytes": 848, "codeSha256": "8a0bbac11e3709748cdb621f27df67e54084bf04341dda04692fd70fc59039a5" },
+    { "role": "generate_attack", "symbol": "_ZN28AbilityEfficacyInfoGenerator33addAbilityEfficacyInfoAttackValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64266900, "sizeBytes": 336, "codeSha256": "ef7fabdf7ac1a1f14d7d9f641fc3d644c19b1ab155e4dbd42d00652bbe7c5211" },
+    { "role": "generate_defense", "symbol": "_ZN28AbilityEfficacyInfoGenerator34addAbilityEfficacyInfoDefenseValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64267236, "sizeBytes": 336, "codeSha256": "f96b5d4170a70a3c83d0d35d41d381d51375ef10d93db49817ace1534787336d" },
+    { "role": "stat_diff_consumer", "symbol": "_ZN25AbilityManagerStatHelpers27getDiffFromEfficacyInfoListERKNSt6__ndk18functionIFbR19AbilityEfficacyInfoEEEN14AbilityManager8CoefTypeEii17SkillCategoryTypeb", "vma": 64475152, "sizeBytes": 1352, "codeSha256": "5fd02137cd7775d078dc69cb5e03c11defd004448683380beb5958e5dbb54567" },
+    { "role": "get_is_proportional", "symbol": "_ZNK19AbilityEfficacyInfo32getIsEnergyBallProportionalSkillEv", "vma": 64353312, "sizeBytes": 8, "codeSha256": "d2625c08dab8a7ed6a0ec29ef5e0b21222fe8c8aa1243088ffebd3218ae29cdc" },
+    { "role": "get_raw_ball_type", "symbol": "_ZNK19AbilityEfficacyInfo38getEnergyBallProportionalSkillBallTypeEv", "vma": 64353328, "sizeBytes": 8, "codeSha256": "0471b33ab0983b843889248d4e9bd2f02e4d575679dc5668cc0ef6ea9dd367b5" },
+    { "role": "get_raw_bitpattern", "symbol": "_ZNK19AbilityEfficacyInfo40getEnergyBallProportionalSkillBitpatternEv", "vma": 64353344, "sizeBytes": 8, "codeSha256": "615cc4d4d19713a7b9ea6b3843c274d040126c740088a3e2d95ffe19ba04c269" },
+    { "role": "get_obtained_ball_type_numbers", "symbol": "_ZNK15InGameCharaData26getObtainedBallTypeNumbersEv", "vma": 46624236, "sizeBytes": 8, "codeSha256": "522e271fbe0c4e18cda544b079e706b8ed74aebce70244749e0bfbef4310be51" },
+    { "role": "build_obtained_ball_type_numbers", "symbol": "_ZNK16DPuzzleBallModel26getObtainedBallTypeNumbersEv", "vma": 47226832, "sizeBytes": 564, "codeSha256": "d267d66703b249a1081a97f24804348bf9a1ec481e16bcff88a8f0d5c5da73a0" }
+  ],
+  "vtableRelocations": [
+    { "vtableSymbol": "_ZTV19AbilityEfficacyInfo", "vtableVma": 92053824, "relocationOffset": 176, "symbol": "_ZNK19AbilityEfficacyInfo32getIsEnergyBallProportionalSkillEv" },
+    { "vtableSymbol": "_ZTV19AbilityEfficacyInfo", "vtableVma": 92053824, "relocationOffset": 192, "symbol": "_ZNK19AbilityEfficacyInfo38getEnergyBallProportionalSkillBallTypeEv" },
+    { "vtableSymbol": "_ZTV19AbilityEfficacyInfo", "vtableVma": 92053824, "relocationOffset": 208, "symbol": "_ZNK19AbilityEfficacyInfo40getEnergyBallProportionalSkillBitpatternEv" },
+    { "vtableSymbol": "_ZTV15InGameCharaData", "vtableVma": 89258904, "relocationOffset": 288, "symbol": "_ZNK15InGameCharaData26getObtainedBallTypeNumbersEv" }
+  ],
+  "unknowns": [
+    "raw_ball_type_11_semantic_name",
+    "obtained_ball_count_population_and_reset_window",
+    "consumer_boolean_argument_product_name",
+    "cross_bucket_final_formula_order",
+    "recurrence_and_expiry"
+  ]
+}

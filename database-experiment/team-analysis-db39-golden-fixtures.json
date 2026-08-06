@@ -1,0 +1,19 @@
+[
+  { "id": "positive-scale", "kind": "scale", "modifier": 15, "count": 3, "result": 45 },
+  { "id": "negative-scale", "kind": "scale", "modifier": -10, "count": 2, "result": -20 },
+  { "id": "zero-count", "kind": "scale", "modifier": 25, "count": 0, "result": 0 },
+  { "id": "float32-before-scale", "kind": "scale", "modifier": 0.1, "count": 3, "result": 0.30000000447034836 },
+  { "id": "invalid-modifier", "kind": "scale", "modifier": "bad", "count": 1, "result": null },
+  { "id": "invalid-count", "kind": "scale", "modifier": 10, "count": 1.5, "result": null },
+  { "id": "float32-overflow", "kind": "scale", "modifier": 1e39, "count": 1, "result": null },
+  { "id": "int32-overflow", "kind": "scale", "modifier": 10, "count": 2147483648, "result": null },
+  { "id": "attack-positive", "kind": "modifier", "stat": "attack", "value": 12, "status": "supported", "float32": 12 },
+  { "id": "defense-negative", "kind": "modifier", "stat": "defense", "value": -7, "status": "supported", "float32": -7 },
+  { "id": "modifier-invalid", "kind": "modifier", "stat": "attack", "value": "bad", "status": "unknown", "float32": null },
+  { "id": "former-bucket", "kind": "bucket", "timing": 1, "result": { "status": "supported", "value": "former_passive_stat" } },
+  { "id": "latter-bucket", "kind": "bucket", "timing": 4, "result": { "status": "supported", "value": "latter_passive_stat" } },
+  { "id": "unknown-bucket", "kind": "bucket", "timing": 99, "result": { "status": "unknown", "value": "unknown" } },
+  { "id": "flat-unit", "kind": "unit", "operation": { "status": "supported", "value": "add", "formula": "lhs + rhs", "parametersRead": ["lhs", "rhs"], "parametersIgnored": [], "clamp": "none" }, "value": "stat_points_per_raw_ball_type_11_count" },
+  { "id": "percent-unit", "kind": "unit", "operation": { "status": "supported", "value": "add_percent_of_lhs", "formula": "lhs + lhs * rhs / 100", "parametersRead": ["lhs", "rhs"], "parametersIgnored": [], "clamp": "none" }, "value": "percent_points_of_current_stat_per_raw_ball_type_11_count" },
+  { "id": "known-op-unknown-name", "kind": "unit", "operation": { "status": "unknown", "value": "unknown" }, "value": "unknown" }
+]
