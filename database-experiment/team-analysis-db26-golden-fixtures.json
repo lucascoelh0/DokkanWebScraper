@@ -1,0 +1,5 @@
+[
+  { "name": "ki-blast-category", "stateKey": "1022591:1022591:eza", "ruleKey": "4256:42560012:12004256", "causalityId": "1410", "rawMask": 1, "categoryId": "1", "categoryName": "Ki Blast" },
+  { "name": "unarmed-category", "stateKey": "1022191:4022201:initial", "ruleKey": "4259:42590012:12004259", "causalityId": "1595", "rawMask": 2, "categoryId": "2", "categoryName": "Unarmed" },
+  { "name": "physical-category", "stateKey": "1033871:1033871:initial", "ruleKey": "4962:49620027:27004962", "causalityId": "3712", "rawMask": 4, "categoryId": "3", "categoryName": "Physical" }
+]

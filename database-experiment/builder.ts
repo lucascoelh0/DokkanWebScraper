@@ -29,6 +29,7 @@ export const CONSUMED_TABLE_COLUMNS: Record<string, string[]> = {
     skill_causalities: ["id", "causality_type", "cau_val1", "cau_val2", "cau_val3", "created_at", "updated_at"],
     card_specials: ["id", "card_id", "special_set_id", "priority", "style", "lv_start", "eball_num_start", "view_id", "causality_conditions", "special_asset_id", "detail_view_priority", "created_at", "updated_at"],
     special_sets: ["id", "name", "description", "causality_description", "aim_target", "increase_rate", "lv_bonus", "is_inactive", "created_at", "updated_at"],
+    special_categories: ["id", "raw_attribute", "name"],
     specials: ["id", "special_set_id", "type", "efficacy_type", "target_type", "calc_option", "turn", "prob", "causality_conditions", "eff_value1", "eff_value2", "eff_value3", "created_at", "updated_at"],
     extra_special_options: ["id", "card_special_id", "probability", "extra_special_type", "bgm_id", "created_at", "updated_at"],
     card_active_skills: ["id", "card_id", "active_skill_set_id", "created_at", "updated_at"],

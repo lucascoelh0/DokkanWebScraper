@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "causalityType": 49,
+  "auditScope": "skill-causality-mask-to-card-special-category-attribute",
+  "sqliteBinding": { "table": "special_categories", "column": "raw_attribute", "literalVma": 32524788, "objectOffset": 8, "storedWidthBits": 8 },
+  "additionalParamGate": { "byteOffset": 1, "bit": 0, "predicate": "bit_set" },
+  "codeRegions": [
+    { "role": "causality_handler", "symbol": "_ZN20AbilityCausalityFunc27isAttackedBySpecialCategoryERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE", "vma": 64200448, "sizeBytes": 920, "codeSha256": "c7801174ac45b84ab82f5431f6f5c4c5af723acba214febfc0f7cce5a697b3b3", "observation": "additional_param_gate_then_low8_category_attribute_and_cau_val1_bitwise_intersection" },
+    { "role": "category_row_constructor", "symbol": "_ZN11CardSpecial8CategoryC1EPN7SQLite33RowE", "vma": 46777900, "sizeBytes": 424, "codeSha256": "cd8f271d18422715e146f443a1733ea6f4f7d24e4fa86cbdfe69fe5f35c6ff4b", "observation": "raw_attribute_loaded_masked_to_low8_and_stored_at_offset8" },
+    { "role": "category_attribute_getter", "symbol": "_ZNK11CardSpecial8Category12getAttributeEv", "vma": 46779964, "sizeBytes": 8, "codeSha256": "2f3b6f6686fd51e88030785bd4646403cb57ac71a5cbf077e500a85bdf0afab3", "observation": "attribute_loaded_from_offset8" },
+    { "role": "card_special_view_category_getter", "symbol": "_ZNK11CardSpecial4View18getSpecialCategoryEv", "vma": 46775008, "sizeBytes": 268, "codeSha256": "6d14161c595097124d8dbd9e78fc520b6df910afd1219623fee8ea51a56aa8dd", "observation": "special_view_category_id_resolved_to_category_object" }
+  ],
+  "parameterReads": ["cau_val1"],
+  "ignoredParameters": ["cau_val2", "cau_val3"],
+  "conclusions": ["cau_val1_is_low8_special_category_attribute_mask", "predicate_requires_nonempty_mask_intersection", "special_category_raw_attribute_is_structured_sqlite_identity"],
+  "unknowns": ["event_direction", "attacker_target_role", "additional_param_gate_meaning", "activation_timing", "recurrence", "calculation_bucket"]
+}
