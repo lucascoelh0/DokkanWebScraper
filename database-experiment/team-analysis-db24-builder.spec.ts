@@ -1,0 +1,31 @@
+import { createHash } from "crypto";
+import { deepStrictEqual, equal, throws } from "assert";
+import { describe, it } from "mocha";
+import { buildDatabaseTeamAnalysisDb24Coverage, buildDatabaseTeamAnalysisDb24Dataset } from "./team-analysis-db24-builder";
+
+function fixture(raw: unknown = 70) {
+    const bytes = Buffer.from("a"), hash = createHash("sha256").update(bytes).digest("hex");
+    const roles = ["passive_skill_row_constructor", "create_passive_skill", "ability_status_efficacy_constructor", "ability_status_value_reader", "call_change_param_initializer", "counter_behavior_handler", "counter_increase_getter", "counter_resist_getter", "counter_script_getter"];
+    const observations = ["sqlite_eff_value_columns_stored_at_offsets_128_132_136", "passive_offsets_128_132_136_copied_in_order_to_runtime_values", "three_runtime_values_materialized_in_index_order", "indexed_runtime_value_read", "runtime_values_copied_to_call_param_offsets_40_48_56", "values_truncated_and_reordered_into_counter_behavior", "field_offset_8", "field_offset_12", "field_offset_16"];
+    const codeRegions = roles.map((role, index) => ({ role, symbol: role === "call_change_param_initializer" ? "local@test" : `s${index}`, vma: 100 + index, sizeBytes: 1, codeSha256: hash, observation: observations[index] }));
+    const evidence = { schemaVersion: 1, sourceSha256: "native", efficacyType: 120, auditScope: "passive-skill-sqlite-values-to-native-counter-behavior-payload", sqliteColumnBindings: [{ column: "eff_value1", literalVma: 10, passiveSkillOffset: 128, nativeField: "resistDamageRate" }, { column: "eff_value2", literalVma: 20, passiveSkillOffset: 132, nativeField: "increaseDamagePercent" }, { column: "eff_value3", literalVma: 30, passiveSkillOffset: 136, nativeField: "battleScriptNo" }], codeRegions, conclusions: ["efficacy_120_registers_counter_behavior", "eff_value1_maps_to_resist_damage_rate", "eff_value2_maps_to_increase_damage_percent", "eff_value3_maps_to_battle_script_no"], unknowns: ["handler_gate_at_call_change_param_offset_4", "execution_timing_type_6_semantics", "condition_semantics", "probability_semantics", "calculation_bucket", "duration", "recurrence", "battle_script_behavior"] } as any;
+    const handler = codeRegions[5];
+    const db8 = { contractVersion: "0.7.0", semanticPromotionCount: 0, sourceSnapshotVersion: "snapshot", sourceSha256: "database", efficacyGaps: [{ efficacyType: 120, ruleCount: 1, affectedStateCount: 1, statusCounts: { unknown: 1 } }] } as any;
+    const db9 = { contractVersion: "0.8.0", semanticPromotionCount: 0, sourceSnapshotVersion: "snapshot", sourceDatabaseSha256: "database", sourceDb8: { sha256: "db8" }, nativeRuntime: { sha256: "native", sizeBytes: 1 }, efficacyGapEvidence: [{ enumValue: 120, identityStatus: "runtime_identified", occurrenceCount: 1, affectedStateCount: 1, symbol: handler.symbol, symbolAddress: handler.vma }], efficacyDispatchSlots: [{ enumValue: 120, status: "identified", symbol: handler.symbol, symbolAddress: handler.vma }] } as any;
+    const db11 = { contractVersion: "0.10.0", generatedAt: "x", sourceSnapshotVersion: "snapshot", sourceSha256: "database", states: [{ stateKey: "state", passive: { rules: [{ ruleKey: "rule", conditionStatus: "supported", source: { efficacyType: 120, passiveSkillId: "1" } }] } }] } as any;
+    const tables = { passive_skills: [{ id: 1, efficacy_type: 120, exec_timing_type: 6, exec_game_type: 0, target_type: 1, calc_option: 0, turn: 1, is_once: 0, probability: 100, causality_conditions: "{}", eff_value1: raw, eff_value2: 200, eff_value3: 2 }] } as any;
+    const inspection = { symbols: codeRegions.filter(value => !value.symbol.startsWith("local@")).map(value => ({ name: value.symbol, value: value.vma, size: value.sizeBytes })), readVirtualBytes: (vma: number) => vma === 10 ? Buffer.from("eff_value1\0") : vma === 20 ? Buffer.from("eff_value2\0") : vma === 30 ? Buffer.from("eff_value3\0") : bytes } as any;
+    return { db8, db9, db11, tables, inspection, evidence, handler };
+}
+function build(x: ReturnType<typeof fixture>) { return buildDatabaseTeamAnalysisDb24Dataset({ ...x, db8Sha256: "db8", db9Sha256: "db9", db11Sha256: "db11", nativeSha256: "native", nativeSizeBytes: 1, evidenceSha256: "evidence" }); }
+
+describe("database Team Analysis DB24 counter behavior", function () {
+    it("maps the three SQLite values to the named native fields", () => { const dataset = build(fixture()); const value = dataset.counterBehaviorResolutions[0]; deepStrictEqual([value.payload.resistDamageRate.runtimeInteger, value.payload.increaseDamagePercent.runtimeInteger, value.payload.battleScriptNo.runtimeInteger], [70, 200, 2]); equal(value.activation.timingStatus, "unknown"); const coverage = buildDatabaseTeamAnalysisDb24Coverage(dataset, 1); equal(coverage.supportedPayloadFieldCount, 3); equal(coverage.partialActivationCount, 1); });
+    it("keeps a non-numeric payload explicitly unknown", () => { const value = build(fixture("unknown")).counterBehaviorResolutions[0].payload.resistDamageRate; equal(value.status, "unknown"); equal(value.runtimeInteger, undefined); });
+    it("rejects mutated native code", () => { const x = fixture(); x.evidence.codeRegions[0].codeSha256 = "0".repeat(64); throws(() => build(x), /invalid native code region/); });
+    it("rejects duplicate passive rows", () => { const x = fixture(); x.tables.passive_skills.push(x.tables.passive_skills[0]); throws(() => build(x), /duplicate passive_skills row/); });
+    it("rejects a target outside the audited self-target path", () => { const x = fixture(); x.tables.passive_skills[0].target_type = 2; throws(() => build(x), /outside audited target/); });
+    it("rejects an absent consumed SQLite column", () => { const x = fixture(); delete x.tables.passive_skills[0].probability; throws(() => build(x), /missing or incomplete/); });
+    it("rejects duplicate efficacy evidence", () => { const x = fixture(); x.db9.efficacyGapEvidence.push(x.db9.efficacyGapEvidence[0]); throws(() => build(x), /evidence cardinality mismatch/); });
+    it("rejects a mismatched snapshot label", () => { const x = fixture(); x.db11.sourceSnapshotVersion = "other"; throws(() => build(x), /source lineage mismatch/); });
+});

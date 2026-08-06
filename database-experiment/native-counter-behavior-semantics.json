@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "efficacyType": 120,
+  "auditScope": "passive-skill-sqlite-values-to-native-counter-behavior-payload",
+  "sqliteColumnBindings": [
+    { "column": "eff_value1", "literalVma": 32524339, "passiveSkillOffset": 128, "nativeField": "resistDamageRate" },
+    { "column": "eff_value2", "literalVma": 32045530, "passiveSkillOffset": 132, "nativeField": "increaseDamagePercent" },
+    { "column": "eff_value3", "literalVma": 32456085, "passiveSkillOffset": 136, "nativeField": "battleScriptNo" }
+  ],
+  "codeRegions": [
+    { "role": "passive_skill_row_constructor", "symbol": "_ZN12PassiveSkillC1EPN7SQLite33RowE", "vma": 46449820, "sizeBytes": 2248, "codeSha256": "7cec861db0b338c586868fc49b008da0c08950d1f5656fceebf2dd1acea5843e", "observation": "sqlite_eff_value_columns_stored_at_offsets_128_132_136" },
+    { "role": "create_passive_skill", "symbol": "_ZN14AbilityManager18createPassiveSkillEiiNSt6__ndk110shared_ptrI15PassiveSkillSetEE", "vma": 64383460, "sizeBytes": 1524, "codeSha256": "b56f963ad641d1d9e67027199b0529fb56cf7039b5dc206209eb359a9bb2d04d", "observation": "passive_offsets_128_132_136_copied_in_order_to_runtime_values" },
+    { "role": "ability_status_efficacy_constructor", "symbol": "_ZN21AbilityStatusEfficacyC1EP27CreateAbilityStatusEfficacy", "vma": 64493900, "sizeBytes": 820, "codeSha256": "8207716704da65ad571c7e4fc3eeeda6e7ab59552716bcbf8dbb9e9bf1069f64", "observation": "three_runtime_values_materialized_in_index_order" },
+    { "role": "ability_status_value_reader", "symbol": "_ZNK22AbilityStatusCausality15getValueAtIndexEi", "vma": 64487532, "sizeBytes": 92, "codeSha256": "93eaa1f2c2f0deced63280e90e8ce510891dfac8b9168a71f8fc5079efc67af1", "observation": "indexed_runtime_value_read" },
+    { "role": "call_change_param_initializer", "symbol": "local@AbilityEfficacyTarget::targetSelf+0xe0", "vma": 64250860, "sizeBytes": 500, "codeSha256": "0f324cf1b3873115684d83b5fbff9b3229e86fd3f40bb2e9ead66cf7b56aa990", "observation": "runtime_values_copied_to_call_param_offsets_40_48_56" },
+    { "role": "counter_behavior_handler", "symbol": "_ZN26AbilityEfficacyCounterFunc30callCounterAttackBehaviourFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64285212, "sizeBytes": 188, "codeSha256": "346883c472ae27ac5812d5708bab4c8568d77326b92a5d1ecb9ae44631fc04c9", "observation": "values_truncated_and_reordered_into_counter_behavior" },
+    { "role": "counter_increase_getter", "symbol": "_ZNK15AbilityEfficacy15CounterBehavior24getIncreaseDamagePercentEv", "vma": 64261420, "sizeBytes": 8, "codeSha256": "2f3b6f6686fd51e88030785bd4646403cb57ac71a5cbf077e500a85bdf0afab3", "observation": "field_offset_8" },
+    { "role": "counter_resist_getter", "symbol": "_ZNK15AbilityEfficacy15CounterBehavior19getResistDamageRateEv", "vma": 64261436, "sizeBytes": 8, "codeSha256": "3bd3b1d8b6ab2c04c0413bebd37e2e8ad1ccbe0b9ecfaf21d58d998e01648454", "observation": "field_offset_12" },
+    { "role": "counter_script_getter", "symbol": "_ZNK15AbilityEfficacy15CounterBehavior17getBattleScriptNoEv", "vma": 64261452, "sizeBytes": 8, "codeSha256": "6f1929ee2376e6ada94db6d2aafe012dfc8382613e73b99aea0c7dea270fac13", "observation": "field_offset_16" }
+  ],
+  "conclusions": [
+    "efficacy_120_registers_counter_behavior",
+    "eff_value1_maps_to_resist_damage_rate",
+    "eff_value2_maps_to_increase_damage_percent",
+    "eff_value3_maps_to_battle_script_no"
+  ],
+  "unknowns": [
+    "handler_gate_at_call_change_param_offset_4",
+    "execution_timing_type_6_semantics",
+    "condition_semantics",
+    "probability_semantics",
+    "calculation_bucket",
+    "duration",
+    "recurrence",
+    "battle_script_behavior"
+  ]
+}

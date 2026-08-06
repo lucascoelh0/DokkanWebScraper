@@ -1,6 +1,6 @@
 # Database-first Character / Team Analysis frontier
 
-Status: experimental, non-production. Updated through DB23 (`0.22.0`) against snapshot `global-6.4.0-v338-2026-08-05`.
+Status: experimental, non-production. Updated through DB24 (`0.23.0`) against snapshot `global-6.4.0-v338-2026-08-05`.
 
 ## Source identity and boundaries
 
@@ -24,6 +24,7 @@ Status: experimental, non-production. Updated through DB23 (`0.22.0`) against sn
 | Selectors | category, class/type masks, Ki Sphere and partial name tokens | 131/136 DB5 projections supported; type-41 name dictionary unavailable |
 | Combat-history conditions | attacks evaded/performed/received, guard and Super Attacks performed are structurally retained | 303 predicates; recurrence and calculation bucket remain unknown |
 | Native runtime predicates | attacks evaded and appearance-turn upper/lower bounds | types 43/51/55: 901 occurrences, 103 unique causalities, all projected |
+| Counter payloads | native `CounterBehavior` registration with resist rate, damage increase and battle-script ID | efficacy 120: 50 rules, 38 states, 150/150 payload fields supported; activation remains partial |
 | Attack channels | Super, Ultra, Unit and EX rows, raw effects/conditions and source IDs | 12,429 / 1,255 / 186 / 20 attacks |
 | Active / Standby / Finish | sets, skills, causalities, raw turns/limits and joins | 494 / 28 / 56 cards |
 | Forms | transformations, giant/rage and reversible exchange relations | 359 / 139 / 60 relations |
@@ -39,7 +40,7 @@ Confirmed card enums:
 - element band `0x` → unawakened, `1x` → Super, `2x` → Extreme;
 - attack style strings `Normal`, `Hyper`, `Condition`, `Extra` → Super, Ultra, Unit, EX.
 
-Confirmed passive efficacy types currently implemented: `1, 2, 3, 4, 5, 9, 13, 16, 18, 20, 48, 51, 67, 68, 76, 78, 81, 90, 91, 96, 98, 101`. Some numeric types have both mapped and unknown rows because their parameters or subfamilies are not universally proved.
+Confirmed passive efficacy types currently implemented: `1, 2, 3, 4, 5, 9, 13, 16, 18, 20, 48, 51, 67, 68, 76, 78, 81, 90, 91, 96, 98, 101`, plus the scoped efficacy-`120` counter payload. Type 120 proves `eff_value1 → resistDamageRate`, `eff_value2 → increaseDamagePercent`, and `eff_value3 → battleScriptNo`; it does not yet prove activation or damage-calculation behavior. Some numeric types have both mapped and unknown rows because their parameters or subfamilies are not universally proved.
 
 Confirmed condition families include the earlier SQLite projections for causality types `1, 2, 5, 15, 16, 19, 24, 25, 30, 38, 42`, selector masks from type `46`, and native-backed runtime types `43, 51, 55`. Type `3` remains partial (1,262 occurrences). Type `41` preserves 602 name tokens but lacks a first-party dictionary. Remaining numeric causalities stay raw/unknown even when the native dispatch slot has been identified.
 
@@ -56,6 +57,8 @@ No enum is promoted solely from a symbol name, localized description, parser par
 
 DB20 found `passive_skills.turn` numerically equal to the parser upper bound in 112 of 120 aligned cases and different in 8. DB21 proved row loading and relevant runtime timing APIs but no field-to-runtime linkage. `turn`, `is_once`, start point, unit, inclusivity and efficacy dependencies therefore remain unknown; the correlation is not a promotion.
 
+DB24 followed efficacy type 120 through SQLite column literals, `PassiveSkill` offsets, runtime value materialization, `CallChangeParam`, the counter handler and named `CounterBehavior` getters. It resolves 50 rules across 38 states without parser evidence. Timing type 6, the handler gate, conditions, probability application, target behavior, bucket, duration, recurrence and battle-script behavior remain unknown, so all counter records are partial.
+
 ## Product readiness
 
 Already useful for Team Builder:
@@ -67,6 +70,7 @@ Already useful for Team Builder:
 - supported team/rotation selectors and supported boolean conditions;
 - scoped appearance-turn and attacks-evaded conditions;
 - raw attack/Active/Standby/Finish/form relations for future state transitions.
+- lossless counter payloads suitable for future simulation once activation and damage-order semantics are proved.
 
 Still required for trustworthy rotations, support and combat calculation:
 
@@ -110,6 +114,6 @@ Other distributions/domains:
 
 ## Return on recent investigation and recommendation
 
-DB17–DB22 produced material value: three scoped native promotions, 195 sound AST simplifications, 60 additional exact pairs, and a reduction of 188 residual occurrences. DB20–DB21 also prevented a high-correlation but false universal interpretation of `passive_skills.turn`. DB23 itself is diagnostic and establishes a clean frontier.
+DB17–DB22 produced material value: three scoped native promotions, 195 sound AST simplifications, 60 additional exact pairs, and a reduction of 188 residual occurrences. DB20–DB21 also prevented a high-correlation but false universal interpretation of `passive_skills.turn`. DB23 itself is diagnostic and establishes a clean parity frontier. DB24 then moved to combat semantics and promoted one high-impact efficacy family, resolving all 150 counter payload fields in the 50 in-scope rules while preserving every activation uncertainty.
 
-Recommendation: continue database-first mapping, but move away from appearance-turn parity refinement. Prioritize high-frequency efficacy timing/calculation-bucket families and remaining native combat-event causalities. Integration into production remains **NO-GO** until calculation timing/recurrence and the highest-impact unknown efficacy/target families are either proved or explicitly isolated behind optional unknown-safe enrichment.
+Recommendation: continue database-first mapping. The next useful target is the shared execution-timing/condition path used by counter rules, or another high-volume combat efficacy whose payload can be proved independently; do not infer timing type 6 from the counter correlation alone. Integration into production remains **NO-GO** until calculation timing/recurrence and the highest-impact unknown efficacy/target families are either proved or explicitly isolated behind optional unknown-safe enrichment.

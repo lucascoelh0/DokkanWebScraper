@@ -1,0 +1,5 @@
+[
+  { "name": "SEZA counter payload", "stateKey": "1006791:1006791:seza", "ruleKey": "4505:45050010:10004505", "passiveSkillId": "10004505", "resistDamageRate": 0, "increaseDamagePercent": 300, "battleScriptNo": 2, "probability": 100 },
+  { "name": "probabilistic counter payload", "stateKey": "1009431:1009431:seza", "ruleKey": "4668:46680014:14004668", "passiveSkillId": "14004668", "resistDamageRate": 0, "increaseDamagePercent": 300, "battleScriptNo": 3, "probability": 50 },
+  { "name": "counter payload with resist rate", "stateKey": "1017281:1017281:eza", "ruleKey": "3051:30510000:3051", "passiveSkillId": "3051", "resistDamageRate": 30, "increaseDamagePercent": 300, "battleScriptNo": 12, "probability": 100 }
+]
