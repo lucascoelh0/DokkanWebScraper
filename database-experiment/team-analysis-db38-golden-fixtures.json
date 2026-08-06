@@ -1,0 +1,17 @@
+[
+  { "id": "attack", "increment": 10, "cap": 50, "selector": 0, "status": "supported", "field": "modifier_attack" },
+  { "id": "defense", "increment": 10, "cap": 50, "selector": 1, "status": "supported", "field": "modifier_defense" },
+  { "id": "critical", "increment": 5, "cap": 30, "selector": 2, "status": "supported", "field": "critical_probability" },
+  { "id": "dodge", "increment": 5, "cap": 30, "selector": 3, "status": "supported", "field": "dodge_probability" },
+  { "id": "resist", "increment": 8, "cap": 40, "selector": 4, "status": "supported", "field": "resist_damage_rate" },
+  { "id": "battle-gauge", "increment": 1, "cap": 5, "selector": 5, "status": "supported", "field": "modifier_battle_gauge" },
+  { "id": "zero", "increment": 0, "cap": 0, "selector": 0, "status": "supported", "field": "modifier_attack" },
+  { "id": "negative", "increment": -5, "cap": -30, "selector": 3, "status": "supported", "field": "dodge_probability" },
+  { "id": "unknown-selector", "increment": 1, "cap": 2, "selector": 6, "status": "unknown", "field": "unknown" },
+  { "id": "invalid", "increment": "bad", "cap": 2, "selector": 0, "status": "unknown", "field": "unknown" },
+  { "id": "outside-int32", "increment": 2147483648, "cap": 2, "selector": 0, "status": "unknown", "field": "unknown" },
+  { "id": "positive-overflow-wrap", "history": [2147483647, 1], "cap": 2147483647, "aggregate": -2147483648 },
+  { "id": "negative-underflow-wrap", "history": [-2147483648, -1], "cap": -2147483648, "aggregate": 2147483647 },
+  { "id": "stored-order-forward", "history": [-2147483648, -2147483647, 1], "cap": -2147483648, "aggregate": -2147483648 },
+  { "id": "stored-order-reverse", "history": [1, -2147483647, -2147483648], "cap": -2147483648, "aggregate": -2147483647 }
+]

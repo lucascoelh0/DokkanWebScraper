@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "efficacyType": 98,
+  "auditScope": "passive-efficacy-98-increment-cap-output-field-and-history-fold",
+  "sqliteBinding": {
+    "table": "passive_skills",
+    "eff_value1": { "passiveSkillOffset": 128, "callChangeParamOffset": 40, "role": "increment" },
+    "eff_value2": { "passiveSkillOffset": 132, "callChangeParamOffset": 48, "role": "cap" },
+    "eff_value3": { "passiveSkillOffset": 136, "callChangeParamOffset": 56, "role": "output_selector" },
+    "conversion": "sqlite int32 to runtime double; fcvtzs back to int32 before accumulation"
+  },
+  "dispatch": {
+    "tableVma": 92049840,
+    "slotVma": 92050624,
+    "symbol": "_ZN36AbilityEfficacyIncrementalStatusFunc30callChangeIncrementalParamFuncEPN19AbilityEfficacyCore15CallChangeParamE",
+    "handlerVma": 64310772
+  },
+  "accumulation": {
+    "initial": "zero",
+    "cap": "trunc_toward_zero(eff_value2)",
+    "historySourceOffset": 424,
+    "currentIncrementContribution": "fcvtzs(eff_value1) is appended before the fold when the local gate returns bit0 clear",
+    "historyIterationOrder": "copied vector begin to end in stored order",
+    "storedEntryStrideBytes": 40,
+    "storedIncrementOffsetBytes": 0,
+    "fold": "for each stored increment in vector order: sum = signed int32 add with modulo-2^32 wrap; aggregate = stored > 0 ? min(sum, cap) : max(sum, cap)",
+    "arithmetic": "AArch64 add w9,w28,w8 discards carry and retains the low 32 bits",
+    "continuationGate": "eff_value1 > 0 ? aggregate < cap : aggregate > cap",
+    "replacement": "remove matching AbilityEfficacyInfo then emit one aggregate field",
+    "historyAppendHelperVma": 64312620,
+    "historyAppendCondition": "local gate result bit0 is clear",
+    "historyAppendTriggerSemantics": "unknown"
+  },
+  "outputSelectors": [
+    { "raw": 0, "outputField": "modifier_attack", "generatorSymbol": "_ZN28AbilityEfficacyInfoGenerator33addAbilityEfficacyInfoAttackValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "consumerSymbol": "_ZNK19AbilityEfficacyInfo22getModifierAttackValueEv" },
+    { "raw": 1, "outputField": "modifier_defense", "generatorSymbol": "_ZN28AbilityEfficacyInfoGenerator34addAbilityEfficacyInfoDefenseValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "consumerSymbol": "_ZNK19AbilityEfficacyInfo23getModifierDefenseValueEv" },
+    { "raw": 2, "outputField": "critical_probability", "generatorSymbol": "_ZN28AbilityEfficacyInfoGenerator35addAbilityEfficacyInfoCriticalValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "consumerSymbol": "_ZNK19AbilityEfficacyInfo22getCriticalProbabilityEv" },
+    { "raw": 3, "outputField": "dodge_probability", "generatorSymbol": "_ZN28AbilityEfficacyInfoGenerator32addAbilityEfficacyInfoDodgeValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "consumerSymbol": "_ZNK19AbilityEfficacyInfo19getDodgeProbabilityEv" },
+    { "raw": 4, "outputField": "resist_damage_rate", "generatorSymbol": "_ZN28AbilityEfficacyInfoGenerator39addAbilityEfficacyInfoResistDamageValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "consumerSymbol": "_ZNK19AbilityEfficacyInfo19getResistDamageRateEv" },
+    { "raw": 5, "outputField": "modifier_battle_gauge", "generatorSymbol": "_ZN28AbilityEfficacyInfoGenerator38addAbilityEfficacyInfoBattleGaugeValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "consumerSymbol": "_ZNK19AbilityEfficacyInfo27getModifierBattleGaugeValueEv" }
+  ],
+  "independentDimensions": ["condition", "target", "timing", "calculation_operation", "duration", "once_only"],
+  "codeRegions": [
+    { "role": "passive_skill_row_constructor", "symbol": "_ZN12PassiveSkillC1EPN7SQLite33RowE", "vma": 46449820, "sizeBytes": 2248, "codeSha256": "7cec861db0b338c586868fc49b008da0c08950d1f5656fceebf2dd1acea5843e" },
+    { "role": "create_passive_skill", "symbol": "_ZN14AbilityManager18createPassiveSkillEiiNSt6__ndk110shared_ptrI15PassiveSkillSetEE", "vma": 64383460, "sizeBytes": 1524, "codeSha256": "b56f963ad641d1d9e67027199b0529fb56cf7039b5dc206209eb359a9bb2d04d" },
+    { "role": "call_change_param_initializer", "symbol": "local@AbilityEfficacyTarget::targetSelf+0xe0", "vma": 64250860, "sizeBytes": 500, "codeSha256": "0f324cf1b3873115684d83b5fbff9b3229e86fd3f40bb2e9ead66cf7b56aa990" },
+    { "role": "incremental_handler", "symbol": "_ZN36AbilityEfficacyIncrementalStatusFunc30callChangeIncrementalParamFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64310772, "sizeBytes": 1336, "codeSha256": "45fea34da02f842c76427b14ccc21fea3ad47b5ff824440306ab05125ce833b6" },
+    { "role": "activation_and_history_gate", "symbol": "local@incremental-handler+0x538", "vma": 64312108, "sizeBytes": 512, "codeSha256": "0b556cbe5260fb059338cdaa082cfee8294206e7f4f833e0e053bea2c6b621ca" },
+    { "role": "history_append", "symbol": "local@incremental-handler+0x738", "vma": 64312620, "sizeBytes": 1236, "codeSha256": "f7d3556ee7498431b4e42b3877aa762ed0b4c8be283ea148803c865a65da356d" },
+    { "role": "generate_attack", "symbol": "_ZN28AbilityEfficacyInfoGenerator33addAbilityEfficacyInfoAttackValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64266900, "sizeBytes": 336, "codeSha256": "ef7fabdf7ac1a1f14d7d9f641fc3d644c19b1ab155e4dbd42d00652bbe7c5211" },
+    { "role": "generate_defense", "symbol": "_ZN28AbilityEfficacyInfoGenerator34addAbilityEfficacyInfoDefenseValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64267236, "sizeBytes": 336, "codeSha256": "f96b5d4170a70a3c83d0d35d41d381d51375ef10d93db49817ace1534787336d" },
+    { "role": "generate_critical", "symbol": "_ZN28AbilityEfficacyInfoGenerator35addAbilityEfficacyInfoCriticalValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64269736, "sizeBytes": 248, "codeSha256": "077f26305762e14b7f57962e5cc1dfbcaa6a19ab308b3af9aac4240e1cb2071a" },
+    { "role": "generate_dodge", "symbol": "_ZN28AbilityEfficacyInfoGenerator32addAbilityEfficacyInfoDodgeValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64269984, "sizeBytes": 248, "codeSha256": "6e8d7450a513c0e14df790a2709ba46c230845ae86cde8ca17a8f5771a3c9bd2" },
+    { "role": "generate_resist_damage", "symbol": "_ZN28AbilityEfficacyInfoGenerator39addAbilityEfficacyInfoResistDamageValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64270232, "sizeBytes": 248, "codeSha256": "2f16099be48d98f15e442fded84e7bf71a867764a088f16b5342d0bc58b50496" },
+    { "role": "generate_battle_gauge", "symbol": "_ZN28AbilityEfficacyInfoGenerator38addAbilityEfficacyInfoBattleGaugeValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64268324, "sizeBytes": 328, "codeSha256": "352e82dcae0308801b248a72eacbc905ecfc6ce60a2d6b2e416b5d30f002eae5" },
+    { "role": "consume_attack", "symbol": "_ZNK19AbilityEfficacyInfo22getModifierAttackValueEv", "vma": 64353600, "sizeBytes": 80, "codeSha256": "a2ab3305b4fa70e19cd597a5e0fc8d5f542f8304df6dd87e50793ff2f5be0f17" },
+    { "role": "consume_defense", "symbol": "_ZNK19AbilityEfficacyInfo23getModifierDefenseValueEv", "vma": 64353768, "sizeBytes": 80, "codeSha256": "a17b6f8f7c2be7fb09de4364981b129f0f3a3e8303a55470582a89ee3600096b" },
+    { "role": "consume_critical", "symbol": "_ZNK19AbilityEfficacyInfo22getCriticalProbabilityEv", "vma": 64352260, "sizeBytes": 152, "codeSha256": "e63d0b52f6065f852d3355e34817e784f7c45f8ccb996a6c2b0282844d9cc513" },
+    { "role": "consume_dodge", "symbol": "_ZNK19AbilityEfficacyInfo19getDodgeProbabilityEv", "vma": 64352412, "sizeBytes": 152, "codeSha256": "208e33512bd35d45da1d34b8c8d86ae56c89c90602b2bfd0f6ba8c2a8dd60173" },
+    { "role": "consume_resist_damage", "symbol": "_ZNK19AbilityEfficacyInfo19getResistDamageRateEv", "vma": 64352564, "sizeBytes": 184, "codeSha256": "26d82e6d2a074bf55beb47e34c02158b5348bc64f0aeb823c463fe447f6732f6" },
+    { "role": "consume_battle_gauge", "symbol": "_ZNK19AbilityEfficacyInfo27getModifierBattleGaugeValueEv", "vma": 64354104, "sizeBytes": 80, "codeSha256": "7def99515eb50380f0a61b35602c3a8d3c7aaea03772f69f225ffdfa4144765a" },
+    { "role": "replace_matching_info", "symbol": "_ZN14AbilityManager29removeAbilityEfficacyInfoListERKNSt6__ndk18functionIFbR19AbilityEfficacyInfoEEE", "vma": 64414464, "sizeBytes": 532, "codeSha256": "ecbc5d1f34257ce0bea4e778c0e3421cfc848802ea6642f108de9c19eec1d7ec" }
+  ],
+  "unknowns": ["history_append_trigger_semantics", "history_reset_and_expiry", "cross_status_accumulation_scope", "timing_values_outside_db32_db33", "non_attack_defense_calculation_buckets", "battle_gauge_product_unit_and_consumer_formula"]
+}
