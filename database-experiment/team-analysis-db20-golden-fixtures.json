@@ -1,0 +1,21 @@
+{
+  "expectedCandidates": 120,
+  "expectedRulePairs": 120,
+  "expectedUniquePassiveSkills": 119,
+  "expectedExactNumericMatches": 112,
+  "expectedNumericMismatches": 8,
+  "exactExample": {
+    "stateKey": "1003211:1003211:seza",
+    "databaseRuleKey": "4070:40700003:3004070",
+    "passiveSkillId": "3004070",
+    "currentUpperBound": 3,
+    "rawTurn": 3
+  },
+  "mismatchExample": {
+    "stateKey": "1016251:4017601:initial",
+    "databaseRuleKey": "3877:38770002:2003877",
+    "passiveSkillId": "2003877",
+    "currentUpperBound": 6,
+    "rawTurn": 7
+  }
+}
