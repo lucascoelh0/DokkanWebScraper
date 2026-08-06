@@ -1,0 +1,9 @@
+[
+  {"id":"super-mask-32","stateKey":"1006701:1006701:seza","ruleKey":"4449:44490004:4004449","causalityId":"3698","mode":2,"mask":32,"class":"super"},
+  {"id":"category-44","stateKey":"1020591:1020591:initial","ruleKey":"2253:22530002:2002253","causalityId":"3702","mode":0,"categoryId":44},
+  {"id":"extreme-mask-64","stateKey":"1021881:1021881:eza","ruleKey":"4694:46940018:18004694","causalityId":"3693","mode":2,"mask":64,"class":"extreme"},
+  {"id":"category-73-with-class","stateKey":"1021881:1021881:eza","ruleKey":"4694:46940018:18004694","causalityId":"3695","mode":0,"categoryId":73},
+  {"id":"multi-category-93","stateKey":"1024691:1024691:eza","ruleKey":"4904:49040008:8004904","causalityId":"3708","mode":0,"categoryId":93},
+  {"id":"multi-category-8","stateKey":"1024691:1024691:eza","ruleKey":"4904:49040008:8004904","causalityId":"3709","mode":0,"categoryId":8},
+  {"id":"multi-category-3","stateKey":"1024691:1024691:eza","ruleKey":"4904:49040008:8004904","causalityId":"3710","mode":0,"categoryId":3}
+]

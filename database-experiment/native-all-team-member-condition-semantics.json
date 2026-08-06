@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "causality-type-67-all-seven-party-member-category-and-class-conditions",
+  "dispatch": { "tableVma": 95588720, "entrySizeBytes": 8, "causalityType": 67, "slotVma": 95589256, "handlerRole": "all_team_member_condition_handler" },
+  "sqliteBinding": { "table": "skill_causalities", "modeColumn": "cau_val1", "selectorColumn": "cau_val2", "ignoredColumns": ["cau_val3"], "payloadContainerOffset": 8, "elementSizeBytes": 4 },
+  "handlerModes": [
+    { "raw": 0, "calleeRole": "all_team_category_helper", "selector": "card_category_id" },
+    { "raw": 1, "calleeRole": "all_team_unique_card_helper", "selector": "helper_semantics_not_promoted" },
+    { "raw": 2, "calleeRole": "all_team_element_helper", "selector": "element_and_awakening_class_bit_pattern" }
+  ],
+  "partySelection": { "findSpecificGroupRawMode": 0, "slotOffsets": [0, 16, 32, 48, 64, 80, 96], "slotCount": 7, "acceptedPartnerType": "InGameCharaData", "masterCardNull": "not_accepted", "callbackZero": "not_accepted", "collectionThreshold": 7, "collectionShortCircuit": "accepted_partner_count_gte_7", "categoryFinalComparison": "partner_size_eq_7", "elementFinalComparison": "partner_size_unsigned_gt_6" },
+  "categoryPredicate": { "source": "cau_val2", "cardCategoryGetterSymbol": "_ZNK4Card17getCardCategoriesEv", "match": "exact_id_membership", "callbackReturn": "matching_category_id_count", "acceptance": "callback_return_nonzero" },
+  "elementPredicate": { "source": "cau_val2", "cardParametersRead": ["ElementType", "AwakeningElementType"], "bitPatternHelperSymbol": "_ZN22AbilityEfficacyElement23isElementTypeBitPatternEi11ElementType20AwakeningElementType", "supportedCurrentMasks": [{ "raw": 32, "class": "super", "acceptedAwakeningElementTypes": [1, 3] }, { "raw": 64, "class": "extreme", "acceptedAwakeningElementTypes": [2, 3] }], "classLabelEvidence": "independent_db35_raw_awakening_class_predicates", "otherMasks": "unknown" },
+  "codeRegions": [
+    { "role": "all_team_member_condition_handler", "symbol": "_ZN20AbilityCausalityFunc27isAllTeamMemberHasConditionERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE", "vma": 64206364, "sizeBytes": 68, "codeSha256": "158c87ae81010a9d345453cd40a0b1f10251d7402306a7f57dcf62c93555cdfa" },
+    { "role": "all_team_category_helper", "symbol": "_ZN20AbilityCausalityFunc35isAllTeamMemberHasCategoryConditionEi", "vma": 64216296, "sizeBytes": 496, "codeSha256": "80aeff531077bc2c46c19fad4ba9140ae8f5d31ca627024e843c2fb03f2af0b6" },
+    { "role": "all_team_unique_card_helper", "symbol": "_ZN20AbilityCausalityFunc37isAllTeamMemberHasUniqueCardConditionEi", "vma": 64216792, "sizeBytes": 1296, "codeSha256": "537fcf5d4f93c48ce253bca15858a74c3dcde18384f035834da58e4c7c1d9116" },
+    { "role": "all_team_element_helper", "symbol": "_ZN20AbilityCausalityFunc34isAllTeamMemberHasElementConditionEi", "vma": 64218088, "sizeBytes": 496, "codeSha256": "76d841faada23eaad8b859609d5ae16408cda81387859a7014d1d62a5575fdc9" },
+    { "role": "find_specific_group", "symbol": "_ZN20AbilityCausalityFunc17findSpecificGroupEiRKNSt6__ndk16vectorIiNS0_9allocatorIiEEEEiRKNS0_8functionIFiRKNS0_10shared_ptrI4CardEES6_EEESG_", "vma": 64212824, "sizeBytes": 2536, "codeSha256": "6186f493b95aa825350d2e637e32f4717af670a7dda886f678e431d7d95a22e7" },
+    { "role": "mode_0_party_group_invoke", "symbol": "local_function_object_invoke_mode_0", "vma": 64219444, "sizeBytes": 740, "codeSha256": "364f70fe2891ddd5c899d82d904026e15b16f657ff0cac361e9c7e79e69032b7" },
+    { "role": "category_membership_callback", "symbol": "local_function_object_all_team_category_invoke", "vma": 64230752, "sizeBytes": 420, "codeSha256": "b35409667325bcb9862e72a30f280c715da8b3a94d887be87640f014ad28c217" },
+    { "role": "element_bit_pattern_callback", "symbol": "local_function_object_all_team_element_invoke", "vma": 64232160, "sizeBytes": 112, "codeSha256": "9941ac0f5fc6066295373ad353a397af014ace281b04a305298700e13041cc3a" },
+    { "role": "element_bit_pattern_helper", "symbol": "_ZN22AbilityEfficacyElement23isElementTypeBitPatternEi11ElementType20AwakeningElementType", "vma": 64247152, "sizeBytes": 632, "codeSha256": "6b3db6fff5133833b17f76e6b625bcdc8e4db773fcd37e725045e3f58789e871" },
+    { "role": "super_class_raw_predicate", "symbol": "_ZN22AbilityEfficacyElement16isChoElementTypeE20AwakeningElementType", "vma": 64246216, "sizeBytes": 16, "codeSha256": "ae10c361e55dd67f440fd4c50f8b6395ef3ae5b0280d2424fdc00cd84039af82" },
+    { "role": "extreme_class_raw_predicate", "symbol": "_ZN22AbilityEfficacyElement17isGokuElementTypeE20AwakeningElementType", "vma": 64246684, "sizeBytes": 16, "codeSha256": "dc674681fde42958e68f30e3cde0377071630cbdfa0f84d21e64bca05b00608f" },
+    { "role": "get_card_categories", "symbol": "_ZNK4Card17getCardCategoriesEv", "vma": 46422528, "sizeBytes": 56, "codeSha256": "5a2869a6a3daf25884103e0a4b186d8eb0ccfbbe4be3343a05d89f9b07aa1a67" },
+    { "role": "get_master_card_by_id", "symbol": "_ZNK9CardModel17getMasterCardByIdEm", "vma": 52308240, "sizeBytes": 224, "codeSha256": "33f8fc823c5e74a75670c8ce2a50b22b03e9bc1fef79e3eb2b0219d75ec94bae" },
+    { "role": "partner_size", "symbol": "_ZNK24AbilityCausalityPartners4sizeEv", "vma": 64234504, "sizeBytes": 16, "codeSha256": "65b78cf9fb7abe8efc0016f9a9a5572463a6f7a8bd2fd7a866083ebe27a10429" }
+  ],
+  "localDispatch": [{ "vtableVma": 92049432, "invokeRelocationOffset": 48, "invokeVma": 64230752 }, { "vtableVma": 92049688, "invokeRelocationOffset": 48, "invokeVma": 64232160 }],
+  "unknowns": ["raw_mode_1_unique_card_helper_semantics", "element_masks_other_than_32_and_64", "condition_evaluation_timing", "duration", "recurrence", "reset_and_expiry", "calculation_bucket"]
+}
