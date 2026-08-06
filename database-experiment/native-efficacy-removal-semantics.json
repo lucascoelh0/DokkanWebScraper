@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "efficacyType": 110,
+  "auditScope": "efficacy-110-exact-removal-and-status-inactivation",
+  "valueBindings": [
+    { "column": "eff_value1", "callChangeParamOffset": 40, "runtimeRole": "skill_type_selector" },
+    { "column": "eff_value2", "callChangeParamOffset": 48, "runtimeRole": "skill_id_selector" },
+    { "column": "eff_value3", "callChangeParamOffset": 56, "runtimeRole": "removal_category_selector" }
+  ],
+  "codeRegions": [
+    { "role": "passive_skill_row_constructor", "symbol": "_ZN12PassiveSkillC1EPN7SQLite33RowE", "vma": 46449820, "sizeBytes": 2248, "codeSha256": "7cec861db0b338c586868fc49b008da0c08950d1f5656fceebf2dd1acea5843e", "observation": "sqlite_eff_value_columns_stored_at_offsets_128_132_136" },
+    { "role": "create_passive_skill", "symbol": "_ZN14AbilityManager18createPassiveSkillEiiNSt6__ndk110shared_ptrI15PassiveSkillSetEE", "vma": 64383460, "sizeBytes": 1524, "codeSha256": "b56f963ad641d1d9e67027199b0529fb56cf7039b5dc206209eb359a9bb2d04d", "observation": "passive_offsets_128_132_136_copied_in_order_to_runtime_values" },
+    { "role": "ability_status_efficacy_constructor", "symbol": "_ZN21AbilityStatusEfficacyC1EP27CreateAbilityStatusEfficacy", "vma": 64493900, "sizeBytes": 820, "codeSha256": "8207716704da65ad571c7e4fc3eeeda6e7ab59552716bcbf8dbb9e9bf1069f64", "observation": "three_runtime_values_materialized_in_index_order" },
+    { "role": "call_change_param_initializer", "symbol": "local@AbilityEfficacyTarget::targetSelf+0xe0", "vma": 64250860, "sizeBytes": 500, "codeSha256": "0f324cf1b3873115684d83b5fbff9b3229e86fd3f40bb2e9ead66cf7b56aa990", "observation": "runtime_values_copied_to_call_param_offsets_40_48_56" },
+    { "role": "removal_handler", "symbol": "_ZN25AbilityEfficacyRemoveFunc49removeAbilityEfficacyInfoAndInactiveAbilityStatusEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64325992, "sizeBytes": 420, "codeSha256": "38a1f7b89fe22d973ab9a0b60b8226c3d4c6a2593f00b5e772f2ade05195d152", "observation": "reorders_three_values_into_exact_removal_selector_then_zeros_target_and_source_status" },
+    { "role": "exact_efficacy_remover", "symbol": "_ZN14AbilityManager29removeAbilityEfficacyInfoListE17SkillCategoryTypei9SkillTypei", "vma": 64419356, "sizeBytes": 624, "codeSha256": "47e7e0c4d15e8dcf007fe55f2a86eac5cae635131552afe034a8b78f512af786", "observation": "removes_entries_matching_category_deck_index_skill_type_and_skill_id" },
+    { "role": "target_status_lookup", "symbol": "_ZN14AbilityManager16getAbilityStatusEi17SkillCategoryType9SkillTypei", "vma": 64366884, "sizeBytes": 484, "codeSha256": "8a17ddd35a749269a0aba0334a2cec5732381e9cf911f0d7e10e8c9e24574c2f", "observation": "looks_up_target_status_by_deck_category_skill_type_and_skill_id" }
+  ],
+  "abilityEfficacyInfoVtable": {
+    "symbol": "_ZTV19AbilityEfficacyInfo", "vma": 92053824, "sizeBytes": 624,
+    "slots": [
+      { "offset": 48, "symbol": "_ZNK19AbilityEfficacyInfo10getDeckIdxEv" },
+      { "offset": 64, "symbol": "_ZNK19AbilityEfficacyInfo15getCategoryTypeEv" },
+      { "offset": 96, "symbol": "_ZNK19AbilityEfficacyInfo12getSkillTypeEv" },
+      { "offset": 112, "symbol": "_ZNK19AbilityEfficacyInfo10getSkillIdEv" }
+    ]
+  },
+  "abilityStatusEfficacyVtable": { "symbol": "_ZTV21AbilityStatusEfficacy", "vma": 92058936, "sizeBytes": 264, "targetTypeSlotOffset": 168, "targetTypeSymbol": "_ZNK21AbilityStatusEfficacy13getTargetTypeEv" },
+  "runtimeBehavior": {
+    "removalMatchFields": ["removal_category_selector", "selected_deck_index", "skill_type_selector", "skill_id_selector"],
+    "statusLookupCategoryOneSkillTypes": [10, 13, 18],
+    "statusLookupCategoryOtherwise": 0,
+    "alternateDeckIndexWhenSourceTargetType": 16,
+    "primaryDeckIndexCallChangeParamOffset": 0,
+    "alternateDeckIndexCallChangeParamOffset": 72,
+    "targetStatusWriteOffset": 20,
+    "sourceStatusWriteOffset": 20,
+    "writtenStatusRaw": 0
+  },
+  "conclusions": [
+    "efficacy_110_removes_exactly_selected_efficacy_info_entries",
+    "eff_value1_is_raw_skill_type_selector",
+    "eff_value2_is_raw_skill_id_selector",
+    "eff_value3_is_raw_removal_category_selector",
+    "matching_target_status_and_source_status_are_written_raw_zero"
+  ],
+  "unknowns": [
+    "skill_type_15_human_name_and_target_dictionary",
+    "category_selector_enum_names",
+    "source_target_type_16_human_name",
+    "status_raw_zero_enum_name_beyond_inactive_handler_behavior",
+    "activation_timing_and_calculation_bucket",
+    "recurrence_and_probability_order"
+  ]
+}

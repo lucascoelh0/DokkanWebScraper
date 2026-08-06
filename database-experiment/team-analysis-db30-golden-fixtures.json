@@ -1,0 +1,5 @@
+[
+  { "name": "passive target join", "stateKey": "1003211:1003211:seza", "ruleKey": "4070:40700011:11004070", "passiveSkillId": "11004070", "skillType": 2, "skillId": 10004070, "category": 0, "targetJoinStatus": "partial" },
+  { "name": "unknown skill type fifteen", "stateKey": "1029361:4029371:initial", "ruleKey": "4222:42220000:4222", "passiveSkillId": "4222", "skillType": 15, "skillId": 67, "category": 0, "targetJoinStatus": "unknown" },
+  { "name": "removal category one", "stateKey": "1025371:1025371:initial", "ruleKey": "3078:30780008:8003078", "passiveSkillId": "8003078", "skillType": 2, "skillId": 3078, "category": 1, "targetJoinStatus": "partial" }
+]
