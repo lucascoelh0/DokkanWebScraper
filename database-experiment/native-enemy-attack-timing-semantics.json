@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "execution-timing-6-and-7-enemy-attack-setup",
+  "executionFilter": {
+    "symbol": "_ZN14AbilityManager21callAbilityStatusExecEi17SkillCategoryType19SkillExecTimingType9SkillTypeN13AbilityStatus14AddtionalParamE",
+    "vma": 64372436,
+    "sizeBytes": 1068,
+    "codeSha256": "e479bd26a683eef5f1a8a035c4c99e83cd4e4a1de0ab4a716f5842df7e8aa707",
+    "timingParameter": "w3_exact_equality_against_status_exec_timing"
+  },
+  "owner": {
+    "symbol": "_ZN30EnemyAttackDamageAndActionBank5setupEP21DPuzzleGameControlleriiNSt6__ndk110shared_ptrIN15PuzzleEnemyData6ActionEEEPiibbRNS2_5queueIiNS2_5dequeIiNS2_9allocatorIiEEEEEERNS2_12basic_stringIcNS2_11char_traitsIcEENSA_IcEEEE",
+    "vma": 48102712,
+    "sizeBytes": 13200,
+    "codeSha256": "129865aa6bfc05c69f0998ba2d12c92eb41440f85d4c636c764cea27b74252aa"
+  },
+  "events": [
+    {
+      "raw": 6,
+      "event": "enemy_attack_pre_damage_calculation_setup",
+      "sequence": "before_counter_finish_disable_attack_absorb_dodge_and_intermediate_damage_calculation",
+      "calls": [
+        { "categoryRaw": 1, "skillTypeRaw": 10, "literalVma": 48103768, "literalHex": "c3008052", "callVma": 48103780, "callHex": "bfe09a94" },
+        { "categoryRaw": 0, "skillTypeRaw": 2, "literalVma": 48104508, "literalHex": "c3008052", "callVma": 48104520, "callHex": "06e09a94" },
+        { "categoryRaw": 0, "skillTypeRaw": 11, "literalVma": 48104800, "literalHex": "c3008052", "callVma": 48104812, "callHex": "bddf9a94" }
+      ]
+    },
+    {
+      "raw": 7,
+      "event": "enemy_attack_post_damage_calculation_setup",
+      "sequence": "after_intermediate_damage_calculation_absorb_invalid_ko_received_attack_bookkeeping_and_dodge_guard_missions_before_attacking_condition_assembly",
+      "calls": [
+        { "categoryRaw": 0, "skillTypeRaw": 2, "literalVma": 48108892, "literalHex": "e3008052", "callVma": 48108904, "callHex": "bedb9a94" },
+        { "categoryRaw": 0, "skillTypeRaw": 11, "literalVma": 48109184, "literalHex": "e3008052", "callVma": 48109196, "callHex": "75db9a94" },
+        { "categoryRaw": 1, "skillTypeRaw": 10, "literalVma": 48109604, "literalHex": "e3008052", "callVma": 48109616, "callHex": "0cdb9a94" }
+      ]
+    }
+  ],
+  "doesNotImply": ["attack_landed", "hp_applied", "attack_animation_executed", "super_attack", "calculation_bucket", "duration", "recurrence", "stacking"],
+  "unknowns": ["final_hp_application", "branch_specific_event_eligibility", "probability_order", "status_reset_and_expiry"]
+}
