@@ -1,0 +1,6 @@
+[
+  { "id": "over-200", "stateKey": "1000030:1000030:initial", "ruleKey": "49:490000:49", "causalityId": "31", "type": 3, "comparator": "gte", "threshold": 200 },
+  { "id": "over-100", "stateKey": "1000200:1000200:initial", "ruleKey": "18:180000:18", "causalityId": "19", "type": 3, "comparator": "gte", "threshold": 100 },
+  { "id": "under-370", "stateKey": "1006211:1006211:seza", "ruleKey": "4140:41400004:4004140", "causalityId": "156", "type": 4, "comparator": "lt", "threshold": 370 },
+  { "id": "under-390-reused", "stateKey": "1006211:1006211:seza", "ruleKey": "4140:41400007:7004140", "causalityId": "3169", "type": 4, "comparator": "lt", "threshold": 390 }
+]

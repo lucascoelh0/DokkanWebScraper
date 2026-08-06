@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "causality-types-3-4-battle-gauge-cap100-ratio-threshold",
+  "dispatch": { "tableVma": 95588720, "entrySizeBytes": 8, "slots": [{ "causalityType": 3, "slotVma": 95588744, "handlerRole": "over_handler" }, { "causalityType": 4, "slotVma": 95588752, "handlerRole": "under_handler" }] },
+  "sqliteBinding": { "table": "skill_causalities", "thresholdColumn": "cau_val1", "ignoredColumns": ["cau_val2", "cau_val3"], "payloadContainerOffset": 8, "elementSizeBytes": 4 },
+  "statusInputs": { "abilityStatusVtableSymbol": "_ZTV22AbilityStatusCausality", "abilityStatusVtableVma": 92058432, "abilityStatusVtableSizeBytes": 360, "deckIndexRelocationOffset": 88, "deckIndexSymbol": "_ZNK13AbilityStatus12getDeckIndexEv", "categoryRelocationOffset": 96, "categorySymbol": "_ZNK13AbilityStatus11getCategoryEv", "categorySemanticName": "unknown", "nonzeroCategoryMetric": 0 },
+  "characterSelection": { "inGameDataVtableSymbol": "_ZTV10InGameData", "inGameDataVtableVma": 89644704, "inGameDataVtableSizeBytes": 472, "relocationOffset": 48, "symbol": "_ZN10InGameData19getCharaDataCurrentEi", "argument": "ability_status_deck_index" },
+  "metric": { "numeratorSymbol": "_ZNK15InGameCharaData37getBattleGaugeValueIncludeExpectationEb", "numeratorBooleanArgument": false, "numeratorDelegateSymbol": "_ZNK15InGameCharaData19getBattleGaugeCountEbb", "denominatorVtableSymbol": "_ZTV15InGameCharaData", "denominatorVtableVma": 89258904, "denominatorVtableSizeBytes": 384, "denominatorRelocationOffset": 216, "denominatorSymbol": "_ZNK15InGameCharaData20getBattleGaugeCap100Ev", "formula": "trunc_toward_zero_float32(signed_int32(numerator)/signed_int32(cap100)*100)", "zeroDenominatorBehavior": "unknown" },
+  "handlers": [{ "causalityType": 3, "role": "over_handler", "symbol": "_ZN20AbilityCausalityFunc12isOverEnergyERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE", "vma": 64181168, "sizeBytes": 268, "codeSha256": "43137e4626c427c0a20db6bde08adec9e6bdb5e3d1fbfbd4dad0d1a4a057e668", "comparator": "gte" }, { "causalityType": 4, "role": "under_handler", "symbol": "_ZN20AbilityCausalityFunc13isUnderEnergyERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE", "vma": 64181436, "sizeBytes": 268, "codeSha256": "18b38aba527deb3813dad937d0011f35fc3050009e3f1143a3604e3158cb33be", "comparator": "lt" }],
+  "codeRegions": [
+    { "role": "get_deck_index", "symbol": "_ZNK13AbilityStatus12getDeckIndexEv", "vma": 64480184, "sizeBytes": 8, "codeSha256": "6f1929ee2376e6ada94db6d2aafe012dfc8382613e73b99aea0c7dea270fac13" },
+    { "role": "get_category", "symbol": "_ZNK13AbilityStatus11getCategoryEv", "vma": 64480192, "sizeBytes": 8, "codeSha256": "7a2c484f16193ad2c5617bbe6704b2ccbdcc31004cfa1370a3ba4533f12de7f9" },
+    { "role": "get_current_character", "symbol": "_ZN10InGameData19getCharaDataCurrentEi", "vma": 49875780, "sizeBytes": 136, "codeSha256": "0379dd70ab28cb12fb10e715fb0af7e42a09da9ec8be98e06389b154a45d4d08" },
+    { "role": "get_battle_gauge_value_include_expectation", "symbol": "_ZNK15InGameCharaData37getBattleGaugeValueIncludeExpectationEb", "vma": 46602500, "sizeBytes": 8, "codeSha256": "7327ffef3fd56aafe8c6d344d056b63c507350fb1eb1bbc13cdd2d7c90e39b58" },
+    { "role": "get_battle_gauge_count_delegate", "symbol": "_ZNK15InGameCharaData19getBattleGaugeCountEbb", "vma": 46601196, "sizeBytes": 1268, "codeSha256": "b8a82f189c7ed7618c4cf1fbdcd69f72b4d6cd15673196c8bf32e07e84d9bca0" },
+    { "role": "get_battle_gauge_cap100", "symbol": "_ZNK15InGameCharaData20getBattleGaugeCap100Ev", "vma": 46623960, "sizeBytes": 40, "codeSha256": "b5738fbad1b1dd0ad67acd5aa552bb598b57f8b8a4c26c2452f3a84222d83ea4" },
+    { "role": "judge_status", "symbol": "_ZN20AbilityCausalityFunc11JudgeStatusC1Eb", "vma": 64216168, "sizeBytes": 128, "codeSha256": "c6d887f8639bae3219bd04a036384a2e22ee6ebad09091da0cd883fdb2de6cd7" }
+  ],
+  "unknowns": ["ability_status_category_product_name", "zero_denominator_behavior", "battle_gauge_population_and_reset_timing", "condition_evaluation_timing", "recurrence", "calculation_bucket"]
+}
