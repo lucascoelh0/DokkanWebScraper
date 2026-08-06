@@ -1,6 +1,6 @@
 # Database-first Character / Team Analysis frontier
 
-Status: experimental, non-production. Updated through DB34 (`0.33.0`) against snapshot `global-6.4.0-v338-2026-08-05`.
+Status: experimental, non-production. Updated through DB35 (`0.34.0`) against snapshot `global-6.4.0-v338-2026-08-05`.
 
 ## Source identity and boundaries
 
@@ -34,6 +34,7 @@ Status: experimental, non-production. Updated through DB34 (`0.33.0`) against sn
 | Calculation operation | native `SkillCalcOption` dispatch, handler formulas, operand use, clamps and `float32` arithmetic | values 0–4 supported; 14,301 rules / 18,078 effects / 1,571 states projected, with timing, unit and bucket independent |
 | Execution timing | SQLite-to-runtime field chain, equality filter, turn-sequence and player-attack-setup call sites | value 1 = native turn start; value 4 = player attack setup; 10,891 rules / 14,306 effects / 1,498 states supported, other values unknown |
 | Basic ATK/DEF buckets | efficacy types 1–3, stat operands, timing-filtered former/latter consumers and double-precision difference accumulator | 5,612 rules / 9,239 stat applications / 5,466 passive IDs / 1,384 states; all applications retain partial target/lifecycle semantics |
+| Passive targets | SQLite field chain, status getter, 17-slot native dispatch and nine current handler implementations | all 14,301 rules / 18,078 effects / 13,991 passive IDs / 1,571 states have supported candidate scopes; 847 nonzero raw SQLite sub-target set IDs have unknown runtime association |
 | Attack channels | Super, Ultra, Unit and EX rows, raw effects/conditions and source IDs | 12,429 / 1,255 / 186 / 20 attacks |
 | Active / Standby / Finish | sets, skills, causalities, raw turns/limits and joins | 494 / 28 / 56 cards |
 | Forms | transformations, giant/rage and reversible exchange relations | 359 / 139 / 60 relations |
@@ -56,6 +57,8 @@ Confirmed `SkillCalcOption` values are `0 → lhs + rhs`, `1 → max(lhs - rhs, 
 Confirmed passive execution timing: `exec_timing_type = 1` selects the native turn-start execution event. Its supported sequence is after character appearance and reversible-result fixation and before support-memory and potential-skill execution. `exec_timing_type = 4` selects execution while `PlayerAttackDamageAndActionBank::setup` assembles a player-attack setup result; three call variants preserve raw skill-category/type selectors `(0,2)`, `(0,11)` and `(1,10)`. The label is deliberately `player_attack_setup`, not legacy `when_attacking` or `before_attacking`, and does not assert that the attack has executed or landed. Observed values `3, 5, 6, 7, 9, 11, 12, 14, 15` remain unknown. Neither supported timing implies a calculation bucket or settles `turn`, `is_once`, duration, recurrence or stacking.
 
 Confirmed basic-stat buckets: efficacy `1` reads `eff_value1` into ATK, efficacy `2` reads `eff_value1` into DEF, and efficacy `3` reads `eff_value1` into ATK plus `eff_value2` into DEF. The native former-passive-stat consumer selects timings `1, 3, 11, 15, 18`; the latter-passive-stat consumer selects `4, 5, 6, 7, 9, 14`. These bucket identities do not promote unknown execution-event labels. For this consumer, calc options `0/1/4` use stat-point operands and `2/3` use percentage points of the current stat. Modifiers materialize through `float32`, accumulation is in `double`, flat changes truncate toward zero, negative percentage multipliers floor at zero, and the last assignment in efficacy-list order wins. Cross-bucket ordering, target selection and lifecycle dimensions remain unknown; timing `12` is not assigned to either bucket and future rows outside the proved groups remain lossless with bucket `unknown`.
+
+Confirmed passive target candidate scopes: `target_type` values `1/2/3/4` select the ability owner, player-party deck indices `0..6`, the stored runtime enemy target with ability-owner fallback, and the current enemy vector respectively. Values `12/13` filter player-party candidates with raw awakening-class predicates `{1,3}` / `{2,3}`; `14/15` apply those predicates to enemy candidates; `16` structurally excludes the ability owner from the player party under the independently proved category-0 passive precondition. These are candidate sets before the native sub-target predicate. Slot `6` is null, slots `0,5,7..11` are absent from projected passive rules and out-of-range values remain unknown. Target selection does not imply timing, operation, unit, calculation bucket, duration, recurrence, expiry or reset.
 
 Confirmed condition families include the earlier SQLite projections for causality types `1, 2, 5, 15, 16, 19, 24, 25, 30, 38, 42`, selector masks from type `46`, and native-backed runtime types `43, 51, 55`. Type `49` has a supported Super Attack category selector backed by `special_categories.raw_attribute` and the native bitmask consumer. Types `17/18/33` have supported target-HP metrics, parameters and inclusive comparators, with runtime scope/gates kept explicit. Types `47/54` have supported revival-activation counter predicates: ability-owner pure-current record for 47, and deck indices 0–6 across pure/back current records for 54, whose `cau_val1` zero/nonzero value selects any/none. These families remain partial at activation/history level. Types `40` and `56` have partial native predicates over `AdditionalParam` byte 1, but their attack kind, direction and scope are unknown. Type `3` remains partial (1,262 occurrences). Type `41` preserves 602 name tokens but lacks a first-party dictionary. Remaining numeric causalities stay raw/unknown even when the native dispatch slot has been identified.
 
@@ -94,6 +97,8 @@ DB33 follows timing value 4 to exactly three native calls inside `PlayerAttackDa
 
 DB34 follows efficacy types 1–3 through the native ATK/DEF handlers and their timing-filtered stat consumers. It assigns 5,612 rules and 9,239 stat applications to the former/latter passive-stat buckets, covering 5,466 passive IDs and 1,384 states. It also proves the consumer-specific stat unit, double-precision accumulation, truncation, negative-multiplier floor and assignment order. DB13 yields 1,901 diagnostic exact-effect alignments. Four latter-bucket rows align to legacy `passive_start_of_turn`, but the alignment does not prove rule identity, so they remain candidate conflicts and the confirmed conflict count is zero.
 
+DB35 follows `passive_skills.target_type` from the SQLite row through `PassiveSkill`, status creation, the vtable getter and the 17-slot `AbilityEfficacyTarget` dispatch. It proves the candidate-domain, native order, owner inclusion/exclusion and class predicates for all nine values present in projected rules. This covers all 14,301 rules and 18,078 effects. Every supported handler invokes `containsSubTargetType` before the efficacy callback, but DB35 does not prove the field chain from SQLite `sub_target_type_set_id` into that predicate. The 847 nonzero raw SQLite IDs therefore retain an unknown runtime association in addition to unknown value-type, composition and empty-set semantics. The legacy dataset has aggregate scopes but no first-party rule identity, so DB35 records no direct agreement or conflict.
+
 ## Product readiness
 
 Already useful for Team Builder:
@@ -115,12 +120,13 @@ Already useful for Team Builder:
 - native turn-start scheduling for 9,061 passive rules, independently of their calculation bucket and recurrence.
 - bounded player-attack setup scheduling for another 1,830 rules, including regular, extra and counter setup paths, without conflating setup with attack execution or hit resolution.
 - native former/latter ATK/DEF buckets for 5,612 basic-stat rules, including the consumer-specific unit and arithmetic boundary, without inventing targets or lifecycle semantics.
+- native candidate target scopes for every projected passive rule, including selected/all enemies, allies, Super/Extreme class filters and structural owner exclusion, while retaining the SQLite-to-runtime sub-target association as unknown.
 
 Still required for trustworthy rotations, support and combat calculation:
 
 - activation timing and calculation buckets for passive efficacy families beyond basic ATK/DEF;
 - recurrence, accumulation, reset, expiry and once-only runtime semantics;
-- target/sub-target semantics not yet tied to runtime behavior;
+- SQLite-to-runtime binding, value types, boolean composition and empty-set behavior for 847 nonzero raw sub-target set IDs;
 - final-blow, counter execution, nullification and remaining combat-event causalities;
 - exact attack-break activation timing, expiry/removal predicate and efficacy-112 invalidation interaction;
 - activation timing and recurrence for efficacy-110 before removal dependencies can expire effects automatically;
@@ -136,7 +142,7 @@ Still required for trustworthy rotations, support and combat calculation:
 SQLite-resolvable candidates:
 
 - high-frequency unknown efficacy rows whose parameters form stable relational subfamilies;
-- remaining structured target and sub-target joins;
+- remaining structured sub-target joins and their value-type payloads;
 - the structured `special_categories` dictionary is now resolved; remaining attack-category gaps concern activation context rather than identity;
 - category/name dictionaries if a first-party table or asset join can be located;
 - state-transition relations already represented by Active, Standby, Finish and passive skills.
@@ -147,7 +153,7 @@ ELF/runtime-resolvable candidates:
 - execution timing and calculation-phase consumers;
 - recurrence/counter/reset storage and mutation;
 - call sites of `resetActivateRevivalSkillCount` to delimit the native revival-history window;
-- target-mask evaluation;
+- sub-target predicate dispatch, value-type evaluation and boolean composition;
 - attack-event, counter and nullification handlers, plus attack-break lifecycle/invalidation consumers.
 - writers of the caller-supplied attack-context `AdditionalParam` and their call-site event direction.
 
@@ -167,6 +173,6 @@ Other distributions/domains:
 
 ## Return on recent investigation and recommendation
 
-DB17–DB22 produced material value: three scoped native promotions, 195 sound AST simplifications, 60 additional exact pairs, and a reduction of 188 residual occurrences. DB20–DB21 also prevented a high-correlation but false universal interpretation of `passive_skills.turn`. DB23 itself is diagnostic and establishes a clean parity frontier. DB24 then moved to combat semantics and promoted one high-impact efficacy family, resolving all 150 counter payload fields in the 50 in-scope rules while preserving every activation uncertainty. DB25 delivered negative but material value: it removed false precision from 132 rules and established a reproducible dynamic boundary rather than entrenching a parser-shaped label. DB26 resolved 83/83 structured Super Attack category selectors through a direct SQLite-to-runtime field path, DB27 resolved another 59 target-HP conditions with exact comparator and HP-rate calculation boundaries, DB28 resolves 70 revival-history predicates through a concrete increment/read/reset chain rather than symbol naming alone, DB29 resolves all 36 attack-break effects with native enemy scoping and multiplicity, DB30 resolves 367 native removal operations while keeping the attractive but unproved SkillType-2 name only as a partial ID candidate, DB31 promotes the shared operation enum across all 14,301 projected passive rules without conflating it with unit or scheduling, DB32 schedules 9,061 of those rules at a precisely bounded native turn-start event, DB33 adds 1,830 rules at a bounded player-attack setup event without adopting parser labels, and DB34 assigns 5,612 basic ATK/DEF rules to native former/latter stat buckets with their exact consumer arithmetic.
+DB17–DB22 produced material value: three scoped native promotions, 195 sound AST simplifications, 60 additional exact pairs, and a reduction of 188 residual occurrences. DB20–DB21 also prevented a high-correlation but false universal interpretation of `passive_skills.turn`. DB23 itself is diagnostic and establishes a clean parity frontier. DB24 then moved to combat semantics and promoted one high-impact efficacy family, resolving all 150 counter payload fields in the 50 in-scope rules while preserving every activation uncertainty. DB25 delivered negative but material value: it removed false precision from 132 rules and established a reproducible dynamic boundary rather than entrenching a parser-shaped label. DB26 resolved 83/83 structured Super Attack category selectors through a direct SQLite-to-runtime field path, DB27 resolved another 59 target-HP conditions with exact comparator and HP-rate calculation boundaries, DB28 resolves 70 revival-history predicates through a concrete increment/read/reset chain rather than symbol naming alone, DB29 resolves all 36 attack-break effects with native enemy scoping and multiplicity, DB30 resolves 367 native removal operations while keeping the attractive but unproved SkillType-2 name only as a partial ID candidate, DB31 promotes the shared operation enum across all 14,301 projected passive rules without conflating it with unit or scheduling, DB32 schedules 9,061 of those rules at a precisely bounded native turn-start event, DB33 adds 1,830 rules at a bounded player-attack setup event without adopting parser labels, DB34 assigns 5,612 basic ATK/DEF rules to native former/latter stat buckets with their exact consumer arithmetic, and DB35 proves native candidate scopes for every projected passive rule while isolating the 847 nonzero raw SQLite sub-target IDs as an unproved runtime-binding boundary.
 
-Recommendation: continue database-first mapping. DB34 closes the highest-volume basic ATK/DEF bucket family, so the next highest-return target is the structured target/sub-target dispatch shared across efficacy handlers; lifecycle semantics (duration, recurrence, reset and expiry) follow once target scope is bounded. Integration into production remains **NO-GO** until remaining calculation buckets/recurrence and the highest-impact unknown efficacy/target families are either proved or explicitly isolated behind optional unknown-safe enrichment.
+Recommendation: continue database-first mapping. DB35 closes the top-level target dispatch for the current passive corpus. The next highest-return target is proving the native sub-target predicate's SQLite binding and interpreting the 847 nonzero raw IDs; lifecycle semantics (duration, recurrence, reset and expiry) follow once that selection boundary is bounded. Integration into production remains **NO-GO** until remaining calculation buckets/recurrence and the highest-impact unknown efficacy/sub-target families are either proved or explicitly isolated behind optional unknown-safe enrichment.

@@ -1,0 +1,17 @@
+[
+  {"id":"self","raw":1,"expected":"self"},
+  {"id":"party-all","raw":2,"expected":"team_allies"},
+  {"id":"enemy-selected","raw":3,"expected":"enemy"},
+  {"id":"enemy-all","raw":4,"expected":"all_enemies"},
+  {"id":"party-super","raw":12,"expected":"super_class_allies"},
+  {"id":"party-extreme","raw":13,"expected":"extreme_class_allies"},
+  {"id":"enemy-super","raw":14,"expected":"super_class_enemies"},
+  {"id":"enemy-extreme","raw":15,"expected":"extreme_class_enemies"},
+  {"id":"party-except-self","raw":16,"expected":"team_allies_excluding_self"},
+  {"id":"none-unobserved","raw":0,"expected":"unknown"},
+  {"id":"slot-6-null","raw":6,"expected":"unknown"},
+  {"id":"future","raw":17,"expected":"unknown"},
+  {"id":"negative","raw":-1,"expected":"unknown"},
+  {"id":"invalid","raw":"bad","expected":"unknown"},
+  {"id":"null","raw":null,"expected":"unknown"}
+]
