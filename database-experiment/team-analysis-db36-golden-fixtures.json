@@ -1,0 +1,10 @@
+[
+  {"id":"category-include","rawType":1,"rawValue":36,"expectedStatus":"supported","expectedSelector":"card_category_id","expectedInclusion":"include"},
+  {"id":"category-exclude","rawType":2,"rawValue":36,"expectedStatus":"supported","expectedSelector":"card_category_id","expectedInclusion":"exclude"},
+  {"id":"metamorphic-partial","rawType":3,"rawValue":2,"expectedStatus":"partial","expectedSelector":"metamorphic_type_raw","expectedInclusion":"unknown"},
+  {"id":"unique-set-include","rawType":4,"rawValue":30,"expectedStatus":"supported","expectedSelector":"card_unique_info_set_id","expectedInclusion":"include"},
+  {"id":"unique-set-exclude","rawType":5,"rawValue":30,"expectedStatus":"supported","expectedSelector":"card_unique_info_set_id","expectedInclusion":"exclude"},
+  {"id":"unknown-zero","rawType":0,"rawValue":1,"expectedStatus":"unknown","expectedSelector":"unknown","expectedInclusion":"unknown"},
+  {"id":"unknown-out-of-range","rawType":6,"rawValue":1,"expectedStatus":"unknown","expectedSelector":"unknown","expectedInclusion":"unknown"},
+  {"id":"invalid","rawType":"bad","rawValue":1,"expectedStatus":"unknown","expectedSelector":"unknown","expectedInclusion":"unknown"}
+]

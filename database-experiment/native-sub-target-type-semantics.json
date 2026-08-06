@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "passive-sub-target-sqlite-runtime-binding-composition-and-current-value-types",
+  "sqliteBinding": {
+    "passiveTable": "passive_skills",
+    "passiveColumn": "sub_target_type_set_id",
+    "passiveColumnLiteralVma": 32490856,
+    "passiveSkillOffset": 184,
+    "querySqlVma": 32741440,
+    "querySql": "SELECT target_value_type, target_value FROM sub_target_types WHERE sub_target_type_set_id = %d;",
+    "queryColumns": ["target_value_type", "target_value"],
+    "queryColumnIndices": [0, 1]
+  },
+  "runtimeBinding": {
+    "createAbilityStatusSharedPtrOffset": 48,
+    "abilityStatusSharedPtrOffset": 232,
+    "getterObjectVtableOffset": 160,
+    "getterVtableRelocationOffset": 176,
+    "getterSymbol": "_ZNK21AbilityStatusEfficacy17getSubTargetTypesEv",
+    "predicateResult": "candidate_retained_when_filtered_singleton_is_nonempty"
+  },
+  "composition": {
+    "operator": "and",
+    "algorithm": "copy_candidate_vector_then_replace_with_each_filter_result",
+    "emptySetBehavior": "identity",
+    "duplicateBehavior": "reapplied_filter"
+  },
+  "valueTypes": [
+    { "raw": 1, "status": "supported", "selector": "card_category_id", "inclusion": "include", "runtimeClass": "SubTargetCardCategory" },
+    { "raw": 2, "status": "supported", "selector": "card_category_id", "inclusion": "exclude", "runtimeClass": "SubTargetCardCategory" },
+    { "raw": 3, "status": "partial", "selector": "metamorphic_type_raw", "inclusion": "unknown", "runtimeClass": "SubTargetCardMetamorphicType" },
+    { "raw": 4, "status": "supported", "selector": "card_unique_info_set_id", "inclusion": "include", "runtimeClass": "SubTargetCardUniqueInfoSetType" },
+    { "raw": 5, "status": "supported", "selector": "card_unique_info_set_id", "inclusion": "exclude", "runtimeClass": "SubTargetCardUniqueInfoSetType" }
+  ],
+  "factoryGotRelocations": [
+    { "rawValues": [1, 2], "classVtableGot": 95107200, "classVtableSymbol": "_ZTV21SubTargetCardCategory", "sharedVtableGot": 95107192, "sharedVtableSymbol": "_ZTVNSt6__ndk120__shared_ptr_emplaceI21SubTargetCardCategoryNS_9allocatorIS1_EEEE" },
+    { "rawValues": [3], "classVtableGot": 95107216, "classVtableSymbol": "_ZTV28SubTargetCardMetamorphicType", "sharedVtableGot": 95107208, "sharedVtableSymbol": "_ZTVNSt6__ndk120__shared_ptr_emplaceI28SubTargetCardMetamorphicTypeNS_9allocatorIS1_EEEE" },
+    { "rawValues": [4, 5], "classVtableGot": 95107184, "classVtableSymbol": "_ZTV30SubTargetCardUniqueInfoSetType", "sharedVtableGot": 95107176, "sharedVtableSymbol": "_ZTVNSt6__ndk120__shared_ptr_emplaceI30SubTargetCardUniqueInfoSetTypeNS_9allocatorIS1_EEEE" }
+  ],
+  "uniqueInfoSetBinding": {
+    "table": "card_unique_info_set_relations",
+    "setColumn": "card_unique_info_set_id",
+    "memberColumn": "card_unique_info_id",
+    "refreshSqlVma": 32630919,
+    "refreshSql": "SELECT * FROM card_unique_info_set_relations",
+    "candidateGetterSymbol": "_ZNK4Card19getCardUniqueInfoIdEv",
+    "cardVtableSymbol": "_ZTV4Card",
+    "cardVtableRelocationOffset": 48,
+    "candidateObjectVtableOffset": 32
+  },
+  "abilityStatusVtable": { "symbol": "_ZTV22AbilityStatusCausality", "vma": 92058432, "sizeBytes": 360, "rawSha256": "d3df611a0ed2e328b050d285287637c60643ba96ec09e4aaefaad7f2cd114b77" },
+  "cardVtable": { "symbol": "_ZTV4Card", "vma": 89247104, "sizeBytes": 296, "rawSha256": "250f52cb2d6f1966a29f6ac771fa1cd185b8f8531396c8a4026c0fe635617e0c" },
+  "codeRegions": [
+    { "role": "passive_skill_row_constructor", "symbol": "_ZN12PassiveSkillC1EPN7SQLite33RowE", "vma": 46449820, "sizeBytes": 2248, "codeSha256": "7cec861db0b338c586868fc49b008da0c08950d1f5656fceebf2dd1acea5843e" },
+    { "role": "passive_sub_target_getter", "symbol": "_ZNK12PassiveSkill19getSubTargetTypeSetEv", "vma": 46452876, "sizeBytes": 56, "codeSha256": "95a152d1be40399031b02b83941a39b1ec60c8506f733e1e03998f764885886d" },
+    { "role": "skill_model_set_lookup", "symbol": "_ZN10SkillModel24getSubTargetTypesBySetIdEi", "vma": 53998776, "sizeBytes": 364, "codeSha256": "e1e1be89c49714c7672a31e1bcccbc9b0b64256c2930092eb1566e72a04930c4" },
+    { "role": "database_set_loader", "symbol": "_ZN21SubTargetTypeDatabase23getSubTargetTypeSetByIdEi", "vma": 54031540, "sizeBytes": 396, "codeSha256": "3f28adc207732e14afa73e1e778e83ea7d06ea9d7c30269374ff77e4b1b63e73" },
+    { "role": "set_filter_composition", "symbol": "_ZN16SubTargetTypeSet14getTargetCardsERKNSt6__ndk16vectorINS0_10shared_ptrI8UserCardEENS0_9allocatorIS4_EEEE", "vma": 47060556, "sizeBytes": 684, "codeSha256": "fc867181ae4c3e996d4741b0e285de20d67f6f1fe70405cada663d5196257121" },
+    { "role": "row_value_loader", "symbol": "_ZN13SubTargetTypeC1EP12sqlite3_stmt", "vma": 47063080, "sizeBytes": 280, "codeSha256": "795aff7897a8ac8e236c7740b3b666008f45252ad8126b63fabd6c5f00a83f7f" },
+    { "role": "value_type_factory", "symbol": "_ZN13SubTargetType15selectSubTargetEii", "vma": 47063360, "sizeBytes": 364, "codeSha256": "ecee34b4447cfbeeb1c2176571a05a62a98f7282f63b4c46b8d6b4a9d98aefdb" },
+    { "role": "category_filter", "symbol": "_ZN21SubTargetCardCategory14getTargetCardsERKNSt6__ndk16vectorINS0_10shared_ptrI8UserCardEENS0_9allocatorIS4_EEEE", "vma": 47063820, "sizeBytes": 628, "codeSha256": "9f40d194e4cf80652ee80930a884d378c859f174ff33229e815fd04892fb6cd4" },
+    { "role": "metamorphic_filter", "symbol": "_ZN28SubTargetCardMetamorphicType14getTargetCardsERKNSt6__ndk16vectorINS0_10shared_ptrI8UserCardEENS0_9allocatorIS4_EEEE", "vma": 47064448, "sizeBytes": 1020, "codeSha256": "e388fd1898ca4a1ced926a897b2cb8c98418c190339ba136771b647531b071eb" },
+    { "role": "unique_info_set_filter", "symbol": "_ZN30SubTargetCardUniqueInfoSetType14getTargetCardsERKNSt6__ndk16vectorINS0_10shared_ptrI8UserCardEENS0_9allocatorIS4_EEEE", "vma": 47065468, "sizeBytes": 596, "codeSha256": "ba7911bfb5262b9a49deeb5cad7b81437549f1f71f1e49f90d5a4148706f03c1" },
+    { "role": "create_passive_skill", "symbol": "_ZN14AbilityManager18createPassiveSkillEiiNSt6__ndk110shared_ptrI15PassiveSkillSetEE", "vma": 64383460, "sizeBytes": 1524, "codeSha256": "b56f963ad641d1d9e67027199b0529fb56cf7039b5dc206209eb359a9bb2d04d" },
+    { "role": "ability_status_constructor", "symbol": "_ZN21AbilityStatusEfficacyC2EP27CreateAbilityStatusEfficacy", "vma": 64493900, "sizeBytes": 820, "codeSha256": "8207716704da65ad571c7e4fc3eeeda6e7ab59552716bcbf8dbb9e9bf1069f64" },
+    { "role": "ability_status_sub_target_getter", "symbol": "_ZNK21AbilityStatusEfficacy17getSubTargetTypesEv", "vma": 64480264, "sizeBytes": 40, "codeSha256": "c338e42504b562eee8d02adf6b4ba4cb7bda26bf12c75d3d850a6051b7dca971" },
+    { "role": "candidate_membership_predicate", "symbol": "_ZN21AbilityEfficacyTarget21containsSubTargetTypeERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEENS1_I8UserCardEE", "vma": 64256788, "sizeBytes": 464, "codeSha256": "0c22ddef6381631274d3debfcc7c7cd529282e3c0af7ffe075df8cc4dfda7230" },
+    { "role": "card_category_lookup", "symbol": "_ZNK9CardModel19getCardCategoryByIdEi", "vma": 52296544, "sizeBytes": 80, "codeSha256": "c48879bae72fa9d3e2e17613e2a83e9a53688d1cbc3a62b7e8bb462c57d89938" },
+    { "role": "card_categories_getter", "symbol": "_ZNK4Card17getCardCategoriesEv", "vma": 46422528, "sizeBytes": 56, "codeSha256": "5a2869a6a3daf25884103e0a4b186d8eb0ccfbbe4be3343a05d89f9b07aa1a67" },
+    { "role": "unique_info_set_refresh", "symbol": "_ZN15CollectionModel25refleshCardUniqueInfoSetsEv", "vma": 52740980, "sizeBytes": 500, "codeSha256": "9af5c7bb1f3d216f48b0818f627b4b0c45b60bfc8b56238b0a126d8bcc69f9eb" },
+    { "role": "unique_info_set_lookup", "symbol": "_ZNK15CollectionModel20getCardUniqueInfoIdsEi", "vma": 52741480, "sizeBytes": 200, "codeSha256": "11fadb7c303ab9d9d6857bd4340614eca53fca8969bec1c2e4acc7c8894aa98f" },
+    { "role": "card_unique_info_getter", "symbol": "_ZNK4Card19getCardUniqueInfoIdEv", "vma": 46427148, "sizeBytes": 8, "codeSha256": "6f1929ee2376e6ada94db6d2aafe012dfc8382613e73b99aea0c7dea270fac13" }
+  ],
+  "unknowns": ["metamorphic_type_predicate_semantics", "value_types_outside_1_to_5", "target_candidate_construction_outside_db35", "timing", "calculation_bucket", "duration", "recurrence", "expiry", "reset"]
+}
