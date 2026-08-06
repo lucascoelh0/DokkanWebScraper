@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "causality-types-17-18-33-target-hp-percent",
+  "abilityStatusVtable": {
+    "symbol": "_ZTV22AbilityStatusCausality",
+    "vma": 92058432,
+    "sizeBytes": 360,
+    "deckIndexSlotOffset": 88,
+    "deckIndexSymbol": "_ZNK13AbilityStatus12getDeckIndexEv",
+    "selectionFlagSlotOffset": 96,
+    "selectionFlagSymbol": "_ZNK13AbilityStatus11getCategoryEv",
+    "selectionFlagSemanticName": "unknown"
+  },
+  "handlers": [
+    { "causalityType": 17, "symbol": "_ZN20AbilityCausalityFunc18isOverTargetHpRateERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE", "vma": 64184364, "sizeBytes": 260, "codeSha256": "e56d90eaef12f087ae8683c9be9584d110105226983b663f737f05f58e74b336", "metric": "selected_enemy_current_hp_div_max_times_100_float", "comparator": "gte", "parameterReads": ["cau_val1"], "ignoredParameters": ["cau_val2", "cau_val3"], "gate": "selection_flag_equals_zero" },
+    { "causalityType": 18, "symbol": "_ZN20AbilityCausalityFunc19isUnderTargetHpRateERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE", "vma": 64184624, "sizeBytes": 260, "codeSha256": "19d89dcb17cfd957e4b690793769b0d6697441533318191db25fe7cf34ff8bc9", "metric": "selected_enemy_current_hp_div_max_times_100_float", "comparator": "lte", "parameterReads": ["cau_val1"], "ignoredParameters": ["cau_val2", "cau_val3"], "gate": "selection_flag_equals_zero" },
+    { "causalityType": 33, "symbol": "_ZN20AbilityCausalityFunc15isBetweenHpRateERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE", "vma": 64189840, "sizeBytes": 300, "codeSha256": "ea6a5b1fc74d9c8f9c6be6b5f4a30c93a60e1bd0ac593d90d45ff527bc9c6ff3", "metric": "runtime_selected_player_or_enemy_hp_rate_integer", "comparator": "between_inclusive", "parameterReads": ["cau_val1", "cau_val2"], "ignoredParameters": ["cau_val3"], "gate": "none" }
+  ],
+  "hpRateHelper": { "symbol": "_ZN12InGameHpRate10calcHpRateEdd", "vma": 50029680, "sizeBytes": 88, "codeSha256": "12ca70754a51c9b5970bd73ec67e5c31a33c3c58b468388511229bafb5c20478", "zeroNumeratorOrDenominatorResult": 0, "normalizationWindows": [{ "when": "ratio_percent_gt_0_lt_1", "value": 1 }, { "when": "ratio_percent_gt_99_lt_100", "value": 99 }], "rounding": "nearest_ties_away_from_zero" },
+  "conclusions": ["types_17_18_use_selected_enemy_hp_float_percent", "type_33_uses_runtime_selected_player_or_enemy_integer_hp_percent", "all_comparators_are_inclusive"],
+  "unknowns": ["selection_flag_semantic_name", "types_17_18_nonzero_gate_meaning", "activation_timing", "recurrence", "calculation_bucket", "types_17_18_zero_max_policy"]
+}

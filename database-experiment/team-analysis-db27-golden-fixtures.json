@@ -1,0 +1,5 @@
+[
+  { "name": "enemy-hp-at-least", "stateKey": "1017411:1017411:eza", "ruleKey": "4456:44560010:10004456", "causalityId": "788", "causalityType": 17, "comparator": "gte", "first": 50 },
+  { "name": "enemy-hp-at-most", "stateKey": "1019071:1019071:seza", "ruleKey": "4653:46530013:13004653", "causalityId": "1473", "causalityType": 18, "comparator": "lte", "first": 59 },
+  { "name": "selected-hp-interval", "stateKey": "1015051:1015051:eza", "ruleKey": "3347:33470005:5003347", "causalityId": "2131", "causalityType": 33, "comparator": "between_inclusive", "first": 80, "second": 100 }
+]
