@@ -1,0 +1,4 @@
+[
+  { "name": "legacy-type-40-overclaim", "stateKey": "1006741:1006741:eza", "ruleKey": "2475:24750001:1002475", "causalityId": "141", "causalityType": 40, "test": "additional_param_byte_1_bit_0_set" },
+  { "name": "type-56-seza-counter-condition", "stateKey": "1006791:1006791:seza", "ruleKey": "4505:45050008:8004505", "causalityId": "2324", "causalityType": 56, "test": "additional_param_byte_1_equals_zero" }
+]

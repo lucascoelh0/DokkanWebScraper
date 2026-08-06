@@ -1,6 +1,6 @@
 # Database-first Character / Team Analysis frontier
 
-Status: experimental, non-production. Updated through DB24 (`0.23.0`) against snapshot `global-6.4.0-v338-2026-08-05`.
+Status: experimental, non-production. Updated through DB25 (`0.24.0`) against snapshot `global-6.4.0-v338-2026-08-05`.
 
 ## Source identity and boundaries
 
@@ -22,8 +22,9 @@ Status: experimental, non-production. Updated through DB24 (`0.23.0`) against sn
 | Passive effects | typed effect atoms with raw numeric fields and provenance | 12,946 rules have supported effects; 72 partial; 1,283 unknown |
 | Passive conditions | compositional AST with AND/OR/NOT and typed predicates | 11,825 supported, 848 partial, 1,628 unknown after DB11 |
 | Selectors | category, class/type masks, Ki Sphere and partial name tokens | 131/136 DB5 projections supported; type-41 name dictionary unavailable |
-| Combat-history conditions | attacks evaded/performed/received, guard and Super Attacks performed are structurally retained | 303 predicates; recurrence and calculation bucket remain unknown |
+| Combat-history conditions | attacks evaded/performed/received and guard are structurally retained; the former type-40 Super-Attack label is corrected by DB25 | 132 type-40 occurrences are partial native context predicates; recurrence and calculation bucket remain unknown |
 | Native runtime predicates | attacks evaded and appearance-turn upper/lower bounds | types 43/51/55: 901 occurrences, 103 unique causalities, all projected |
+| Native attack context | complementary predicates over byte 1 of caller-supplied `AdditionalParam` | types 40/56: 152 occurrences, 70 states; attack kind/direction/scope unknown and dynamic proof required |
 | Counter payloads | native `CounterBehavior` registration with resist rate, damage increase and battle-script ID | efficacy 120: 50 rules, 38 states, 150/150 payload fields supported; activation remains partial |
 | Attack channels | Super, Ultra, Unit and EX rows, raw effects/conditions and source IDs | 12,429 / 1,255 / 186 / 20 attacks |
 | Active / Standby / Finish | sets, skills, causalities, raw turns/limits and joins | 494 / 28 / 56 cards |
@@ -42,7 +43,7 @@ Confirmed card enums:
 
 Confirmed passive efficacy types currently implemented: `1, 2, 3, 4, 5, 9, 13, 16, 18, 20, 48, 51, 67, 68, 76, 78, 81, 90, 91, 96, 98, 101`, plus the scoped efficacy-`120` counter payload. Type 120 proves `eff_value1 → resistDamageRate`, `eff_value2 → increaseDamagePercent`, and `eff_value3 → battleScriptNo`; it does not yet prove activation or damage-calculation behavior. Some numeric types have both mapped and unknown rows because their parameters or subfamilies are not universally proved.
 
-Confirmed condition families include the earlier SQLite projections for causality types `1, 2, 5, 15, 16, 19, 24, 25, 30, 38, 42`, selector masks from type `46`, and native-backed runtime types `43, 51, 55`. Type `3` remains partial (1,262 occurrences). Type `41` preserves 602 name tokens but lacks a first-party dictionary. Remaining numeric causalities stay raw/unknown even when the native dispatch slot has been identified.
+Confirmed condition families include the earlier SQLite projections for causality types `1, 2, 5, 15, 16, 19, 24, 25, 30, 38, 42`, selector masks from type `46`, and native-backed runtime types `43, 51, 55`. Types `40` and `56` now have partial native predicates over `AdditionalParam` byte 1, but their attack kind, direction and scope are unknown. Type `3` remains partial (1,262 occurrences). Type `41` preserves 602 name tokens but lacks a first-party dictionary. Remaining numeric causalities stay raw/unknown even when the native dispatch slot has been identified.
 
 No enum is promoted solely from a symbol name, localized description, parser parity, or statistical correlation.
 
@@ -58,6 +59,8 @@ No enum is promoted solely from a symbol name, localized description, parser par
 DB20 found `passive_skills.turn` numerically equal to the parser upper bound in 112 of 120 aligned cases and different in 8. DB21 proved row loading and relevant runtime timing APIs but no field-to-runtime linkage. `turn`, `is_once`, start point, unit, inclusivity and efficacy dependencies therefore remain unknown; the correlation is not a promotion.
 
 DB24 followed efficacy type 120 through SQLite column literals, `PassiveSkill` offsets, runtime value materialization, `CallChangeParam`, the counter handler and named `CounterBehavior` getters. It resolves 50 rules across 38 states without parser evidence. Timing type 6, the handler gate, conditions, probability application, target behavior, bucket, duration, recurrence and battle-script behavior remain unknown, so all counter records are partial.
+
+DB25 corrected an earlier experimental overclaim. DB4/DB11 had projected 132 type-40 occurrences as `super_attacks_performed` using only row-join evidence. Static runtime evidence proves only that type 40 tests bit 0 of `AdditionalParam` byte 1; type 56 tests whether the same byte is zero. DB25 emits 152 conservative correction records across 70 states, keeps attack kind/direction/scope unknown, and specifies the dynamic capture matrix required to resolve them. It makes zero semantic promotions.
 
 ## Product readiness
 
@@ -78,6 +81,7 @@ Still required for trustworthy rotations, support and combat calculation:
 - recurrence, accumulation, reset, expiry and once-only runtime semantics;
 - target/sub-target semantics not yet tied to runtime behavior;
 - final-blow, counter, nullification, attack-break and remaining combat-event causalities;
+- a dynamic mapping of the attack-context byte to normal/Super and outgoing/incoming events before types 40/56 can drive activation;
 - damage formulas, rounding/order, ATK/DEF phase buckets and damage-received mitigation order;
 - Super/Ultra/Unit/EX efficacy semantics beyond the lossless row model;
 - boss/event structured mechanics, which belong to the next independent domain after Character/Team Analysis.
@@ -98,12 +102,14 @@ ELF/runtime-resolvable candidates:
 - recurrence/counter/reset storage and mutation;
 - target-mask evaluation;
 - attack-event, counter, nullification and break handlers.
+- writers of the caller-supplied attack-context `AdditionalParam` and their call-site event direction.
 
 Dynamic execution required:
 
 - behavior whose handler is inlined or whose DB field-to-object offset cannot be established statically;
 - exact calculation ordering/rounding when static call graphs remain ambiguous;
 - reset/expiry behavior dependent on battle transitions not observable from SQLite or a bounded ELF slice.
+- type-40/type-56 action-kind and event-direction semantics, using the DB25 four-case capture matrix.
 
 Other distributions/domains:
 
@@ -114,6 +120,6 @@ Other distributions/domains:
 
 ## Return on recent investigation and recommendation
 
-DB17–DB22 produced material value: three scoped native promotions, 195 sound AST simplifications, 60 additional exact pairs, and a reduction of 188 residual occurrences. DB20–DB21 also prevented a high-correlation but false universal interpretation of `passive_skills.turn`. DB23 itself is diagnostic and establishes a clean parity frontier. DB24 then moved to combat semantics and promoted one high-impact efficacy family, resolving all 150 counter payload fields in the 50 in-scope rules while preserving every activation uncertainty.
+DB17–DB22 produced material value: three scoped native promotions, 195 sound AST simplifications, 60 additional exact pairs, and a reduction of 188 residual occurrences. DB20–DB21 also prevented a high-correlation but false universal interpretation of `passive_skills.turn`. DB23 itself is diagnostic and establishes a clean parity frontier. DB24 then moved to combat semantics and promoted one high-impact efficacy family, resolving all 150 counter payload fields in the 50 in-scope rules while preserving every activation uncertainty. DB25 delivered negative but material value: it removed false precision from 132 rules and established a reproducible dynamic boundary rather than entrenching a parser-shaped label.
 
-Recommendation: continue database-first mapping. The next useful target is the shared execution-timing/condition path used by counter rules, or another high-volume combat efficacy whose payload can be proved independently; do not infer timing type 6 from the counter correlation alone. Integration into production remains **NO-GO** until calculation timing/recurrence and the highest-impact unknown efficacy/target families are either proved or explicitly isolated behind optional unknown-safe enrichment.
+Recommendation: continue database-first mapping, but move away from the now dynamic-blocked attack-context byte. The next useful target is another high-volume combat efficacy or causality payload that can be proved statically, followed by shared calculation-timing and target consumers. Do not infer timing type 6 from the counter correlation alone. Integration into production remains **NO-GO** until calculation timing/recurrence and the highest-impact unknown efficacy/target families are either proved or explicitly isolated behind optional unknown-safe enrichment.
