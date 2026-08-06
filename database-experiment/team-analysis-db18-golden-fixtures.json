@@ -1,0 +1,1 @@
+{ "schemaVersion": 1, "expectedAffectedPairs": 129, "expectedRemovedTautologies": 127, "expectedNormalizedBoundaries": 2, "expectedResolvedAttributions": 131, "catopesraPair": { "stateKey": "1028761:1028761:initial", "databaseRuleKey": "4099:40990002:2004099", "currentRuleKey": "1028761:1028761:initial:r4:0:32", "expectedStatus": "exact" } }
