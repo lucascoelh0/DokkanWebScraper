@@ -1,0 +1,15 @@
+[
+  { "name": "add positive", "raw": 0, "lhs": 10, "rhs": 5, "expected": 15 },
+  { "name": "add negative", "raw": 0, "lhs": 10, "rhs": -5, "expected": 5 },
+  { "name": "subtract floor zero", "raw": 1, "lhs": 2, "rhs": 5, "expected": 0 },
+  { "name": "subtract negative", "raw": 1, "lhs": 10, "rhs": -3, "expected": 13 },
+  { "name": "percent add positive", "raw": 2, "lhs": 100, "rhs": 20, "expected": 120 },
+  { "name": "percent add negative", "raw": 2, "lhs": 100, "rhs": -20, "expected": 80 },
+  { "name": "percent add zero", "raw": 2, "lhs": 100, "rhs": 0, "expected": 100 },
+  { "name": "percent subtract positive", "raw": 3, "lhs": 100, "rhs": 20, "expected": 80 },
+  { "name": "percent subtract negative", "raw": 3, "lhs": 100, "rhs": -20, "expected": 120 },
+  { "name": "assign", "raw": 4, "lhs": 999, "rhs": -4, "expected": -4 },
+  { "name": "native float32 rounding", "raw": 0, "lhs": 16777216, "rhs": 1, "expected": 16777216 },
+  { "name": "unknown operation", "raw": 9, "lhs": 1, "rhs": 2, "unknown": true },
+  { "name": "invalid payload", "raw": 0, "lhs": "invalid", "rhs": 2, "invalid": true }
+]

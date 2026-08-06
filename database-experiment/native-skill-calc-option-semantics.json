@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "skill-calc-option-dispatch-and-float-implementations",
+  "sqliteField": { "table": "passive_skills", "column": "calc_option", "literalVma": 33024419, "passiveSkillOffset": 72, "rowConstructorSymbol": "_ZN12PassiveSkillC1EPN7SQLite33RowE", "rowConstructorVma": 46449820, "rowConstructorSizeBytes": 2248, "rowConstructorCodeSha256": "7cec861db0b338c586868fc49b008da0c08950d1f5656fceebf2dd1acea5843e" },
+  "dispatcher": { "symbol": "_ZN15AbilityCalcFunc18getAbilityCalcFuncE15SkillCalcOption", "vma": 64233620, "sizeBytes": 36, "codeSha256": "143f8b94bd885d8ba2229cf4ff457c53db2d70ec457e204912397157f4afa6d2", "tableVma": 92049800, "entrySizeBytes": 8, "entryCount": 5, "zeroBytesSha256": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb", "positiveOutOfRangeFallbackSymbol": "_ZN15AbilityCalcFunc8calcPlusEff", "negativeIndexBehavior": "unsafe_table_index" },
+  "operations": [
+    { "raw": 0, "operation": "add", "symbol": "_ZN15AbilityCalcFunc8calcPlusEff", "vma": 64233656, "sizeBytes": 8, "codeSha256": "0ff3b13eb9addaa652538878e52c6d95b5240550699699245a9e00348bf7eecc", "parametersRead": ["lhs", "rhs"], "parametersIgnored": [], "result": "lhs_plus_rhs", "clamp": "none" },
+    { "raw": 1, "operation": "subtract_floor_zero", "symbol": "_ZN15AbilityCalcFunc9calcMinusEff", "vma": 64233664, "sizeBytes": 20, "codeSha256": "914cc4771dc459cbd4bd052c80454dddbc88aefc3172beede49f549cea821ce7", "parametersRead": ["lhs", "rhs"], "parametersIgnored": [], "result": "max_lhs_minus_rhs_zero", "clamp": "floor_zero" },
+    { "raw": 2, "operation": "add_percent_of_lhs", "symbol": "_ZN15AbilityCalcFunc15calcPercentPlusEff", "vma": 64233684, "sizeBytes": 36, "codeSha256": "772083c4511f8df5916bb0f1bbb588d332b57ddeb7cfee6d81eacf136f234f1d", "parametersRead": ["lhs", "rhs"], "parametersIgnored": [], "result": "rhs_zero_returns_lhs_else_lhs_plus_lhs_times_rhs_div_100", "clamp": "none" },
+    { "raw": 3, "operation": "subtract_percent_of_lhs_floor_zero", "symbol": "_ZN15AbilityCalcFunc16calcPercentMinusEff", "vma": 64233720, "sizeBytes": 48, "codeSha256": "f4bbb65a0a9343a7d0696bac63c431e27047c73c94d7fe0cb23fd8c871a7f4de", "parametersRead": ["lhs", "rhs"], "parametersIgnored": [], "result": "rhs_zero_returns_lhs_else_max_lhs_minus_lhs_times_rhs_div_100_zero", "clamp": "floor_zero" },
+    { "raw": 4, "operation": "assign_rhs", "symbol": "_ZN15AbilityCalcFunc9calcEqualEff", "vma": 64233768, "sizeBytes": 8, "codeSha256": "47f7a62c547ebead47695e06fba44a2478ec2087d5dab453e8fa156cadf65af6", "parametersRead": ["rhs"], "parametersIgnored": ["lhs"], "result": "rhs", "clamp": "none" }
+  ],
+  "unknowns": ["unit", "target", "execution_timing", "calculation_bucket", "duration", "recurrence", "stacking", "floating_point_rounding_at_consumers"]
+}
