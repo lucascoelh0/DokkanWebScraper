@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "basic-passive-atk-def-native-calculation-buckets",
+  "sqliteBindings": [
+    { "column": "exec_timing_type", "literalVma": 32456068, "passiveSkillOffset": 56, "runtimeRole": "bucket_selector" },
+    { "column": "calc_option", "literalVma": 33024419, "passiveSkillOffset": 72, "callChangeParamOffset": 24, "runtimeRole": "calculation_operation" },
+    { "column": "eff_value1", "literalVma": 32524339, "passiveSkillOffset": 128, "callChangeParamOffset": 40, "runtimeRole": "first_modifier" },
+    { "column": "eff_value2", "literalVma": 32045530, "passiveSkillOffset": 132, "callChangeParamOffset": 48, "runtimeRole": "second_modifier" }
+  ],
+  "efficacyDispatch": {
+    "tableVma": 92049840,
+    "slots": [
+      { "raw": 1, "handlerRole": "efficacy_1_attack", "statApplications": [{ "stat": "attack", "column": "eff_value1", "callChangeParamOffset": 40 }] },
+      { "raw": 2, "handlerRole": "efficacy_2_defense", "statApplications": [{ "stat": "defense", "column": "eff_value1", "callChangeParamOffset": 40 }] },
+      { "raw": 3, "handlerRole": "efficacy_3_attack_defense", "statApplications": [{ "stat": "attack", "column": "eff_value1", "callChangeParamOffset": 40 }, { "stat": "defense", "column": "eff_value2", "callChangeParamOffset": 48 }] }
+    ]
+  },
+  "doubleCalculationDispatch": {
+    "tableVma": 92053528,
+    "dispatcherRole": "double_calc_dispatcher",
+    "operationRoles": ["double_calc_add", "double_calc_subtract", "double_calc_percent_add", "double_calc_percent_subtract", "double_calc_assign"],
+    "materialization": "sqlite_numeric_to_double_then_handler_float32_then_widened_double"
+  },
+  "bucketGroups": [
+    {
+      "bucket": "former_passive_stat",
+      "timingValues": [1, 3, 11, 15, 18],
+      "timingPairLiteralVma": 33223360,
+      "timingPairLiteralHex": "0100000002000000",
+      "attackSummaryRole": "former_passive_attack_summary",
+      "attackIntegrationCallSites": [
+        { "timing": 1, "callVma": 46847456, "instructionHex": "f4ab9f94" },
+        { "timing": 11, "callVma": 46847480, "instructionHex": "eeab9f94" },
+        { "timing": 3, "callVma": 46847500, "instructionHex": "e9ab9f94" },
+        { "timing": 15, "callVma": 46847524, "instructionHex": "e3ab9f94" },
+        { "timing": 18, "callVma": 46847552, "instructionHex": "dcab9f94" }
+      ],
+      "defenseIntegrationCallSites": [
+        { "timing": 1, "callVma": 46843588, "instructionHex": "b7af9f94" },
+        { "timing": 11, "callVma": 46843612, "instructionHex": "b1af9f94" },
+        { "timing": 3, "callVma": 46843632, "instructionHex": "acaf9f94" },
+        { "timing": 15, "callVma": 46843656, "instructionHex": "a6af9f94" },
+        { "timing": 18, "callVma": 46843684, "instructionHex": "9faf9f94" }
+      ]
+    },
+    {
+      "bucket": "latter_passive_stat",
+      "timingValues": [4, 5, 6, 7, 9, 14],
+      "timingPairLiteralVma": 33223664,
+      "timingPairLiteralHex": "0400000002000000",
+      "attackSummaryRole": "latter_passive_attack_summary",
+      "attackIntegrationCallSites": [
+        { "timing": 4, "callVma": 46848524, "instructionHex": "e9aa9f94" },
+        { "timing": 5, "callVma": 46848548, "instructionHex": "e3aa9f94" },
+        { "timing": 6, "callVma": 46848572, "instructionHex": "ddaa9f94" },
+        { "timing": 7, "callVma": 46848596, "instructionHex": "d7aa9f94" },
+        { "timing": 9, "callVma": 46848624, "instructionHex": "d0aa9f94" },
+        { "timing": 14, "callVma": 46848648, "instructionHex": "caaa9f94" }
+      ],
+      "defenseIntegrationCallSites": [
+        { "timing": 4, "callVma": 46844516, "instructionHex": "cfae9f94" },
+        { "timing": 5, "callVma": 46844540, "instructionHex": "c9ae9f94" },
+        { "timing": 6, "callVma": 46844564, "instructionHex": "c3ae9f94" },
+        { "timing": 7, "callVma": 46844588, "instructionHex": "bdae9f94" },
+        { "timing": 9, "callVma": 46844616, "instructionHex": "b6ae9f94" },
+        { "timing": 14, "callVma": 46844640, "instructionHex": "b0ae9f94" }
+      ]
+    }
+  ],
+  "accumulator": {
+    "role": "stat_diff_accumulator",
+    "coefTypes": [{ "raw": 0, "stat": "attack", "modifierGetterVtableOffset": 448 }, { "raw": 1, "stat": "defense", "modifierGetterVtableOffset": 464 }],
+    "calcOptionGetterVtableOffset": 160,
+    "behavior": {
+      "0": "truncate_modifier_then_add_to_flat_delta",
+      "1": "truncate_modifier_then_subtract_from_flat_delta",
+      "2": "add_modifier_div_100_to_double_multiplier",
+      "3": "subtract_modifier_div_100_from_double_multiplier_floor_zero",
+      "4": "truncate_modifier_as_assignment_last_assignment_wins"
+    },
+    "result": "selected_assignment_or_trunc_base_times_multiplier_plus_flat_delta_minus_base",
+    "iterationOrder": "ability_efficacy_info_list_order",
+    "rounding": "modifier_float32_then_double_accumulation_with_fcvtzs_truncation"
+  },
+  "abilityEfficacyInfoVtable": {
+    "symbol": "_ZTV19AbilityEfficacyInfo",
+    "vma": 92053824,
+    "sizeBytes": 624,
+    "slots": [
+      { "offset": 80, "symbol": "_ZNK19AbilityEfficacyInfo13getExecTimingEv" },
+      { "offset": 160, "symbol": "_ZNK19AbilityEfficacyInfo13getCalcOptionEv" },
+      { "offset": 448, "symbol": "_ZNK19AbilityEfficacyInfo22getModifierAttackValueEv" },
+      { "offset": 464, "symbol": "_ZNK19AbilityEfficacyInfo23getModifierDefenseValueEv" }
+    ]
+  },
+  "codeRegions": [
+    { "role": "passive_skill_row_constructor", "symbol": "_ZN12PassiveSkillC1EPN7SQLite33RowE", "vma": 46449820, "sizeBytes": 2248, "codeSha256": "7cec861db0b338c586868fc49b008da0c08950d1f5656fceebf2dd1acea5843e" },
+    { "role": "create_passive_skill", "symbol": "_ZN14AbilityManager18createPassiveSkillEiiNSt6__ndk110shared_ptrI15PassiveSkillSetEE", "vma": 64383460, "sizeBytes": 1524, "codeSha256": "b56f963ad641d1d9e67027199b0529fb56cf7039b5dc206209eb359a9bb2d04d" },
+    { "role": "ability_status_efficacy_constructor", "symbol": "_ZN21AbilityStatusEfficacyC1EP27CreateAbilityStatusEfficacy", "vma": 64493900, "sizeBytes": 820, "codeSha256": "8207716704da65ad571c7e4fc3eeeda6e7ab59552716bcbf8dbb9e9bf1069f64" },
+    { "role": "call_change_param_initializer", "symbol": "local@AbilityEfficacyTarget::targetSelf+0xe0", "vma": 64250860, "sizeBytes": 500, "codeSha256": "0f324cf1b3873115684d83b5fbff9b3229e86fd3f40bb2e9ead66cf7b56aa990" },
+    { "role": "efficacy_1_attack", "symbol": "_ZN31AbilityEfficacyPureStatusUpFunc22callChangeAtkParamFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64320480, "sizeBytes": 12, "codeSha256": "d99470373faf26bc750fde3608e2522e2573ca4839efcd10ddc33df43a689403" },
+    { "role": "efficacy_2_defense", "symbol": "_ZN31AbilityEfficacyPureStatusUpFunc22callChangeDefParamFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64320492, "sizeBytes": 12, "codeSha256": "28d5f46e5d04b1c441617477ff732e5ac3f001355c79f4c44b3ac83afbad2638" },
+    { "role": "efficacy_3_attack_defense", "symbol": "_ZN31AbilityEfficacyPureStatusUpFunc25callChangeAtkDefParamFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64320504, "sizeBytes": 60, "codeSha256": "4bc50a098b7dd425a1f41aad66a41111f142aa73526ce64b4095a5fbfbb0a677" },
+    { "role": "apply_attack", "symbol": "_ZN21AbilityEfficacyHelper15applyAttackFuncEPN19AbilityEfficacyCore15CallChangeParamEf", "vma": 64338252, "sizeBytes": 412, "codeSha256": "165444e45ecb8e5a44dbd8bfd7dcb41f7d854d653eda178f1fe4d5763fe2a645" },
+    { "role": "apply_defense", "symbol": "_ZN21AbilityEfficacyHelper16applyDefenseFuncEPN19AbilityEfficacyCore15CallChangeParamEf", "vma": 64338664, "sizeBytes": 412, "codeSha256": "8bf6031c0ba23fab2faae7957f13fc21ada865875222cecc40ab471d34be357b" },
+    { "role": "generate_attack_info", "symbol": "_ZN28AbilityEfficacyInfoGenerator33addAbilityEfficacyInfoAttackValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64266900, "sizeBytes": 336, "codeSha256": "ef7fabdf7ac1a1f14d7d9f641fc3d644c19b1ab155e4dbd42d00652bbe7c5211" },
+    { "role": "generate_defense_info", "symbol": "_ZN28AbilityEfficacyInfoGenerator34addAbilityEfficacyInfoDefenseValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64267236, "sizeBytes": 336, "codeSha256": "f96b5d4170a70a3c83d0d35d41d381d51375ef10d93db49817ace1534787336d" },
+    { "role": "double_calc_dispatcher", "symbol": "_ZN21AbilityCalcFuncDouble18getAbilityCalcFuncE15SkillCalcOption", "vma": 64341440, "sizeBytes": 36, "codeSha256": "6092f7e5c981c35f8197a8cd9facda32f879412f4f184a5f04070ce8aee59080" },
+    { "role": "double_calc_add", "symbol": "_ZN21AbilityCalcFuncDouble8calcPlusEdd", "vma": 64341476, "sizeBytes": 8, "codeSha256": "814e2fbd7ddbc2d29c15d9ac26658050bc55540383746a14a133c2e2c421b16d" },
+    { "role": "double_calc_subtract", "symbol": "_ZN21AbilityCalcFuncDouble9calcMinusEdd", "vma": 64341484, "sizeBytes": 20, "codeSha256": "3ab620c02d741aba464a0d4e814873dcc89be469afbf602183278a3ed858258d" },
+    { "role": "double_calc_percent_add", "symbol": "_ZN21AbilityCalcFuncDouble15calcPercentPlusEdd", "vma": 64341504, "sizeBytes": 36, "codeSha256": "f30a6b1d39bbdd967ec3eb08866564d4c2b0b24d59dcbf87391cf757256a3bf5" },
+    { "role": "double_calc_percent_subtract", "symbol": "_ZN21AbilityCalcFuncDouble16calcPercentMinusEdd", "vma": 64341540, "sizeBytes": 48, "codeSha256": "15111f3dccdabe20ec70bf1dadf8118813878ed6bc3cd2b43973ba4539a4956d" },
+    { "role": "double_calc_assign", "symbol": "_ZN21AbilityCalcFuncDouble9calcEqualEdd", "vma": 64341588, "sizeBytes": 8, "codeSha256": "8f8dfc36f11784d8eb24f763786486918136c06b03e6ef03cb4e9f542c58f54e" },
+    { "role": "attack_stat_consumer", "symbol": "_ZN25AbilityManagerStatHelpers35calcAttackValueFromEfficacyInfoListEPN14AbilityManager24CalcAbilityEfficacyParamEb", "vma": 64474200, "sizeBytes": 476, "codeSha256": "0a7f1ad076d03b81e3f589a861c0ace9a007417bc8566e846979cd57f9ba1a5c" },
+    { "role": "defense_stat_consumer", "symbol": "_ZN25AbilityManagerStatHelpers36calcDefenseValueFromEfficacyInfoListEPN14AbilityManager24CalcAbilityEfficacyParamEb", "vma": 64474676, "sizeBytes": 476, "codeSha256": "445a574ec3fdc0622dd896f74f98858d3338c83dfa3b03cce229a7b81afb625f" },
+    { "role": "stat_diff_accumulator", "symbol": "_ZN25AbilityManagerStatHelpers27getDiffFromEfficacyInfoListERKNSt6__ndk18functionIFbR19AbilityEfficacyInfoEEEN14AbilityManager8CoefTypeEii17SkillCategoryTypeb", "vma": 64475152, "sizeBytes": 1352, "codeSha256": "5fd02137cd7775d078dc69cb5e03c11defd004448683380beb5958e5dbb54567" },
+    { "role": "former_passive_attack_summary", "symbol": "_ZN17AttackCalculation28calcFormerPassiveSkillAttackEi17SkillCategoryType", "vma": 46849812, "sizeBytes": 240, "codeSha256": "fa24dc46d3bf682e48f66bba373052d87434360467bd4df69c3bd4068aba736f" },
+    { "role": "latter_passive_attack_summary", "symbol": "_ZN17AttackCalculation28calcLatterPassiveSkillAttackEi17SkillCategoryType", "vma": 46851568, "sizeBytes": 268, "codeSha256": "e8004c3cf031d55ffd80efc4ac270340f879bb33b846ea1f247469766b675685" },
+    { "role": "total_attack_integration", "symbol": "_ZN17AttackCalculation15calcTotalAttackEi17SkillCategoryTypeii", "vma": 46847020, "sizeBytes": 2364, "codeSha256": "b61f11dd9cd32069d4b059cba5739bedace97a7faaa5c61a465a94effc251d31" },
+    { "role": "total_defense_integration", "symbol": "_ZN18DefenseCalculation31calcInGameCharacterDefenceValueEi17SkillCategoryTypei", "vma": 46843152, "sizeBytes": 2212, "codeSha256": "74d5b158b02845ebf854f927050b46332e5c641edbf9758ddeee106eaa16e7e4" }
+  ],
+  "conclusions": [
+    "efficacy_1_applies_eff_value1_to_attack",
+    "efficacy_2_applies_eff_value1_to_defense",
+    "efficacy_3_applies_eff_value1_to_attack_and_eff_value2_to_defense",
+    "timings_1_3_11_15_18_feed_former_passive_stat_bucket",
+    "timings_4_5_6_7_9_14_feed_latter_passive_stat_bucket",
+    "basic_stat_modifiers_materialize_as_float32_and_accumulate_in_double_precision"
+  ],
+  "unknowns": ["timing_12_stat_bucket", "target_semantics", "duration", "recurrence", "expiry", "reset", "cross_bucket_final_formula_order", "non_basic_stat_efficacy_buckets"]
+}
