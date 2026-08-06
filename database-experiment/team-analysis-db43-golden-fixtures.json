@@ -1,0 +1,7 @@
+[
+  { "name": "standard player attack setup", "stateKey": "1000400:1000400:initial", "ruleKey": "46:460000:46", "passiveSkillId": "46", "operation": "add", "timingStatus": "supported", "timingEvent": "player_attack_setup", "turn": 1, "isOnce": 0, "currentState": "present" },
+  { "name": "percentage subtraction is declared but not applied", "stateKey": "1013541:4013551:initial", "ruleKey": "4880:48800005:5004880", "passiveSkillId": "5004880", "operation": "subtract_percent_of_lhs_floor_zero", "timingStatus": "supported", "timingEvent": "player_attack_setup", "turn": 2, "isOnce": 0, "currentState": "present" },
+  { "name": "percentage addition is declared but not applied", "stateKey": "1023381:1023381:eza", "ruleKey": "4767:47670004:4004767", "passiveSkillId": "4004767", "operation": "add_percent_of_lhs", "timingStatus": "supported", "timingEvent": "player_attack_setup", "turn": 1, "isOnce": 0, "currentState": "present" },
+  { "name": "unknown timing with long duration and once gate", "stateKey": "1025331:1025331:initial", "ruleKey": "3065:30650007:7003065", "passiveSkillId": "7003065", "operation": "add", "timingStatus": "unknown", "timingEvent": "unknown", "turn": 99, "isOnce": 1, "currentState": "present" },
+  { "name": "first-party state absent from legacy snapshot", "stateKey": "1017121:4017141:initial", "ruleKey": "3562:35620007:7003562", "passiveSkillId": "7003562", "operation": "add", "timingStatus": "supported", "timingEvent": "player_attack_setup", "turn": 1, "isOnce": 0, "currentState": "missing" }
+]

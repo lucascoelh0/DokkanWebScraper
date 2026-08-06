@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "efficacyType": 24,
+  "auditScope": "efficacy-24-defender-presence-disables-normal-element-affinity-guard",
+  "dispatch": {
+    "tableVma": 92049840,
+    "entrySizeBytes": 8,
+    "slotVma": 92050032,
+    "handlerRole": "guard_disable_handler"
+  },
+  "sqliteBinding": {
+    "table": "passive_skills",
+    "enumColumn": "efficacy_type",
+    "rawBehaviorColumns": ["eff_value1", "eff_value2", "eff_value3"],
+    "rawCalculationColumn": "calc_option"
+  },
+  "handlerOperation": {
+    "literalEfficacyType": 24,
+    "parametersRead": ["call_change_param_pointer"],
+    "parametersForwarded": ["call_change_param_pointer", "literal_efficacy_type_24"],
+    "parametersNotReadByHandler": ["eff_value1", "eff_value2", "eff_value3", "calc_option"],
+    "registration": "generic_efficacy_info_none_value",
+    "branchTargetPltVma": 88902720,
+    "branchTargetGotRelocationOffset": 95413448
+  },
+  "guardDecision": {
+    "function": "DPuzzleGameCalcData::checkGuard",
+    "parameters": [
+      { "register": "w0", "role": "attacker_element_type" },
+      { "register": "w1", "role": "defender_element_type" },
+      { "register": "w2", "role": "defender_has_efficacy_24" },
+      { "register": "w3", "role": "independent_raw_attacker_override" },
+      { "register": "w4", "role": "defender_has_efficacy_78" },
+      { "register": "w5", "role": "independent_player_mode_override" }
+    ],
+    "formula": "defender_has_efficacy_78 || (!defender_has_efficacy_24 && !independent_raw_attacker_override && !independent_player_mode_override && element_affinity_result_eq_1)",
+    "efficacy24Effect": "prevents_the_normal_element_affinity_result_from_enabling_guard_unless_the_independent_efficacy_78_override_is_present",
+    "returnUnit": "boolean",
+    "normalAffinityCallee": "ElementAffinityCalculator::getElementTypeAffinity"
+  },
+  "consumerCallSites": [
+    {
+      "ownerRole": "player_intermediary_damage",
+      "queryObject": "selected_defender_enemy",
+      "queryLiteralVma": 48024396,
+      "queryCallVma": 48024400,
+      "checkGuardCallVma": 48024436,
+      "efficacy24ArgumentRegister": "w2",
+      "literalInstructionHex": "01038052",
+      "queryCallInstructionHex": "1c499a94",
+      "checkCallInstructionHex": "ff439a94"
+    },
+    {
+      "ownerRole": "player_attack_setup",
+      "queryObject": "selected_defender_enemy",
+      "queryLiteralVma": 48059492,
+      "queryCallVma": 48059496,
+      "checkGuardCallVma": 48059552,
+      "efficacy24ArgumentRegister": "w2",
+      "literalInstructionHex": "01038052",
+      "queryCallInstructionHex": "d6269a94",
+      "checkCallInstructionHex": "b4219a94"
+    },
+    {
+      "ownerRole": "enemy_attack_setup",
+      "queryObject": "selected_defender_player_character",
+      "queryLiteralVma": 48104152,
+      "queryCallVma": 48104156,
+      "checkGuardCallVma": 48104192,
+      "efficacy24ArgumentRegister": "w2",
+      "literalInstructionHex": "01038052",
+      "queryCallInstructionHex": "4dde9a94",
+      "checkCallInstructionHex": "1cf69994"
+    }
+  ],
+  "codeRegions": [
+    { "role": "guard_disable_handler", "symbol": "_ZN35AbilityEfficacyGuardElementCoefFunc24callChangeGuardBreakFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64305336, "sizeBytes": 8, "codeSha256": "d36f5839aeb3709cf644426774958bb4dd0e2a2ce0336b50647fd2ac750244da" },
+    { "role": "none_value_registration", "symbol": "_ZN28AbilityEfficacyInfoGenerator31addAbilityEfficacyInfoNoneValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyType", "vma": 64266668, "sizeBytes": 232, "codeSha256": "deb4ecb4c4e6e20110447a0b77aa5e3f8f8fdba430cc0dcba4d4c9bbc687a16a" },
+    { "role": "guard_decision", "symbol": "_ZN19DPuzzleGameCalcData10checkGuardE11ElementTypeS0_bbbb", "vma": 46822628, "sizeBytes": 48, "codeSha256": "a0cc5f398eabf396e98554b44fa55bae127dbd5a8b5112d9a70c2de8b45ccfe7" },
+    { "role": "player_intermediary_damage", "symbol": "_ZN17DamageCalculation32calcIntermediaryDamageFromPlayerEiiibdNSt6__ndk18optionalIdEE", "vma": 48024000, "sizeBytes": 2384, "codeSha256": "27b2ddf0f35076f9a76aea9ada7aef5fedc117c4c518dfebf315e37d836a8c9f" },
+    { "role": "player_attack_setup", "symbol": "_ZN31PlayerAttackDamageAndActionBank5setupEP21DPuzzleGameControlleriRK21SetupExtraActionParambiRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEEP18AimAllSpecialParamRNS5_13unordered_mapIiiNS5_4hashIiEENS5_8equal_toIiEENS9_INS5_4pairIKiiEEEEEENS5_8optionalIiEE", "vma": 48049704, "sizeBytes": 20232, "codeSha256": "cbe4e3fcc989cae9b89d464bb4197b63a5def56e2f040956c36d71ccc2573aa4" },
+    { "role": "enemy_attack_setup", "symbol": "_ZN30EnemyAttackDamageAndActionBank5setupEP21DPuzzleGameControlleriiNSt6__ndk110shared_ptrIN15PuzzleEnemyData6ActionEEEPiibbRNS2_5queueIiNS2_5dequeIiNS2_9allocatorIiEEEEEERNS2_12basic_stringIcNS2_11char_traitsIcEENSA_IcEEEE", "vma": 48102712, "sizeBytes": 13200, "codeSha256": "129865aa6bfc05c69f0998ba2d12c92eb41440f85d4c636c764cea27b74252aa" },
+    { "role": "player_character_efficacy_presence", "symbol": "_ZNK15InGameCharaData11hasEfficacyE17SkillEfficacyType", "vma": 46605556, "sizeBytes": 404, "codeSha256": "0618ce988c02f971d070413733c674c11fe3fa3529e85485d43fe138fdce6b92" },
+    { "role": "enemy_efficacy_presence", "symbol": "_ZNK15PuzzleEnemyData11hasEfficacyE17SkillEfficacyType", "vma": 46800604, "sizeBytes": 404, "codeSha256": "621441a909947724744deb4b09caf47dd14a035e9dc582b57dd2857ce74be670" }
+  ],
+  "unknowns": [
+    "efficacy_78_product_name_and_activation_semantics_in_this_gate",
+    "independent_raw_attacker_override_full_semantics",
+    "independent_player_mode_override_full_semantics",
+    "final_damage_formula_and_guard_coefficient_application_order",
+    "calculation_bucket",
+    "timing_value_5",
+    "recurrence_reset_and_expiry_epoch",
+    "cross_status_stacking_and_removal_order"
+  ]
+}
