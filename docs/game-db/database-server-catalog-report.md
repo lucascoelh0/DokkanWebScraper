@@ -218,3 +218,31 @@ S5 gate decisions:
 - **NO-GO** — activate any sidecar in production or Android;
 - **NO-GO** — publish any sidecar or registry to R2;
 - **NO-GO** — treat the registry as evidence beyond the pinned S1–S4 source gates.
+
+## S6 shadow parity
+
+S6 makes no network requests. It verifies the canonical manifests, exact schema/contract versions, payload SHA-256/size and green validation receipts for S1–S5. It also hashes the current FYI summon implementation and validates the existing summon index/detail caches plus the compressed character-cache manifest and payload. Every comparison uses structural numeric IDs or exact upstream row accounting; no title is a key.
+
+The active-banner comparison is deliberately temporal. Of 20 IDs in the union of the 2026-06-27 existing `activeOnly` cache and the 2026-08-07 S1 capture, four agree, nine are representation gain in the later capture and seven old-only IDs are `unknown`. Old-only IDs are not conflicts because normal active-list churn occurred between different retrieval times. Among 82 unique S1 featured card IDs, 65 agree with the existing character scraper cache and 17 are representation gain relative to that cache. Separately, all 129 banner/card featured relationships remain `unknown`: card existence does not make a community relationship official.
+
+SQLite/community root parity contributes 177 agreements for the two SBR roots and 175 stages. Ultimate Clash contributes 98 unjoinable root candidates, Burst Mode 747 unjoinable candidate rows, and Pettan 25 unjoinable series-to-map relations. All 63 static World Tournament roots retain unknown current schedule. S3's 17,829 partial reward candidates map to `unknown`, not agreement or conflict; its other 22,516 rows remain unjoinable. All 8,899 E6 asset references remain unjoinable to delivery.
+
+| Classification | Count | Contract meaning |
+|---|---:|---|
+| `agreement` | 246 | exact ID parity in a declared comparison scope |
+| `representation_gain` | 26 | present in the newer shadow input but absent from the named existing cache |
+| `confirmed_conflict` | 0 | none can be proved under current identity contracts |
+| `unknown` | 18,044 | missing authority, temporal comparability or explicit identity origin |
+| `unjoinable` | 32,285 | no safe structural target/relation exists |
+
+These 50,601 units span 14 explicitly typed subjects, so the aggregate is accounting rather than a claim that unlike units are interchangeable. The 50,329 unknown or unjoinable units make incompleteness concrete. Zero confirmed conflicts therefore never implies completeness. A reviewed per-subject allowlist prevents internal reclassification from promoting S3 candidates, featured relations or other bounded subjects even when aggregate counts are preserved.
+
+The final S6 payload is 25,601 bytes, SHA-256 `74220fff587a8a82578342ae82467b7632a397f36f7f6ac227f55452a3c669ee`; its full lineage aggregate is `4cbfa78dc7dad32b29dd60df3e188bf80ca3ccde8fbea2706aca85ac4e9368c1`. Peak working set was 687,198,208 bytes. The focused suite has eight tests, including regressions for false completeness, unknown upstream contracts and class promotion with preserved accounting.
+
+S6 gate decisions:
+
+- **GO** — commit the disabled, local shadow-parity contract and report;
+- **GO** — use later bounded FYI captures to compare cache freshness under the same source authority;
+- **NO-GO** — interpret representation gain as official server authority;
+- **NO-GO** — interpret zero confirmed conflicts as parity completeness;
+- **NO-GO** — promote reward candidates, featured relations, missing roots or asset delivery relations.
