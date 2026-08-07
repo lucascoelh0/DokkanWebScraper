@@ -168,17 +168,33 @@ def catalog(connection):
     }
 
 
+def topology(connection):
+    return {
+        "quests": selected_rows(connection, "quests", ["id", "area_id", "name", "prev_quest_id", "any_clear_bonus_stones", "all_clear_bonus_stones", "visit_count_max", "interval_reset_visited_days", "can_ignore_difficulty_order", "limitation_announcement_id", "boostable", "start_at", "enable_sugoroku_auto", "enable_battle_auto", "enemy_info_display_type"]),
+        "maps": selected_rows(connection, "sugoroku_maps", ["id", "quest_id", "difficulty", "act", "eventkagi_num", "user_exp", "zeni", "is_cpu_only", "link_skill_lv_up_prob_rate", "sugoroku_map_reward_group_id", "cpu_friend_list_id"]),
+        "areaConditions": selected_rows(connection, "area_conditions", ["id", "area_id", "type", "conditions", "comment"]),
+        "zBattleStages": selected_rows(connection, "z_battle_stages", ["id", "unlock_conditions"]),
+        "zBattleEnemyRanges": selected_rows(connection, "z_battle_enemies", ["id", "z_battle_stage_id", "ordinal_num", "start_level", "end_level"]),
+        "zBattleCheckPoints": selected_rows(connection, "z_battle_check_points", ["id", "z_battle_stage_id", "level", "act", "eventkagi_num"]),
+        "zBattleRewardLevelAnchors": selected_rows(connection, "z_battle_first_reward_level_ranges", ["id", "z_battle_stage_id", "level"]),
+        "originBattles": selected_rows(connection, "origin_battles", ["id", "origin_spot_id", "first_clear_bonus_stones", "act", "user_exp", "zeni", "link_skill_lv_up_prob_rate", "enable_battle_auto", "unlock_mission_ids", "limitation_announcement_id"]),
+        "sdMaps": selected_rows(connection, "sd_maps", ["id"]),
+        "sdArenas": selected_rows(connection, "sd_arenas", ["id", "sd_map_id", "position_x", "position_y", "symbol_item_type", "symbol_item_id"]),
+        "sdStages": selected_rows(connection, "sd_stages", ["id", "sd_arena_id", "sd_enemy_table_id", "respawn_minutes", "position_x", "position_y"]),
+    }
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["inventory", "catalog"])
+    parser.add_argument("command", choices=["inventory", "catalog", "topology"])
     parser.add_argument("--database", required=True)
     args = parser.parse_args()
     uri = Path(args.database).resolve().as_uri() + "?mode=ro&immutable=1"
     connection = sqlite3.connect(uri, uri=True)
     connection.execute("PRAGMA query_only=ON")
     try:
-        value = inspect(connection) if args.command == "inventory" else catalog(connection)
+        value = inspect(connection) if args.command == "inventory" else catalog(connection) if args.command == "catalog" else topology(connection)
         json.dump(value, sys.stdout, ensure_ascii=False, separators=(",", ":"))
     finally:
         connection.close()

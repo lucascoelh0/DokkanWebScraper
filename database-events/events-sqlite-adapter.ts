@@ -2,7 +2,7 @@ import { spawn } from "child_process";
 import { existsSync } from "fs";
 import { resolve } from "path";
 
-export async function runEventsSqliteBridge<T>(command: "inventory" | "catalog", databasePath: string, onData?: () => void): Promise<T> {
+export async function runEventsSqliteBridge<T>(command: "inventory" | "catalog" | "topology", databasePath: string, onData?: () => void): Promise<T> {
     const adjacent = resolve(__dirname, "events-sqlite-readonly-bridge.py");
     const source = resolve(__dirname, "..", "..", "database-events", "events-sqlite-readonly-bridge.py");
     const bridgePath = existsSync(adjacent) ? adjacent : source;

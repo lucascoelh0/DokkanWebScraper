@@ -1,6 +1,6 @@
 # Database-first events frontier
 
-Status: E0–E1 complete (`0.2.0`); experimental, optional and non-production.
+Status: E0–E2 complete (`0.3.0`); experimental, optional and non-production.
 
 ## Source identity
 
@@ -78,3 +78,15 @@ Availability is a separate 310-record channel. Chapter open/start values, Z-Batt
 The snapshot contains 98 distinct `rmbattle_id` values across 2,174 mission rows but no `rmbattles` root table, so those identities remain an opaque `partial` family without title, schedule or topology. `score_benefits` (706 rows), `special_bonuses` (19), `genkai_gimmick_sub_categories` (22) and the RMBattle mission rows remain unrooted candidates. No product label such as Virtual Clash, Burst Mode or Dokkan Frontier is assigned from table names alone.
 
 The ignored E1 catalog is 952,729 bytes, SHA-256 `567f54e09bb63427e972bf94e785bdacc92d69370c0ce5d09ef0d56a0d2c3100`. Coverage is 512 bytes, SHA-256 `cae7cd60a624daa8f7a35dbd2a59f5a42f0d7b40ba7a6a4982df031d167ef5c6`; validation is 184 bytes, SHA-256 `01ce7bea0676df42ff69c54e6f3cc985ce293dd33e2b9371775e803401abb45e`. The payload is pinned to E0 SHA-256 `ec6e8752eca9704cd1d5ed89a75c6144cf056562c74ced77eb0ef1b78503d004` and the same SQLite identity. Its focused peak working set is 335,581,184 bytes.
+
+## E2 topology frontier
+
+The traditional topology is 674 area roots → 3,101 quest stages → 5,320 joined map/level records. Every quest has at least one level, 1,183 previous-quest references join, and deep-link keys use only area, quest and map IDs. Raw difficulty values remain numeric and unlabeled: `0/1/2/3/4/5` occur `1,217/773/1,912/890/225/303` times. ACT, event-key count, rank EXP, Zeni, attempt caps/reset days, auto/boost flags and nullable first-clear fields are preserved without defaults. Another 146 historical map rows have null `quest_id`; they remain lossless `unknown` records and receive no synthetic stage.
+
+Fourteen area requirements retain their raw type, JSON conditions and comments as `partial`; names and comments do not establish mechanics. Quest `start_at` remains a schedule hint rather than current availability.
+
+Z-Battle uses an independent 233-stage topology with 253 enemy level ranges, 930 cost checkpoints and 5,492 reward-level anchors. Every source row joins its structural stage. All current enemy ranges have a null `end_level`, so E2 preserves the open bound instead of inventing a maximum. Unlock JSON stays `partial` pending semantic validation.
+
+The `origin_battles` table supplies 52 cost/rule records, but its 52 `origin_spot_id` values have no root table and no proved page join; they remain partial non-traditional battles. The `sd` topology reconstructs 48 maps → 231 arenas → 1,169 stages without dangling IDs, while its product-family label and `sd_enemy_table_id` target remain unknown. Budokai and RMBattle roots explicitly report missing stage/server-runtime topology rather than adopting quest semantics.
+
+The ignored E2 topology is 8,039,874 bytes, SHA-256 `682acb6d0c8ca87cb9fb413fc25de1c68a64ddcc3c9c516561d6c458bb5c93cd`. Coverage is 512 bytes, SHA-256 `8771a018dcc6b51981f9060c1ab59093711653ee6b941e510dc1443d5d32997e`; validation is 193 bytes, SHA-256 `d410c5f7980b84cfdc549ecc50e796288a598fbfba930b9d58189b05b6601103`. It is pinned to E1 SHA-256 `567f54e09bb63427e972bf94e785bdacc92d69370c0ce5d09ef0d56a0d2c3100`; exact projection and all bounded joins pass with peak working set 385,429,504 bytes.
