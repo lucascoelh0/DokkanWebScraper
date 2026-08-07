@@ -246,3 +246,33 @@ S6 gate decisions:
 - **NO-GO** — interpret representation gain as official server authority;
 - **NO-GO** — interpret zero confirmed conflicts as parity completeness;
 - **NO-GO** — promote reward candidates, featured relations, missing roots or asset delivery relations.
+
+## S7 readiness and campaign closure
+
+S7 makes no network requests. It closes over the canonical S0–S6 manifests, payload hashes/sizes, exact dataset contracts and green validation receipts. Its nine decisions are readiness findings only: they perform no merge, activation, publication or Android change.
+
+| Decision | Result | Narrow boundary |
+|---|---|---|
+| merge disabled infrastructure | **GO** | reviewed additive TypeScript artifacts only; normal merge review still applies |
+| optional refresh | **GO** | only bounded, serial, credential-free FYI active-banner shadow refresh |
+| replace scraped schedule | **NO-GO** | zero schedules and zero official dynamic authority |
+| replace banners | **NO-GO** | community-only; commercial and official featured semantics unknown |
+| resolve SBR/RMBattle | **NO-GO** | SBR has 177 supported IDs, but 98 Ultimate Clash roots remain unjoinable |
+| asset delivery | **NO-GO** | 8,899 references, zero delivery joins and unknown full-catalog bytes |
+| R2 publication | **NO-GO** | no consumer approval, publisher dry-run or publication authorization |
+| Android shadow mode | **NO-GO** | no Android consumer implementation, fixture tests or approved delivery endpoint |
+| future HTML removal | **NO-GO** | no source-complete structured replacement or sustained temporal parity |
+
+The final S1 capture accounts for 17 successful GETs and 2,152,737 response bytes. Including the superseded pre-review S1 execution, the campaign made 44 attempts: 34 successful FYI reads and 10 non-retried DokkanInfo 403 responses, with 4,302,211 successful response bytes in total. All later gates used local evidence only. No login, cookie, token, personal session, action endpoint, authentication/signature/attestation/pinning bypass, Android mutation, R2 operation or asset-network sample occurred. The peak campaign working set was S3's 740,245,504 bytes, below the approximate 1 GiB ceiling.
+
+The only supported asset bytes are the 6,508,096 bytes of seven already-local base-APK samples. Planned network sample size and transfer are both zero. Full-catalog projected bytes remain unknown because no captured manifest supplies entry sizes; this is a stop condition, not a zero-byte estimate.
+
+Operational risk remains source-specific. FYI is a community shadow source whose catalog and schema can change; every permitted refresh must retain the exact-host/path allowlist, serial pacing, one-second interval, retry ceiling, sanitized receipts and byte caps. Official client endpoints remain static discovery evidence unless a credential-free GET contract is proved. Legal/terms review would be required before broad or recurring collection beyond the narrow existing public pattern. DokkanInfo 403 is respected as a stop boundary, not a browser-impersonation invitation.
+
+The campaign stops with three boundaries intact: remaining official dynamic sources lack a proved credential-free read-only contract or require authenticated/runtime capture; asset sampling cannot be projected; and R2/Android require explicit product authority. The reviewed validator requires the exact terminal prohibitions against authenticated/personal capture, signature/attestation/pinning bypass, unprojected mass downloads, production activation, R2 publication and Android changes.
+
+The final S7 payload is 11,571 bytes, SHA-256 `353b81ce312043770b65d2152dcfb37bbe04e5995fe6118b533622998fc2fb1a`; its lineage aggregate is `aafd740deb695b5e8ff3cb0d586e0a7dd2bea6990b76d0012c337ccd187e25b0`. Peak S7 working set was 310,415,360 bytes. Eight focused readiness tests pass.
+
+Recommended next prompt:
+
+> Authorize a separate default-off Android shadow-mode design using only local S5 fixtures. Require missing, stale and unknown-schema fallback; prohibit R2 and production fetches; and stop before implementation if the consumer contract would replace database-first facts.

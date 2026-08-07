@@ -1,0 +1,22 @@
+import { deepEqual, equal, throws } from "assert";
+import { buildServerS7, validateServerS7 } from "./server-s7-builder";
+import { ServerS7Gate, ServerS7InputGate } from "./server-s7-contract";
+
+const payloads: Record<ServerS7Gate, string> = { s0: "server-s0-catalog.json", s1: "server-s1-schedule-banners.json", s2: "server-s2-roots.json", s3: "server-s3-reward-joins.json", s4: "server-s4-asset-delivery.json", s5: "server-s5-registry.json", s6: "server-s6-shadow-parity.json" };
+const gate = (name: ServerS7Gate, dataset: any): ServerS7InputGate => ({ gate: name, contractVersion: `0.${Number(name[1]) + 1}.0`, path: `data/database-server/${name}/${payloads[name]}`, sha256: name[1].repeat(64), sizeBytes: 10, generatedAt: `2026-08-0${Number(name[1]) + 1}T00:00:00.000Z`, dataset });
+function inputs(): Record<ServerS7Gate, ServerS7InputGate> {
+    const endpoints = [{ sourceClass: "official_client", collectionGate: "discover_only" }], banners = [{ featuredCharacters: { entries: [{}, {}] } }];
+    const sbr = { key: "super_battle_road", rootStatus: "supported", joins: [{ status: "supported", matchedCount: 177 }] }, clash = { key: "ultimate_clash", rootStatus: "partial", joins: [{ status: "unjoinable", unmatchedCount: 98 }] };
+    return { s0: gate("s0", { collectionMode: "static_inventory_no_network_capture", endpoints }), s1: gate("s1", { schedules: [], authority: { officialDynamicAuthorityCount: 0 }, collection: { failures: [], receipts: [{}], fetchedBytes: 20 }, banners }), s2: gate("s2", { families: [sbr, clash] }), s3: gate("s3", { assessments: [{ classification: "partial_candidate" }] }), s4: gate("s4", { e6Projection: { remoteManifestJoinedReferenceCount: 0, uniqueReferenceCount: 4 }, networkSampleGate: { fullCatalogProjectedBytes: null }, baseApkInventory: { representativeSampleBytes: 3 } }), s5: gate("s5", { defaultEnabled: false, productionMutation: false, sidecars: Array.from({ length: 5 }, () => ({ defaultEnabled: false })) }), s6: gate("s6", { completeness: { proven: false, unknownOrUnjoinableCount: 2 }, totals: { confirmedConflict: 0, comparedCount: 3 }, subjects: [{ key: "reward_row_identity", counts: { unknown: 1, unjoinable: 1 } }] }) };
+}
+
+describe("server S7 readiness", () => {
+    it("builds nine deterministic independent readiness decisions", () => { const first = buildServerS7(inputs()), second = buildServerS7(inputs()); deepEqual(first, second); equal(validateServerS7(first).valid, true); equal(first.decisions.length, 9); });
+    it("allows only disabled infrastructure merge and bounded optional refresh", () => { const dataset = buildServerS7(inputs()), go = dataset.decisions.filter(value => value.decision === "GO").map(value => value.key); deepEqual(go, ["merge_disabled_infrastructure", "optional_refresh"]); equal(dataset.productionMutation, false); });
+    it("keeps combined SBR/RMBattle resolution NO-GO despite SBR agreement", () => { const value = buildServerS7(inputs()).decisions.find(item => item.key === "resolve_sbr_rmbattle")!; equal(value.decision, "NO_GO"); equal(value.blockers.length > 0, true); });
+    it("rejects a readiness flip that preserves decision count", () => { const dataset = buildServerS7(inputs()); dataset.decisions.find(value => value.key === "r2_publication")!.decision = "GO"; const validation = validateServerS7(dataset); equal(validation.valid, false); equal(validation.exactDecisionSet, false); });
+    it("requires blockers and exit criteria for every NO-GO", () => { const dataset = buildServerS7(inputs()); dataset.decisions.find(value => value.key === "asset_delivery")!.exitCriteria = []; const validation = validateServerS7(dataset); equal(validation.noGoExitCriteriaComplete, false); equal(validation.valid, false); });
+    it("fails before readiness if any sidecar is activated", () => { const value = inputs(); value.s5.dataset.sidecars[0].defaultEnabled = true; throws(() => buildServerS7(value), /S7 S5 activation boundary/); });
+    it("fails before readiness if an official endpoint is promoted for collection", () => { const value = inputs(); value.s0.dataset.endpoints[0].collectionGate = "eligible_get_probe"; throws(() => buildServerS7(value), /S7 S0 collection boundary/); });
+    it("rejects substitution of a mandatory terminal prohibition", () => { const dataset = buildServerS7(inputs()); dataset.terminalBoundary.prohibitedWithoutNewEvidenceOrAuthority[4] = "harmless_placeholder"; const validation = validateServerS7(dataset); equal(validation.stopBoundaryPreserved, false); equal(validation.valid, false); });
+});
