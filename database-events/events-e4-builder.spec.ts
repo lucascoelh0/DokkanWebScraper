@@ -1,0 +1,18 @@
+import { equal } from "assert";
+import { EventsE2Dataset } from "./events-e2-contract";
+import { EventsE3Dataset } from "./events-e3-contract";
+import { buildEventsE4Coverage, buildEventsE4Dataset } from "./events-e4-builder";
+import { EventsE4NativeEvidence, EventsE4Observation } from "./events-e4-contract";
+import { validateEventsE4Dataset } from "./events-e4-validator";
+
+const e3 = { enemySkills: [{ identity: { id: "10" }, raw: { efficacy_type: 10, sub_target_type_set_id: 20, causality_conditions: "{}", efficacy_values: "[]" } }], enemyRoundSkills: [{ identity: { id: "11" }, raw: { efficacy_type: 22, sub_target_type_set_id: null, causality_conditions: "{}" } }] } as unknown as EventsE3Dataset;
+const e2 = { questStages: [{ identity: { id: "1" } }], originBattles: [{ identity: { id: "2" } }] } as unknown as EventsE2Dataset;
+const observation: EventsE4Observation = { relatedCardCategories: [{ id: 1, enemy_skill_id: 10, card_category_id: 30 }], relatedLinkSkills: [{ id: 2, enemy_skill_id: 10, link_skill_id: 31 }], relatedOptimalAwakenings: [], relatedPassiveSkillSets: [{ id: 3, enemy_skill_id: 10, passive_skill_set_id: 32 }], subTargetTypeSets: [{ id: 20 }], subTargetTypes: [{ id: 4, sub_target_type_set_id: 20, target_value_type: 1, target_value: 2 }], cardCategoryTargets: [{ id: 30 }], linkSkillTargets: [{ id: 31 }], passiveSkillSetTargets: [{ id: 32 }], questCategoryBonuses: [{ id: 5, quest_id: 1, type: "raw", card_category_id: 30, quest_category_bonus_rarity_table_id: 40 }, { id: 6, quest_id: 91, type: "raw", card_category_id: 30, quest_category_bonus_rarity_table_id: 40 }, { id: 7, quest_id: 92, type: "raw", card_category_id: 30, quest_category_bonus_rarity_table_id: 40 }, { id: 8, quest_id: 93, type: "raw", card_category_id: 30, quest_category_bonus_rarity_table_id: 40 }], questCategoryBonusRarityTables: [{ id: 40, rarity_n: 1, rarity_r: 2, rarity_sr: 3, rarity_ssr: 4, rarity_ur: 5, rarity_lr: 6 }], originBattleHeatUpReferences: [{ id: 2, heat_up_gimmick_set_id: 50 }], heatUpGimmicks: [{ id: 51, heat_up_gimmick_set_id: 50, gauge_start: 1, heat_up_gimmick_skill_id: 52, override_id: null }], heatUpGimmickSkills: [{ id: 52, efficacy_type: 1, eff_value1: 2 }], enemyAiConditions: [{ id: 60, ai_type: 1 }], unboundMechanicSurfaces: [{ table: "special_bonuses", rowCount: 1 }] };
+const native = { sourceElfSha256: "elf", affectedReferencedEnemySkillCount: 1, semanticStatus: "partial", promotion: "none" } as unknown as EventsE4NativeEvidence;
+const build = () => buildEventsE4Dataset({ observation, e3, e2, nativeEvidence: native, nativeEvidenceSha256: "native", generatedAt: "time", sourceSnapshotVersion: "snapshot", sourceDatabaseSha256: "db", sourceE3Sha256: "e3", sourceE2Sha256: "e2" });
+
+describe("events E4 mechanics", () => {
+    it("keeps relations structural while mechanics remain partial or unknown", () => { const dataset = build(); equal(dataset.relatedCardCategories[0].structuralStatus, "supported"); equal(dataset.relatedCardCategories[0].semanticStatus, "partial"); equal(dataset.rawSkillTypeInventory[0].semanticStatus, "unknown"); equal(validateEventsE4Dataset(dataset, observation, e3, e2, native, "native", true).valid, true); });
+    it("rejects a dangling relation target", () => { const dataset = build(); dataset.relatedLinkSkills[0].targetId = "999"; equal(buildEventsE4Coverage(dataset, e3, e2, observation).danglingIdCount, 1); equal(validateEventsE4Dataset(dataset, observation, e3, e2, native, "native", true).valid, false); });
+    it("rejects semantic promotion without a proved consumer", () => { const dataset = build(); dataset.requestedMechanicCoverage[0].status = "supported"; equal(validateEventsE4Dataset(dataset, observation, e3, e2, native, "native", true).valid, false); });
+});

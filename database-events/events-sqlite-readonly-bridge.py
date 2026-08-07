@@ -211,6 +211,55 @@ def encounters(connection):
     }
 
 
+def mechanics(connection):
+    _, quest_cards, quest_skills, quest_round_sets = parsed_encounters(connection, "sugoroku_map_enemy_informations", "sugoroku_map_id")
+    _, origin_cards, origin_skills, origin_round_sets = parsed_encounters(connection, "origin_battle_enemy_informations", "origin_battle_id")
+    del quest_cards, origin_cards
+    skill_ids = quest_skills | origin_skills | {row[0] for row in connection.execute("SELECT enemy_skill_id FROM z_battle_enemy_skill_escalations")}
+    round_set_ids = quest_round_sets | origin_round_sets
+    round_relations = selected_rows_by_ids(connection, "enemy_round_skill_set_relations", ["id", "enemy_round_skill_set_id", "enemy_round_skill_id"], round_set_ids, "enemy_round_skill_set_id")
+    round_skill_ids = {row["enemy_round_skill_id"] for row in round_relations}
+    enemy_skills = selected_rows_by_ids(connection, "enemy_skills", ["id", "sub_target_type_set_id"], skill_ids)
+    round_skills = selected_rows_by_ids(connection, "enemy_round_skills", ["id", "sub_target_type_set_id"], round_skill_ids)
+    sub_target_set_ids = {row["sub_target_type_set_id"] for row in enemy_skills + round_skills if row["sub_target_type_set_id"] is not None}
+    related_card_categories = selected_rows_by_ids(connection, "related_card_categories", ["id", "enemy_skill_id", "card_category_id"], skill_ids, "enemy_skill_id")
+    related_link_skills = selected_rows_by_ids(connection, "related_link_skills", ["id", "enemy_skill_id", "link_skill_id"], skill_ids, "enemy_skill_id")
+    related_optimal_awakenings = selected_rows_by_ids(connection, "related_optimal_awakenings", ["id", "enemy_skill_id", "card_category_id"], skill_ids, "enemy_skill_id")
+    related_passive_skill_sets = selected_rows_by_ids(connection, "related_passive_skill_sets", ["id", "enemy_skill_id", "passive_skill_set_id"], skill_ids, "enemy_skill_id")
+    category_ids = {row["card_category_id"] for row in related_card_categories + related_optimal_awakenings}
+    link_ids = {row["link_skill_id"] for row in related_link_skills}
+    passive_set_ids = {row["passive_skill_set_id"] for row in related_passive_skill_sets}
+    quest_bonuses = selected_rows(connection, "quest_category_bonuses", ["id", "quest_id", "type", "card_category_id", "quest_category_bonus_rarity_table_id"])
+    category_ids.update(row["card_category_id"] for row in quest_bonuses)
+    rarity_table_ids = {row["quest_category_bonus_rarity_table_id"] for row in quest_bonuses}
+    origin_heat = selected_rows(connection, "origin_battles", ["id", "heat_up_gimmick_set_id"])
+    heat_set_ids = {row["heat_up_gimmick_set_id"] for row in origin_heat if row["heat_up_gimmick_set_id"] is not None}
+    heat_gimmicks = selected_rows_by_ids(connection, "heat_up_gimmicks", ["id", "heat_up_gimmick_set_id", "gauge_start", "heat_up_gimmick_skill_id", "override_id"], heat_set_ids, "heat_up_gimmick_set_id")
+    heat_skill_ids = {row["heat_up_gimmick_skill_id"] for row in heat_gimmicks}
+    ai_columns = ["id", "ai_type", "action_type", "weight", "hp_rate_begin", "hp_rate_end", "min_interval", "max_number", "atk_rate_1", "atk_rate_2", "max_num_per_turn", "recover_hp_rate", "next_ai_type", "ai_param", "ai_param2", "attack_order"]
+    return {
+        "relatedCardCategories": related_card_categories,
+        "relatedLinkSkills": related_link_skills,
+        "relatedOptimalAwakenings": related_optimal_awakenings,
+        "relatedPassiveSkillSets": related_passive_skill_sets,
+        "subTargetTypeSets": selected_rows_by_ids(connection, "sub_target_type_sets", ["id"], sub_target_set_ids),
+        "subTargetTypes": selected_rows_by_ids(connection, "sub_target_types", ["id", "sub_target_type_set_id", "target_value_type", "target_value"], sub_target_set_ids, "sub_target_type_set_id"),
+        "cardCategoryTargets": selected_rows_by_ids(connection, "card_categories", ["id"], category_ids),
+        "linkSkillTargets": selected_rows_by_ids(connection, "link_skills", ["id"], link_ids),
+        "passiveSkillSetTargets": selected_rows_by_ids(connection, "passive_skill_sets", ["id"], passive_set_ids),
+        "questCategoryBonuses": quest_bonuses,
+        "questCategoryBonusRarityTables": selected_rows_by_ids(connection, "quest_category_bonus_rarity_tables", ["id", "rarity_n", "rarity_r", "rarity_sr", "rarity_ssr", "rarity_ur", "rarity_lr"], rarity_table_ids),
+        "originBattleHeatUpReferences": origin_heat,
+        "heatUpGimmicks": heat_gimmicks,
+        "heatUpGimmickSkills": selected_rows_by_ids(connection, "heat_up_gimmick_skills", ["id", "efficacy_type", "eff_value1"], heat_skill_ids),
+        "enemyAiConditions": selected_rows(connection, "enemy_ai_conditions", ai_columns),
+        "unboundMechanicSurfaces": [
+            {"table": table, "rowCount": connection.execute(f"SELECT COUNT(*) FROM {quote(table)}").fetchone()[0]}
+            for table in ["special_bonuses", "score_benefits", "genkai_gimmick_sub_categories"]
+        ],
+    }
+
+
 def catalog(connection):
     return {
         "areas": selected_rows(connection, "areas", ["id", "type", "category", "chapter_id", "db_story_id", "name", "event_priority", "all_clear_bonus_stones", "first_released_at", "mission_difficulty"]),
@@ -261,14 +310,14 @@ def topology(connection):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["inventory", "catalog", "topology", "encounters"])
+    parser.add_argument("command", choices=["inventory", "catalog", "topology", "encounters", "mechanics"])
     parser.add_argument("--database", required=True)
     args = parser.parse_args()
     uri = Path(args.database).resolve().as_uri() + "?mode=ro&immutable=1"
     connection = sqlite3.connect(uri, uri=True)
     connection.execute("PRAGMA query_only=ON")
     try:
-        value = inspect(connection) if args.command == "inventory" else catalog(connection) if args.command == "catalog" else topology(connection) if args.command == "topology" else encounters(connection)
+        value = inspect(connection) if args.command == "inventory" else catalog(connection) if args.command == "catalog" else topology(connection) if args.command == "topology" else encounters(connection) if args.command == "encounters" else mechanics(connection)
         json.dump(value, sys.stdout, ensure_ascii=False, separators=(",", ":"))
     finally:
         connection.close()

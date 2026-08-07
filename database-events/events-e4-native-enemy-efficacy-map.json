@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "sourceElfSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "sourceElfSizeBytes": 95662296,
+  "scope": "bounded_enemy_skill_efficacy_type_10_sqlite_to_runtime_consumer_audit",
+  "affectedReferencedEnemySkillCount": 697,
+  "sqliteBoundary": {
+    "table": "enemy_skills",
+    "rowConstructorSymbol": "_ZN10EnemySkillC1EP12sqlite3_stmt",
+    "rowConstructorVma": 46588352,
+    "rowConstructorSizeBytes": 2296,
+    "rowConstructorCodeSha256": "e32835d21ae745fd1260e97e2238d5b08628887d7d82f80d040b6b03c0299473",
+    "fieldOffsetStatus": "unknown"
+  },
+  "conversion": {
+    "symbol": "_ZN14EnemySkillUtil19convertEfficacyTypeE22EnemySkillEfficacyType",
+    "vma": 67092860,
+    "sizeBytes": 924,
+    "codeSha256": "8f1ae6dd1365ae397e7fc0a95c6daa72ff7ced4558b771ec1de938e23a584ea7",
+    "mappingTableVma": 35184340,
+    "mappingTableSizeBytes": 216,
+    "mappingTableSha256": "230de2df298e03b0309d91b0a772cc74addd52601fedbcb12863cbeb892525dc",
+    "target": { "enemyRawEfficacyType": 10, "genericSkillEfficacyType": 94 }
+  },
+  "genericDispatch": {
+    "tableVma": 92049840,
+    "entrySizeBytes": 8,
+    "slotVma": 92050592,
+    "relocationType": 257,
+    "handlerSymbol": "_ZN31AbilityEfficacyBadConditionFunc28callChangeInvalidateStunFuncEPN19AbilityEfficacyCore15CallChangeParamE",
+    "handlerVma": 64277568
+  },
+  "callSiteAudit": {
+    "textBytesScanned": 42387476,
+    "directBranchWithLinkCallsToConversionSymbol": 0,
+    "directBranchWithLinkCallsToConversionPlt": 0,
+    "status": "consumer_chain_unproven"
+  },
+  "semanticStatus": "partial",
+  "promotion": "none",
+  "abandonReason": "no_bounded_direct_runtime_call_chain_from_enemy_skill_row_to_conversion_and_generic_handler"
+}

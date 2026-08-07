@@ -1,6 +1,6 @@
 # Database-first events frontier
 
-Status: E0–E3 complete (`0.4.0`); experimental, optional and non-production.
+Status: E0–E4 complete (`0.5.0`); experimental, optional and non-production.
 
 ## Source identity
 
@@ -102,3 +102,17 @@ Z-Battle remains an independent range model: 253 enemy ranges retain base HP/ATK
 All 1,169 `sd_stages.sd_enemy_table_id` values are preserved, but the snapshot has no matching SD enemy-table target. They therefore remain opaque partial references rather than synthetic encounters. RMBattle and Budokai also retain their E2 non-traditional boundaries.
 
 The ignored E3 encounter payload is 21,606,761 bytes, SHA-256 `4e29d3f119292f260c3fc82c888530df69ea549d9ed75eb4a5c1edfaadfa15f4`. Coverage is 639 bytes, SHA-256 `52913e8d06a95398fb1d8853a725589fb5e6c77db1f6723ca261e6dbfcfd4308`; validation is 182 bytes, SHA-256 `255fb1d67467155f28572c5f2dd7939caed08679fdd2c74d82c361ecb2e18008`; six repository-pinned representative goldens are 1,084 bytes, SHA-256 `403ca6835f3d93935673f6aac275895b58d0809cf351d835fe429dda1759480e`. E3 is pinned to E2 SHA-256 `682acb6d0c8ca87cb9fb413fc25de1c68a64ddcc3c9c516561d6c458bb5c93cd`. Exact reconstruction covers 5,356 source encounter rows, 13,882 enemy positions and 45,290 validated join edges with zero dangling IDs. Two generations are byte-identical; peak working set is 448,815,104 bytes.
+
+## E4 mechanics frontier
+
+E4 inventories all 9,117 referenced enemy-skill rules and 111 referenced round-skill rules by their raw efficacy types: 30 enemy types and 10 round types. Timing, turn, once-only flag, probability, causality JSON, target fields, efficacy values and calculation option remain lossless in E3 and are counted again through E4 lineage; no product mechanic is assigned from an enum, column name or localized description.
+
+Four relational mechanic surfaces are structurally supported while their effect direction and magnitude remain partial: 1,504 enemy-skill→card-category rows, 247 enemy-skill→link-skill rows, 52 enemy-skill→optimal-awakening-category rows and 620 enemy-skill→passive-skill-set rows. All 2,423 source relations and both endpoints reconstruct. Every referenced skill has raw `sub_target_type_set_id = 0`; no positive set is promoted or treated as a dangling identity.
+
+Quest category bonuses contribute 962 raw rules joined to category and rarity-table IDs. Three historical rows point at absent quests `367001`–`367003`; they are preserved with unknown quest binding rather than treated as current stages. Origin heat-up structure reconstructs 51 sets referenced by 52 battles, 140 threshold entries and 16 raw effect rows. Group/threshold order is structural; gauge units, effects and runtime application remain unknown. All 4,726 `enemy_ai_conditions` rows remain unbound because no encounter/card consumer is proved.
+
+One high-impact native ambiguity was bounded to the 697 referenced `enemy_skills.efficacy_type = 10` rows. The pinned ELF contains `EnemySkillUtil::convertEfficacyType`, whose table maps enemy raw type 10 to generic type 94; generic dispatch slot 94 relocates to `callChangeInvalidateStunFunc`. A scan of the 42,387,476-byte `.text` region found no direct branch-with-link call that closes the runtime chain from the enemy row through the converter to that handler. The investigation therefore stopped at its declared abandonment condition. Evidence status is partial and semantic promotion is zero. Passive DB0–DB50 meanings are not reused across the enemy-skill table boundary.
+
+Of nine requested mechanic families, four are partial and five unknown; none is supported for runtime simulation. Category/link membership, round topology, raw countdown/condition fields and the bounded status-immunity mapping provide representation gain. Damage reduction, guard/type interaction, dodge/nullification/attack break, Super Attack AI, locks/sealing/rotations/fields and effect formulas remain outside the supported frontier. Beneficial-character derivation and damage calculation are not implemented.
+
+The ignored E4 mechanics payload is 3,473,577 bytes, SHA-256 `63bd000293123ed8bfec315c124d49d50014f9ff9ab0f1220727d75dbdbcdcaf`. Coverage is 653 bytes, SHA-256 `2328591ffac0a0dd43be8ffb9d79504580c48947a8977b3603a5c29c6bf510ce`; validation is 183 bytes, SHA-256 `46fcd18385e4903ed76d948de262147b52f33bfc9215b047f11b42de72e1ded1`. The canonical native evidence SHA-256 is `af048e03c860efc435310609c1989d49c6fd140c8f62f1a676dc3e2621b7c842`, pinned to ELF SHA-256 `7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a`. Exact projection, zero unintended dangling IDs and native evidence validation pass; two generations are byte-identical and peak working set is 623,247,360 bytes.
