@@ -1,0 +1,5 @@
+[
+  { "name": "real self damage reduction", "stateKey": "1000340:1000340:initial", "ruleKey": "34:340000:34", "passiveSkillId": "34", "remainingRate": 70, "reduction": 30, "target": "self", "timing": 6, "calcOption": 3 },
+  { "name": "real team allies damage reduction", "stateKey": "1019001:1019001:eza", "ruleKey": "4005:40050012:12004005", "passiveSkillId": "12004005", "remainingRate": 90, "reduction": 10, "target": "team_allies", "timing": 4, "calcOption": 2 },
+  { "name": "real extreme allies damage reduction", "stateKey": "1031431:4031441:initial", "ruleKey": "4630:46300007:7004630", "passiveSkillId": "7004630", "remainingRate": 90, "reduction": 10, "target": "extreme_class_allies", "timing": 4, "calcOption": 2 }
+]

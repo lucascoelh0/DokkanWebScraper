@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "passive-efficacy-13-remaining-damage-rate-aggregate-and-intermediary-damage-consumers",
+  "sqliteBinding": {
+    "table": "passive_skills",
+    "efficacyType": 13,
+    "eff_value1": { "literalVma": 32524339, "passiveSkillOffset": 128, "callChangeParamOffset": 40, "role": "remaining_damage_rate_percent_points" },
+    "eff_value2": { "callChangeParamOffset": 48, "role": "preserved_not_read_by_handler" },
+    "eff_value3": { "callChangeParamOffset": 56, "role": "preserved_not_read_by_handler" },
+    "calc_option": { "callChangeParamOffset": 24, "role": "preserved_not_read_by_handler" }
+  },
+  "dispatch": { "tableVma": 92049840, "entrySizeBytes": 8, "raw": 13, "slotVma": 92049944, "relocation": { "offset": 92049944, "type": 257, "symbol": "_ZN25AbilityEfficacyDamageFunc26callChangeResistDamageFuncEPN19AbilityEfficacyCore15CallChangeParamE", "symbolValue": 64285580, "addend": 0 } },
+  "handlerBehavior": { "parametersRead": ["eff_value1_double_at_offset_40"], "parametersNotRead": ["eff_value2_at_offset_48", "eff_value3_at_offset_56", "calc_option_at_offset_24"], "literalSkillEfficacyType": 13, "conversion": "double_to_float32", "returnBehavior": "tail_return_of_generator" },
+  "storageAndGetter": { "normalStoredFieldOffset": 432, "proportionalFlagOffset": 40, "type13SetsProportionalFlag": false, "getterNormalPath": "float32_at_offset_432", "alternateProportionalPathExistsButIsNotSelectedByType13": true },
+  "aggregateBehavior": { "initialRemainingRatePercentPoints": 100, "filterKeys": ["deck_index", "skill_category_type"], "perRecordFormula": "aggregate_minus_(100_minus_stored_remaining_rate)", "arithmetic": "stored_float32_widened_to_double", "clamp": [0, 100], "iterationOrder": "ability_efficacy_info_order" },
+  "consumerBehavior": {
+    "playerSource": { "categoryRaw": 1, "targetRole": "enemy_target", "formula": "trunc_toward_zero(pre_minus_((100_minus_rate)_times_pre_div_100))", "order": ["attack_and_element_and_random", "enemy_defense_subtraction", "optional_guard_coefficient", "efficacy_13_remaining_rate", "enemy_skill_raw_7", "later_modifiers"], "resultBoundary": "intermediary_not_final_hp" },
+    "enemySource": { "categoryRaw": 0, "targetRole": "player_target", "formula": "pre_minus_trunc_toward_zero(((100_minus_rate)_times_pre_div_100))", "order": ["attack_and_element_and_random", "efficacy_13_remaining_rate", "counter_behavior_resist", "player_defense_subtraction", "critical_defense_correction", "guard_coefficient", "increase_received_damage", "minimum_and_final_clamps"], "resultBoundary": "intermediary_not_final_hp" }
+  },
+  "directCalls": [
+    { "role": "handler_to_generator", "callVma": 64285592, "callHex": "52e85d14", "branchKind": "b", "pltVma": 88902880, "pltHex": "b03100d0118e42f91062149120021fd6", "relocation": { "offset": 95413528, "type": 1026, "symbol": "_ZN28AbilityEfficacyInfoGenerator39addAbilityEfficacyInfoResistDamageValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "symbolValue": 64270232, "addend": 0 } },
+    { "role": "aggregate_to_getter", "callVma": 46821780, "callHex": "c7c49f94", "branchKind": "bl", "pltVma": 88704176, "pltHex": "703200d0118240f91002049120021fd6", "relocation": { "offset": 95314176, "type": 1026, "symbol": "_ZNK19AbilityEfficacyInfo19getResistDamageRateEv", "symbolValue": 64352564, "addend": 0 } },
+    { "role": "player_damage_to_aggregate", "callVma": 48024764, "callHex": "9d439a94", "branchKind": "bl", "pltVma": 88464176, "pltHex": "503300f0112246f91002319120021fd6", "relocation": { "offset": 95194176, "type": 1026, "symbol": "_ZN19DPuzzleGameCalcData20calcResistDamageRateEi17SkillCategoryType", "symbolValue": 46821624, "addend": 0 } },
+    { "role": "enemy_damage_to_aggregate", "callVma": 48026632, "callHex": "ca419a94", "branchKind": "bl", "pltVma": 88464176, "pltHex": "503300f0112246f91002319120021fd6", "relocation": { "offset": 95194176, "type": 1026, "symbol": "_ZN19DPuzzleGameCalcData20calcResistDamageRateEi17SkillCategoryType", "symbolValue": 46821624, "addend": 0 } },
+    { "role": "player_bank_primary_to_player_damage", "callVma": 48059692, "callHex": "3d259a94", "branchKind": "bl", "pltVma": 88468000, "pltHex": "503300f011de41f910e20e9120021fd6", "relocation": { "offset": 95196088, "type": 1026, "symbol": "_ZN17DamageCalculation32calcIntermediaryDamageFromPlayerEiiibdNSt6__ndk18optionalIdEE", "symbolValue": 48024000, "addend": 0 } },
+    { "role": "player_bank_secondary_to_player_damage", "callVma": 48059732, "callHex": "33259a94", "branchKind": "bl", "pltVma": 88468000, "pltHex": "503300f011de41f910e20e9120021fd6", "relocation": { "offset": 95196088, "type": 1026, "symbol": "_ZN17DamageCalculation32calcIntermediaryDamageFromPlayerEiiibdNSt6__ndk18optionalIdEE", "symbolValue": 48024000, "addend": 0 } },
+    { "role": "enemy_bank_to_enemy_damage", "callVma": 48107404, "callHex": "a9f69994", "branchKind": "bl", "pltVma": 88468016, "pltHex": "503300f011e241f910020f9120021fd6", "relocation": { "offset": 95196096, "type": 1026, "symbol": "_ZN17DamageCalculation31calcIntermediateDamageFromEnemyEiiidbbNSt6__ndk110shared_ptrI4CardEEP15InGameCharaDataPN16InGameBattleInfo18InGameBattleRecordEbbbbNS0_8optionalIiEE", "symbolValue": 48026384, "addend": 0 } }
+  ],
+  "efficacyInfoVtable": { "symbol": "_ZTV19AbilityEfficacyInfo", "vma": 92053824, "sizeBytes": 624, "rawSha256": "afc249b32e5549092c980b1995ea5401e73af3fcda168c1da9ae1bdbfce0d447", "slots": [
+    { "role": "deck_index_filter", "vptrSlotOffset": 32, "relocation": { "offset": 92053872, "type": 257, "symbol": "_ZNK19AbilityEfficacyInfo10getDeckIdxEv", "symbolValue": 64353184, "addend": 0 } },
+    { "role": "skill_category_filter", "vptrSlotOffset": 48, "relocation": { "offset": 92053888, "type": 257, "symbol": "_ZNK19AbilityEfficacyInfo15getCategoryTypeEv", "symbolValue": 64353200, "addend": 0 } }
+  ] },
+  "codeRegions": [
+    { "role": "efficacy_13_handler", "symbol": "_ZN25AbilityEfficacyDamageFunc26callChangeResistDamageFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64285580, "sizeBytes": 16, "codeSha256": "5f585a64e2c3b7815726a296705692022baaba3c92cbb5c7572540c918d1faef" },
+    { "role": "damage_rate_generator", "symbol": "_ZN28AbilityEfficacyInfoGenerator39addAbilityEfficacyInfoResistDamageValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyTypef", "vma": 64270232, "sizeBytes": 248, "codeSha256": "2f16099be48d98f15e442fded84e7bf71a867764a088f16b5342d0bc58b50496" },
+    { "role": "damage_rate_getter", "symbol": "_ZNK19AbilityEfficacyInfo19getResistDamageRateEv", "vma": 64352564, "sizeBytes": 184, "codeSha256": "26d82e6d2a074bf55beb47e34c02158b5348bc64f0aeb823c463fe447f6732f6" },
+    { "role": "damage_rate_aggregate", "symbol": "_ZN19DPuzzleGameCalcData20calcResistDamageRateEi17SkillCategoryType", "vma": 46821624, "sizeBytes": 248, "codeSha256": "91a91a9076216131facfcaff38b593e82cc5ca660e7eee0330aa115bb971ed97" },
+    { "role": "damage_rate_vector_aggregate", "symbol": "_ZN19DPuzzleGameCalcData20calcResistDamageRateEi17SkillCategoryTypeRKNSt6__ndk16vectorI19AbilityEfficacyInfoNS1_9allocatorIS3_EEEE", "vma": 46821872, "sizeBytes": 196, "codeSha256": "98c55a2e094ded9f764e7addf7c1ba8452a4695926a8e780cf7ebd82484573bc" },
+    { "role": "player_source_damage_consumer", "symbol": "_ZN17DamageCalculation32calcIntermediaryDamageFromPlayerEiiibdNSt6__ndk18optionalIdEE", "vma": 48024000, "sizeBytes": 2384, "codeSha256": "27b2ddf0f35076f9a76aea9ada7aef5fedc117c4c518dfebf315e37d836a8c9f" },
+    { "role": "enemy_source_damage_consumer", "symbol": "_ZN17DamageCalculation31calcIntermediateDamageFromEnemyEiiidbbNSt6__ndk110shared_ptrI4CardEEP15InGameCharaDataPN16InGameBattleInfo18InGameBattleRecordEbbbbNS0_8optionalIiEE", "vma": 48026384, "sizeBytes": 784, "codeSha256": "732737e064b1a950a1eac739d88c895e94c8d8b5312e0a1ff4fe728d517c90c4" },
+    { "role": "player_attack_action_bank", "symbol": "_ZN31PlayerAttackDamageAndActionBank5setupEP21DPuzzleGameControlleriRK21SetupExtraActionParambiRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEEP18AimAllSpecialParamRNS5_13unordered_mapIiiNS5_4hashIiEENS5_8equal_toIiEENS9_INS5_4pairIKiiEEEEEENS5_8optionalIiEE", "vma": 48049704, "sizeBytes": 20232, "codeSha256": "cbe4e3fcc989cae9b89d464bb4197b63a5def56e2f040956c36d71ccc2573aa4" },
+    { "role": "enemy_attack_action_bank", "symbol": "_ZN30EnemyAttackDamageAndActionBank5setupEP21DPuzzleGameControlleriiNSt6__ndk110shared_ptrIN15PuzzleEnemyData6ActionEEEPiibbRNS2_5queueIiNS2_5dequeIiNS2_9allocatorIiEEEEEERNS2_12basic_stringIcNS2_11char_traitsIcEENSA_IcEEEE", "vma": 48102712, "sizeBytes": 13200, "codeSha256": "129865aa6bfc05c69f0998ba2d12c92eb41440f85d4c636c764cea27b74252aa" }
+  ],
+  "unknowns": ["attack_kind_partition_regular_super_ultra_unit_ex", "final_hp_application", "probability_application_order", "condition_evaluation_order", "status_removal_and_reapplication_order", "cross_status_lifecycle_stacking", "vector_aggregate_non_damage_consumer_product_semantics"]
+}
