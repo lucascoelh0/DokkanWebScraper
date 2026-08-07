@@ -192,3 +192,29 @@ S4 gate decisions:
 - **NO-GO** — project or download a full asset catalog without a captured size-bearing manifest;
 - **NO-GO** — join any E6 reference to delivery by filename convention or community prefix;
 - **NO-GO** — claim current database/asset versions, entry hashes, CDN immutability or asset completeness.
+
+## S5 contracts and cache
+
+S5 makes no network requests. It reads the green S1–S4 manifests, verifies each exact contract version, payload filename, payload SHA-256/size and validation receipt, and rejects any lineage drift before building output. The dynamic S1 input is additionally required to be the final credential-free FYI capture: zero collection failures, no promoted schedules, and `generatedAt` equal to the latest successful `fetchedAt`. Static S2–S4 inputs must retain their pinned evidence-checkpoint policy.
+
+The result is five independent sidecars. Every payload and sidecar manifest receives a content-addressed object key plus exact SHA-256 and byte size. The small registry is a stable discovery document; it keeps every sidecar optional and disabled by default, declares no production mutation, and requires the existing database-first/scraper pipeline as the consumer fallback.
+
+| Sidecar | Authority boundary | Cache policy | TTL | Payload bytes |
+|---|---|---|---:|---:|
+| schedule | community dynamic shadow; currently empty | revalidate after TTL | 300 s | 1,625 |
+| banners | community dynamic shadow | revalidate after TTL | 900 s | 75,963 |
+| server roots | derived static shadow | content-addressed immutable | none | 23,760 |
+| reward joins | derived static shadow | content-addressed immutable | none | 29,507,809 |
+| asset delivery | derived static shadow | content-addressed immutable | none | 28,944 |
+
+Dynamic payloads preserve retrieval time separately from derivation time; static derived payloads deliberately carry `fetchedAt: null` rather than inventing a fetch event. Missing sidecars are ignored. Stale dynamic sidecars are ignored. Unknown schema/contract versions and lineage mismatches reject only the sidecar and continue through the existing database-first path. Static payloads never receive TTLs.
+
+The registry is 3,916 bytes with SHA-256 `d8712eed1127c6fa0a2cd9e34d8f8ada8b1b2354974d62e4f5ede88616a60de8`. The reviewed validation confirms five independent content-addressed payloads, two dynamic TTL sidecars, three static immutable sidecars, zero enabled sidecars and zero network requests. A contract-review finding about an unchecked registry payload size was fixed with byte-for-byte registry/manifest/payload validation and a regression test. The final focused suite has seven tests; peak working set was 400,224,256 bytes.
+
+S5 gate decisions:
+
+- **GO** — commit the optional/default-off sidecar contracts and deterministic local builder;
+- **GO** — permit bounded FYI banner refresh to rebuild shadow artifacts while preserving provenance;
+- **NO-GO** — activate any sidecar in production or Android;
+- **NO-GO** — publish any sidecar or registry to R2;
+- **NO-GO** — treat the registry as evidence beyond the pinned S1–S4 source gates.
