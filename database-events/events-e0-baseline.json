@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "0.1.0",
+  "snapshotVersion": "global-6.4.0-v338-2026-08-05",
+  "generatedAt": "2026-08-05T00:00:00.000Z",
+  "sourceDatabase": {
+    "sha256": "3654eb7db9e18dfe4c238abd02bcc06a688ffa6f30aa1ad93fd108dcfeb78265",
+    "sizeBytes": 95428608,
+    "tableCount": 232,
+    "schemaSha256": "36a162820ad3617037a52108d7d5e435dcd26b6beaae2f4fea9bd9dda7392940"
+  }
+}
