@@ -1,0 +1,5 @@
+[
+  {"name":"self turn-start forced guard","stateKey":"1005051:1005051:seza","ruleKey":"4504:45040003:3004504","passiveSkillId":"3004504","target":"self","timing":"turn_start","calcOption":0},
+  {"name":"super-class allies move-end forced guard","stateKey":"1032581:1032581:initial","ruleKey":"4802:48020015:15004802","passiveSkillId":"15004802","target":"super_class_allies","timing":"puzzle_attack_move_end_after_controller_callback","calcOption":0},
+  {"name":"team allies turn-start forced guard","stateKey":"1034391:1034391:initial","ruleKey":"4905:49050001:1004905","passiveSkillId":"1004905","target":"team_allies","timing":"turn_start","calcOption":0}
+]
