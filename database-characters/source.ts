@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { createReadStream } from "fs";
 import { readFile, stat } from "fs/promises";
 import { resolve } from "path";
-import { createGunzip } from "zlib";
+import { createGunzip, gunzipSync } from "zlib";
 import { DatabaseCardRecord } from "../database-experiment/contract";
 import { ReadOnlySqliteAdapter, SqliteRow } from "../database-experiment/sqlite-readonly-adapter";
 
@@ -103,6 +103,22 @@ export async function readPinnedDatabaseTable(databasePath: string, table: strin
     const resolvedPath = resolve(databasePath);
     await assertPinnedDatabaseFile(resolvedPath);
     return new ReadOnlySqliteAdapter(resolvedPath).readTable(table, columns);
+}
+
+export async function readPinnedGzipJson<T>(filePath: string, expected: { sha256: string; sizeBytes: number; uncompressedSizeBytes: number }): Promise<T> {
+    const resolvedPath = resolve(filePath);
+    const gzip = await readFile(resolvedPath);
+    const actualHash = createHash("sha256").update(gzip).digest("hex");
+    if (actualHash !== expected.sha256 || gzip.length !== expected.sizeBytes) throw new Error(`Pinned gzip artifact changed: ${resolvedPath}`);
+    const json = gunzipSync(gzip);
+    if (json.length !== expected.uncompressedSizeBytes) throw new Error(`Pinned gzip uncompressed size changed: ${resolvedPath}`);
+    return JSON.parse(json.toString("utf8")) as T;
+}
+
+export async function assertPinnedArtifactFile(filePath: string, expected: { sha256: string; sizeBytes: number }): Promise<void> {
+    const resolvedPath = resolve(filePath);
+    const [actualHash, metadata] = await Promise.all([sha256File(resolvedPath), stat(resolvedPath)]);
+    if (actualHash !== expected.sha256 || metadata.size !== expected.sizeBytes) throw new Error(`Pinned artifact changed: ${resolvedPath}`);
 }
 
 /** Streams the DB1 cards array one object at a time instead of materializing 234 MB of JSON. */
