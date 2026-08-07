@@ -20,7 +20,7 @@ Status: optional, additive, disabled and non-production.
 | K3 structured skills | green | 10,654 state records backed by 107,070 normalized raw rows; all 1,350 C2 rules structurally joined with zero forbidden consumer fields |
 | K4 stats and progression | green | 5,759 cards, 10,654 state caps, 12,881 awakening requirements, 15,030 potential nodes and 8,644 raw-only orb items |
 | K5 acquisition and training relations | green | 988 static card-drop references, 292 selected cards with drop evidence, zero F2P/summon assertions and 116,724 explicitly derived training candidates |
-| K6 static asset references | pending | — |
+| K6 static asset references | green | 21,207 static references; all action/view joins green; only 75 card resource IDs and no proved local files or delivery |
 | K7 shadow parity | pending | — |
 | K8 optional sidecars and refresh | pending | — |
 | K9 readiness | pending | — |
@@ -63,3 +63,9 @@ K5 artifact: 581,649 bytes gzip / 21,296,298 bytes raw, SHA-256
 Two generations were byte-identical; peak observed RSS was 525,762,560 bytes.
 Dynamic acquisition remains server-owned; stage-drop evidence is not promoted
 to F2P, summonability is unknown and training partner candidates are derived.
+
+K6 artifact: 901,984 bytes gzip / 27,373,521 bytes raw, SHA-256
+`743b9128ba3b708a4ead6b436c7f6aa71f6885f29f7336fb91972bf7e09089a1`.
+Two generations were byte-identical; peak observed RSS was 549,810,176 bytes.
+Only 75 card resource IDs are explicit. Portrait/card-art roles, local files,
+rarity/type frames, Entrance/Domain grouping and delivery remain unknown.
