@@ -45,9 +45,10 @@ async function observeDatabase(databasePath: string): Promise<EventsE0Observatio
 export async function runEventsE0(options: { databasePath?: string; outputDir?: string; baselinePath?: string } = {}) {
     peakWorkingSetBytes = 0;
     const databasePath = resolve(options.databasePath ?? DEFAULT_DATABASE), outputDir = resolve(options.outputDir ?? DEFAULT_OUTPUT);
-    const baselinePath = options.baselinePath ?? resolve(__dirname, "events-e0-baseline.json");
+    const baselinePath = options.baselinePath ? resolve(options.baselinePath) : resolve(__dirname, "events-e0-baseline.json");
     const sourceBaselinePath = resolve(__dirname, "..", "..", "database-events", "events-e0-baseline.json");
-    const baseline = JSON.parse(await readFile(require("fs").existsSync(baselinePath) ? baselinePath : sourceBaselinePath, "utf8")) as EventsE0Baseline;
+    const resolvedBaselinePath = options.baselinePath ? baselinePath : require("fs").existsSync(baselinePath) ? baselinePath : sourceBaselinePath;
+    const baseline = JSON.parse(await readFile(resolvedBaselinePath, "utf8")) as EventsE0Baseline;
     const before = await fingerprint(databasePath), observation = await observeDatabase(databasePath); observeMemory();
     const dataset = buildEventsE0Dataset({ observation, generatedAt: baseline.generatedAt, sourceSnapshotVersion: baseline.snapshotVersion, sourceDatabase: { fileName: basename(databasePath), sha256: before.sha256, sizeBytes: before.sizeBytes } });
     const coverage = buildEventsE0Coverage(dataset), validation = validateEventsE0Dataset(dataset, observation, baseline);

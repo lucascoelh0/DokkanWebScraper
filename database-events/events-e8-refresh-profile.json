@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-events-database-first-refresh-profile",
+  "contractVersion": "0.9.0",
+  "profileId": "global-6.4.0-v338-2026-08-05",
+  "baselineFiles": [
+    {
+      "role": "e0_inventory",
+      "fileName": "events-e0-baseline.json",
+      "sha256": "da2433ec95f4a9cda547ed45ceec69f2e1b1a65f8bedc1a2d4fd9a7c99b29538"
+    },
+    {
+      "role": "e3_goldens",
+      "fileName": "events-e3-baseline.json",
+      "sha256": "aa94d4fc0b02c61e75d6a46c1c62f6ba4ce9bee115406a6ce3ad57786130151d"
+    },
+    {
+      "role": "e4_native_evidence",
+      "fileName": "events-e4-native-enemy-efficacy-map.json",
+      "sha256": "4beb05a554640b4a2f27602a8bea665a978c7a44f94e5596905b5884629737fb"
+    },
+    {
+      "role": "e6_apk",
+      "fileName": "events-e6-apk-baseline.json",
+      "sha256": "d8be48a04696dfb5831fcc73e2eb90c78d585fd4c5013c90c3997ee781d8c029"
+    }
+  ],
+  "requiredSources": {
+    "database": {
+      "sizeBytes": 95428608,
+      "sha256": "3654eb7db9e18dfe4c238abd02bcc06a688ffa6f30aa1ad93fd108dcfeb78265"
+    },
+    "elf": {
+      "sizeBytes": 95662296,
+      "sha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a"
+    },
+    "apk": {
+      "sizeBytes": 98799013,
+      "sha256": "a51ba758e0555e0a756aa4f20278e6bec25ba6b0c7dcdcd0f4372e0fad159bc0"
+    }
+  }
+}

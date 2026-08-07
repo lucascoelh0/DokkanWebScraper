@@ -1,6 +1,6 @@
 # Database-first events frontier
 
-Status: E0–E7 complete (`0.8.0`); experimental, optional and non-production.
+Status: E0–E8 complete (`0.9.0`); experimental, optional and non-production.
 
 ## Source identity
 
@@ -170,3 +170,15 @@ Event Missions agrees for all 463 category identities, 5,456 mission/category re
 The result has 46 exclusive comparison records: 24 `agreement`, 15 `representation_gain`, zero `confirmed_conflict`, 4 `unknown` and 3 `unjoinable`. Zero conflicts means no production discrepancy was hidden or repaired; it does not establish remote completeness. Pagination is supported only for local cache/output set accounting. Last-page iteration for event stages, Z-Battles and event missions is `partial` because the artifacts do not pin response pagination metadata or optional limits. Quest Story, Dokkan Frontier and DokkanInfo event indexes remain `unknown` for total remote coverage.
 
 The ignored E7 payload is 38,021 bytes, SHA-256 `5fe6d4f819138f1ef96bc70854a1ea26d40c5526c0337db958bca71bf4a56d7f`. Coverage is 453 bytes, SHA-256 `bad5d9f92f103c2ab7d9b684a6c285aadaa8788148df9958dd654e4e6c6f5746`; validation is 147 bytes, SHA-256 `5f2a578d8db9010f8c208387f6826c68731b946885fb6e64d804a63b4083c0fe`. E7 is pinned to E6 SHA-256 `b7eca431b9b3dea6b8fb901ed8d7204ca56b300e5320dfa91e7649731da9da9e` and the same SQLite snapshot. Exact projection, projection hashes, set accounting, source-before/source-after identity and two byte-identical generations pass. Peak working set was 335,511,552 bytes.
+
+## E8 optional sidecars and focused refresh
+
+E8 treats the stabilized E1–E6 payloads as six independently downloadable sidecars rather than assembling another cumulative JSON graph: event catalog, stage topology, encounters, boss/stage mechanics, rewards and asset references. Their combined payload size is 125,431,719 bytes, but the registry only references each immutable payload, coverage and validation artifact by file name, contract version, byte size and SHA-256. The split is 952,729 / 8,039,874 / 21,606,761 / 3,473,577 / 77,316,994 / 14,041,784 bytes respectively. Cross-sidecar lineage is validated through the complete E1→E2→E3/E4→E5→E6 dependency chain; all source validations are green and aggregate dangling IDs are zero.
+
+Delivery state is part of the contract: sidecars are optional, the default pipeline is disabled, production replacement is false, R2 publication is false and Android consumption is false. The registry is additive metadata over ignored experimental artifacts; it copies no SQLite, ELF, APK, image or extracted asset and changes no productive dataset or manifest.
+
+The focused refresh runner executes E0, E1, E2, E3, E4, E5, E6 and E8 sequentially in isolated child processes. It fingerprints database, ELF and APK before any output directory is created, verifies them against an explicit refresh profile, verifies four profile-owned semantic baselines by SHA-256, and fingerprints all three external sources again after the run. A future snapshot must supply a new profile and compatible E0 inventory baseline, E3 representative goldens, E4 bounded native evidence and E6 APK baseline. Passing a new database with the old profile fails before writing; downstream gates accept explicit baseline paths and cannot silently fall back to the repository's old semantics during a focused refresh.
+
+One full refresh into a separate ignored output directory reproduced E0–E6 and every E8 artifact byte-for-byte. Its final isolated per-gate peak working sets were E0 413,962,240; E1 421,298,176; E2 432,951,296; E3 470,843,392; E4 646,746,112; E5 847,204,352; E6 424,292,352; E8 404,852,736 bytes. The maximum remains below 1 GiB; no generation or test ran concurrently.
+
+The refresh profile is 1,320 bytes, SHA-256 `15a33d16724c5dd7f3aaab1e7db3d6e4d695422a665e08693f9e18d9e95b7778`. The ignored registry is 14,750 bytes, SHA-256 `05ebfd1bab51d4b7562ee3b7cc878c87bfda76736266dc3ebb63933c5e8a3f1a`; coverage is 4,593 bytes, SHA-256 `b24c971b4790c6e599a98d7f14afcbd56073c930f90bcca72e0e3c325d764c08`; validation is 287 bytes, SHA-256 `1c38a22450a56ffaea301b388476a545900bbf6adfa39f23ff6fa196a5b606dd`; the deterministic refresh receipt is 1,567 bytes, SHA-256 `44254e4a72fb215019c1ac5c3d94642691fc50231c6017d5e9cd494117424f16`. The E8 manifest itself is SHA-256 `76d1793d66ab53885ceef26da7c96b7cb456da35167ec83d06aa8cf843e799e2`. Two package generations are byte-identical, and the independent full refresh matches the existing artifacts byte-for-byte.

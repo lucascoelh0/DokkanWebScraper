@@ -14,9 +14,9 @@ function memory() { peakWorkingSetBytes = Math.max(peakWorkingSetBytes, process.
 async function fingerprint(path: string) { const metadata = await stat(path), hash = createHash("sha256"); await new Promise<void>((done, reject) => { const stream = createReadStream(path); stream.on("data", chunk => { hash.update(chunk); memory(); }); stream.on("error", reject); stream.on("end", done); }); return { sha256: hash.digest("hex"), sizeBytes: metadata.size, modifiedAtMs: metadata.mtimeMs }; }
 function sourcePath(name: string) { const adjacent = resolve(__dirname, name); return require("fs").existsSync(adjacent) ? adjacent : resolve(__dirname, "..", "..", "database-events", name); }
 
-export async function runEventsE1(options: { databasePath?: string; outputDir?: string; e0Dir?: string } = {}) {
+export async function runEventsE1(options: { databasePath?: string; outputDir?: string; e0Dir?: string; baselinePath?: string } = {}) {
     peakWorkingSetBytes = 0; const databasePath = resolve(options.databasePath ?? DEFAULT_DATABASE), outputDir = resolve(options.outputDir ?? DEFAULT_OUTPUT), e0Dir = resolve(options.e0Dir ?? DEFAULT_OUTPUT);
-    const baseline = JSON.parse(await readFile(sourcePath("events-e0-baseline.json"), "utf8")) as EventsE0Baseline, e0Manifest = JSON.parse(await readFile(resolve(e0Dir, "events-e0-manifest.json"), "utf8")) as EventsE0Manifest;
+    const baseline = JSON.parse(await readFile(options.baselinePath ? resolve(options.baselinePath) : sourcePath("events-e0-baseline.json"), "utf8")) as EventsE0Baseline, e0Manifest = JSON.parse(await readFile(resolve(e0Dir, "events-e0-manifest.json"), "utf8")) as EventsE0Manifest;
     const [e0Bytes, e0CoverageBytes, e0ValidationBytes] = await Promise.all([readFile(resolve(e0Dir, e0Manifest.fileName)), readFile(resolve(e0Dir, e0Manifest.coverage.fileName)), readFile(resolve(e0Dir, e0Manifest.validation.fileName))]);
     const sha = (value: Buffer | string) => createHash("sha256").update(value).digest("hex");
     const e0 = JSON.parse(e0Bytes.toString("utf8")) as EventsE0Dataset, e0Coverage = JSON.parse(e0CoverageBytes.toString("utf8")) as EventsE0Coverage, e0Validation = JSON.parse(e0ValidationBytes.toString("utf8")) as EventsE0Validation;

@@ -18,10 +18,10 @@ async function fingerprint(path: string) { const metadata = await stat(path), ha
 function sourcePath(name: string) { const adjacent = resolve(__dirname, name); return existsSync(adjacent) ? adjacent : resolve(__dirname, "..", "..", "database-events", name); }
 function verifyBytes(bytes: Buffer, expected: { sha256: string; sizeBytes: number }, label: string) { if (bytes.byteLength !== expected.sizeBytes || sha(bytes) !== expected.sha256) throw Error(`E6 ${label} artifact identity`); }
 
-export async function runEventsE6(options: { databasePath?: string; apkPath?: string; outputDir?: string; e5Dir?: string } = {}) {
+export async function runEventsE6(options: { databasePath?: string; apkPath?: string; outputDir?: string; e5Dir?: string; baselinePath?: string; apkBaselinePath?: string } = {}) {
     peakWorkingSetBytes = 0;
     const databasePath = resolve(options.databasePath ?? DEFAULT_DATABASE), apkPath = resolve(options.apkPath ?? DEFAULT_APK), outputDir = resolve(options.outputDir ?? DEFAULT_OUTPUT), e5Dir = resolve(options.e5Dir ?? DEFAULT_OUTPUT);
-    const baseline = JSON.parse(await readFile(sourcePath("events-e0-baseline.json"), "utf8")) as EventsE0Baseline, apkBaselineBytes = await readFile(sourcePath("events-e6-apk-baseline.json")), apkBaseline = JSON.parse(apkBaselineBytes.toString("utf8")) as EventsE6ApkBaseline, apkBaselineSha256 = sha(apkBaselineBytes);
+    const baseline = JSON.parse(await readFile(options.baselinePath ? resolve(options.baselinePath) : sourcePath("events-e0-baseline.json"), "utf8")) as EventsE0Baseline, apkBaselineBytes = await readFile(options.apkBaselinePath ? resolve(options.apkBaselinePath) : sourcePath("events-e6-apk-baseline.json")), apkBaseline = JSON.parse(apkBaselineBytes.toString("utf8")) as EventsE6ApkBaseline, apkBaselineSha256 = sha(apkBaselineBytes);
     const e5Manifest = JSON.parse(await readFile(resolve(e5Dir, "events-e5-manifest.json"), "utf8")) as EventsE5Manifest;
     const [e5Fingerprint, e5CoverageBytes, e5ValidationBytes] = await Promise.all([fingerprint(resolve(e5Dir, e5Manifest.fileName)), readFile(resolve(e5Dir, e5Manifest.coverage.fileName)), readFile(resolve(e5Dir, e5Manifest.validation.fileName))]); memory();
     verifyBytes(e5CoverageBytes, e5Manifest.coverage, "E5 coverage"); verifyBytes(e5ValidationBytes, e5Manifest.validation, "E5 validation");

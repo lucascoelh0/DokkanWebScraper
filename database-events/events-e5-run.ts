@@ -19,10 +19,10 @@ async function fingerprint(path: string) { const metadata = await stat(path), ha
 function sourcePath(name: string) { const adjacent = resolve(__dirname, name); return existsSync(adjacent) ? adjacent : resolve(__dirname, "..", "..", "database-events", name); }
 function verifyArtifact(bytes: Buffer, expected: { sha256: string; sizeBytes: number }, label: string) { if (bytes.byteLength !== expected.sizeBytes || sha(bytes) !== expected.sha256) throw Error(`E5 ${label} artifact identity`); }
 
-export async function runEventsE5(options: { databasePath?: string; outputDir?: string; e4Dir?: string; e2Dir?: string; e1Dir?: string } = {}) {
+export async function runEventsE5(options: { databasePath?: string; outputDir?: string; e4Dir?: string; e2Dir?: string; e1Dir?: string; baselinePath?: string } = {}) {
     peakWorkingSetBytes = 0;
     const databasePath = resolve(options.databasePath ?? DEFAULT_DATABASE), outputDir = resolve(options.outputDir ?? DEFAULT_OUTPUT), e4Dir = resolve(options.e4Dir ?? DEFAULT_OUTPUT), e2Dir = resolve(options.e2Dir ?? DEFAULT_OUTPUT), e1Dir = resolve(options.e1Dir ?? DEFAULT_OUTPUT);
-    const baseline = JSON.parse(await readFile(sourcePath("events-e0-baseline.json"), "utf8")) as EventsE0Baseline;
+    const baseline = JSON.parse(await readFile(options.baselinePath ? resolve(options.baselinePath) : sourcePath("events-e0-baseline.json"), "utf8")) as EventsE0Baseline;
     const e4Manifest = JSON.parse(await readFile(resolve(e4Dir, "events-e4-manifest.json"), "utf8")) as EventsE4Manifest, e2Manifest = JSON.parse(await readFile(resolve(e2Dir, "events-e2-manifest.json"), "utf8")) as EventsE2Manifest, e1Manifest = JSON.parse(await readFile(resolve(e1Dir, "events-e1-manifest.json"), "utf8")) as EventsE1Manifest;
     const [e4Bytes, e4CoverageBytes, e4ValidationBytes, e2Bytes, e1Bytes] = await Promise.all([readFile(resolve(e4Dir, e4Manifest.fileName)), readFile(resolve(e4Dir, e4Manifest.coverage.fileName)), readFile(resolve(e4Dir, e4Manifest.validation.fileName)), readFile(resolve(e2Dir, e2Manifest.fileName)), readFile(resolve(e1Dir, e1Manifest.fileName))]); memory();
     verifyArtifact(e4Bytes, e4Manifest, "E4 payload"); verifyArtifact(e4CoverageBytes, e4Manifest.coverage, "E4 coverage"); verifyArtifact(e4ValidationBytes, e4Manifest.validation, "E4 validation"); verifyArtifact(e2Bytes, e2Manifest, "E2 payload"); verifyArtifact(e1Bytes, e1Manifest, "E1 payload");
