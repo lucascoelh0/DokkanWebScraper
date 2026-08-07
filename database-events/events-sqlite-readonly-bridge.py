@@ -137,6 +137,80 @@ def selected_rows(connection, table, columns, order_by="id"):
     return [dict(zip(columns, row)) for row in connection.execute(f"SELECT {selected} FROM {quote(table)} ORDER BY {quote(order_by)}")]
 
 
+def selected_rows_by_ids(connection, table, columns, ids, id_column="id"):
+    if not ids:
+        return []
+    selected = ",".join(quote(column) for column in columns)
+    placeholders = ",".join("?" for _ in ids)
+    order = quote(id_column) if id_column == "id" or "id" not in columns else f"{quote(id_column)},{quote('id')}"
+    sql = f"SELECT {selected} FROM {quote(table)} WHERE {quote(id_column)} IN ({placeholders}) ORDER BY {order}"
+    return [dict(zip(columns, row)) for row in connection.execute(sql, tuple(sorted(ids)))]
+
+
+def parsed_encounters(connection, table, id_column):
+    result, card_ids, skill_ids, round_set_ids = [], set(), set(), set()
+    for source_id, raw in connection.execute(f"SELECT {quote(id_column)}, enemy_info FROM {quote(table)} ORDER BY {quote(id_column)}"):
+        value = json.loads(raw)
+        battles = []
+        for battle_index, battle in enumerate(value.get("battles") or []):
+            rounds = []
+            for round_index, round_value in enumerate(battle.get("rounds") or []):
+                enemies = []
+                for enemy_index, enemy in enumerate(round_value.get("enemies") or []):
+                    card_id = enemy.get("card_id")
+                    enemy_skill_ids = enemy.get("enemy_skill_ids") or []
+                    round_set_id = enemy.get("enemy_round_skill_set_id")
+                    if card_id is not None:
+                        card_ids.add(card_id)
+                    skill_ids.update(enemy_skill_ids)
+                    if round_set_id is not None:
+                        round_set_ids.add(round_set_id)
+                    enemies.append({
+                        "position": enemy_index,
+                        "cardId": card_id,
+                        "enemySkillIds": enemy_skill_ids,
+                        "enemyRoundSkillSetId": round_set_id,
+                    })
+                rounds.append({"position": round_index, "roundNoRaw": round_value.get("round_no"), "commentRaw": round_value.get("comment"), "enemies": enemies})
+            battles.append({"position": battle_index, "rounds": rounds})
+        result.append({"sourceId": source_id, "displayTypeRaw": value.get("display_type"), "battles": battles})
+    return result, card_ids, skill_ids, round_set_ids
+
+
+def encounters(connection):
+    quest, quest_cards, quest_skills, quest_round_sets = parsed_encounters(connection, "sugoroku_map_enemy_informations", "sugoroku_map_id")
+    origin, origin_cards, origin_skills, origin_round_sets = parsed_encounters(connection, "origin_battle_enemy_informations", "origin_battle_id")
+    z_card_rows = selected_rows(connection, "z_battle_enemy_card_escalations", ["id", "escalation_type", "level", "card_id"])
+    z_skill_rows = selected_rows(connection, "z_battle_enemy_skill_escalations", ["id", "escalation_type", "level", "enemy_skill_id"])
+    card_ids = quest_cards | origin_cards | {row["card_id"] for row in z_card_rows}
+    skill_ids = quest_skills | origin_skills | {row["enemy_skill_id"] for row in z_skill_rows}
+    round_set_ids = quest_round_sets | origin_round_sets
+    card_columns = ["id", "character_id", "card_unique_info_id", "resource_id", "rarity", "element", "lv_max", "hp_init", "hp_max", "atk_init", "atk_max", "def_init", "def_max"]
+    cards = selected_rows_by_ids(connection, "cards", card_columns, card_ids)
+    character_ids = {row["character_id"] for row in cards}
+    characters = selected_rows_by_ids(connection, "characters", ["id", "race", "sex", "size"], character_ids)
+    enemy_skill_columns = ["id", "exec_timing_type", "turn", "is_once", "probability", "causality_conditions", "target_type", "target_value1", "target_value2", "target_value3", "sub_target_type_set_id", "efficacy_type", "eff_value1", "eff_value2", "eff_value3", "efficacy_values", "calc_option"]
+    round_relations = selected_rows_by_ids(connection, "enemy_round_skill_set_relations", ["id", "enemy_round_skill_set_id", "enemy_round_skill_id"], round_set_ids, "enemy_round_skill_set_id")
+    round_skill_ids = {row["enemy_round_skill_id"] for row in round_relations}
+    round_skill_columns = ["id", "exec_timing_type", "calc_option", "turn", "probability", "causality_conditions", "target_type", "target_value1", "target_value2", "target_value3", "sub_target_type_set_id", "efficacy_type", "eff_value1", "eff_value2", "eff_value3", "is_eternal"]
+    return {
+        "questEncounters": quest,
+        "originEncounters": origin,
+        "referencedCards": cards,
+        "referencedCharacters": characters,
+        "referencedEnemySkills": selected_rows_by_ids(connection, "enemy_skills", enemy_skill_columns, skill_ids),
+        "referencedRoundSkillSets": selected_rows_by_ids(connection, "enemy_round_skill_sets", ["id", "effect_description", "cancel_description"], round_set_ids),
+        "referencedRoundSkillSetRelations": round_relations,
+        "referencedRoundSkills": selected_rows_by_ids(connection, "enemy_round_skills", round_skill_columns, round_skill_ids),
+        "zBattleEnemies": selected_rows(connection, "z_battle_enemies", ["id", "z_battle_stage_id", "ordinal_num", "start_level", "end_level", "base_hp", "base_attack", "base_defence", "hp_escalation_type", "attack_escalation_type", "defence_escalation_type", "special_attack_escalation_type", "card_escalation_type", "performance_escalation_type", "skill_escalation_type"]),
+        "zBattleCardEscalations": z_card_rows,
+        "zBattleSkillEscalations": z_skill_rows,
+        "zBattleStatusEscalations": selected_rows(connection, "z_battle_enemy_status_escalations", ["id", "escalation_type", "level", "escalation_value"]),
+        "zBattlePowerupThresholds": selected_rows(connection, "z_battle_powerup_thresholds", ["id", "z_battle_stage_id", "hp", "atk", "def", "special_atk"]),
+        "sdStageEnemyReferences": selected_rows(connection, "sd_stages", ["id", "sd_enemy_table_id"]),
+    }
+
+
 def catalog(connection):
     return {
         "areas": selected_rows(connection, "areas", ["id", "type", "category", "chapter_id", "db_story_id", "name", "event_priority", "all_clear_bonus_stones", "first_released_at", "mission_difficulty"]),
@@ -187,14 +261,14 @@ def topology(connection):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["inventory", "catalog", "topology"])
+    parser.add_argument("command", choices=["inventory", "catalog", "topology", "encounters"])
     parser.add_argument("--database", required=True)
     args = parser.parse_args()
     uri = Path(args.database).resolve().as_uri() + "?mode=ro&immutable=1"
     connection = sqlite3.connect(uri, uri=True)
     connection.execute("PRAGMA query_only=ON")
     try:
-        value = inspect(connection) if args.command == "inventory" else catalog(connection) if args.command == "catalog" else topology(connection)
+        value = inspect(connection) if args.command == "inventory" else catalog(connection) if args.command == "catalog" else topology(connection) if args.command == "topology" else encounters(connection)
         json.dump(value, sys.stdout, ensure_ascii=False, separators=(",", ":"))
     finally:
         connection.close()

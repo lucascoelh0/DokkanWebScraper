@@ -1,0 +1,15 @@
+{
+  "snapshotVersion": "global-6.4.0-v338-2026-08-05",
+  "sourceE2Sha256": "682acb6d0c8ca87cb9fb413fc25de1c68a64ddcc3c9c516561d6c458bb5c93cd",
+  "goldens": {
+    "schemaVersion": 1,
+    "representatives": [
+      { "kind": "quest_multi_battle", "sourceId": "30050", "structuralSha256": "e33ba40a5e45334fc8addc1d8c7110e8ae69a806e27d3b54381b1f2f38dc5a2c" },
+      { "kind": "quest_multi_round", "sourceId": "1330011", "structuralSha256": "b50f0a339022375d78ec2b625b4e2868606214348e9bf3d12b4db054b6377226" },
+      { "kind": "quest_multi_enemy", "sourceId": "20050", "structuralSha256": "cd22449192a4ba9baf025c2af4a10f79ceac8ac25e669926a680118746805048" },
+      { "kind": "origin_multi_round", "sourceId": "20010131", "structuralSha256": "22ef50c529dfbd887cee94b6094035fd57828e1ff8cff2e645ec028db2570678" },
+      { "kind": "z_range_with_card_and_skill_curves", "sourceId": "1", "structuralSha256": "73a0601b82d188e052ae4c23f2ee9970034f76851ea9d0978c1463f167178738" },
+      { "kind": "sd_opaque_enemy_reference", "sourceId": "1", "structuralSha256": "946fdfd6a23aadff00ec9dd8681833d13e57d48ac408b576d4a945b9efe31d8a" }
+    ]
+  }
+}

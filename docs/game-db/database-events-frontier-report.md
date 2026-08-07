@@ -1,6 +1,6 @@
 # Database-first events frontier
 
-Status: E0–E2 complete (`0.3.0`); experimental, optional and non-production.
+Status: E0–E3 complete (`0.4.0`); experimental, optional and non-production.
 
 ## Source identity
 
@@ -90,3 +90,15 @@ Z-Battle uses an independent 233-stage topology with 253 enemy level ranges, 930
 The `origin_battles` table supplies 52 cost/rule records, but its 52 `origin_spot_id` values have no root table and no proved page join; they remain partial non-traditional battles. The `sd` topology reconstructs 48 maps → 231 arenas → 1,169 stages without dangling IDs, while its product-family label and `sd_enemy_table_id` target remain unknown. Budokai and RMBattle roots explicitly report missing stage/server-runtime topology rather than adopting quest semantics.
 
 The ignored E2 topology is 8,039,874 bytes, SHA-256 `682acb6d0c8ca87cb9fb413fc25de1c68a64ddcc3c9c516561d6c458bb5c93cd`. Coverage is 512 bytes, SHA-256 `8771a018dcc6b51981f9060c1ab59093711653ee6b941e510dc1443d5d32997e`; validation is 193 bytes, SHA-256 `d410c5f7980b84cfdc549ecc50e796288a598fbfba930b9d58189b05b6601103`. It is pinned to E1 SHA-256 `567f54e09bb63427e972bf94e785bdacc92d69370c0ce5d09ef0d56a0d2c3100`; exact projection and all bounded joins pass with peak working set 385,429,504 bytes.
+
+## E3 encounter frontier
+
+E3 reconstructs every serialized quest and Origin encounter without flattening its arrays: 5,304 quest encounter rows contain 6,548 battles, 9,377 rounds and 13,769 ordered enemy positions; 52 Origin rows contain 113 enemy positions. Array ordinal, source `round_no`, nullable comment, display type, card ID, ordered skill IDs and nullable round-skill-set ID are separate fields. Quest encounter topology is supported. Origin remains partial because E2 still has no `origin_spot` root or catalog-page join.
+
+The union of quest, Origin and Z-Battle references reaches 6,005 cards, 1,133 master-character rows and 9,117 enemy skills. Every card joins `cards.id`, every card's `character_id` joins `characters.id`, and every enemy-skill reference joins `enemy_skills.id`. The payload retains card resource IDs and the card catalog's raw classification/stat columns, but marks their enemy-runtime application `unknown`: player-card `hp_init/hp_max`, ATK and DEF columns are not promoted to enemy stats. The 31 referenced round-skill sets reconstruct through 121 relation rows to 111 round skills with no dangling ID. Skill parameters are lossless raw records whose mechanic meaning is deferred to E4.
+
+Z-Battle remains an independent range model: 253 enemy ranges retain base HP/ATK/DEF fields, seven raw escalation-type IDs, 1,220 card escalation rows, 5,206 skill escalation rows and 6,061 unique status-curve points. Curves are stored once by escalation-type identity and referenced from ranges, avoiding redundant copies. Base fields and curve points are `partial`; units, formula, precedence and runtime modifiers are explicitly unknown. The 233 power-up threshold rows are also raw/partial. No Z formula is applied.
+
+All 1,169 `sd_stages.sd_enemy_table_id` values are preserved, but the snapshot has no matching SD enemy-table target. They therefore remain opaque partial references rather than synthetic encounters. RMBattle and Budokai also retain their E2 non-traditional boundaries.
+
+The ignored E3 encounter payload is 21,606,761 bytes, SHA-256 `4e29d3f119292f260c3fc82c888530df69ea549d9ed75eb4a5c1edfaadfa15f4`. Coverage is 639 bytes, SHA-256 `52913e8d06a95398fb1d8853a725589fb5e6c77db1f6723ca261e6dbfcfd4308`; validation is 182 bytes, SHA-256 `255fb1d67467155f28572c5f2dd7939caed08679fdd2c74d82c361ecb2e18008`; six repository-pinned representative goldens are 1,084 bytes, SHA-256 `403ca6835f3d93935673f6aac275895b58d0809cf351d835fe429dda1759480e`. E3 is pinned to E2 SHA-256 `682acb6d0c8ca87cb9fb413fc25de1c68a64ddcc3c9c516561d6c458bb5c93cd`. Exact reconstruction covers 5,356 source encounter rows, 13,882 enemy positions and 45,290 validated join edges with zero dangling IDs. Two generations are byte-identical; peak working set is 448,815,104 bytes.
