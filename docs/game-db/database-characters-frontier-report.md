@@ -21,7 +21,7 @@ Status: optional, additive, disabled and non-production.
 | K4 stats and progression | green | 5,759 cards, 10,654 state caps, 12,881 awakening requirements, 15,030 potential nodes and 8,644 raw-only orb items |
 | K5 acquisition and training relations | green | 988 static card-drop references, 292 selected cards with drop evidence, zero F2P/summon assertions and 116,724 explicitly derived training candidates |
 | K6 static asset references | green | 21,207 static references; all action/view joins green; only 75 card resource IDs and no proved local files or delivery |
-| K7 shadow parity | pending | — |
+| K7 shadow parity | green | structural-ID-only shadow join; 56,484 agreements, 14,002 representation gains, four state-proven conflicts and explicit unknown/unjoinable domains |
 | K8 optional sidecars and refresh | pending | — |
 | K9 readiness | pending | — |
 
@@ -69,3 +69,12 @@ K6 artifact: 901,984 bytes gzip / 27,373,521 bytes raw, SHA-256
 Two generations were byte-identical; peak observed RSS was 549,810,176 bytes.
 Only 75 card resource IDs are explicit. Portrait/card-art roles, local files,
 rarity/type frames, Entrance/Domain grouping and delivery remain unknown.
+
+K7 artifact: 121,529 bytes gzip / 6,578,877 bytes raw, SHA-256
+`ff2528f1057c2cd8d7edec0b57a0c7dcc64f955b282f31d124b7d0dad80cd7d5`.
+Two generations were byte-identical; peak observed RSS was 717,873,152 bytes.
+Production joins 4,296 cards and FYI joins 1,625 by structural ID. Four FYI
+cap conflicts retain their exact EZA state and growth-row provenance. Domains
+without a proved shared contract—including portrait role, unawakened class,
+EZA maximum stats and transformation direction—remain unknown. All twelve
+historical audits are derived from K7 or hash-pinned K1/K2/K3/K6/C3 evidence.
