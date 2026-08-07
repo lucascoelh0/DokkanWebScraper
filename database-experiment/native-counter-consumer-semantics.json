@@ -1,0 +1,30 @@
+{
+  "schemaVersion":1,
+  "sourceSha256":"7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope":"efficacy-120-counter-selection-and-enemy-damage-resistance-consumer",
+  "registrationGate":{"callChangeParamOffset":4,"registerOnlyWhenValue":0,"nonzeroBehavior":"skip_registration","fieldSemantic":"unknown"},
+  "normalSelection":{"filters":["efficacy_type_equals_120","deck_index_equals_input"],"ranking":"highest_resist_damage_rate","tieBehavior":"first_in_efficacy_info_order","result":"optional_counter_behavior"},
+  "preference":{"dodgeCandidateEfficacyType":128,"normalCandidateEfficacyType":120,"order":"dodge_then_normal","callerBooleanSemantic":"unknown","cannotAttackAndTriggerCounterGates":"preserved_raw_control_flow"},
+  "damageConsumer":{"bucket":"enemy_source_after_efficacy_13_before_defense_and_guard","formula":"pre_minus_trunc_toward_zero(pre_times_resist_damage_rate_div_100)","rateAbove99SetsFlag":true,"finalHpApplication":"unknown"},
+  "codeRegions":[
+    {"role":"counter_handler","symbol":"_ZN26AbilityEfficacyCounterFunc30callCounterAttackBehaviourFuncEPN19AbilityEfficacyCore15CallChangeParamE","vma":64285212,"sizeBytes":188,"codeSha256":"346883c472ae27ac5812d5708bab4c8568d77326b92a5d1ecb9ae44631fc04c9"},
+    {"role":"counter_choice","symbol":"_ZN15AbilityEfficacy15CounterBehavior24getCounterAttackBehaviorEib","vma":64259020,"sizeBytes":204,"codeSha256":"bc95d024e65f0c81f0df905f270522799e8714898f0b94c614313d6281cab049"},
+    {"role":"dodge_counter_choice","symbol":"_ZN15AbilityEfficacy15CounterBehavior29getDodgeCounterAttackBehaviorEib","vma":64259224,"sizeBytes":164,"codeSha256":"886caafaac82eae5d3f7d56edc8e64c4628c73c5dee6a002fb758da4bfea5b8e"},
+    {"role":"normal_counter_choice","symbol":"_ZN15AbilityEfficacy15CounterBehavior30getNormalCounterAttackBehaviorEi","vma":64259388,"sizeBytes":236,"codeSha256":"5787de3459a31c15de9ec9cd3d53aa2c2b1d157444741db458a0cbd1074d7052"},
+    {"role":"counter_resist_choice","symbol":"_ZN15AbilityEfficacy15CounterBehavior40getCounterAttackBehaviorResistDamageRateEib","vma":64259624,"sizeBytes":204,"codeSha256":"f76e3bdf3cd72767effed3849f29bc60985fc060948cfed444a8e533f51e4d19"},
+    {"role":"normal_counter_resist_choice","symbol":"_ZN15AbilityEfficacy15CounterBehavior46getNormalCounterAttackBehaviorResistDamageRateEi","vma":64259828,"sizeBytes":576,"codeSha256":"af6611063d50c1811ec69a7ab951d5b5712341ca5477e3b438c99fa14c56e883"},
+    {"role":"generic_type_deck_selector","symbol":"local@CounterBehavior+0x568","vma":64260404,"sizeBytes":584,"codeSha256":"452cac93c831cbaaac2ef51893292b5398c5467e648243af199a4aed3f00b967"},
+    {"role":"type120_filter_lambda","symbol":"local@CounterBehavior+0xacc","vma":64261784,"sizeBytes":88,"codeSha256":"54478786d934d83b66c9c82522005575a37c3783ffa66fee3cf97136f475af1a"},
+    {"role":"enemy_damage","symbol":"_ZN17DamageCalculation31calcIntermediateDamageFromEnemyEiiidbbNSt6__ndk110shared_ptrI4CardEEP15InGameCharaDataPN16InGameBattleInfo18InGameBattleRecordEbbbbNS0_8optionalIiEE","vma":48026384,"sizeBytes":784,"codeSha256":"732737e064b1a950a1eac739d88c895e94c8d8b5312e0a1ff4fe728d517c90c4"},
+    {"role":"enemy_attack_setup","symbol":"_ZN30EnemyAttackDamageAndActionBank5setupEP21DPuzzleGameControlleriiNSt6__ndk110shared_ptrIN15PuzzleEnemyData6ActionEEEPiibbRNS2_5queueIiNS2_5dequeIiNS2_9allocatorIiEEEEEERNS2_12basic_stringIcNS2_11char_traitsIcEENSA_IcEEEE","vma":48102712,"sizeBytes":13200,"codeSha256":"129865aa6bfc05c69f0998ba2d12c92eb41440f85d4c636c764cea27b74252aa"}
+  ],
+  "directCalls":[
+    {"role":"enemy_damage_to_counter_resist_choice","callVma":48026684,"callHex":"75369b94","pltVma":88714768,"pltHex":"703200b011da42f910c2169120021fd6","relocation":{"offset":95319472,"type":1026,"symbol":"_ZN15AbilityEfficacy15CounterBehavior40getCounterAttackBehaviorResistDamageRateEib","symbolValue":64259624,"addend":0}},
+    {"role":"enemy_setup_to_counter_choice","callVma":48106796,"callHex":"b9e89a94","pltVma":88715280,"pltHex":"70320090115a43f910c21a9120021fd6","relocation":{"offset":95319728,"type":1026,"symbol":"_ZN15AbilityEfficacy15CounterBehavior24getCounterAttackBehaviorEib","symbolValue":64259020,"addend":0}},
+    {"role":"choice_to_dodge","callVma":64259064,"callHex":"5e025e94","pltVma":88903024,"pltHex":"b03100d011b242f91082159120021fd6","relocation":{"offset":95413600,"type":1026,"symbol":"_ZN15AbilityEfficacy15CounterBehavior29getDodgeCounterAttackBehaviorEib","symbolValue":64259224,"addend":0}},
+    {"role":"choice_to_normal","callVma":64259120,"callHex":"54025e94","pltVma":88903040,"pltHex":"b03100d011b642f910a2159120021fd6","relocation":{"offset":95413608,"type":1026,"symbol":"_ZN15AbilityEfficacy15CounterBehavior30getNormalCounterAttackBehaviorEi","symbolValue":64259388,"addend":0}},
+    {"role":"resist_choice_to_dodge","callVma":64259668,"callHex":"c7015e94","pltVma":88903024,"pltHex":"b03100d011b242f91082159120021fd6","relocation":{"offset":95413600,"type":1026,"symbol":"_ZN15AbilityEfficacy15CounterBehavior29getDodgeCounterAttackBehaviorEib","symbolValue":64259224,"addend":0}},
+    {"role":"resist_choice_to_normal","callVma":64259724,"callHex":"c1015e94","pltVma":88903056,"pltHex":"b03100d011ba42f910c2159120021fd6","relocation":{"offset":95413616,"type":1026,"symbol":"_ZN15AbilityEfficacy15CounterBehavior46getNormalCounterAttackBehaviorResistDamageRateEi","symbolValue":64259828,"addend":0}}
+  ],
+  "unknowns":["call_change_param_offset_4_product_semantic","caller_boolean_semantic","external_counter_activation_event","type_128_sqlite_binding","increase_damage_percent_consumer","battle_script_behavior","probability_application","lifecycle_reset_expiry","final_hp_application"]
+}

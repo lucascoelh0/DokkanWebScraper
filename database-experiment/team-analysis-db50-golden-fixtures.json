@@ -1,0 +1,5 @@
+[
+  {"name":"zero resistance counter","stateKey":"1006791:1006791:seza","ruleKey":"4505:45050010:10004505","passiveSkillId":"10004505","resistDamageRate":0,"increaseDamagePercent":300,"battleScriptNo":2,"probability":100,"calcOption":0,"target":"self","timing":"enemy_attack_pre_damage_calculation_setup"},
+  {"name":"59 percent resistance counter","stateKey":"1017721:1017721:eza","ruleKey":"2516:25160006:6002516","passiveSkillId":"6002516","resistDamageRate":59,"increaseDamagePercent":200,"battleScriptNo":13,"probability":100,"calcOption":0,"target":"self","timing":"enemy_attack_pre_damage_calculation_setup"},
+  {"name":"100 percent resistance probabilistic counter","stateKey":"1032261:1032261:initial","ruleKey":"4751:47510000:4751","passiveSkillId":"4751","resistDamageRate":100,"increaseDamagePercent":300,"battleScriptNo":34,"probability":70,"calcOption":2,"target":"self","timing":"enemy_attack_pre_damage_calculation_setup"}
+]
