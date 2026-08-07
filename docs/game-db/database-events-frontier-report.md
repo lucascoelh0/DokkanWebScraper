@@ -1,6 +1,6 @@
 # Database-first events frontier
 
-Status: E0–E8 complete (`0.9.0`); experimental, optional and non-production.
+Status: E0–E9 complete (`1.0.0`); experimental, optional and non-production.
 
 ## Source identity
 
@@ -182,3 +182,22 @@ The focused refresh runner executes E0, E1, E2, E3, E4, E5, E6 and E8 sequential
 One full refresh into a separate ignored output directory reproduced E0–E6 and every E8 artifact byte-for-byte. Its final isolated per-gate peak working sets were E0 413,962,240; E1 421,298,176; E2 432,951,296; E3 470,843,392; E4 646,746,112; E5 847,204,352; E6 424,292,352; E8 404,852,736 bytes. The maximum remains below 1 GiB; no generation or test ran concurrently.
 
 The refresh profile is 1,320 bytes, SHA-256 `15a33d16724c5dd7f3aaab1e7db3d6e4d695422a665e08693f9e18d9e95b7778`. The ignored registry is 14,750 bytes, SHA-256 `05ebfd1bab51d4b7562ee3b7cc878c87bfda76736266dc3ebb63933c5e8a3f1a`; coverage is 4,593 bytes, SHA-256 `b24c971b4790c6e599a98d7f14afcbd56073c930f90bcca72e0e3c325d764c08`; validation is 287 bytes, SHA-256 `1c38a22450a56ffaea301b388476a545900bbf6adfa39f23ff6fa196a5b606dd`; the deterministic refresh receipt is 1,567 bytes, SHA-256 `44254e4a72fb215019c1ac5c3d94642691fc50231c6017d5e9cd494117424f16`. The E8 manifest itself is SHA-256 `76d1793d66ab53885ceef26da7c96b7cb456da35167ec83d06aa8cf843e799e2`. Two package generations are byte-identical, and the independent full refresh matches the existing artifacts byte-for-byte.
+
+## E9 readiness checkpoint
+
+E9 is a deterministic decision contract over the validated E7 parity evidence and E8 sidecar registry. It does not execute any approved or rejected action. Readiness is intentionally asymmetric: infrastructure that remains disabled and generation pinned to an audited profile are ready; production replacement and consumers that require missing server, runtime, asset-delivery, Android or product authority are not.
+
+| Decision | Status | Binding reason |
+|---|---|---|
+| Merge disabled infrastructure | **GO** | Contracts are additive/optional, lineage and validators fail closed, and default generation/production mutation remain off. This is readiness only; no merge was performed. |
+| Pinned optional generation | **GO** | The focused profile pins DB/ELF/APK and semantic baselines, all artifacts reproduced byte-for-byte, and peak memory stayed below 1 GiB. Each new snapshot requires an explicit compatible profile. |
+| Replace scraped datasets | **NO-GO** | Remote completeness and current server availability are not proved; reward rows and SBR roots contain unjoinable surfaces; consumer migration parity has not run. |
+| Publish R2 | **NO-GO** | Publication was not authorized, and no publisher dry-run, projected-byte report, stable-key plan or cache policy exists for these sidecars. |
+| Android shadow consumption | **NO-GO** | Android is unchanged/out of scope and optional/missing/old-cache compatibility has not been integration tested. |
+| Event/stage screens | **NO-GO** | Current availability, locale/presentation coverage and event-asset delivery are incomplete, and no UI/product contract exists. |
+| Beneficial-character calculation | **NO-GO** | Requested runtime mechanic semantics have zero supported families; category/link relations alone are insufficient and no product algorithm was defined. |
+| Boss/damage simulation | **NO-GO** | Runtime stat scaling, units, precedence, guard/type/damage/AI mechanics and the full combat contract remain incomplete and out of scope. |
+
+The remaining boundaries require a different authority rather than more low-return table-name inference: server API for current availability and SBR/reward identity; an explicit legacy-source contract for remote totals; runtime consumer proof for enemy stats/formulas and boss mechanics; a download manifest or endpoint for event assets; Android integration for shadow consumption; and product decisions for screens and beneficial-character rules. Dynamic capture, Android, R2 and production replacement were not attempted.
+
+The ignored E9 readiness payload is 6,347 bytes, SHA-256 `f7a111572485e0c55758a186d753e40eebf59f2de4c262c192a5ad5cf0cf781c`. Coverage is 202 bytes, SHA-256 `b75da2d23daf6dea0dc0a0edf16c939616f23ab0c7457de6d21fa53bfbc99950`; validation is 149 bytes, SHA-256 `193a416c65e837fe1a76cbf17800908b842492458629eb3e2876811d9cb7cb6a`. It is pinned to E7 SHA-256 `5fe6d4f819138f1ef96bc70854a1ea26d40c5526c0337db958bca71bf4a56d7f`, E8 registry SHA-256 `05ebfd1bab51d4b7562ee3b7cc878c87bfda76736266dc3ebb63933c5e8a3f1a` and refresh-evidence SHA-256 `4bc74227999830503a57d297aad5684711979a94b0d41fb5b33286b30bd93a12`. The validator proves all 12 named before/after artifact pairs against current E0–E8 hashes, the exact gate order and every recorded peak. Exact projection, source evidence and decision-policy validation pass; two generations are byte-identical and the E9 peak working set was 242,884,608 bytes. E0–E9 are complete, making this the campaign's natural checkpoint.

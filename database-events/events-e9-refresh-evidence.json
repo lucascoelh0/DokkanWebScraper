@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "profileId": "global-6.4.0-v338-2026-08-05",
+  "refreshProfileSha256": "15a33d16724c5dd7f3aaab1e7db3d6e4d695422a665e08693f9e18d9e95b7778",
+  "sourceDatabaseSha256": "3654eb7db9e18dfe4c238abd02bcc06a688ffa6f30aa1ad93fd108dcfeb78265",
+  "memoryLimitBytes": 1073741824,
+  "observedMaxPeakWorkingSetBytes": 847204352,
+  "fullRefreshByteIdentical": true,
+  "comparedArtifactCount": 12,
+  "comparedArtifacts": [
+    { "fileName": "events-e0-inventory.json", "beforeSha256": "ec6e8752eca9704cd1d5ed89a75c6144cf056562c74ced77eb0ef1b78503d004", "afterSha256": "ec6e8752eca9704cd1d5ed89a75c6144cf056562c74ced77eb0ef1b78503d004" },
+    { "fileName": "events-e1-catalog.json", "beforeSha256": "567f54e09bb63427e972bf94e785bdacc92d69370c0ce5d09ef0d56a0d2c3100", "afterSha256": "567f54e09bb63427e972bf94e785bdacc92d69370c0ce5d09ef0d56a0d2c3100" },
+    { "fileName": "events-e2-topology.json", "beforeSha256": "682acb6d0c8ca87cb9fb413fc25de1c68a64ddcc3c9c516561d6c458bb5c93cd", "afterSha256": "682acb6d0c8ca87cb9fb413fc25de1c68a64ddcc3c9c516561d6c458bb5c93cd" },
+    { "fileName": "events-e3-encounters.json", "beforeSha256": "4e29d3f119292f260c3fc82c888530df69ea549d9ed75eb4a5c1edfaadfa15f4", "afterSha256": "4e29d3f119292f260c3fc82c888530df69ea549d9ed75eb4a5c1edfaadfa15f4" },
+    { "fileName": "events-e4-mechanics.json", "beforeSha256": "63bd000293123ed8bfec315c124d49d50014f9ff9ab0f1220727d75dbdbcdcaf", "afterSha256": "63bd000293123ed8bfec315c124d49d50014f9ff9ab0f1220727d75dbdbcdcaf" },
+    { "fileName": "events-e5-rewards.json", "beforeSha256": "c2739eda27146de7e8ea16735ceb1f625878615ab8be601534a5dc28950902bf", "afterSha256": "c2739eda27146de7e8ea16735ceb1f625878615ab8be601534a5dc28950902bf" },
+    { "fileName": "events-e6-assets.json", "beforeSha256": "b7eca431b9b3dea6b8fb901ed8d7204ca56b300e5320dfa91e7649731da9da9e", "afterSha256": "b7eca431b9b3dea6b8fb901ed8d7204ca56b300e5320dfa91e7649731da9da9e" },
+    { "fileName": "events-sidecars.json", "beforeSha256": "05ebfd1bab51d4b7562ee3b7cc878c87bfda76736266dc3ebb63933c5e8a3f1a", "afterSha256": "05ebfd1bab51d4b7562ee3b7cc878c87bfda76736266dc3ebb63933c5e8a3f1a" },
+    { "fileName": "events-e8-coverage.json", "beforeSha256": "b24c971b4790c6e599a98d7f14afcbd56073c930f90bcca72e0e3c325d764c08", "afterSha256": "b24c971b4790c6e599a98d7f14afcbd56073c930f90bcca72e0e3c325d764c08" },
+    { "fileName": "events-e8-validation.json", "beforeSha256": "1c38a22450a56ffaea301b388476a545900bbf6adfa39f23ff6fa196a5b606dd", "afterSha256": "1c38a22450a56ffaea301b388476a545900bbf6adfa39f23ff6fa196a5b606dd" },
+    { "fileName": "events-e8-refresh-receipt.json", "beforeSha256": "44254e4a72fb215019c1ac5c3d94642691fc50231c6017d5e9cd494117424f16", "afterSha256": "44254e4a72fb215019c1ac5c3d94642691fc50231c6017d5e9cd494117424f16" },
+    { "fileName": "events-e8-manifest.json", "beforeSha256": "76d1793d66ab53885ceef26da7c96b7cb456da35167ec83d06aa8cf843e799e2", "afterSha256": "76d1793d66ab53885ceef26da7c96b7cb456da35167ec83d06aa8cf843e799e2" }
+  ],
+  "gates": [
+    { "gate": "E0", "payloadFileName": "events-e0-inventory.json", "payloadSha256": "ec6e8752eca9704cd1d5ed89a75c6144cf056562c74ced77eb0ef1b78503d004", "peakWorkingSetBytes": 413962240 },
+    { "gate": "E1", "payloadFileName": "events-e1-catalog.json", "payloadSha256": "567f54e09bb63427e972bf94e785bdacc92d69370c0ce5d09ef0d56a0d2c3100", "peakWorkingSetBytes": 421298176 },
+    { "gate": "E2", "payloadFileName": "events-e2-topology.json", "payloadSha256": "682acb6d0c8ca87cb9fb413fc25de1c68a64ddcc3c9c516561d6c458bb5c93cd", "peakWorkingSetBytes": 432951296 },
+    { "gate": "E3", "payloadFileName": "events-e3-encounters.json", "payloadSha256": "4e29d3f119292f260c3fc82c888530df69ea549d9ed75eb4a5c1edfaadfa15f4", "peakWorkingSetBytes": 470843392 },
+    { "gate": "E4", "payloadFileName": "events-e4-mechanics.json", "payloadSha256": "63bd000293123ed8bfec315c124d49d50014f9ff9ab0f1220727d75dbdbcdcaf", "peakWorkingSetBytes": 646746112 },
+    { "gate": "E5", "payloadFileName": "events-e5-rewards.json", "payloadSha256": "c2739eda27146de7e8ea16735ceb1f625878615ab8be601534a5dc28950902bf", "peakWorkingSetBytes": 847204352 },
+    { "gate": "E6", "payloadFileName": "events-e6-assets.json", "payloadSha256": "b7eca431b9b3dea6b8fb901ed8d7204ca56b300e5320dfa91e7649731da9da9e", "peakWorkingSetBytes": 424292352 },
+    { "gate": "E8", "payloadFileName": "events-sidecars.json", "payloadSha256": "05ebfd1bab51d4b7562ee3b7cc878c87bfda76736266dc3ebb63933c5e8a3f1a", "peakWorkingSetBytes": 404852736 }
+  ]
+}

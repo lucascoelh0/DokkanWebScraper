@@ -24,6 +24,7 @@
     "run:database-events-e6": "npx ts-node database-events/events-e6-run.ts",
     "run:database-events-e7": "npx ts-node database-events/events-e7-run.ts",
     "run:database-events-e8": "npx ts-node database-events/events-e8-run.ts",
+    "run:database-events-e9": "npx ts-node database-events/events-e9-run.ts",
     "run:database-events-refresh": "npx ts-node database-events/events-refresh-run.ts",
     "run:game-db-init-first-party-export": "npx ts-node game-db/game-db-init-first-party-export.ts",
     "run:game-db-pull-emulator-database-artifact": "npx ts-node game-db/game-db-pull-emulator-database-artifact.ts",
