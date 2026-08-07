@@ -23,7 +23,7 @@ Status: optional, additive, disabled and non-production.
 | K6 static asset references | green | 21,207 static references; all action/view joins green; only 75 card resource IDs and no proved local files or delivery |
 | K7 shadow parity | green | structural-ID-only shadow join; 56,484 agreements, 14,002 representation gains, four state-proven conflicts and explicit unknown/unjoinable domains |
 | K8 optional sidecars and refresh | green | eight content-addressed optional sidecars; six supported-only consumer scopes; exact SQLite/DB1/ELF/C1–C3 profile and fail-before-write receipt |
-| K9 readiness | pending | — |
+| K9 readiness | green | infrastructure-only readiness: two narrow GOs, twelve prerequisite-backed NO-GOs and zero authority promotion |
 
 ## K0 boundary
 
@@ -87,3 +87,18 @@ sidecars. Six declare supported-only consumer scopes; K6 and K7 remain
 audit-only. Absence preserves production. The focused finalizer verifies the
 exact SQLite, DB1, ELF, C1–C3 and K0–K7 identities before any K8 write and does
 not execute DB0–DB50 or regenerate prior gates.
+
+## K9 readiness
+
+K9 artifact: 3,668 bytes gzip / 10,195 bytes raw, SHA-256
+`db0f86e858b091521ab72ae72b89d2531abb0fcd1bf684877bcb991197d5ff85`.
+Two generations were byte-identical; peak observed RSS was 42,659,840 bytes.
+
+Only disabled-infrastructure merge and exact-profile optional generation are
+GO. Production replacement for identity/state, taxonomy, skills, forms or
+assets; removal of FYI/DokkanInfo; R2; Android shadow consumption; Team Builder
+consumption; and combat calculation are separate NO-GOs with explicit
+prerequisites. No authority was promoted. The complete decision matrix,
+remaining server/FYI/DokkanInfo dependencies, four confirmed FYI cap conflicts,
+field-authority strategy and per-sidecar sizes are in
+`specs/database-characters-k9.md`.
