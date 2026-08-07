@@ -167,3 +167,28 @@ S3 gate decisions:
 - **NO-GO** — promote Z-Battle candidate joins until remote reward-ID semantics are proved;
 - **NO-GO** — infer quantity, chance, repeatability or server-grant state;
 - **NO-GO** — replace the static E5 reward contract or activate production consumers.
+
+## S4 asset delivery
+
+S4 makes no network requests and downloads zero bytes. Before any possible batch it records a projection of 0 bytes and 0 requests for the selected plan. A full-catalog projection remains `unknown` because no captured manifest supplies entry sizes; therefore no sample batch is authorized. This satisfies the collection ceiling by stopping before an unprojectable transfer rather than guessing its size.
+
+Static official evidence exposes `client_assets/database`, `client_assets/new_version_exists`, `client_assets/login_movies`, the local filename `client_assets_splited.json`, an `asset_no` field literal, version header names and 94 unique relative CPK path literals. These establish candidate surfaces and container-key shapes only. There are no captured split-manifest bytes, manifest schema, current asset host, per-entry size/hash semantics or credential-free request contract. The official source remains `discover_only`.
+
+The two community mirrors have deterministic repository URL templates (`dokkaninfo.com/assets/global/en/{typed_asset_path}` and `cdn.dokkan.fyi/assets/en/{typed_asset_path}`), but remain `reference_only`. Their templates do not prove official completeness, current version, immutable bytes, container mapping or hashes, and E6 database paths are never joined by simply adding a prefix.
+
+Version scopes remain separated:
+
+- current S4 checkpoint: APK `6.4.0-v338`, `supported` only as pinned APK/build identity;
+- historical rooted export at 2026-06-28: database `1782367825`, assets `1782367204`, and APK metadata `6.2.5-7bd58ad32a3f187fe638587d4277a850ec8c1d67e04d9aa21433a931211621c1`, all `partial` and never presented as current server versions.
+
+E6 contributes 2,691 path references, 6,208 typed numeric references and 41,198 entity bindings. S4 finds zero direct APK-path joins, zero bundled candidates and zero captured-manifest joins, so all 8,899 unique delivery relations remain unresolved. The base APK contains 122 asset entries and 73 CPK containers; its seven already-local representative samples total 6,508,096 bytes and retain E6's exact SHA-256 values. Those samples prove bootstrap APK bytes only, not remote event-asset delivery.
+
+The reviewed S4 sidecar is 28,424 bytes, SHA-256 `1c71833393cdf6e10f43ec37518bf962e914b42018dd2ce0bd626db7a82e624a`; peak working set was 442,257,408 bytes.
+
+S4 gate decisions:
+
+- **GO** — commit disabled static inventory of versions, candidate manifests, CPK keys and local APK samples;
+- **NO-GO** — perform a network sample while official paths are `discover_only` and mirrors `reference_only`;
+- **NO-GO** — project or download a full asset catalog without a captured size-bearing manifest;
+- **NO-GO** — join any E6 reference to delivery by filename convention or community prefix;
+- **NO-GO** — claim current database/asset versions, entry hashes, CDN immutability or asset completeness.
