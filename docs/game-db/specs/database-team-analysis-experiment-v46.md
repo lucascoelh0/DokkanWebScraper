@@ -1,0 +1,9 @@
+# Database Team Analysis experiment v46 (DB47)
+
+Status: experimental, non-production. Contract version: `0.46.0`.
+
+DB47 maps raw execution timing `15` through a single literal call to the native equality filter. `DPuzzleGameLayer::onPuzzleAttackMoveEnd` calls the ball-value calculation, dispatches a controller virtual callback and then invokes `AcquiredEnergyBallController::callAbilityStatusExec`; that owner reads the current runtime character deck index and executes `(category 0, timing 15, SkillType 2)`. The bounded event is `puzzle_attack_move_end_after_controller_callback`.
+
+The event name is supported by the complete caller/owner sequence, exact instructions and code-region hashes, not by either symbol name alone. Direct-call PLT stubs are fixed to their `R_AARCH64_JUMP_SLOT` relocations and symbols. The indirect callback is fixed to the `AcquiredEnergyBallController` vtable slot and its `R_AARCH64_ABS64` relocation. Its handler symbol is recorded, but its effects and animation completion remain unknown. The event does not imply an attack executed or landed, HP application, ball-type identity, a damage calculation bucket, duration, recurrence or stacking. DB47 promotes 823 rules / 992 effects across 799 passive IDs and 201 states. Supported timing coverage becomes 13,677 of 14,301 rules, leaving 624 unknown.
+
+The competing mitigation investigation examined efficacy type `13`: 1,538 SQLite rows feed a native handler that reads `eff_value1` as float32, and the bounded aggregate folds matching deck/category records into a value clamped to `0..100`. It was deferred because this short investigation did not yet follow the aggregate return into the final damage operand. Promoting the fold as final damage reduction would conflate stored value, returned rate, unit and downstream calculation order.

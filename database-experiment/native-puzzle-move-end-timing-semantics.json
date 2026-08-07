@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "execution-timing-15-puzzle-attack-move-end",
+  "regions": [
+    { "role": "execution_filter", "symbol": "_ZN14AbilityManager21callAbilityStatusExecEi17SkillCategoryType19SkillExecTimingType9SkillTypeN13AbilityStatus14AddtionalParamE", "vma": 64372436, "sizeBytes": 1068, "codeSha256": "e479bd26a683eef5f1a8a035c4c99e83cd4e4a1de0ab4a716f5842df7e8aa707" },
+    { "role": "timing_owner", "symbol": "_ZN28AcquiredEnergyBallController21callAbilityStatusExecEv", "vma": 48218256, "sizeBytes": 452, "codeSha256": "c2a45117e6a5085fa5186c4b6f394edc2f5a1cbcec268df3d33ea6ae097b0fc8" },
+    { "role": "move_end_caller", "symbol": "_ZN16DPuzzleGameLayer21onPuzzleAttackMoveEndEv", "vma": 47653552, "sizeBytes": 928, "codeSha256": "47065a64361f751c5e5d4c49bb90b2c63025ac780f04782bbb7c614feb6447a5" },
+    { "role": "controller_virtual_callback_handler", "symbol": "_ZN28AcquiredEnergyBallController18playBallAnimationsEPN7cocos2d5LayerE", "vma": 48218708, "sizeBytes": 856, "codeSha256": "feca82becb01a8cac38afa4f36a7e0ef08fe095ad30cb69da008d61a4907f8db" }
+  ],
+  "event": {
+    "raw": 15,
+    "name": "puzzle_attack_move_end_after_controller_callback",
+    "sequence": "on_puzzle_attack_move_end_after_calc_absorb_ball_value_and_controller_virtual_callback_before_footer_and_remaining_charge_updates",
+    "categoryRaw": 0,
+    "skillTypeRaw": 2,
+    "deckIndexSource": "current_character_runtime_deck_index",
+    "instructions": [
+      { "role": "ball_value_calculation_call", "vma": 47653596, "hex": "4dad9b94" },
+      { "role": "controller_vtable_load", "vma": 47653608, "hex": "080040f9" },
+      { "role": "controller_vtable_slot_load", "vma": 47653612, "hex": "080940f9" },
+      { "role": "controller_virtual_callback_call", "vma": 47653616, "hex": "00013fd6" },
+      { "role": "timing_owner_call", "vma": 47653624, "hex": "4aad9b94" },
+      { "role": "timing_literal", "vma": 48218488, "hex": "e3018052" },
+      { "role": "skill_type_literal", "vma": 48218492, "hex": "44008052" },
+      { "role": "execution_filter_call", "vma": 48218496, "hex": "b8709a94" }
+    ]
+  },
+  "directCalls": [
+    { "role": "ball_value_calculation_call", "callVma": 47653596, "callHex": "4dad9b94", "pltVma": 88463376, "pltHex": "503300f0115a45f910c22a9120021fd6", "relocation": { "offset": 95193776, "type": 1026, "symbol": "_ZN28AcquiredEnergyBallController19calcAbsorbBallValueEv", "symbolValue": 48217016, "addend": 0 } },
+    { "role": "timing_owner_call", "callVma": 47653624, "callHex": "4aad9b94", "pltVma": 88463392, "pltHex": "503300f0115e45f910e22a9120021fd6", "relocation": { "offset": 95193784, "type": 1026, "symbol": "_ZN28AcquiredEnergyBallController21callAbilityStatusExecEv", "symbolValue": 48218256, "addend": 0 } },
+    { "role": "execution_filter_call", "callVma": 48218496, "callHex": "b8709a94", "pltVma": 88704096, "pltHex": "703200d0116e40f91062039120021fd6", "relocation": { "offset": 95314136, "type": 1026, "symbol": "_ZN14AbilityManager21callAbilityStatusExecEi17SkillCategoryType19SkillExecTimingType9SkillTypeN13AbilityStatus14AddtionalParamE", "symbolValue": 64372436, "addend": 0 } }
+  ],
+  "virtualCall": {
+    "callVma": 47653616,
+    "callHex": "00013fd6",
+    "vptrSlotOffset": 16,
+    "vtable": { "symbol": "_ZTV28AcquiredEnergyBallController", "vma": 89410432, "sizeBytes": 40, "rawSha256": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb" },
+    "relocation": { "offset": 89410464, "type": 257, "symbol": "_ZN28AcquiredEnergyBallController18playBallAnimationsEPN7cocos2d5LayerE", "symbolValue": 48218708, "addend": 0 }
+  },
+  "doesNotImply": ["damage_calculation_bucket", "attack_executed", "attack_landed", "hp_applied", "ball_type_identity", "animation_completion", "duration", "recurrence", "stacking"],
+  "unknowns": ["controller_virtual_callback_effects", "ball_value_unit_and_population", "probability_order", "status_reset_and_expiry"]
+}
