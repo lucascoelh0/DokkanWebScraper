@@ -22,7 +22,7 @@ Status: optional, additive, disabled and non-production.
 | K5 acquisition and training relations | green | 988 static card-drop references, 292 selected cards with drop evidence, zero F2P/summon assertions and 116,724 explicitly derived training candidates |
 | K6 static asset references | green | 21,207 static references; all action/view joins green; only 75 card resource IDs and no proved local files or delivery |
 | K7 shadow parity | green | structural-ID-only shadow join; 56,484 agreements, 14,002 representation gains, four state-proven conflicts and explicit unknown/unjoinable domains |
-| K8 optional sidecars and refresh | pending | — |
+| K8 optional sidecars and refresh | green | eight content-addressed optional sidecars; six supported-only consumer scopes; exact SQLite/DB1/ELF/C1–C3 profile and fail-before-write receipt |
 | K9 readiness | pending | — |
 
 ## K0 boundary
@@ -78,3 +78,12 @@ cap conflicts retain their exact EZA state and growth-row provenance. Domains
 without a proved shared contract—including portrait role, unawakened class,
 EZA maximum stats and transformation direction—remain unknown. All twelve
 historical audits are derived from K7 or hash-pinned K1/K2/K3/K6/C3 evidence.
+
+K8 receipt: 3,158 bytes gzip / 10,950 bytes raw, SHA-256
+`f91c894a7ebbd6a48380f73c68282e2f4f12c337367ff3b1de5cf07f01c19798`.
+Two generations were byte-identical; peak observed RSS was 103,231,488 bytes.
+The registry projects 10,166,877 compressed bytes across eight independent
+sidecars. Six declare supported-only consumer scopes; K6 and K7 remain
+audit-only. Absence preserves production. The focused finalizer verifies the
+exact SQLite, DB1, ELF, C1–C3 and K0–K7 identities before any K8 write and does
+not execute DB0–DB50 or regenerate prior gates.
