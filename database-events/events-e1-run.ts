@@ -1,0 +1,33 @@
+import { createHash } from "crypto";
+import { createReadStream } from "fs";
+import { mkdir, readFile, stat, writeFile } from "fs/promises";
+import { resolve } from "path";
+import { buildEventsE1Coverage, buildEventsE1Dataset } from "./events-e1-builder";
+import { EventsE0Baseline, EventsE0Coverage, EventsE0Dataset, EventsE0Manifest, EventsE0Validation } from "./events-e0-contract";
+import { EventsE1Manifest, EventsE1Observation } from "./events-e1-contract";
+import { runEventsSqliteBridge } from "./events-sqlite-adapter";
+import { validateEventsE1Dataset } from "./events-e1-validator";
+
+const DEFAULT_DATABASE = "D:/Dokkan/database/decrypted/dokkan-global-current.db", DEFAULT_OUTPUT = resolve(process.cwd(), "data", "database-events"), MEMORY_LIMIT = 1024 * 1024 * 1024;
+let peakWorkingSetBytes = 0;
+function memory() { peakWorkingSetBytes = Math.max(peakWorkingSetBytes, process.memoryUsage().rss, process.resourceUsage().maxRSS * 1024); if (peakWorkingSetBytes > MEMORY_LIMIT) throw Error(`E1 memory limit exceeded ${peakWorkingSetBytes}`); }
+async function fingerprint(path: string) { const metadata = await stat(path), hash = createHash("sha256"); await new Promise<void>((done, reject) => { const stream = createReadStream(path); stream.on("data", chunk => { hash.update(chunk); memory(); }); stream.on("error", reject); stream.on("end", done); }); return { sha256: hash.digest("hex"), sizeBytes: metadata.size, modifiedAtMs: metadata.mtimeMs }; }
+function sourcePath(name: string) { const adjacent = resolve(__dirname, name); return require("fs").existsSync(adjacent) ? adjacent : resolve(__dirname, "..", "..", "database-events", name); }
+
+export async function runEventsE1(options: { databasePath?: string; outputDir?: string; e0Dir?: string } = {}) {
+    peakWorkingSetBytes = 0; const databasePath = resolve(options.databasePath ?? DEFAULT_DATABASE), outputDir = resolve(options.outputDir ?? DEFAULT_OUTPUT), e0Dir = resolve(options.e0Dir ?? DEFAULT_OUTPUT);
+    const baseline = JSON.parse(await readFile(sourcePath("events-e0-baseline.json"), "utf8")) as EventsE0Baseline, e0Manifest = JSON.parse(await readFile(resolve(e0Dir, "events-e0-manifest.json"), "utf8")) as EventsE0Manifest;
+    const [e0Bytes, e0CoverageBytes, e0ValidationBytes] = await Promise.all([readFile(resolve(e0Dir, e0Manifest.fileName)), readFile(resolve(e0Dir, e0Manifest.coverage.fileName)), readFile(resolve(e0Dir, e0Manifest.validation.fileName))]);
+    const sha = (value: Buffer | string) => createHash("sha256").update(value).digest("hex");
+    const e0 = JSON.parse(e0Bytes.toString("utf8")) as EventsE0Dataset, e0Coverage = JSON.parse(e0CoverageBytes.toString("utf8")) as EventsE0Coverage, e0Validation = JSON.parse(e0ValidationBytes.toString("utf8")) as EventsE0Validation;
+    if (e0Manifest.contractVersion !== "0.1.0" || e0Manifest.generatedAtPolicy !== "pinned_to_source_snapshot_for_reproducible_bytes" || e0Manifest.generatedAt !== baseline.generatedAt || e0Manifest.sourceSnapshotVersion !== baseline.snapshotVersion || e0Bytes.byteLength !== e0Manifest.sizeBytes || sha(e0Bytes) !== e0Manifest.sha256 || e0CoverageBytes.byteLength !== e0Manifest.coverage.sizeBytes || sha(e0CoverageBytes) !== e0Manifest.coverage.sha256 || e0ValidationBytes.byteLength !== e0Manifest.validation.sizeBytes || sha(e0ValidationBytes) !== e0Manifest.validation.sha256 || e0.contract !== "dokkan-events-database-first-inventory" || e0.contractVersion !== "0.1.0" || e0.sourceSnapshotVersion !== baseline.snapshotVersion || e0.sourceDatabase.sha256 !== baseline.sourceDatabase.sha256 || e0.sourceDatabase.schemaSha256 !== baseline.sourceDatabase.schemaSha256 || e0.tables.length !== baseline.sourceDatabase.tableCount || e0Coverage.tableCount !== e0.tables.length || !e0Validation.valid || e0Validation.losslessTableCount !== e0.tables.length) throw Error("E1 E0 lineage");
+    const before = await fingerprint(databasePath); if (before.sha256 !== baseline.sourceDatabase.sha256 || before.sizeBytes !== baseline.sourceDatabase.sizeBytes) throw Error("E1 pinned database identity");
+    const observation = await runEventsSqliteBridge<EventsE1Observation>("catalog", databasePath, memory); memory();
+    const dataset = buildEventsE1Dataset({ observation, generatedAt: baseline.generatedAt, sourceSnapshotVersion: baseline.snapshotVersion, sourceDatabaseSha256: before.sha256, sourceE0Sha256: e0Manifest.sha256 }), coverage = buildEventsE1Coverage(dataset), validation = validateEventsE1Dataset(dataset, observation, { generatedAt: baseline.generatedAt, sourceSnapshotVersion: baseline.snapshotVersion, sourceDatabaseSha256: before.sha256, sourceE0Sha256: e0Manifest.sha256 });
+    if (!validation.valid) throw Error(`E1 validation ${JSON.stringify(validation.failures)}`);
+    const after = await fingerprint(databasePath); if (JSON.stringify(before) !== JSON.stringify(after)) throw Error("E1 read-only source guarantee");
+    const payloadText = `${JSON.stringify(dataset, null, 2)}\n`, coverageText = `${JSON.stringify(coverage, null, 2)}\n`, validationText = `${JSON.stringify(validation, null, 2)}\n`, manifest: EventsE1Manifest = { schemaVersion: 1, contractVersion: "0.2.0", generatedAt: dataset.generatedAt, generatedAtPolicy: dataset.generatedAtPolicy, sourceSnapshotVersion: dataset.sourceSnapshotVersion, fileName: "events-e1-catalog.json", compression: "none", sha256: sha(payloadText), sizeBytes: Buffer.byteLength(payloadText), entityCount: dataset.catalog.length, sourceDatabaseSha256: dataset.sourceDatabaseSha256, sourceE0Sha256: dataset.sourceE0.sha256, coverage: { fileName: "events-e1-coverage.json", sha256: sha(coverageText), sizeBytes: Buffer.byteLength(coverageText) }, validation: { fileName: "events-e1-validation.json", sha256: sha(validationText), sizeBytes: Buffer.byteLength(validationText) } };
+    await mkdir(outputDir, { recursive: true }); await Promise.all([writeFile(resolve(outputDir, manifest.fileName), payloadText), writeFile(resolve(outputDir, manifest.coverage.fileName), coverageText), writeFile(resolve(outputDir, manifest.validation.fileName), validationText), writeFile(resolve(outputDir, "events-e1-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`)]); memory();
+    return { dataset, coverage, validation, manifest, peakWorkingSetBytes };
+}
+if (require.main === module) runEventsE1().then(value => console.log(JSON.stringify({ coverage: value.coverage, validation: value.validation, manifest: value.manifest, peakWorkingSetBytes: value.peakWorkingSetBytes }, null, 2))).catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,6 +1,6 @@
 # Database-first events frontier
 
-Status: E0 complete (`0.1.0`); experimental, optional and non-production.
+Status: E0–E1 complete (`0.2.0`); experimental, optional and non-production.
 
 ## Source identity
 
@@ -65,4 +65,16 @@ Raw area-family volumes deliberately retain the source enums:
 
 ## Gate boundary
 
-E0 creates no productive event payload and does not consume scraped pages. It labels validated structural tables as `supported`, schema-only candidates as `partial`, and everything not yet classified for the event domain as `unknown`. E1 may promote catalog semantics only after structural consumers or joins provide evidence.
+E0 creates no productive event payload and does not consume scraped pages. It labels validated structural tables as `supported`, schema-only candidates as `partial`, and everything not yet classified for the event domain as `unknown`. E1 promotes only catalog semantics backed by those structural consumers or joins.
+
+## E1 catalog frontier
+
+E1 projects 1,178 structurally identified catalog entities from ten table domains: 674 areas, 7 chapters, 4 DB-story groups, 233 Z-Battle stages, 63 Budokai records, 2 origin series, 3 origin episodes, 13 origin pages, 48 `sd` maps and 131 `sd` packs. Identity is always `table-domain + numeric ID`; embedded names and descriptions are presentation with locale explicitly unverified. Per-entity source table/row provenance is retained, including both stage and view rows for Z-Battle.
+
+All 113 catalog relations join without dangling IDs: area→chapter, area→DB-story group, related Z-Battle stage, origin episode→series and origin page→episode. Numeric area categories and raw Z-Battle types remain unlabeled. Z-Battle rows are `partial` because the database view provides enemy display text rather than an event title. Origin pages and `sd` maps are also `partial` because no title is present. Overall status is 753 supported and 425 partial, with 61 missing presentations.
+
+Availability is a separate 310-record channel. Chapter open/start values, Z-Battle start/end/key windows and Budokai phase dates are marked only as `database_embedded_schedule_hint_not_server_current_availability`; they never decide whether an event is currently playable. `areas.first_released_at` remains static release metadata rather than schedule.
+
+The snapshot contains 98 distinct `rmbattle_id` values across 2,174 mission rows but no `rmbattles` root table, so those identities remain an opaque `partial` family without title, schedule or topology. `score_benefits` (706 rows), `special_bonuses` (19), `genkai_gimmick_sub_categories` (22) and the RMBattle mission rows remain unrooted candidates. No product label such as Virtual Clash, Burst Mode or Dokkan Frontier is assigned from table names alone.
+
+The ignored E1 catalog is 952,729 bytes, SHA-256 `567f54e09bb63427e972bf94e785bdacc92d69370c0ce5d09ef0d56a0d2c3100`. Coverage is 512 bytes, SHA-256 `cae7cd60a624daa8f7a35dbd2a59f5a42f0d7b40ba7a6a4982df031d167ef5c6`; validation is 184 bytes, SHA-256 `01ce7bea0676df42ff69c54e6f3cc985ce293dd33e2b9371775e803401abb45e`. The payload is pinned to E0 SHA-256 `ec6e8752eca9704cd1d5ed89a75c6144cf056562c74ced77eb0ef1b78503d004` and the same SQLite identity. Its focused peak working set is 335,581,184 bytes.

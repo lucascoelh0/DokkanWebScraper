@@ -132,17 +132,54 @@ def inspect(connection):
     }
 
 
+def selected_rows(connection, table, columns, order_by="id"):
+    selected = ",".join(quote(column) for column in columns)
+    return [dict(zip(columns, row)) for row in connection.execute(f"SELECT {selected} FROM {quote(table)} ORDER BY {quote(order_by)}")]
+
+
+def catalog(connection):
+    return {
+        "areas": selected_rows(connection, "areas", ["id", "type", "category", "chapter_id", "db_story_id", "name", "event_priority", "all_clear_bonus_stones", "first_released_at", "mission_difficulty"]),
+        "chapters": selected_rows(connection, "chapters", ["id", "name", "open_at"]),
+        "chapterProperties": selected_rows(connection, "chapter_properties", ["id", "chapter_id", "start_at"]),
+        "dbStories": selected_rows(connection, "db_stories", ["id", "name", "priority"]),
+        "zBattleStages": selected_rows(connection, "z_battle_stages", ["id", "type", "priority", "related_z_battle_stage_id", "start_at", "end_at", "eventkagi_start_at", "eventkagi_end_at", "enable_battle_auto"]),
+        "zBattleStageViews": selected_rows(connection, "z_battle_stage_views", ["id", "z_battle_stage_id", "enemy_name", "enemy_nickname", "enemy_resource_id"], "z_battle_stage_id"),
+        "budokais": selected_rows(connection, "budokais", ["id", "name", "description", "start_at", "end_at", "collecting_end_at", "result_end_at", "enable_battle_auto"]),
+        "originSeries": selected_rows(connection, "origin_series", ["id", "name", "priority"]),
+        "originEpisodes": selected_rows(connection, "origin_episodes", ["id", "origin_series_id", "name", "priority"]),
+        "originPages": selected_rows(connection, "origin_pages", ["id", "origin_episode_id", "page_number"]),
+        "sdMaps": selected_rows(connection, "sd_maps", ["id"]),
+        "sdPacks": selected_rows(connection, "sd_packs", ["id", "name", "description"]),
+        "opaqueRootFamilies": [
+            {
+                "family": "rmbattle",
+                "sourceTable": "rmbattle_missions",
+                "sourceColumn": "rmbattle_id",
+                "ids": [row[0] for row in connection.execute("SELECT DISTINCT rmbattle_id FROM rmbattle_missions ORDER BY rmbattle_id")],
+                "sourceRowCount": connection.execute("SELECT COUNT(*) FROM rmbattle_missions").fetchone()[0],
+                "missingRootTable": True,
+            }
+        ],
+        "unrootedCandidateTables": [
+            {"table": name, "rowCount": connection.execute(f"SELECT COUNT(*) FROM {quote(name)}").fetchone()[0]}
+            for name in ["score_benefits", "special_bonuses", "genkai_gimmick_sub_categories", "rmbattle_missions"]
+        ],
+    }
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["inventory"])
+    parser.add_argument("command", choices=["inventory", "catalog"])
     parser.add_argument("--database", required=True)
     args = parser.parse_args()
     uri = Path(args.database).resolve().as_uri() + "?mode=ro&immutable=1"
     connection = sqlite3.connect(uri, uri=True)
     connection.execute("PRAGMA query_only=ON")
     try:
-        json.dump(inspect(connection), sys.stdout, ensure_ascii=False, separators=(",", ":"))
+        value = inspect(connection) if args.command == "inventory" else catalog(connection)
+        json.dump(value, sys.stdout, ensure_ascii=False, separators=(",", ":"))
     finally:
         connection.close()
 
