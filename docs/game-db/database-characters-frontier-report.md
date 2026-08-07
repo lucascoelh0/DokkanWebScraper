@@ -18,7 +18,7 @@ Status: optional, additive, disabled and non-production.
 | K1 state graph and awakenings | green | 10,654 state nodes; 12,360 progression/awakening/form edges; 329,730-byte gzip |
 | K2 taxonomy and presentation | green | 98 categories, 133 links, 1,330 levels and 2,064 raw effect rows; 511,837-byte gzip |
 | K3 structured skills | green | 10,654 state records backed by 107,070 normalized raw rows; all 1,350 C2 rules structurally joined with zero forbidden consumer fields |
-| K4 stats and progression | pending | — |
+| K4 stats and progression | green | 5,759 cards, 10,654 state caps, 12,881 awakening requirements, 15,030 potential nodes and 8,644 raw-only orb items |
 | K5 acquisition and training relations | pending | — |
 | K6 static asset references | pending | — |
 | K7 shadow parity | pending | — |
@@ -51,3 +51,9 @@ K3 artifact: 2,707,309 bytes gzip / 81,356,220 bytes raw, SHA-256
 Two generations were byte-identical; peak observed RSS was 856,489,984 bytes.
 Raw skill structure and supported mechanics are separate channels. The latter
 is an exact, pinned C2 projection and contains no partial/unknown dimensions.
+
+K4 artifact: 3,486,645 bytes gzip / 90,774,310 bytes raw, SHA-256
+`9d40af1da053f008730992537d0a349e94ca36d88a6584d7e7086faa9ee82c0e`.
+Two generations were byte-identical; peak observed RSS was 820,379,648 bytes.
+Player-card, enemy-runtime, displayed and calculated-combat stat domains remain
+strictly separate. Potential and equipment limitation semantics are raw-only.
