@@ -1,9 +1,10 @@
 import { createHash } from "crypto";
 import { createReadStream } from "fs";
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import { resolve } from "path";
 import { createGunzip } from "zlib";
 import { DatabaseCardRecord } from "../database-experiment/contract";
+import { ReadOnlySqliteAdapter, SqliteRow } from "../database-experiment/sqlite-readonly-adapter";
 
 export const CHARACTER_SOURCE_PROFILE = {
     snapshotVersion: "global-6.4.0-v338-2026-08-05",
@@ -87,6 +88,21 @@ export async function readCharacterSourceInput(inputDir: string): Promise<Charac
         uncompressedSizeBytes: manifest.uncompressedSizeBytes,
         cardCount: manifest.cardCount,
     };
+}
+
+export async function assertPinnedDatabaseFile(databasePath: string): Promise<void> {
+    const resolvedPath = resolve(databasePath);
+    const hash = await sha256File(resolvedPath);
+    const { size } = await stat(resolvedPath);
+    if (hash !== CHARACTER_SOURCE_PROFILE.databaseSha256 || size !== CHARACTER_SOURCE_PROFILE.databaseSizeBytes) {
+        throw new Error("Focused database read rejected an incompatible SQLite snapshot");
+    }
+}
+
+export async function readPinnedDatabaseTable(databasePath: string, table: string, columns: string[]): Promise<SqliteRow[]> {
+    const resolvedPath = resolve(databasePath);
+    await assertPinnedDatabaseFile(resolvedPath);
+    return new ReadOnlySqliteAdapter(resolvedPath).readTable(table, columns);
 }
 
 /** Streams the DB1 cards array one object at a time instead of materializing 234 MB of JSON. */

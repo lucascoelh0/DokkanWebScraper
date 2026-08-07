@@ -16,7 +16,7 @@ Status: optional, additive, disabled and non-production.
 | --- | --- | --- |
 | K0 inventory and identity | green | 1,044 characters, 5,759 cards, 10,654 states; unique structural IDs; two explicit awakening targets outside the selected corpus |
 | K1 state graph and awakenings | green | 10,654 state nodes; 12,360 progression/awakening/form edges; 329,730-byte gzip |
-| K2 taxonomy and presentation | pending | — |
+| K2 taxonomy and presentation | green | 98 categories, 133 links, 1,330 levels and 2,064 raw effect rows; 511,837-byte gzip |
 | K3 structured skills | pending | — |
 | K4 stats and progression | pending | — |
 | K5 acquisition and training relations | pending | — |
@@ -41,3 +41,7 @@ assignments) remain explicit partials; there are no unknown assignments.
 K1 artifact: 329,730 bytes gzip / 6,306,654 bytes raw, SHA-256
 `babe3061921a886271bceeb189bdc2f519e9dcf75104c9c759d8213300c6439e`.
 Two generations were byte-identical; peak observed RSS was 899,956,736 bytes.
+
+K2 artifact: 511,837 bytes gzip / 12,566,626 bytes raw, SHA-256
+`af1c84eb0d030fbf389ea0f1f5590e5f643234e2d6348bcc64fe2ffab4718b37`.
+Two generations were byte-identical; peak observed RSS was 833,986,560 bytes.
