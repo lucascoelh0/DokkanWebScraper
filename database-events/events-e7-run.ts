@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { createReadStream, existsSync } from "fs";
 import { mkdir, readFile, readdir, stat, writeFile } from "fs/promises";
 import { basename, resolve } from "path";
+import { resolveEventsInputFile, resolveEventsOutputFiles } from "./events-artifact-path";
 import { EventsE0Baseline } from "./events-e0-contract";
 import { buildEventsE7Coverage, buildEventsE7Dataset } from "./events-e7-builder";
 import { EventsE6Coverage, EventsE6Manifest, EventsE6Validation } from "./events-e6-contract";
@@ -24,8 +25,9 @@ export async function runEventsE7(options: { databasePath?: string; outputDir?: 
     const baseline = JSON.parse(await readFile(sourcePath("events-e0-baseline.json"), "utf8")) as EventsE0Baseline;
     const implementationBaselineBytes = await readFile(sourcePath("events-e7-scraper-baseline.json")), implementationBaselineSha256 = sha(implementationBaselineBytes), implementationBaseline = JSON.parse(implementationBaselineBytes.toString("utf8")) as EventsE7ImplementationBaseline;
     if (implementationBaseline.schemaVersion !== 1 || new Set(implementationBaseline.files.map(value => value.fileName)).size !== implementationBaseline.files.length) throw Error("E7 implementation baseline contract");
-    const e6Manifest = JSON.parse(await readFile(resolve(e6Dir, "events-e6-manifest.json"), "utf8")) as EventsE6Manifest;
-    const [e6Fingerprint, e6CoverageBytes, e6ValidationBytes] = await Promise.all([fingerprint(resolve(e6Dir, e6Manifest.fileName)), readFile(resolve(e6Dir, e6Manifest.coverage.fileName)), readFile(resolve(e6Dir, e6Manifest.validation.fileName))]); memory();
+    const e6Manifest = JSON.parse(await readFile(await resolveEventsInputFile(e6Dir, "events-e6-manifest.json", "events-e6-manifest.json"), "utf8")) as EventsE6Manifest;
+    const [e6Path, e6CoveragePath, e6ValidationPath] = await Promise.all([resolveEventsInputFile(e6Dir, e6Manifest.fileName, "events-e6-assets.json"), resolveEventsInputFile(e6Dir, e6Manifest.coverage?.fileName, "events-e6-coverage.json"), resolveEventsInputFile(e6Dir, e6Manifest.validation?.fileName, "events-e6-validation.json")]);
+    const [e6Fingerprint, e6CoverageBytes, e6ValidationBytes] = await Promise.all([fingerprint(e6Path), readFile(e6CoveragePath), readFile(e6ValidationPath)]); memory();
     verifyBytes(e6CoverageBytes, e6Manifest.coverage, "E6 coverage"); verifyBytes(e6ValidationBytes, e6Manifest.validation, "E6 validation");
     const e6Coverage = JSON.parse(e6CoverageBytes.toString("utf8")) as EventsE6Coverage, e6Validation = JSON.parse(e6ValidationBytes.toString("utf8")) as EventsE6Validation;
     if (e6Manifest.contractVersion !== "0.7.0" || e6Manifest.generatedAt !== baseline.generatedAt || e6Manifest.sourceSnapshotVersion !== baseline.snapshotVersion || e6Manifest.sourceDatabaseSha256 !== baseline.sourceDatabase.sha256 || e6Fingerprint.sha256 !== e6Manifest.sha256 || e6Fingerprint.sizeBytes !== e6Manifest.sizeBytes || e6Coverage.danglingIdCount !== 0 || !e6Validation.valid || !e6Validation.exactProjection) throw Error("E7 E6 lineage");
@@ -54,7 +56,7 @@ export async function runEventsE7(options: { databasePath?: string; outputDir?: 
     const payloadText = `${JSON.stringify(dataset, null, 2)}\n`, coverageText = `${JSON.stringify(coverage, null, 2)}\n`, validationText = `${JSON.stringify(validation, null, 2)}\n`;
     const legacySourceAggregateSha256 = sha(JSON.stringify(legacySources.map(value => [value.name, value.sha256, value.sizeBytes])));
     const manifest: EventsE7Manifest = { schemaVersion: 1, contractVersion: "0.8.0", generatedAt: dataset.generatedAt, generatedAtPolicy: dataset.generatedAtPolicy, sourceSnapshotVersion: dataset.sourceSnapshotVersion, fileName: "events-e7-shadow-parity.json", compression: "none", sha256: sha(payloadText), sizeBytes: Buffer.byteLength(payloadText), sourceDatabaseSha256: dataset.sourceDatabaseSha256, sourceE6Sha256: dataset.sourceE6.sha256, legacySourceAggregateSha256, implementationBaselineSha256, coverage: { fileName: "events-e7-coverage.json", sha256: sha(coverageText), sizeBytes: Buffer.byteLength(coverageText) }, validation: { fileName: "events-e7-validation.json", sha256: sha(validationText), sizeBytes: Buffer.byteLength(validationText) } };
-    await mkdir(outputDir, { recursive: true }); await Promise.all([writeFile(resolve(outputDir, manifest.fileName), payloadText), writeFile(resolve(outputDir, manifest.coverage.fileName), coverageText), writeFile(resolve(outputDir, manifest.validation.fileName), validationText), writeFile(resolve(outputDir, "events-e7-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`)]); memory();
+    await mkdir(outputDir, { recursive: true }); const outputs = await resolveEventsOutputFiles(outputDir, [manifest.fileName, manifest.coverage.fileName, manifest.validation.fileName, "events-e7-manifest.json"]); await Promise.all([writeFile(outputs.get(manifest.fileName)!, payloadText), writeFile(outputs.get(manifest.coverage.fileName)!, coverageText), writeFile(outputs.get(manifest.validation.fileName)!, validationText), writeFile(outputs.get("events-e7-manifest.json")!, `${JSON.stringify(manifest, null, 2)}\n`)]); memory();
     return { dataset, coverage, validation, manifest, peakWorkingSetBytes };
 }
 

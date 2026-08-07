@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { createReadStream } from "fs";
 import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import { basename, resolve } from "path";
+import { resolveEventsOutputFiles } from "./events-artifact-path";
 import { buildEventsE0Coverage, buildEventsE0Dataset } from "./events-e0-builder";
 import { EventsE0Baseline, EventsE0Manifest, EventsE0Observation } from "./events-e0-contract";
 import { validateEventsE0Dataset } from "./events-e0-validator";
@@ -73,11 +74,12 @@ export async function runEventsE0(options: { databasePath?: string; outputDir?: 
         validation: { fileName: "events-e0-validation.json", sha256: sha256(validationText), sizeBytes: Buffer.byteLength(validationText) },
     };
     await mkdir(outputDir, { recursive: true });
+    const outputs = await resolveEventsOutputFiles(outputDir, [manifest.fileName, manifest.coverage.fileName, manifest.validation.fileName, "events-e0-manifest.json"]);
     await Promise.all([
-        writeFile(resolve(outputDir, manifest.fileName), inventoryText),
-        writeFile(resolve(outputDir, manifest.coverage.fileName), coverageText),
-        writeFile(resolve(outputDir, manifest.validation.fileName), validationText),
-        writeFile(resolve(outputDir, "events-e0-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`),
+        writeFile(outputs.get(manifest.fileName)!, inventoryText),
+        writeFile(outputs.get(manifest.coverage.fileName)!, coverageText),
+        writeFile(outputs.get(manifest.validation.fileName)!, validationText),
+        writeFile(outputs.get("events-e0-manifest.json")!, `${JSON.stringify(manifest, null, 2)}\n`),
     ]);
     observeMemory();
     return { dataset, coverage, validation, manifest, peakWorkingSetBytes };

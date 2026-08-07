@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { readFile } from "fs/promises";
 import { dirname, resolve } from "path";
+import { resolveEventsInputFile } from "./events-artifact-path";
 import { runEventsE0 } from "./events-e0-run";
 import { runEventsE1 } from "./events-e1-run";
 import { runEventsE2 } from "./events-e2-run";
@@ -13,7 +14,7 @@ import { runEventsE8 } from "./events-e8-run";
 
 function argument(name: string) { const index = process.argv.indexOf(name); if (index < 0 || !process.argv[index + 1]) throw Error(`Missing ${name}`); return resolve(process.argv[index + 1]); }
 async function main() {
-    const gate = Number(process.argv[process.argv.indexOf("--gate") + 1]), databasePath = argument("--database"), elfPath = argument("--elf"), apkPath = argument("--apk"), outputDir = argument("--output"), profilePath = argument("--profile"), profile = JSON.parse(await readFile(profilePath, "utf8")) as EventsE8RefreshProfile, profileDirectory = dirname(profilePath), baselines = new Map(profile.baselineFiles.map(value => [value.role, resolve(profileDirectory, value.fileName)])), required = (role: EventsE8RefreshProfile["baselineFiles"][number]["role"]) => { const value = baselines.get(role); if (!value) throw Error(`Missing explicit refresh baseline ${role}`); return value; };
+    const gate = Number(process.argv[process.argv.indexOf("--gate") + 1]), databasePath = argument("--database"), elfPath = argument("--elf"), apkPath = argument("--apk"), outputDir = argument("--output"), profilePath = argument("--profile"), profile = JSON.parse(await readFile(profilePath, "utf8")) as EventsE8RefreshProfile, profileDirectory = dirname(profilePath), baselineNames: Record<EventsE8RefreshProfile["baselineFiles"][number]["role"], string> = { e0_inventory: "events-e0-baseline.json", e3_goldens: "events-e3-baseline.json", e4_native_evidence: "events-e4-native-enemy-efficacy-map.json", e6_apk: "events-e6-apk-baseline.json" }, baselines = new Map(await Promise.all(profile.baselineFiles.map(async value => [value.role, await resolveEventsInputFile(profileDirectory, value.fileName, baselineNames[value.role])] as const))), required = (role: EventsE8RefreshProfile["baselineFiles"][number]["role"]) => { const value = baselines.get(role); if (!value) throw Error(`Missing explicit refresh baseline ${role}`); return value; };
     const baselinePath = required("e0_inventory"), e3BaselinePath = required("e3_goldens"), nativeEvidencePath = required("e4_native_evidence"), apkBaselinePath = required("e6_apk");
     let result: any;
     if (gate === 0) result = await runEventsE0({ databasePath, outputDir, baselinePath });
