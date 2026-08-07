@@ -1,6 +1,6 @@
 # Database-first Character / Team Analysis frontier
 
-Status: experimental, non-production. Native mapping is updated through DB50 (`0.49.0`); optional integration is updated through C1 (`1.0.0`) against snapshot `global-6.4.0-v338-2026-08-05`.
+Status: experimental, non-production. Native mapping is updated through DB50 (`0.49.0`); optional integration is updated through C2 (`1.0.0`) against snapshot `global-6.4.0-v338-2026-08-05`.
 
 ## Source identity and boundaries
 
@@ -47,7 +47,7 @@ Status: experimental, non-production. Native mapping is updated through DB50 (`0
 | Guard disable | efficacy 24 no-value registration plus three defender-side native guard consumers | 34 rules / 34 passive IDs / 34 states; operation, target and 33 player-attack-setup timings supported, damage bucket and recurrence partial |
 | Forced guard | efficacy 78 no-value registration, defender presence queries, exact guard decision, coefficient and both intermediary-damage consumers | 305 rules / effects, 296 passive IDs, 267 states; effect, target, coefficient and path-specific buckets supported; 281 timings supported, probability/lifecycle/final HP partial or unknown |
 | Damage mitigation | efficacy-13 float32 remaining-damage rate, ordered deck/category fold, clamp and two intermediary-damage consumers | 995 rules / effects, 951 passive IDs, 432 states; input, target, aggregation, player/enemy consumer buckets and rounding supported; attack kind, probability, final HP and lifecycle stacking partial/unknown |
-| Optional integration sidecar | structural audit contract over DB48/49/50 with status per independent dimension and exact source hashes | C1: 1,350 rules / 575 states / 1,296 passive IDs; 1,350/1,350 source hashes and raw tuples lossless; no production consumer |
+| Optional integration sidecar | C1 structural audit plus C2 supported-only projection over DB48/49/50 | 1,350 rules / 575 states / 1,296 passive IDs; C2 contains zero raw, provenance, text, status or missing-evidence fields and remains unconsumed by production |
 | Attack channels | Super, Ultra, Unit and EX rows, raw effects/conditions and source IDs | 12,429 / 1,255 / 186 / 20 attacks |
 | Active / Standby / Finish | sets, skills, causalities, raw turns/limits and joins | 494 / 28 / 56 cards |
 | Forms | transformations, giant/rage and reversible exchange relations | 359 / 139 / 60 relations |
@@ -147,6 +147,8 @@ DB49 resolves efficacy type 78 through the exact dispatch relocation, no-value h
 DB50 extends all 50 efficacy-120 rules across 38 states from structured payloads into native selection and an incoming-damage operand. It proves the literal type/deck filter, greatest-resistance choice with first-record tie behavior, type-128-before-type-120 preference, and signed truncation formula after efficacy 13 but before DEF/guard. The registration gate's offset-4 product meaning, caller boolean, external activation, outgoing counter damage, probability/lifecycle and final HP remain unknown. A bounded reset investigation found no direct call, relocation or vtable reference to `AbilityManager::clearExecCount`; its epoch is now explicitly routed to dynamic observation. Types 103 and 119 retain null runtime dispatch slots.
 
 Integration C1 introduces the optional audit sidecar without modifying Team Analysis production. Identity is snapshot/card/state/form/release-state/passive-skill/rule/efficacy/effect-ordinal only; names and text never participate. Across 1,350 DB48/49/50 rules, target, operation, value/unit and calculation bucket are supported for every rule; timing is supported for 1,277 and unknown for 73. Lifecycle is partial for 1,300 and unknown for 50, while condition, probability, attack kind and final HP remain unknown for all 1,350. Non-supported dimensions carry only explicit missing-evidence reasons; their raw values live in the separate audit channel. C1 reconstructs every source-projection hash and relevant raw tuple, has zero duplicate identities and remains entirely optional.
+
+Integration C2 derives a separate supported-only projection from the exact C1 artifact hash. It carries structural identity plus 1,350 supported targets, operations, values/units and calculation buckets; supported timing appears for 1,277 rules and is absent for the 73 unknown timings. Target selectors retain structured IDs and inclusion but strip raw enums, localized labels and per-filter provenance. Recursive validation rejects status/missing markers, raw fields, provenance and presentation text. The 1,350 source rules project exactly once, and absence of the entire C2 sidecar leaves production behavior unchanged.
 
 ## Product readiness
 
@@ -248,4 +250,4 @@ DB17–DB22 produced material value: three scoped native promotions, 195 sound A
 
 DB46–DB47 reduce unknown execution timing from 2,079 to 624 rules through bounded enemy-attack and puzzle-move-end call sites. DB48 then yields a larger combat-calculation return: 995 projected mitigation rules gain a proved float32 input, ordered/clamped fold, defender channel, path-specific position and truncation formula. DB49 adds the complementary forced-guard decision for 305 rules, including exact coefficient, path order and enemy caller/callee ABI transfer. DB50 closes native selection and the incoming-damage resistance operand for all 50 projected counter rules. Its short lifecycle investigation also establishes that the exec-count reset epoch is no longer an efficient static-analysis target on this snapshot.
 
-Recommendation: C1 establishes the additive audit boundary and is ready for C2's supported-only consumable projection. It remains **NO-GO** to replace the current production contract or enable autonomous full combat simulation. Further native research should resume only when integration exposes a concrete bounded consumer; `clearExecCount` requires dynamic capture and is not a static target.
+Recommendation: C1–C2 establish separate audit and supported-only channels and are ready for C3 shadow parity by structural IDs. They remain **NO-GO** for production replacement or autonomous full combat simulation. Further native research should resume only when integration exposes a concrete bounded consumer; `clearExecCount` requires dynamic capture and is not a static target.
