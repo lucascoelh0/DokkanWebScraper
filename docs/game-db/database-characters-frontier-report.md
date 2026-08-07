@@ -19,7 +19,7 @@ Status: optional, additive, disabled and non-production.
 | K2 taxonomy and presentation | green | 98 categories, 133 links, 1,330 levels and 2,064 raw effect rows; 511,837-byte gzip |
 | K3 structured skills | green | 10,654 state records backed by 107,070 normalized raw rows; all 1,350 C2 rules structurally joined with zero forbidden consumer fields |
 | K4 stats and progression | green | 5,759 cards, 10,654 state caps, 12,881 awakening requirements, 15,030 potential nodes and 8,644 raw-only orb items |
-| K5 acquisition and training relations | pending | — |
+| K5 acquisition and training relations | green | 988 static card-drop references, 292 selected cards with drop evidence, zero F2P/summon assertions and 116,724 explicitly derived training candidates |
 | K6 static asset references | pending | — |
 | K7 shadow parity | pending | — |
 | K8 optional sidecars and refresh | pending | — |
@@ -57,3 +57,9 @@ K4 artifact: 3,486,645 bytes gzip / 90,774,310 bytes raw, SHA-256
 Two generations were byte-identical; peak observed RSS was 820,379,648 bytes.
 Player-card, enemy-runtime, displayed and calculated-combat stat domains remain
 strictly separate. Potential and equipment limitation semantics are raw-only.
+
+K5 artifact: 581,649 bytes gzip / 21,296,298 bytes raw, SHA-256
+`f7b3bb6a59d66868aa83dae3396bd9af76907af15b39c2d48dfef789fcd73623`.
+Two generations were byte-identical; peak observed RSS was 525,762,560 bytes.
+Dynamic acquisition remains server-owned; stage-drop evidence is not promoted
+to F2P, summonability is unknown and training partner candidates are derived.
