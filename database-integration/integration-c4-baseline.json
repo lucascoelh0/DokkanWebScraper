@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0.0",
+  "snapshotVersion": "global-6.4.0-v338-2026-08-05",
+  "sourceDatabase": {
+    "sha256": "3654eb7db9e18dfe4c238abd02bcc06a688ffa6f30aa1ad93fd108dcfeb78265",
+    "sizeBytes": 95428608,
+    "tableCount": 232,
+    "schemaSha256": "36a162820ad3617037a52108d7d5e435dcd26b6beaae2f4fea9bd9dda7392940",
+    "requiredTables": {
+      "cards": ["id", "character_id", "card_unique_info_id", "passive_skill_set_id"],
+      "collection_cards": ["id", "collection_unique_id", "card_id"],
+      "passive_skill_set_relations": ["id", "passive_skill_set_id", "passive_skill_id"],
+      "passive_skills": ["id", "exec_timing_type", "efficacy_type", "target_type", "sub_target_type_set_id", "calc_option", "turn", "is_once", "probability", "eff_value1", "eff_value2", "eff_value3"]
+    }
+  },
+  "nativeRuntime": {
+    "sha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+    "sizeBytes": 95662296,
+    "elfClass": 64,
+    "endian": "little",
+    "machine": 183
+  },
+  "semanticInputs": {
+    "DB48": { "contractVersion": "0.47.0", "sha256": "91c1c9bf3a7ac0ae8c3948ffa6d4bc68d423e36726888669ad61cb1113168f75" },
+    "DB49": { "contractVersion": "0.48.0", "sha256": "9e8c20eb2220a2978d97f2af2ddb58182e038dc4b39422ed16c299afdd5b9d85" },
+    "DB50": { "contractVersion": "0.49.0", "sha256": "da0a88fa4417c38d84c64dcf079a6201cdc0aeef3371ee6002bdf5b8f19e0c60" }
+  }
+}
