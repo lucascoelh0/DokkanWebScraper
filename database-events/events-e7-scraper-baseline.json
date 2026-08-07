@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    {
+      "fileName": "dokkaninfo-event-rewards.ts",
+      "sha256": "eb7639892990aa1255f7592b924bbb10eebfb04aaf43fbb6b8e0b7d0da97aed2",
+      "paginationClaim": "one_index_request_per_configured_type_without_proven_remote_total"
+    },
+    {
+      "fileName": "fyi-dokkan-frontier.ts",
+      "sha256": "11ee84b100275301d8d637bb51da80ab9f3d418db1b9b45bba4507674f7f3e7a",
+      "paginationClaim": "single_series_index_without_proven_remote_total"
+    },
+    {
+      "fileName": "fyi-event-missions.ts",
+      "sha256": "3903aa3c8ee27396ccd3c1f897ae89c040a2cda596febd94389a452e815f3288",
+      "paginationClaim": "last_page_iteration_with_unrecorded_optional_limit"
+    },
+    {
+      "fileName": "fyi-stages.ts",
+      "sha256": "467c80af789f367675b289955c1f78df05735322ddbdd80d2766f978af142cc1",
+      "paginationClaim": "quest_story_single_payload_and_event_last_page_iteration_with_unrecorded_optional_limit"
+    },
+    {
+      "fileName": "fyi-z-battles.ts",
+      "sha256": "830e8976c1ff39d90e1fd27257177b94fbd63f495fba191dcbe6b437e8a9f2d4",
+      "paginationClaim": "last_page_iteration_with_unrecorded_optional_id_or_limit"
+    }
+  ]
+}
