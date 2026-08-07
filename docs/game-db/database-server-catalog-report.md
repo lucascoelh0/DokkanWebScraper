@@ -81,3 +81,32 @@ Trust boundaries are explicit: official static client evidence is not a live ser
 **GO** for committing disabled catalog infrastructure and for bounded public GET probes against Dokkan FYI in S1. **NO-GO** for official API calls, authenticated capture, schedule replacement, banner replacement, asset batches, R2, Android and production activation.
 
 Exit condition for the official-api NO-GO: direct evidence of a credential-free, read-only request with bounded response schema and no attestation, signature, device or account dependency. Otherwise that family stays documented and stopped.
+
+## S1 schedule, availability and banners
+
+The final S1 collector uses only the two public FYI GET patterns promoted by S0. It reads and hashes the actual S0 catalog, checks the exact pinned contract/snapshot, and verifies both endpoint entries remain `GET` plus `eligible_get_probe` before collection. The collector enforces an exact HTTPS host allowlist, serial concurrency, a one-second minimum interval, manual redirects, omitted credentials, three attempts only for 429/5xx, a 5 MiB response ceiling and a 50 MiB aggregate gate ceiling. That 50 MiB cap is the maximum projected batch transfer; the observed successful transfer was 2,149,474 bytes. Raw HTML and sanitized receipts remain under ignored `data/database-server/s1/raw/`.
+
+The first 2026-08-07 pre-review run attempted 27 GETs: 17 succeeded against `dokkan.fyi` and 10 DokkanInfo event-index requests returned 403. A 403 was treated as non-transient and produced no response body or schedule data. Contract review then identified that DokkanInfo was `reference_only`, not `eligible_get_probe`; those calls therefore violated the S0 gate despite being read-only. The final runner removes DokkanInfo entirely and permits only the 17 FYI GETs. No capture or sidecar is committed, and no browser impersonation, authentication, cookies or bypass was attempted.
+
+The successful structured page payloads contain 13 source-reported active gasha IDs:
+
+| FYI query-filter membership | Banners |
+|---|---:|
+| Recommended | 2 |
+| Dragon Stone | 1 |
+| Ticket | 8 |
+| Friend Pts. | 2 |
+
+All 26 period values carry explicit timezone evidence and all 13 complete periods calculate as active at their individual fetch times. This calculation is `partial`: it uses community periods plus the collector clock and does not claim official server state. The capture retains 129 featured-character reference positions with numeric entry/payload/canonical/base IDs when supplied. Those IDs are structurally useful shadow evidence, but the featured relation remains community-only until an official `gashas/{0}/featured_cards` response is proved.
+
+Category membership is not promoted to currency semantics. Currency/ticket identity, step/rate semantics and official featured relations remain `unknown`; presentation remains locale-unverified. The Global SQLite inventory contains no gasha/summon root table, so S1 adds no static identity authority and overwrites nothing from E0–E9.
+
+No schedule records were promoted. The DokkanInfo event indexes were inaccessible under the permitted policy, the official event paths remain method/auth/schema unknown, and database dates remain embedded hints rather than current availability. Maintenance likewise remains `unknown` because no credential-free structured current source was found.
+
+S1 gate decisions:
+
+- **GO** — disabled, optional community-shadow banner sidecar infrastructure;
+- **GO** — repeatable bounded FYI refresh for shadow comparison only;
+- **NO-GO** — authoritative event schedule or availability;
+- **NO-GO** — maintenance authority;
+- **NO-GO** — banner replacement, currency/rate authority or production activation.
