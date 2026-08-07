@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "sourceApk": {
+    "fileName": "dokkan-global-base.apk",
+    "sizeBytes": 98799013,
+    "sha256": "a51ba758e0555e0a756aa4f20278e6bec25ba6b0c7dcdcd0f4372e0fad159bc0"
+  },
+  "entryCount": 779,
+  "assetEntryCount": 122,
+  "samples": [
+    {
+      "path": "assets/database.db",
+      "sizeBytes": 535552,
+      "sha256": "667e554a9cfb8c4765f05a1d85f0fdf707ade61562b50e3e5cd98ac52f997ba3"
+    },
+    {
+      "path": "assets/bgm/bgm_009.acb",
+      "sizeBytes": 5440,
+      "sha256": "b7d6212b5273900f2b96d8d08e0598f84476a6954f6a2bb3d6d82c88f0cd09cc"
+    },
+    {
+      "path": "assets/bgm/bgm_009.awb",
+      "sizeBytes": 1892384,
+      "sha256": "708bd306d23fe769ba2050996b5ec2bf293d00b46b829ec6c91c37acc8817895"
+    },
+    {
+      "path": "assets/layout/en/image/mypage.cpk",
+      "sizeBytes": 598240,
+      "sha256": "d382dbaf7320600529a5faadd900576085f56a9de8698ffda0fdfa41512daab2"
+    },
+    {
+      "path": "assets/outgame/effect/myp_11000.cpk",
+      "sizeBytes": 3355088,
+      "sha256": "2f429f8210741d88fc5f3d58b8ba93bd94ac51ed62f0edf4a23c0f120a66f425"
+    },
+    {
+      "path": "assets/character/card/0000000.cpk",
+      "sizeBytes": 88416,
+      "sha256": "8e1ca5ce2ed1e7f2e1590d1da92d5fe2aa000764dbc8851270636421030d08d5"
+    },
+    {
+      "path": "assets/ingame/battle/character/00000.cpk",
+      "sizeBytes": 32976,
+      "sha256": "e82e7c4932201064fecba93973338ba58ef1d86f9310572ec806991d1752e115"
+    }
+  ]
+}

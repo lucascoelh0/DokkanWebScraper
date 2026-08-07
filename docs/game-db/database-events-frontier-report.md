@@ -1,6 +1,6 @@
 # Database-first events frontier
 
-Status: E0–E5 complete (`0.6.0`); experimental, optional and non-production.
+Status: E0–E6 complete (`0.7.0`); experimental, optional and non-production.
 
 ## Source identity
 
@@ -130,3 +130,25 @@ E5 validates item identity as the pair of the first-party raw item type and nume
 Quest/map reward-group IDs and Origin reward-set IDs have no target table in the snapshot and stay partial. `dot_character_lv_rewards` has 1,400 rows but no proved event/stage consumer and remains an unbound unknown surface. Costs are referenced losslessly from E2 for all quest levels, Z-Battle checkpoints and Origin battles; area requirement source IDs and raw mission requirements remain separate from rewards. No catalog is duplicated beyond referenced identity sets, no reward chance is inferred, and no server schedule is synthesized.
 
 The ignored E5 payload is 77,316,994 bytes, SHA-256 `c2739eda27146de7e8ea16735ceb1f625878615ab8be601534a5dc28950902bf`. Coverage is 626 bytes, SHA-256 `6e73d03755e9aa651e8ce795428cfe4ffe39e4f75f81580f015057d643a57585`; validation is 159 bytes, SHA-256 `3209b07b42a9fbfbda2fa64ee6041f0beb4a3c740a3ffd76084df01b90f0990d`. The payload is pinned to E4 SHA-256 `63bd000293123ed8bfec315c124d49d50014f9ff9ab0f1220727d75dbdbcdcaf`, E2 SHA-256 `682acb6d0c8ca87cb9fb413fc25de1c68a64ddcc3c9c516561d6c458bb5c93cd` and E1 SHA-256 `567f54e09bb63427e972bf94e785bdacc92d69370c0ce5d09ef0d56a0d2c3100`. Exact projection, zero unintended dangling IDs, source-before/source-after identity and two byte-identical generations pass. Peak working set was 824,152,064 bytes, below the 1 GiB gate limit but high enough that E8 must split delivery payloads and avoid cumulative in-memory assembly.
+
+## E6 asset-reference frontier
+
+E6 creates stable keys for 2,691 unique first-party database paths and 6,208 unique numeric asset references, with 41,198 lossless source bindings. Bindings cover event/list/banner images, linked mission-category icons, Origin series/episode banners and page backgrounds, quest/Origin BGM IDs, battle and SD background IDs, start/finish/World Tournament script IDs, Z-Battle enemy resource IDs and 4,444 non-null resource IDs on cards referenced by E3 encounters. Asset identity is a hash of the exact database path or a typed numeric domain plus raw ID; entity names and localized text are never keys.
+
+Reference identity and binary delivery are separate. None of the 2,691 database paths is literally present as a file entry in the pinned base APK. Adding a conventional `assets/` prefix is tested only as a candidate and never proves delivery; this snapshot produced zero path-prefix or BGM filename candidates. Delivery remains `unknown_requires_downloaded_container_or_endpoint`: paths may require downloaded CPK containers or an external endpoint, but this snapshot has no validated runtime asset manifest that proves which. Numeric BGM/background/script/resource references are partial for the same reason.
+
+The base APK is 98,799,013 bytes, SHA-256 `a51ba758e0555e0a756aa4f20278e6bec25ba6b0c7dcdcd0f4372e0fad159bc0`. It contains 779 ZIP entries and 122 directly extractable files below `assets/`, including 73 CPK containers, 12 ACB banks and 5 AWB banks. These base entries are available as container/file bytes; their internal CPK members are not enumerated or copied by this gate. Event-specific binaries remain absent as exact entries and endpoint/container lineage is unknown.
+
+Seven representative APK entries totaling 6,508,096 bytes are pinned and rehashed on every focused run:
+
+| APK entry | Size | SHA-256 |
+|---|---:|---|
+| `assets/database.db` | 535,552 | `667e554a9cfb8c4765f05a1d85f0fdf707ade61562b50e3e5cd98ac52f997ba3` |
+| `assets/bgm/bgm_009.acb` | 5,440 | `b7d6212b5273900f2b96d8d08e0598f84476a6954f6a2bb3d6d82c88f0cd09cc` |
+| `assets/bgm/bgm_009.awb` | 1,892,384 | `708bd306d23fe769ba2050996b5ec2bf293d00b46b829ec6c91c37acc8817895` |
+| `assets/layout/en/image/mypage.cpk` | 598,240 | `d382dbaf7320600529a5faadd900576085f56a9de8698ffda0fdfa41512daab2` |
+| `assets/outgame/effect/myp_11000.cpk` | 3,355,088 | `2f429f8210741d88fc5f3d58b8ba93bd94ac51ed62f0edf4a23c0f120a66f425` |
+| `assets/character/card/0000000.cpk` | 88,416 | `8e1ca5ce2ed1e7f2e1590d1da92d5fe2aa000764dbc8851270636421030d08d5` |
+| `assets/ingame/battle/character/00000.cpk` | 32,976 | `e82e7c4932201064fecba93973338ba58ef1d86f9310572ec806991d1752e115` |
+
+The eight `unused_asset_paths` patterns are retained verbatim as unknown evidence; the table name is not used to infer download, exclusion or availability semantics. Referenced enemy-card IDs and linked mission-category IDs are exported independently from their joined target rows, and the validator compares both sets so a missing target cannot disappear during projection. The ignored E6 payload is 14,041,784 bytes, SHA-256 `b7eca431b9b3dea6b8fb901ed8d7204ca56b300e5320dfa91e7649731da9da9e`. Coverage is 611 bytes, SHA-256 `a3bba27c3d777b0b0578e9c5d908b97e46ded9bbe3528dc3f097a6fd68d53756`; validation is 154 bytes, SHA-256 `b0675b1ac91aee9cb5bef0061daad52bb5598eb1172fcf93f52d7775ed41cceb`. The APK baseline SHA-256 is `d8be48a04696dfb5831fcc73e2eb90c78d585fd4c5013c90c3997ee781d8c029`, and E6 is pinned to E5 SHA-256 `c2739eda27146de7e8ea16735ceb1f625878615ab8be601534a5dc28950902bf`. Exact projection, sample hashes, 41,198 source bindings, zero dangling structural references and two byte-identical generations pass. Peak working set was 403,050,496 bytes.

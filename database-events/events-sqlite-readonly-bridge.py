@@ -358,6 +358,36 @@ def rewards(connection):
     return result
 
 
+def assets(connection):
+    _, quest_cards, _, _ = parsed_encounters(connection, "sugoroku_map_enemy_informations", "sugoroku_map_id")
+    _, origin_cards, _, _ = parsed_encounters(connection, "origin_battle_enemy_informations", "origin_battle_id")
+    z_cards = {row[0] for row in connection.execute("SELECT card_id FROM z_battle_enemy_card_escalations")}
+    referenced_card_ids = quest_cards | origin_cards | z_cards
+    linked_category_ids = {row[0] for row in connection.execute("""
+        SELECT DISTINCT mission_category_id FROM missions
+        WHERE area_id IS NOT NULL OR z_battle_stage_id IS NOT NULL OR origin_episode_id IS NOT NULL OR origin_battle_id IS NOT NULL
+    """)}
+    return {
+        "areas": selected_rows(connection, "areas", ["id", "event_image_path", "banner_image_path", "listbutton_image_path"]),
+        "questMaps": selected_rows(connection, "sugoroku_maps", ["id", "quest_id", "sugoroku_bgm_id", "battle_bgm_id", "boss_bgm_id", "battle_background_id", "start_script_id", "finish_script_id"]),
+        "questTargets": selected_rows(connection, "quests", ["id"]),
+        "zBattleStages": selected_rows(connection, "z_battle_stages", ["id", "banner_image_path", "listbutton_image_path"]),
+        "zBattleStageViews": selected_rows(connection, "z_battle_stage_views", ["id", "z_battle_stage_id", "enemy_resource_id"], "z_battle_stage_id"),
+        "budokais": selected_rows(connection, "budokais", ["id", "mission_reward_image_path", "banner_image_path", "home_banner_image_path", "listbutton_image_path", "entry_script_id", "description_script_id"]),
+        "originSeries": selected_rows(connection, "origin_series", ["id", "banner_image_path"]),
+        "originEpisodes": selected_rows(connection, "origin_episodes", ["id", "origin_series_id", "banner_image_path", "bgm_id"]),
+        "originPages": selected_rows(connection, "origin_pages", ["id", "origin_episode_id", "background_image_path", "bgm_id"]),
+        "originBattles": selected_rows(connection, "origin_battles", ["id", "bgm_id", "background_id"]),
+        "sdMaps": selected_rows(connection, "sd_maps", ["id", "background_image_id"]),
+        "sdArenas": selected_rows(connection, "sd_arenas", ["id", "sd_map_id", "background_image_id"]),
+        "linkedMissionCategoryIds": sorted(linked_category_ids),
+        "linkedMissionCategories": selected_rows_by_ids(connection, "mission_categories", ["id", "image_path"], linked_category_ids),
+        "referencedEnemyCardIds": sorted(referenced_card_ids),
+        "referencedEnemyCards": selected_rows_by_ids(connection, "cards", ["id", "resource_id"], referenced_card_ids),
+        "unusedAssetPathPatterns": selected_rows(connection, "unused_asset_paths", ["id", "file_path_pattern"]),
+    }
+
+
 def catalog(connection):
     return {
         "areas": selected_rows(connection, "areas", ["id", "type", "category", "chapter_id", "db_story_id", "name", "event_priority", "all_clear_bonus_stones", "first_released_at", "mission_difficulty"]),
@@ -408,14 +438,14 @@ def topology(connection):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["inventory", "catalog", "topology", "encounters", "mechanics", "rewards"])
+    parser.add_argument("command", choices=["inventory", "catalog", "topology", "encounters", "mechanics", "rewards", "assets"])
     parser.add_argument("--database", required=True)
     args = parser.parse_args()
     uri = Path(args.database).resolve().as_uri() + "?mode=ro&immutable=1"
     connection = sqlite3.connect(uri, uri=True)
     connection.execute("PRAGMA query_only=ON")
     try:
-        value = inspect(connection) if args.command == "inventory" else catalog(connection) if args.command == "catalog" else topology(connection) if args.command == "topology" else encounters(connection) if args.command == "encounters" else mechanics(connection) if args.command == "mechanics" else rewards(connection)
+        value = inspect(connection) if args.command == "inventory" else catalog(connection) if args.command == "catalog" else topology(connection) if args.command == "topology" else encounters(connection) if args.command == "encounters" else mechanics(connection) if args.command == "mechanics" else rewards(connection) if args.command == "rewards" else assets(connection)
         json.dump(value, sys.stdout, ensure_ascii=False, separators=(",", ":"))
     finally:
         connection.close()
