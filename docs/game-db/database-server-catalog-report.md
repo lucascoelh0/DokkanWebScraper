@@ -55,7 +55,7 @@ Action-shaped paths for draws, entries, reward acceptance, battle start/finish/d
 
 The current Dokkan FYI summon client performs GET requests to `summons?active=true&category={id}&page={page}` and `summons/{id}` and parses the `application/json` page payload. It supplies numeric summon and featured-character IDs plus periods and banner paths. S1 may sample it conservatively for shadow evidence, but it is not official schedule authority.
 
-DokkanInfo event pages expose some structured Vue attributes, yet transport and coverage remain HTML-centric. They stay reference-only when a structured endpoint exists. The E7 boundary remains unchanged: SBR roots and scraped event reward rows are unjoinable until a structural first-party/server identity is proved.
+DokkanInfo event pages expose some structured Vue attributes, yet transport and coverage remain HTML-centric. They stay reference-only when a structured endpoint exists. S2 later corrects the former E7 product label for the `sdbattle` family: those 25 records describe Pettan Battle, while SBR/ESBR structurally join challenge roots 710/720 to SQLite areas. Scraped event reward rows remain unjoinable until a structural first-party/server identity is proved.
 
 ## Threat model
 
@@ -110,3 +110,27 @@ S1 gate decisions:
 - **NO-GO** — authoritative event schedule or availability;
 - **NO-GO** — maintenance authority;
 - **NO-GO** — banner replacement, currency/rate authority or production activation.
+
+## S2 server-only roots
+
+S2 performs no network requests. It verifies the manifests and payload hashes for E1, E2 and E7, then fingerprints exactly 27 ignored DokkanInfo cache records (`challenge-710`, `challenge-720`, and `sdbattle-1` through `sdbattle-25`). The resulting `0.3.0` contract keeps product labels separate from identity and explicitly forbids title joins and automatic joins between overlapping numeric namespaces.
+
+The most important result is a semantic correction to the prior frontier report. DokkanInfo `sdbattle` and SQLite `sd_*` describe Pettan/Sticker Battle, not Super Battle Road. SBR and ESBR are the DokkanInfo `challenge` roots 710 and 720. Both root IDs match first-party SQLite `area` IDs, and all 175 cached stage IDs match first-party `quest_level` IDs under those areas: 90 for area 710 and 85 for area 720. The titles only establish the human-facing product label; the joins use numeric root and stage IDs exclusively.
+
+| Product family | Static/root result | Server-only boundary |
+|---|---|---|
+| SBR / ESBR | `supported`: areas 710/720 and 175 quest levels already exist in SQLite | current schedule and availability remain unknown |
+| Ultimate Clash (`rmbattle`) | `partial`: 98 distinct mission-referenced IDs; first-party strings identify the family, but no root table/payload exists | roots, titles, schedule, runtime topology and reward-root relation remain unknown |
+| World Tournament (`budokai`) | `supported`: 63 first-party static roots | current schedule, availability, server match topology and ranking reward identity remain unknown |
+| Burst Mode (`genkai`) | `unknown` root: family semantics are partial, but score/gimmick candidate tables expose no proved root FK | root IDs, schedule and score-benefit relation remain unknown |
+| Pettan Battle (`sd_*` / `sdbattle`) | `partial`: 48 SQLite `sd_map` roots and 25 community series roots occupy separate namespaces | series-to-map relation and current schedule remain unjoinable/unknown |
+
+S2 records two supported joins (177 identities: two roots plus 175 stages), three unjoinable relations, zero title joins and zero network requests. Its reviewed runner fails closed on unknown upstream contracts, upstream validation failures, E7 cache-fingerprint drift and cache changes during collection. Its peak working set was 309,186,560 bytes.
+
+S2 gate decisions:
+
+- **GO** — commit the disabled root-resolution contract and semantic correction;
+- **GO** — treat SBR/ESBR as already database-rooted by IDs 710/720;
+- **NO-GO** — claim schedule/availability resolution for any family;
+- **NO-GO** — synthesize Ultimate Clash or Burst Mode root records;
+- **NO-GO** — join Pettan series IDs to `sd_map` IDs by numeric overlap.
