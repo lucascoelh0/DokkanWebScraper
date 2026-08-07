@@ -260,6 +260,104 @@ def mechanics(connection):
     }
 
 
+ITEM_CATALOG_TARGETS = {
+    "Achievement": ("achievement", "achievements"),
+    "ActItem": ("act_item", "act_items"),
+    "AwakeningItem": ("awakening_item", "awakening_items"),
+    "Card": ("card", "cards"),
+    "CardSkinItem": ("card_skin_item", "card_skin_items"),
+    "CardStickerItem": ("card_sticker_item", "card_sticker_items"),
+    "EquipmentSkillItem": ("equipment_skill_item", "equipment_skill_items"),
+    "EventkagiItem": ("event_key_item", "eventkagi_items"),
+    "LinkSkillLvUpItem": ("link_skill_level_up_item", "link_skill_lv_up_items"),
+    "PotentialItem": ("potential_item", "potential_items"),
+    "SD::Pack": ("sd_pack", "sd_packs"),
+    "SpecialItem": ("special_item", "special_items"),
+    "SupportFilm": ("support_film", "support_films"),
+    "SupportItem": ("support_item", "support_items"),
+    "SupportMemory": ("support_memory", "support_memories"),
+    "SupportMemoryEnhancementItem": ("support_memory_enhancement_item", "support_memory_enhancement_items"),
+    "TrainingField": ("training_field", "training_fields"),
+    "TrainingItem": ("training_item", "training_items"),
+    "TreasureItem": ("treasure_item", "treasure_items"),
+    "WallpaperItem": ("wallpaper_item", "wallpaper_items"),
+}
+
+
+def rewards(connection):
+    linked_mission_where = "area_id IS NOT NULL OR z_battle_stage_id IS NOT NULL OR origin_episode_id IS NOT NULL OR origin_battle_id IS NOT NULL"
+    linked_missions = [dict(zip(
+        ["id", "type", "mission_category_id", "target_value", "display_target_value", "target_100_value", "conditions", "link_to", "area_id", "z_battle_stage_id", "origin_episode_id", "origin_battle_id", "start_at", "end_at", "end_at_hidden"], row
+    )) for row in connection.execute(f"""
+        SELECT id,type,mission_category_id,target_value,display_target_value,target_100_value,conditions,link_to,
+               area_id,z_battle_stage_id,origin_episode_id,origin_battle_id,start_at,end_at,end_at_hidden
+        FROM missions WHERE {linked_mission_where} ORDER BY id
+    """)]
+    linked_mission_ids = {row["id"] for row in linked_missions}
+    linked_mission_rewards = selected_rows_by_ids(connection, "mission_rewards", ["id", "mission_id", "item_id", "item_type", "quantity", "card_exp_init", "announcement_priority", "announcement_label"], linked_mission_ids, "mission_id")
+    linked_category_ids = {row["mission_category_id"] for row in linked_missions}
+    linked_category_rewards = selected_rows_by_ids(connection, "mission_category_rewards", ["id", "mission_category_id", "item1_id", "item1_type", "item2_id", "item2_type", "item3_id", "item3_type", "item4_id", "item4_type"], linked_category_ids, "mission_category_id")
+
+    result = {
+        "bossDrops": selected_rows(connection, "sugoroku_map_boss_drop_items", ["id", "sugoroku_map_id", "quest_id", "drop_type", "item_id", "item_type", "card_exp_init"]),
+        "questDropPreviews": selected_rows(connection, "quest_drop_item_views", ["id", "quest_id", "difficulties", "item1_id", "item1_type", "item2_id", "item2_type", "item3_id", "item3_type", "item4_id", "item4_type", "item5_id", "item5_type", "item6_id", "item6_type"]),
+        "zFirstRewardRanges": selected_rows(connection, "z_battle_first_reward_level_ranges", ["id", "z_battle_stage_id", "level", "z_battle_first_reward_set_id", "main_reward_id"]),
+        "zFirstRewards": selected_rows(connection, "z_battle_first_rewards", ["id", "z_battle_first_reward_set_id", "item_id", "item_type", "quantity", "card_exp_init"]),
+        "zNormalRewardTables": selected_rows(connection, "z_battle_normal_reward_tables", ["id", "z_battle_normal_reward_table_group_id"]),
+        "zNormalRewards": selected_rows(connection, "z_battle_normal_rewards", ["id", "z_battle_normal_reward_table_id", "item_id", "item_type", "quantity", "card_exp_init"]),
+        "zRewardCheckpoints": selected_rows(connection, "z_battle_check_points", ["id", "z_battle_stage_id", "level", "z_battle_normal_reward_table_group_id", "main_reward_id"]),
+        "linkedMissions": linked_missions,
+        "linkedMissionRewards": linked_mission_rewards,
+        "linkedMissionCategoryPreviews": linked_category_rewards,
+        "budokaiMissions": selected_rows(connection, "budokai_missions", ["id", "budokai_id", "mission_type", "target_value"]),
+        "budokaiMissionRewards": selected_rows(connection, "budokai_mission_rewards", ["id", "budokai_mission_id", "item_id", "item_type", "quantity", "card_exp_init"]),
+        "budokaiRankingGiftSets": selected_rows(connection, "budokai_ranking_gift_sets", ["id", "budokai_id", "order", "ranking"]),
+        "budokaiRankingGifts": selected_rows(connection, "budokai_ranking_gifts", ["id", "budokai_ranking_gift_set_id", "item_type", "item_id", "quantity", "card_exp_init"]),
+        "budokaiBoxRankings": selected_rows(connection, "budokai_box_rankings", ["id", "budokai_id", "prev_budokai_id", "prev_budokai_box_ranking_id", "player_max_count", "box_max_count", "start_at", "end_at", "collecting_end_at"]),
+        "budokaiBoxRewardRanges": selected_rows(connection, "budokai_box_ranking_reward_ranges", ["id", "budokai_box_ranking_id", "start_value", "end_value"]),
+        "budokaiBoxRewards": selected_rows(connection, "budokai_box_ranking_rewards", ["id", "budokai_box_ranking_reward_range_id", "item_id", "item_type", "quantity", "card_exp_init"]),
+        "rmbattleMissions": selected_rows(connection, "rmbattle_missions", ["id", "rmbattle_id", "type", "target_value", "conditions"]),
+        "rmbattleMissionRewards": selected_rows(connection, "rmbattle_mission_rewards", ["id", "rmbattle_mission_id", "item_id", "item_type", "quantity", "card_exp_init"]),
+        "opaqueRewardBindings": {
+            "questMapRewardGroups": selected_rows(connection, "sugoroku_maps", ["id", "quest_id", "sugoroku_map_reward_group_id"]),
+            "originBattleRewardSets": selected_rows(connection, "origin_battles", ["id", "origin_battle_reward_set_id"]),
+        },
+        "unboundRewardSurfaces": [
+            {"table": "dot_character_lv_rewards", "rowCount": connection.execute("SELECT COUNT(*) FROM dot_character_lv_rewards").fetchone()[0], "consumerStatus": "unknown"},
+        ],
+    }
+
+    item_refs = collections.defaultdict(set)
+    item_row_families = [
+        result["bossDrops"], result["zFirstRewards"], result["zNormalRewards"], result["linkedMissionRewards"],
+        result["budokaiMissionRewards"], result["budokaiRankingGifts"], result["budokaiBoxRewards"], result["rmbattleMissionRewards"],
+    ]
+    for rows in item_row_families:
+        for row in rows:
+            item_refs[row["item_type"]].add(row["item_id"])
+    for row in result["questDropPreviews"]:
+        for index in range(1, 7):
+            if row[f"item{index}_type"] is not None:
+                item_refs[row[f"item{index}_type"]].add(row[f"item{index}_id"])
+    for row in result["linkedMissionCategoryPreviews"]:
+        for index in range(1, 5):
+            if row[f"item{index}_type"] is not None:
+                item_refs[row[f"item{index}_type"]].add(row[f"item{index}_id"])
+
+    result["itemCatalogTargets"] = []
+    for raw_type, ids in sorted(item_refs.items()):
+        target = ITEM_CATALOG_TARGETS.get(raw_type)
+        if target is None:
+            result["itemCatalogTargets"].append({"rawItemType": raw_type, "targetKind": None, "targetTable": None, "referencedIds": sorted(ids), "joinedIds": []})
+            continue
+        target_kind, target_table = target
+        joined = [row[0] for row in connection.execute(
+            f"SELECT id FROM {quote(target_table)} WHERE id IN ({','.join('?' for _ in ids)}) ORDER BY id", tuple(sorted(ids))
+        )] if ids else []
+        result["itemCatalogTargets"].append({"rawItemType": raw_type, "targetKind": target_kind, "targetTable": target_table, "referencedIds": sorted(ids), "joinedIds": joined})
+    return result
+
+
 def catalog(connection):
     return {
         "areas": selected_rows(connection, "areas", ["id", "type", "category", "chapter_id", "db_story_id", "name", "event_priority", "all_clear_bonus_stones", "first_released_at", "mission_difficulty"]),
@@ -310,14 +408,14 @@ def topology(connection):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["inventory", "catalog", "topology", "encounters", "mechanics"])
+    parser.add_argument("command", choices=["inventory", "catalog", "topology", "encounters", "mechanics", "rewards"])
     parser.add_argument("--database", required=True)
     args = parser.parse_args()
     uri = Path(args.database).resolve().as_uri() + "?mode=ro&immutable=1"
     connection = sqlite3.connect(uri, uri=True)
     connection.execute("PRAGMA query_only=ON")
     try:
-        value = inspect(connection) if args.command == "inventory" else catalog(connection) if args.command == "catalog" else topology(connection) if args.command == "topology" else encounters(connection) if args.command == "encounters" else mechanics(connection)
+        value = inspect(connection) if args.command == "inventory" else catalog(connection) if args.command == "catalog" else topology(connection) if args.command == "topology" else encounters(connection) if args.command == "encounters" else mechanics(connection) if args.command == "mechanics" else rewards(connection)
         json.dump(value, sys.stdout, ensure_ascii=False, separators=(",", ":"))
     finally:
         connection.close()

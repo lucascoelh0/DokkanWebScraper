@@ -1,13 +1,13 @@
 # Database-first events frontier
 
-Status: E0–E4 complete (`0.5.0`); experimental, optional and non-production.
+Status: E0–E5 complete (`0.6.0`); experimental, optional and non-production.
 
 ## Source identity
 
 - Snapshot: `global-6.4.0-v338-2026-08-05`.
 - Decrypted SQLite SHA-256: `3654eb7db9e18dfe4c238abd02bcc06a688ffa6f30aa1ad93fd108dcfeb78265`.
 - SQLite size: 95,428,608 bytes; schema: 232 tables, SHA-256 `36a162820ad3617037a52108d7d5e435dcd26b6beaae2f4fea9bd9dda7392940`.
-- Native ELF is not consumed by E0. Its pinned identity remains available only for a later bounded ambiguity.
+- Native ELF is not consumed by E0–E3 or E5. E4 consumed its pinned identity only for one bounded ambiguity documented below.
 - The database is opened read-only with `query_only=ON` and `immutable=1`; source identity is checked before and after the focused run.
 
 ## E0 identity frontier
@@ -116,3 +116,17 @@ One high-impact native ambiguity was bounded to the 697 referenced `enemy_skills
 Of nine requested mechanic families, four are partial and five unknown; none is supported for runtime simulation. Category/link membership, round topology, raw countdown/condition fields and the bounded status-immunity mapping provide representation gain. Damage reduction, guard/type interaction, dodge/nullification/attack break, Super Attack AI, locks/sealing/rotations/fields and effect formulas remain outside the supported frontier. Beneficial-character derivation and damage calculation are not implemented.
 
 The ignored E4 mechanics payload is 3,473,577 bytes, SHA-256 `63bd000293123ed8bfec315c124d49d50014f9ff9ab0f1220727d75dbdbcdcaf`. Coverage is 653 bytes, SHA-256 `2328591ffac0a0dd43be8ffb9d79504580c48947a8977b3603a5c29c6bf510ce`; validation is 183 bytes, SHA-256 `46fcd18385e4903ed76d948de262147b52f33bfc9215b047f11b42de72e1ded1`. The canonical native evidence SHA-256 is `af048e03c860efc435310609c1989d49c6fd140c8f62f1a676dc3e2621b7c842`, pinned to ELF SHA-256 `7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a`. Exact projection, zero unintended dangling IDs and native evidence validation pass; two generations are byte-identical and peak working set is 623,247,360 bytes.
+
+## E5 rewards, costs and requirements frontier
+
+E5 reconstructs 107,699 first-party reward rows without using scraped text as authority. Quest maps contribute 15,254 boss-drop rows; every row joins both its numeric map and quest IDs. The source supplies a raw `drop_type` but no quantity or chance column, so quantity, chance and repeatability remain explicitly unknown. The 362 quest drop-view rows are retained separately as partial previews with 2,243 preview item positions across quest and linked mission-category views; they are never treated as authoritative drop rates.
+
+Z-Battle rewards are normalized rather than duplicated per level: 5,492 level anchors reference 5,066 reward-set IDs containing 22,225 first-reward rows, while 930 checkpoints reference 906 normal-reward groups and 1,463 tables/reward rows. Stage, level, group and main-reward IDs are preserved independently. The first-reward family label establishes grouping only; runtime claim frequency remains partial. Normal-reward repeatability is unknown.
+
+The standard mission slice includes only the 7,944 missions structurally linked to an area, Z-Battle stage, Origin episode or Origin battle, plus their 13,734 reward rows. Raw target values and conditions are preserved, and database dates remain schedule hints rather than server availability. World Tournament contributes 5,234 mission rewards, 41,664 ranking gifts and 2,609 box-ranking rewards. Another 5,516 reward rows join the 98 opaque RMBattle roots from E1. Historical World Tournament rows include 79 missions and 20 ranking gift sets whose `budokai_id` has no current root, plus nine box ranges whose ranking root is absent; all 108 bindings and the 36 rewards under the orphan ranges are retained as `unknown`, not silently dropped or counted as current dangling IDs.
+
+E5 validates item identity as the pair of the first-party raw item type and numeric ID. Eighteen raw item types join every referenced ID to a catalog target, covering cards, awakening items/medals, training/support/potential/treasure/equipment items, ACT and event-key items, link-level items, support memories and films, enhancement items, skins, stickers, wallpapers, achievements, special items and SD packs. This yields 97,683 supported item references. Five raw types have no item catalog target in the snapshot—point currencies, Dragon Balls, status-capacity extensions and jukebox tracks—so 12,259 references remain `unknown`; their IDs are preserved without invented joins.
+
+Quest/map reward-group IDs and Origin reward-set IDs have no target table in the snapshot and stay partial. `dot_character_lv_rewards` has 1,400 rows but no proved event/stage consumer and remains an unbound unknown surface. Costs are referenced losslessly from E2 for all quest levels, Z-Battle checkpoints and Origin battles; area requirement source IDs and raw mission requirements remain separate from rewards. No catalog is duplicated beyond referenced identity sets, no reward chance is inferred, and no server schedule is synthesized.
+
+The ignored E5 payload is 77,316,994 bytes, SHA-256 `c2739eda27146de7e8ea16735ceb1f625878615ab8be601534a5dc28950902bf`. Coverage is 626 bytes, SHA-256 `6e73d03755e9aa651e8ce795428cfe4ffe39e4f75f81580f015057d643a57585`; validation is 159 bytes, SHA-256 `3209b07b42a9fbfbda2fa64ee6041f0beb4a3c740a3ffd76084df01b90f0990d`. The payload is pinned to E4 SHA-256 `63bd000293123ed8bfec315c124d49d50014f9ff9ab0f1220727d75dbdbcdcaf`, E2 SHA-256 `682acb6d0c8ca87cb9fb413fc25de1c68a64ddcc3c9c516561d6c458bb5c93cd` and E1 SHA-256 `567f54e09bb63427e972bf94e785bdacc92d69370c0ce5d09ef0d56a0d2c3100`. Exact projection, zero unintended dangling IDs, source-before/source-after identity and two byte-identical generations pass. Peak working set was 824,152,064 bytes, below the 1 GiB gate limit but high enough that E8 must split delivery payloads and avoid cumulative in-memory assembly.
