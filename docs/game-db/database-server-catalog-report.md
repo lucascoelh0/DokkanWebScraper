@@ -134,3 +134,36 @@ S2 gate decisions:
 - **NO-GO** — claim schedule/availability resolution for any family;
 - **NO-GO** — synthesize Ultimate Clash or Burst Mode root records;
 - **NO-GO** — join Pettan series IDs to `sd_map` IDs by numeric overlap.
+
+## S3 reward identity
+
+S3 makes no network requests. It verifies the E5 and E7 manifests, payloads and green validation receipts, then requires the 24,832,924-byte DokkanInfo reward artifact and the exact parser implementation to match the hashes already audited by E7. `fetchedAt` remains the community artifact's 2026-07-23 retrieval timestamp; deterministic `generatedAt` remains the S3 evidence checkpoint.
+
+The former E7 boundary treated all 40,345 normalized community reward records as unjoinable because the source reward number was retained only inside the generated key. S3 pins the key-builder implementation and reverses that key shape. This is not a title/text join: it recovers a numeric reward-number candidate and compares numeric event/stage, reward-row and item identities.
+
+Contract review found an important loss of provenance in the historical parser: when `payload.id` was absent, it substituted the DOM index without marking which origin produced the key. It also deduplicated by key without recording the raw pre-deduplication count. Consequently, the artifact proves exact accounting of 40,345 normalized records, not lossless accounting of upstream rows, and none of its reward numbers can be promoted to a supported row identity retroactively.
+
+For traditional quest families, 14,193 records align on `(stage_id, reward_number, item_type, item_id)` and another 717 align on stage/reward number but differ on item identity. All 14,910 remain `partial_candidate`, not agreement or confirmed conflict, because the reward number may be `payload.id` or a synthetic index. The remaining 341 traditional records are `unjoinable`. SQLite retains authority throughout.
+
+Z-Battle remains deliberately weaker. For 2,919 rows, `(event_id, remote payload.id)` locates an E5 first-reward stage/level anchor and the item type/ID is unique inside its reward set. These are only `partial_candidate`: the semantics of the remote `payload.id` as the reward level/checkpoint have not been contractually proved. Quantity agrees for 2,170 candidates and conflicts for 749, but neither result promotes the candidate join. The other 22,175 Z-Battle rows remain `unjoinable`.
+
+Every normalized record receives exactly one classification:
+
+| Classification | Rows | Meaning |
+|---|---:|---|
+| `agreement` | 0 | blocked until identity origin is explicit |
+| `confirmed_conflict` | 0 | blocked until identity origin is explicit |
+| `partial_candidate` | 17,829 | 14,910 traditional and 2,919 Z-Battle candidates |
+| `unjoinable` | 22,516 | no safe row-level target |
+
+The channel contract keeps preview, drop, first-clear, mission, ranking and server-grant semantics distinct. It inventories 362 preview rows as partial, 16,717 drop rows with partial aggregate semantics, 22,225 first-reward rows with partial claim-frequency semantics, 24,484 mission reward rows, 44,273 ranking reward rows, and zero observed server-grant rows. Server grant identity/semantics remain `unknown`; action-shaped accept endpoints remain prohibited. No remote quantity is promoted where first-party quantity is absent, and no chance or repeatability is inferred.
+
+The legacy collision count and raw upstream row count remain `unknown`. A future refresh may produce supported joins only after its parser preserves `identityOrigin: payload_id | synthetic_index`, records raw and normalized counts, and fails on or explicitly accounts for key collisions. The reviewed S3 sidecar is 27,789,750 bytes, SHA-256 `bf2e4d061fd4b08ff8c6e5637e9fdcd79183fb3fc079a72124a825159c3cedd9`; peak working set was 740,245,504 bytes.
+
+S3 gate decisions:
+
+- **GO** — commit the disabled reward-identity contract and its explicitly partial candidate sets;
+- **NO-GO** — promote any historical normalized reward record to agreement or confirmed conflict;
+- **NO-GO** — promote Z-Battle candidate joins until remote reward-ID semantics are proved;
+- **NO-GO** — infer quantity, chance, repeatability or server-grant state;
+- **NO-GO** — replace the static E5 reward contract or activate production consumers.
