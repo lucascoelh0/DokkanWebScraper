@@ -180,7 +180,7 @@ function parseTimestamp(value: unknown): string | null {
     return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 
-function entryStructure(raw: unknown): SanitizedHarEntryStructure | null {
+export function sanitizeHarEntryStructure(raw: unknown): SanitizedHarEntryStructure | null {
     if (!raw || typeof raw !== "object") return null;
     const entry = raw as any;
     const request = entry.request && typeof entry.request === "object" ? entry.request : {};
@@ -257,7 +257,7 @@ function resolveCapture(rootPath: string, relativePath: string): { candidate: st
     return { candidate, realRoot };
 }
 
-function readValidatedCapture(captureId: string, filePath: string, expectedRoot: string): { sizeBytes: number; text: string } {
+function readValidatedCapture(captureId: string, filePath: string, expectedRoot: string): { sizeBytes: number; text: string; sourceIdentityFingerprint: string } {
     const descriptor = openSync(filePath, "r");
     try {
         const opened = fstatSync(descriptor);
@@ -269,7 +269,8 @@ function readValidatedCapture(captureId: string, filePath: string, expectedRoot:
             throw new Error(`capture ${captureId} changed after path validation`);
         }
         if (opened.size <= 0 || opened.size > MAX_CAPTURE_BYTES) throw new Error(`capture ${captureId} violates the size gate`);
-        return { sizeBytes: opened.size, text: readFileSync(descriptor, "utf8") };
+        const sourceIdentityFingerprint = sha256([opened.dev, opened.ino, opened.size, opened.mtimeMs, opened.birthtimeMs].join("\n"));
+        return { sizeBytes: opened.size, text: readFileSync(descriptor, "utf8"), sourceIdentityFingerprint };
     } finally {
         closeSync(descriptor);
     }
@@ -280,16 +281,22 @@ export function readValidatedCaptureForSecretScanner(rootPath: string, relativeP
     return readValidatedCapture(captureId, resolved.candidate, resolved.realRoot).text;
 }
 
-export function loadSanitizedCaptureEntries(rootPath: string, relativePath: string, captureId: string): { sizeBytes: number; entryCount: number; entries: SanitizedHarEntryStructure[] } {
+export function readValidatedCaptureSnapshot(rootPath: string, relativePath: string, captureId: string): { text: string; sourceIdentityFingerprint: string } {
+    const resolved = resolveCapture(rootPath, relativePath);
+    const value = readValidatedCapture(captureId, resolved.candidate, resolved.realRoot);
+    return { text: value.text, sourceIdentityFingerprint: value.sourceIdentityFingerprint };
+}
+
+export function loadSanitizedCaptureEntries(rootPath: string, relativePath: string, captureId: string): { sizeBytes: number; entryCount: number; sourceIdentityFingerprint: string; entries: SanitizedHarEntryStructure[] } {
     const resolved = resolveCapture(rootPath, relativePath);
     const validated = readValidatedCapture(captureId, resolved.candidate, resolved.realRoot);
     const parsed = JSON.parse(validated.text);
     const rawEntries = parsed?.log?.entries;
     if (!Array.isArray(rawEntries)) throw new Error(`capture ${captureId} is not a HAR with log.entries`);
-    return { sizeBytes: validated.sizeBytes, entryCount: rawEntries.length, entries: rawEntries.map(entryStructure).filter((value): value is SanitizedHarEntryStructure => value !== null) };
+    return { sizeBytes: validated.sizeBytes, entryCount: rawEntries.length, sourceIdentityFingerprint: validated.sourceIdentityFingerprint, entries: rawEntries.map(sanitizeHarEntryStructure).filter((value): value is SanitizedHarEntryStructure => value !== null) };
 }
 
-export function auditSanitizedCaptureEntries(captureId: string, sizeBytes: number, entryCount: number, entries: SanitizedHarEntryStructure[]): CaptureH0Inventory {
+export function auditSanitizedCaptureEntries(captureId: string, sizeBytes: number, entryCount: number, entries: SanitizedHarEntryStructure[], sourceIdentityFingerprint: string): CaptureH0Inventory {
     const timestamps = entries.flatMap(value => value.capturedAt ? [value.capturedAt] : []).sort((a, b) => a.localeCompare(b));
     const classificationCounts = emptyClassCounts();
     for (const entry of entries) classificationCounts[entry.classification] += 1;
@@ -299,6 +306,7 @@ export function auditSanitizedCaptureEntries(captureId: string, sizeBytes: numbe
         captureId,
         structuralFingerprint: sha256(fingerprintInput),
         schemaFingerprint: sha256(schemaFingerprintInput),
+        sourceIdentityFingerprint,
         duplicateOf: null,
         sizeBytes,
         capturedAtStart: timestamps.at(0) ?? null,
@@ -317,8 +325,8 @@ function auditOne(captureId: string, filePath: string, expectedRoot: string): Ca
     const parsed = JSON.parse(validated.text);
     const rawEntries = parsed?.log?.entries;
     if (!Array.isArray(rawEntries)) throw new Error(`capture ${captureId} is not a HAR with log.entries`);
-    const entries = rawEntries.map(entryStructure).filter((value): value is SanitizedHarEntryStructure => value !== null);
-    return auditSanitizedCaptureEntries(captureId, sizeBytes, rawEntries.length, entries);
+    const entries = rawEntries.map(sanitizeHarEntryStructure).filter((value): value is SanitizedHarEntryStructure => value !== null);
+    return auditSanitizedCaptureEntries(captureId, sizeBytes, rawEntries.length, entries, validated.sourceIdentityFingerprint);
 }
 
 export function auditCaptureManifest(manifest: CaptureInputManifest, roots: CaptureInputRoots): CaptureH0Dataset {
@@ -341,7 +349,7 @@ export function auditCaptureManifest(manifest: CaptureInputManifest, roots: Capt
     return {
         schemaVersion: 1,
         contract: "dokkan-official-capture-structural-inventory",
-        contractVersion: "0.1.0",
+        contractVersion: "0.1.1",
         generatedAt,
         generatedAtPolicy: "latest_capture_timestamp_for_deterministic_bytes",
         collectionMode: "offline_local_har_no_requests",

@@ -47,15 +47,15 @@ function aggregate(entries: SanitizedHarEntryStructure[]): CaptureH1SchemaObserv
 }
 
 export function buildCaptureH1(manifest: CaptureInputManifest, roots: Record<string, string>, h0: CaptureH0Dataset): CaptureH1Dataset {
-    if (h0.contract !== "dokkan-official-capture-structural-inventory" || h0.contractVersion !== "0.1.0" || h0.productionMutation !== false || h0.captures.length !== manifest.captures.length) throw new Error("H1 requires a validated H0 inventory");
+    if (h0.contract !== "dokkan-official-capture-structural-inventory" || h0.contractVersion !== "0.1.1" || h0.productionMutation !== false || h0.captures.length !== manifest.captures.length) throw new Error("H1 requires a validated H0 inventory");
     const root = roots[manifest.inputRoot];
     if (!root) throw new Error("H1 input root is not allowlisted");
     const captures = manifest.captures.map(input => {
         const lineage = h0.captures.find(value => value.captureId === input.captureId);
         if (!lineage) throw new Error(`H1 missing H0 lineage for ${input.captureId}`);
         const loaded = loadSanitizedCaptureEntries(root, input.path, input.captureId);
-        const current = auditSanitizedCaptureEntries(input.captureId, loaded.sizeBytes, loaded.entryCount, loaded.entries);
-        if (current.entryCount !== lineage.entryCount || current.sizeBytes !== lineage.sizeBytes || current.structuralFingerprint !== lineage.structuralFingerprint || current.schemaFingerprint !== lineage.schemaFingerprint) throw new Error(`H1 capture drift for ${input.captureId}`);
+        const current = auditSanitizedCaptureEntries(input.captureId, loaded.sizeBytes, loaded.entryCount, loaded.entries, loaded.sourceIdentityFingerprint);
+        if (current.entryCount !== lineage.entryCount || current.sizeBytes !== lineage.sizeBytes || current.structuralFingerprint !== lineage.structuralFingerprint || current.schemaFingerprint !== lineage.schemaFingerprint || current.sourceIdentityFingerprint !== lineage.sourceIdentityFingerprint) throw new Error(`H1 capture drift for ${input.captureId}`);
         return { captureId: input.captureId, structuralFingerprint: lineage.structuralFingerprint, schemaFingerprint: lineage.schemaFingerprint, observations: aggregate(loaded.entries) };
     }).sort((a, b) => a.captureId.localeCompare(b.captureId));
     return {

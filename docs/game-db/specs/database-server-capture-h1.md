@@ -23,7 +23,7 @@ The scanner obtains sensitive comparison values only in memory from validated lo
 
 - TypeScript `--noEmit`: passing.
 - H0 + H1 focused tests: 10 passing.
-- H0 reconstruction after the shared-reader extension: byte-identical.
+- H0 `0.1.1` source identity is revalidated before H1; repeated H0/H1 reconstructions are byte-identical while the input files remain unchanged.
 - Two H1 runs: schema and scan outputs both byte-identical.
 - Peak measured H1 working set: 799,477,760 bytes, below 1 GiB.
 

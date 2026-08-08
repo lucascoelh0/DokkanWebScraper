@@ -31,6 +31,7 @@ export interface CaptureH0Inventory {
     captureId: string;
     structuralFingerprint: string;
     schemaFingerprint: string;
+    sourceIdentityFingerprint: string;
     duplicateOf: string | null;
     sizeBytes: number;
     capturedAtStart: string | null;
@@ -45,7 +46,7 @@ export interface CaptureH0Inventory {
 export interface CaptureH0Dataset {
     schemaVersion: 1;
     contract: "dokkan-official-capture-structural-inventory";
-    contractVersion: "0.1.0";
+    contractVersion: "0.1.1";
     generatedAt: string;
     generatedAtPolicy: "latest_capture_timestamp_for_deterministic_bytes";
     collectionMode: "offline_local_har_no_requests";

@@ -6,6 +6,8 @@ Status: complete; offline-only, optional and non-production.
 
 H0 reads the four explicitly authorized local HAR files without making a network request. The files remain outside every repository and worktree. The generated inventory stays under ignored `data/database-server-captures/h0/`; no header, cookie, query value, request body, response value, token, account state or user progress is persisted.
 
+Contract `0.1.1` adds a source-identity fingerprint derived only from validated filesystem metadata (`dev`, `ino`, size and timestamps). It binds later value projections to the same local file identity without hashing secret-bearing bytes; the structural and schema fingerprints remain value-free.
+
 The output is structural evidence only. It grants no product authority, does not promote `partial` or `unknown` facts, changes no production dataset or manifest, and is not consumed by R2 or Android.
 
 ## Safety contract
@@ -13,6 +15,7 @@ The output is structural evidence only. It grants no product authority, does not
 - The checked-in manifest selects a logical allowlisted input root and direct relative `.har` filenames only.
 - Absolute paths, traversal, nested paths, symlinks, junction roots, non-regular files and files escaping the resolved root are rejected.
 - Files are opened by descriptor and revalidated with link, resolved-path and file-identity checks before reading.
+- Later value gates must match the H0 source-identity fingerprint on their own validated descriptor read.
 - Capture size is capped at 192 MiB; the runner requires a Node heap below 1 GiB and pins it to 768 MiB.
 - Official API paths preserve only allowlisted route segments; other segments become `:opaque` and numeric identifiers become `:id`.
 - CDN paths preserve only an allowlisted public file extension and never an object name.
