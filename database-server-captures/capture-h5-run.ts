@@ -1,0 +1,23 @@
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
+import { getHeapStatistics } from "v8";
+import { CaptureH0Dataset, CaptureInputManifest } from "./capture-h0-contract";
+import { buildCaptureH5, validateCaptureH5 } from "./capture-h5-missions";
+import { collectCaptureSensitiveValues, scanTextsForSecrets } from "./capture-secret-scan";
+
+const repositoryRoot = resolve(process.cwd());
+if (JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8"))?.name !== "dokkan-web-scraper") throw new Error("H5 must run from the repository root");
+if (getHeapStatistics().heap_size_limit >= 1024 * 1024 * 1024) throw new Error("H5 requires a Node heap below 1 GiB");
+const manifest = JSON.parse(readFileSync(resolve(repositoryRoot, "database-server-captures", "capture-input-manifest.json"), "utf8")) as CaptureInputManifest;
+const h0 = JSON.parse(readFileSync(resolve(repositoryRoot, "data", "database-server-captures", "h0", "capture-h0-inventory.json"), "utf8")) as CaptureH0Dataset;
+const roots = { "dokkan-local-captures": "D:\\Dokkan" };
+const dataset = buildCaptureH5(manifest, roots, h0), validation = validateCaptureH5(dataset, h0);
+const outputText = `${JSON.stringify(dataset, null, 2)}\n`;
+const scan = scanTextsForSecrets(collectCaptureSensitiveValues(manifest, roots), [{ name: "capture-h5-mission-boards.json", text: outputText }]);
+if (!scan.valid) throw new Error(`H5 secret scan failed for ${scan.failingTargets.length} target(s)`);
+const outputDirectory = resolve(repositoryRoot, "data", "database-server-captures", "h5");
+mkdirSync(outputDirectory, { recursive: true });
+writeFileSync(resolve(outputDirectory, "capture-h5-mission-boards.json"), outputText);
+writeFileSync(resolve(outputDirectory, "capture-h5-validation.json"), `${JSON.stringify(validation, null, 2)}\n`);
+writeFileSync(resolve(outputDirectory, "capture-h5-secret-scan.json"), `${JSON.stringify(scan, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ contract: dataset.contract, contractVersion: dataset.contractVersion, entityCount: validation.entityCount, factCount: validation.factCount, supportedCount: validation.supportedCount, partialCount: validation.partialCount, userDerivedAuthorityCount: validation.userDerivedAuthorityCount, secretScanValid: scan.valid })}\n`);
