@@ -22,11 +22,11 @@ describe("capture H3 schedules", () => {
         equal(output.includes("synthetic-secret"), false);
         equal(output.includes("not-identity"), false);
         equal(output.includes("synthetic-personal-value"), false);
-        const validation = validateCaptureH3(first);
+        const validation = validateCaptureH3(first, h0);
         equal(validation.valid, true);
         equal(validation.supportedCount, 0);
         equal(validation.userDerivedAuthorityCount, 0);
         first.entities[0].facts[0].value = "tampered";
-        equal(validateCaptureH3(first).valid, false);
+        equal(validateCaptureH3(first, h0).valid, false);
     });
 });

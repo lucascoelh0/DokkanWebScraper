@@ -25,6 +25,8 @@ The projector discards user/progress fields including `user_quest`, visited/rese
 
 Total: 573 entities and 9,296 per-field provenance facts; all are `partial`, none is `supported`, and none grants user-derived authority. Each fact carries a value digest, the H0 source-identity anchor and a fingerprint over only its allowlisted public projection. The secret scan passed with zero exact or generic matches.
 
+Validation resolves every capture ID back to the expected H0 inventory and requires exact structural, schema, source-identity and capture-timestamp lineage; self-consistent replacement provenance is rejected.
+
 ## Verification
 
 - TypeScript `--noEmit`: passing.

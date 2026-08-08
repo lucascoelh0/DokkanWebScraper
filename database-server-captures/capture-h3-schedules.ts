@@ -71,16 +71,17 @@ export function buildCaptureH3(manifest: CaptureInputManifest, roots: Record<str
         }
     });
     const dataset: CaptureH3Dataset = { schemaVersion: 1, contract: "dokkan-official-capture-schedules-availability", contractVersion: "0.4.0", generatedAt: h0.generatedAt, generatedAtPolicy: "latest_capture_timestamp_for_deterministic_bytes", collectionMode: "offline_allowlisted_product_values_no_requests", productionMutation: false, defaultEnabled: false, authority: "capture_observation_partial_database_identity_remains_authoritative", discardedUserFields: [...discardedUserFields], entities: groupProductFacts(candidates) };
-    const validation = validateCaptureH3(dataset);
+    const validation = validateCaptureH3(dataset, h0);
     if (!validation.valid) throw new Error(`H3 validation failed: ${validation.failures.join(", ")}`);
     return dataset;
 }
 
-export function validateCaptureH3(dataset: CaptureH3Dataset): CaptureH3Validation {
+export function validateCaptureH3(dataset: CaptureH3Dataset, h0: CaptureH0Dataset): CaptureH3Validation {
     const failures: string[] = [];
     let factCount = 0, supportedCount = 0, partialCount = 0, userDerivedAuthorityCount = 0;
     const entityKeys = new Set<string>(), factIds = new Set<string>();
     const publicFingerprints = capturePublicValueFingerprints(dataset.entities);
+    const expectedCaptures = new Map(h0.captures.map(capture => [capture.captureId, capture]));
     for (const entity of dataset.entities) {
         const entityKey = `${entity.entityType}:${entity.entityId}`;
         if (entityKeys.has(entityKey) || !rules[entity.entityType] || !Number.isSafeInteger(entity.entityId) || entity.entityId <= 0) failures.push("entity identity");
@@ -97,7 +98,8 @@ export function validateCaptureH3(dataset: CaptureH3Dataset): CaptureH3Validatio
             if (fact.provenance.confidence === "partial") partialCount += 1; else supportedCount += 1;
             if (fact.provenance.userDerivedAuthority !== false) userDerivedAuthorityCount += 1;
             const expectedClassification = fact.provenance.normalizedEndpoint === "/resources/home" || fact.provenance.normalizedEndpoint === "/events" ? "mixed_product_and_user_state" : "product_catalog";
-            if (fact.provenance.evidenceOrigin !== "official_capture_allowlisted_product_value" || fact.provenance.endpointClassification !== expectedClassification || fact.provenance.method !== "GET" || fact.provenance.httpStatus < 200 || fact.provenance.httpStatus > 299 || !/^[a-z0-9][a-z0-9_-]{0,47}$/.test(fact.provenance.captureId) || !/^[a-f0-9]{64}$/.test(fact.provenance.captureFingerprint) || !/^[a-f0-9]{64}$/.test(fact.provenance.captureSchemaFingerprint) || !/^[a-f0-9]{64}$/.test(fact.provenance.captureSourceIdentityFingerprint) || fact.provenance.capturePublicValueFingerprint !== publicFingerprints.get(fact.provenance.captureId) || fact.provenance.valueEvidenceSha256 !== productValueEvidenceSha256(fact.field, fact.value, fact.provenance.jsonPath) || Number.isNaN(Date.parse(fact.provenance.captureTimestamp)) || Number.isNaN(Date.parse(fact.provenance.observedAt))) failures.push("provenance boundary");
+            const expectedCapture = expectedCaptures.get(fact.provenance.captureId);
+            if (fact.provenance.evidenceOrigin !== "official_capture_allowlisted_product_value" || fact.provenance.endpointClassification !== expectedClassification || fact.provenance.method !== "GET" || !Number.isInteger(fact.provenance.httpStatus) || fact.provenance.httpStatus < 200 || fact.provenance.httpStatus > 299 || !/^[a-z0-9][a-z0-9_-]{0,47}$/.test(fact.provenance.captureId) || !expectedCapture || fact.provenance.captureFingerprint !== expectedCapture.structuralFingerprint || fact.provenance.captureSchemaFingerprint !== expectedCapture.schemaFingerprint || fact.provenance.captureSourceIdentityFingerprint !== expectedCapture.sourceIdentityFingerprint || fact.provenance.captureTimestamp !== expectedCapture.capturedAtStart || fact.provenance.capturePublicValueFingerprint !== publicFingerprints.get(fact.provenance.captureId) || fact.provenance.valueEvidenceSha256 !== productValueEvidenceSha256(fact.field, fact.value, fact.provenance.jsonPath) || Number.isNaN(Date.parse(fact.provenance.captureTimestamp)) || Number.isNaN(Date.parse(fact.provenance.observedAt))) failures.push("provenance boundary");
         }
     }
     if (dataset.schemaVersion !== 1 || dataset.contract !== "dokkan-official-capture-schedules-availability" || dataset.contractVersion !== "0.4.0" || dataset.productionMutation !== false || dataset.defaultEnabled !== false || dataset.authority !== "capture_observation_partial_database_identity_remains_authoritative") failures.push("dataset contract");
