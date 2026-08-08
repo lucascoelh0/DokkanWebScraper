@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "inputRoot": "dokkan-local-captures",
+  "captures": [
+    {
+      "captureId": "existing-assets",
+      "path": "downloadAllButIAlreadyHaveAll.har"
+    },
+    {
+      "captureId": "httptoolkit-2005",
+      "path": "HTTPToolkit_2026-08-07_20-05.har"
+    },
+    {
+      "captureId": "httptoolkit-2006",
+      "path": "HTTPToolkit_2026-08-07_20-06.har"
+    },
+    {
+      "captureId": "httptoolkit-2027",
+      "path": "HTTPToolkit_2026-08-07_20-27.har"
+    }
+  ]
+}
