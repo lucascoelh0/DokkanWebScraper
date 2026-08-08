@@ -1,0 +1,25 @@
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
+import { getHeapStatistics } from "v8";
+import { CaptureH1Dataset } from "./capture-h1-contract";
+import { buildCaptureH2, validateCaptureH2 } from "./capture-h2-provenance";
+import { CaptureInputManifest } from "./capture-h0-contract";
+import { collectCaptureSensitiveValues, scanTextsForSecrets } from "./capture-secret-scan";
+
+const repositoryRoot = resolve(process.cwd());
+if (JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8"))?.name !== "dokkan-web-scraper") throw new Error("capture provenance must run from the repository root");
+if (getHeapStatistics().heap_size_limit >= 1024 * 1024 * 1024) throw new Error("capture provenance requires a Node heap limit below 1 GiB");
+const manifest = JSON.parse(readFileSync(resolve(repositoryRoot, "database-server-captures", "capture-input-manifest.json"), "utf8")) as CaptureInputManifest;
+const h1 = JSON.parse(readFileSync(resolve(repositoryRoot, "data", "database-server-captures", "h1", "capture-h1-schema.json"), "utf8")) as CaptureH1Dataset;
+const dataset = buildCaptureH2(h1);
+const validation = validateCaptureH2(dataset, h1);
+const outputText = `${JSON.stringify(dataset, null, 2)}\n`;
+const roots = { "dokkan-local-captures": "D:\\Dokkan" };
+const scan = scanTextsForSecrets(collectCaptureSensitiveValues(manifest, roots), [{ name: "capture-h2-provenance.json", text: outputText }]);
+if (!scan.valid) throw new Error(`H2 secret scan failed for ${scan.failingTargets.length} target(s)`);
+const outputDirectory = resolve(repositoryRoot, "data", "database-server-captures", "h2");
+mkdirSync(outputDirectory, { recursive: true });
+writeFileSync(resolve(outputDirectory, "capture-h2-provenance.json"), outputText);
+writeFileSync(resolve(outputDirectory, "capture-h2-validation.json"), `${JSON.stringify(validation, null, 2)}\n`);
+writeFileSync(resolve(outputDirectory, "capture-h2-secret-scan.json"), `${JSON.stringify(scan, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ contract: dataset.contract, contractVersion: dataset.contractVersion, factCount: validation.factCount, supportedCount: validation.supportedCount, partialCount: validation.partialCount, unknownCount: validation.unknownCount, userDerivedAuthorityCount: validation.userDerivedAuthorityCount, secretScanValid: scan.valid })}\n`);
