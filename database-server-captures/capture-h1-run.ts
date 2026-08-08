@@ -1,0 +1,25 @@
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
+import { getHeapStatistics } from "v8";
+import { buildCaptureH1 } from "./capture-h1-sanitizer";
+import { CaptureH0Dataset, CaptureInputManifest } from "./capture-h0-contract";
+import { collectCaptureSensitiveValues, scanTextsForSecrets } from "./capture-secret-scan";
+
+const repositoryRoot = resolve(process.cwd());
+const packageMetadata = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8"));
+if (packageMetadata?.name !== "dokkan-web-scraper") throw new Error("capture sanitizer must run from the repository root");
+if (getHeapStatistics().heap_size_limit >= 1024 * 1024 * 1024) throw new Error("capture sanitizer requires a Node heap limit below 1 GiB");
+const manifest = JSON.parse(readFileSync(resolve(repositoryRoot, "database-server-captures", "capture-input-manifest.json"), "utf8")) as CaptureInputManifest;
+const h0 = JSON.parse(readFileSync(resolve(repositoryRoot, "data", "database-server-captures", "h0", "capture-h0-inventory.json"), "utf8")) as CaptureH0Dataset;
+const roots = { "dokkan-local-captures": "D:\\Dokkan" };
+const outputDirectory = resolve(repositoryRoot, "data", "database-server-captures", "h1");
+const outputPath = resolve(outputDirectory, "capture-h1-schema.json");
+const scanPath = resolve(outputDirectory, "capture-h1-secret-scan.json");
+const dataset = buildCaptureH1(manifest, roots, h0);
+const outputText = `${JSON.stringify(dataset, null, 2)}\n`;
+const scan = scanTextsForSecrets(collectCaptureSensitiveValues(manifest, roots), [{ name: "capture-h1-schema.json", text: outputText }]);
+mkdirSync(outputDirectory, { recursive: true });
+writeFileSync(scanPath, `${JSON.stringify(scan, null, 2)}\n`);
+if (!scan.valid) throw new Error(`H1 secret scan failed for ${scan.failingTargets.length} target(s)`);
+writeFileSync(outputPath, outputText);
+process.stdout.write(`${JSON.stringify({ contract: dataset.contract, contractVersion: dataset.contractVersion, captureCount: dataset.captures.length, observationCount: dataset.captures.reduce((sum, value) => sum + value.observations.length, 0), valueFixtureCount: dataset.valueFixtureCount, secretScanValid: scan.valid })}\n`);

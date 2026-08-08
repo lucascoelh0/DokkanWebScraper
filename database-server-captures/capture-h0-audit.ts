@@ -41,7 +41,7 @@ export interface CaptureInputRoots {
     [logicalName: string]: string;
 }
 
-interface HarEntryStructure {
+export interface SanitizedHarEntryStructure {
     hostClass: CaptureTargetHostClass;
     method: string;
     normalizedEndpoint: string;
@@ -54,6 +54,8 @@ interface HarEntryStructure {
     responseMimeType: string;
     requestBodySchema: string[];
     responseBodySchema: string[];
+    requestBodyPresent: boolean;
+    responseBodyPresent: boolean;
     capturedAt: string | null;
 }
 
@@ -178,7 +180,7 @@ function parseTimestamp(value: unknown): string | null {
     return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 
-function entryStructure(raw: unknown): HarEntryStructure | null {
+function entryStructure(raw: unknown): SanitizedHarEntryStructure | null {
     if (!raw || typeof raw !== "object") return null;
     const entry = raw as any;
     const request = entry.request && typeof entry.request === "object" ? entry.request : {};
@@ -187,31 +189,34 @@ function entryStructure(raw: unknown): HarEntryStructure | null {
     if (!target) return null;
     const method = typeof request.method === "string" && /^[A-Z]+$/i.test(request.method) ? request.method.toUpperCase() : "UNKNOWN";
     const path = normalizedPath(target.url.pathname, target.hostClass);
+    const classification = classifyEndpoint(target.hostClass, method, path);
     const requestContent = request.postData && typeof request.postData === "object" ? request.postData : {};
     const responseContent = response.content && typeof response.content === "object" ? response.content : {};
     return {
         hostClass: target.hostClass,
         method,
         normalizedEndpoint: path,
-        classification: classifyEndpoint(target.hostClass, method, path),
+        classification,
         status: Number.isSafeInteger(response.status) ? response.status : 0,
         queryKeys: sortedUnique([...target.url.searchParams.keys()].map(queryKey)),
         requestHeaderNames: safeHeaderNames(request.headers),
         responseHeaderNames: safeHeaderNames(response.headers),
         requestMimeType: safeMimeType(requestContent.mimeType),
         responseMimeType: safeMimeType(responseContent.mimeType),
-        requestBodySchema: contentSchema({ ...requestContent, text: requestContent.text }),
+        requestBodySchema: contentSchema(requestContent),
         responseBodySchema: contentSchema(responseContent),
+        requestBodyPresent: typeof requestContent.text === "string" && requestContent.text.length > 0,
+        responseBodyPresent: typeof responseContent.text === "string" && responseContent.text.length > 0,
         capturedAt: parseTimestamp(entry.startedDateTime),
     };
 }
 
-function schemaEntryValue(entry: HarEntryStructure): string {
-    const { capturedAt: _capturedAt, ...structure } = entry;
+function schemaEntryValue(entry: SanitizedHarEntryStructure): string {
+    const { capturedAt: _capturedAt, requestBodyPresent: _requestBodyPresent, responseBodyPresent: _responseBodyPresent, ...structure } = entry;
     return JSON.stringify(structure);
 }
 
-function structuralEntryValue(entry: HarEntryStructure): string {
+function structuralEntryValue(entry: SanitizedHarEntryStructure): string {
     return JSON.stringify({ hostClass: entry.hostClass, method: entry.method, normalizedEndpoint: entry.normalizedEndpoint, classification: entry.classification, status: entry.status, queryKeys: entry.queryKeys });
 }
 
@@ -219,7 +224,7 @@ function emptyClassCounts(): Record<CaptureEndpointClass, number> {
     return Object.fromEntries(classes.map(value => [value, 0])) as Record<CaptureEndpointClass, number>;
 }
 
-function endpointInventory(entries: HarEntryStructure[]): CaptureH0EndpointInventory[] {
+function endpointInventory(entries: SanitizedHarEntryStructure[]): CaptureH0EndpointInventory[] {
     const groups = new Map<string, CaptureH0EndpointInventory>();
     for (const entry of entries) {
         const key = `${entry.hostClass}\u0000${entry.method}\u0000${entry.normalizedEndpoint}\u0000${entry.classification}`;
@@ -270,13 +275,21 @@ function readValidatedCapture(captureId: string, filePath: string, expectedRoot:
     }
 }
 
-function auditOne(captureId: string, filePath: string, expectedRoot: string): CaptureH0Inventory {
-    const validated = readValidatedCapture(captureId, filePath, expectedRoot);
-    const sizeBytes = validated.sizeBytes;
+export function readValidatedCaptureForSecretScanner(rootPath: string, relativePath: string, captureId: string): string {
+    const resolved = resolveCapture(rootPath, relativePath);
+    return readValidatedCapture(captureId, resolved.candidate, resolved.realRoot).text;
+}
+
+export function loadSanitizedCaptureEntries(rootPath: string, relativePath: string, captureId: string): { sizeBytes: number; entryCount: number; entries: SanitizedHarEntryStructure[] } {
+    const resolved = resolveCapture(rootPath, relativePath);
+    const validated = readValidatedCapture(captureId, resolved.candidate, resolved.realRoot);
     const parsed = JSON.parse(validated.text);
     const rawEntries = parsed?.log?.entries;
     if (!Array.isArray(rawEntries)) throw new Error(`capture ${captureId} is not a HAR with log.entries`);
-    const entries = rawEntries.map(entryStructure).filter((value): value is HarEntryStructure => value !== null);
+    return { sizeBytes: validated.sizeBytes, entryCount: rawEntries.length, entries: rawEntries.map(entryStructure).filter((value): value is SanitizedHarEntryStructure => value !== null) };
+}
+
+export function auditSanitizedCaptureEntries(captureId: string, sizeBytes: number, entryCount: number, entries: SanitizedHarEntryStructure[]): CaptureH0Inventory {
     const timestamps = entries.flatMap(value => value.capturedAt ? [value.capturedAt] : []).sort((a, b) => a.localeCompare(b));
     const classificationCounts = emptyClassCounts();
     for (const entry of entries) classificationCounts[entry.classification] += 1;
@@ -290,12 +303,22 @@ function auditOne(captureId: string, filePath: string, expectedRoot: string): Ca
         sizeBytes,
         capturedAtStart: timestamps.at(0) ?? null,
         capturedAtEnd: timestamps.at(-1) ?? null,
-        entryCount: rawEntries.length,
+        entryCount,
         targetEntryCount: entries.length,
-        nonTargetEntryCount: rawEntries.length - entries.length,
+        nonTargetEntryCount: entryCount - entries.length,
         classificationCounts,
         endpoints: endpointInventory(entries),
     };
+}
+
+function auditOne(captureId: string, filePath: string, expectedRoot: string): CaptureH0Inventory {
+    const validated = readValidatedCapture(captureId, filePath, expectedRoot);
+    const sizeBytes = validated.sizeBytes;
+    const parsed = JSON.parse(validated.text);
+    const rawEntries = parsed?.log?.entries;
+    if (!Array.isArray(rawEntries)) throw new Error(`capture ${captureId} is not a HAR with log.entries`);
+    const entries = rawEntries.map(entryStructure).filter((value): value is SanitizedHarEntryStructure => value !== null);
+    return auditSanitizedCaptureEntries(captureId, sizeBytes, rawEntries.length, entries);
 }
 
 export function auditCaptureManifest(manifest: CaptureInputManifest, roots: CaptureInputRoots): CaptureH0Dataset {
