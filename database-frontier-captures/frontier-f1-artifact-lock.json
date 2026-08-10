@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-frontier-zstd-dictionary-search-lock",
+  "contractVersion": "0.2.0",
+  "artifacts": [
+    { "role": "pinned_apk", "root": "database-apk", "relativePath": "dokkan-global-base.apk", "sizeBytes": 98799013, "sha256": "a51ba758e0555e0a756aa4f20278e6bec25ba6b0c7dcdcd0f4372e0fad159bc0", "scanArchiveEntries": true },
+    { "role": "pinned_elf", "root": "database-apk", "relativePath": "extracted/lib/arm64-v8a/libcocos2dcpp.so", "sizeBytes": 95662296, "sha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a", "scanArchiveEntries": false },
+    { "role": "pinned_sqlite", "root": "database-decrypted", "relativePath": "dokkan-global-current.db", "sizeBytes": 95428608, "sha256": "3654eb7db9e18dfe4c238abd02bcc06a688ffa6f30aa1ad93fd108dcfeb78265", "scanArchiveEntries": false },
+    { "role": "local_sqlite_backup", "root": "database-decrypted", "relativePath": "dokkan-global-backup.db", "sizeBytes": 1634304, "sha256": "18012e59db4a7f7c8c5a1ffd56e676b1950dd94f0d1cc5ed18f4fe5266bf7f2c", "scanArchiveEntries": false },
+    { "role": "local_sqlcipher_package", "root": "database-packages", "relativePath": "sqlcipher3-0.6.2-cp312-cp312-win_amd64.whl", "sizeBytes": 2485691, "sha256": "8bd60ffb7bfa65bd0e51da3d5c308553d7149f0091d4ea9f754c33d5ebbf0a66", "scanArchiveEntries": true }
+  ]
+}
