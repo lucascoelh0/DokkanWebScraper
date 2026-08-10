@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "synthetic": true,
+  "valuePolicy": "no_real_capture_values",
+  "routes": [
+    { "method": "GET", "path": "/origin_series", "responseFields": ["$.origin_series:array", "$.origin_series[].id:number"] },
+    { "method": "GET", "path": "/origin_episodes/:id", "responseFields": ["$.origin_episode.origin_pages:array", "$.origin_episode.origin_pages[].id:number"] },
+    { "method": "POST", "path": "/origin_battles/start", "requestFields": ["$.stage_id:number"], "responseDisposition": "compressed_unknown" },
+    { "method": "POST", "path": "/kobetu_battles/commands/next_turn", "requestFields": ["$.battle_room_id:number"], "responseDisposition": "compressed_unknown" },
+    { "method": "POST", "path": "/origin_battles/finish", "requestFields": ["$.stage_id:number", "$.battle_room_id:number"], "responseDisposition": "compressed_unknown" }
+  ]
+}

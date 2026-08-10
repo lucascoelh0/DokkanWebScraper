@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-frontier-capture-memory-evidence",
+  "contractVersion": "0.7.0",
+  "platform": "windows",
+  "measurementPolicy": "isolated_sequential_runner_working_set_process_peak_with_f1_process_tree_sampling",
+  "limitBytes": 1073741824,
+  "measurements": [
+    { "gate": "f0", "peakWorkingSetBytes": 52944896 },
+    { "gate": "f1", "peakWorkingSetBytes": 488800256 },
+    { "gate": "f2", "peakWorkingSetBytes": 58818560 },
+    { "gate": "f3", "peakWorkingSetBytes": 58093568 },
+    { "gate": "f4", "peakWorkingSetBytes": 59625472 },
+    { "gate": "f5", "peakWorkingSetBytes": 375648256 },
+    { "gate": "f6", "peakWorkingSetBytes": 59125760 }
+  ],
+  "maximumPeakWorkingSetBytes": 488800256,
+  "withinLimit": true
+}
