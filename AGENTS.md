@@ -15,24 +15,44 @@ at `D:\Dokkan\Dokkanpanion`.
 - The user chooses the initial model.
 - The primary session owns the task end to end: decisions, edits, integration,
   verification, commits, pushes, and publication.
-- Work solo by default. Delegate only a bounded, independent question whose
-  answer is likely to change a decision or materially improve a high-risk
-  review.
+- Work solo for small or tightly coupled tasks. For substantial implementation,
+  the primary session may delegate a bounded code slice when the ownership,
+  expected output and integration boundary are explicit.
 - Before spawning, the primary session must be able to state one concise
-  deliverable and why its current context is insufficient. If it cannot, do
-  not delegate.
+  deliverable, the exact write scope and why delegation materially helps. If it
+  cannot, do not delegate.
 - Normally use no more than one subagent. A second is allowed only for a truly
   independent question; never exceed the configured limit of two and never ask
   a subagent to create another subagent.
-- Use `dokkan_source_auditor` only for ambiguous game semantics, first-party
-  joins, or conflicting source evidence. Use `contract_reviewer` only after a
-  material parser, schema, cache, concurrency, provenance, or combat-calculation
-  change.
-- All project subagents are read-only. They must not edit files, run scraper
-  generation or tests, use Git, or publish data. The primary session integrates
-  their concise findings and avoids repeating the same exploration.
-- Do not delegate routine searches, reads of known files, implementation,
-  mechanical validation, trivial reviews, commits, pushes, or R2 work.
+- Use at most one write-capable worker at a time unless two implementations have
+  provably disjoint files and contracts. The primary session must not edit the
+  worker's owned files concurrently.
+- Subagent roles and effort:
+  - Use a `worker` on `gpt-5.6-sol` with high effort for substantial or complex
+    implementation. Give it exact file/module ownership and tell it that other
+    changes may exist and must not be reverted.
+  - Use an `explorer` on `gpt-5.6-luna` with medium effort only for a narrow
+    repository question whose answer is not already documented.
+  - Use `dokkan_source_auditor` only for ambiguous game semantics, first-party
+    joins, or conflicting source evidence.
+  - Use `contract_reviewer` only after a material parser, schema, cache,
+    concurrency, provenance, delivery, or combat-calculation change.
+- Write-capable workers may edit only their assigned files and add directly
+  related tests. They may run the narrowest focused checks needed for their
+  slice, but must not run publishers, production refreshes, R2 commands, broad
+  generation, or unrelated full suites.
+- All subagents must report changed files, checks run, assumptions and residual
+  risks. The primary session reviews every worker diff, resolves integration,
+  generates tracked `lib/` output when needed, and runs the final validation.
+- Subagents must never stage, commit, push, merge, rebase, manage branches,
+  publish data, alter R2, or change Android unless a future repository policy
+  explicitly assigns that operation. These remain primary-session actions and
+  still require the user's authorization where applicable.
+- `dokkan_source_auditor`, `contract_reviewer` and `explorer` remain read-only.
+  They must not edit files, run generation or tests, use Git, or publish data.
+- Do not delegate routine searches, reads of known files, mechanical validation,
+  trivial reviews, commits, pushes, or R2 work. Do not duplicate a delegated
+  task in the primary session while it is running.
 - Recommend escalation only for concrete risk, ambiguity, or a failed attempt:
   - Luna Medium: local, predictable, mechanical, low-impact changes.
   - Sol Medium: normal features, bugs, tests, and refactors.
@@ -41,9 +61,9 @@ at `D:\Dokkan\Dokkanpanion`.
 - Use Codex models only. Do not recommend Claude, Opus, Sonnet, Fable, or any
   handoff to another provider.
 - Do not recommend a switch for marginal gains. If escalation is necessary,
-  recommend a higher Codex effort level and provide a compact handoff with the
-  objective, relevant files, unresolved decisions, constraints, and current
-  diff, then wait for the user to open another Codex session.
+  first prefer a bounded in-session worker or reviewer. Ask the user to open a
+  separate Codex session only when the work cannot be safely isolated inside
+  the current orchestration.
 
 ## Verification
 
