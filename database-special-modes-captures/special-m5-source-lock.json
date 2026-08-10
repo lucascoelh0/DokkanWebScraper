@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-special-modes-shadow-source-lock",
+  "contractVersion": "0.6.0",
+  "files": [
+    { "key": "e9_payload", "root": "main", "path": "data/database-events/events-e9-readiness.json", "sizeBytes": 6347, "sha256": "3d32ac0a8b0e85ec7a28e2e25e7abb5e26e5592d95dda245eb9b6071a335e052" },
+    { "key": "e9_manifest", "root": "main", "path": "data/database-events/events-e9-manifest.json", "sizeBytes": 1105, "sha256": "0bbc08d1c6728931213b006e0942247a33e60a1e148422f23be4851dbd88f45d" },
+    { "key": "e9_validation", "root": "main", "path": "data/database-events/events-e9-validation.json", "sizeBytes": 149, "sha256": "193a416c65e837fe1a76cbf17800908b842492458629eb3e2876811d9cb7cb6a" },
+    { "key": "s7_payload", "root": "main", "path": "data/database-server/s7/server-s7-readiness.json", "sizeBytes": 11571, "sha256": "353b81ce312043770b65d2152dcfb37bbe04e5995fe6118b533622998fc2fb1a" },
+    { "key": "s7_manifest", "root": "main", "path": "data/database-server/s7/server-s7-manifest.json", "sizeBytes": 606, "sha256": "c7ef10dfa521a7d5ecdc3d7bde2f48b339f16aa5b491c7ddb291f22cb49987c5" },
+    { "key": "s7_validation", "root": "main", "path": "data/database-server/s7/server-s7-validation.json", "sizeBytes": 238, "sha256": "f47ae54367af8a1133adbbc62b225d8fc58bfcd1ba3ace773e023cd107897314" },
+    { "key": "h3_payload", "root": "capture", "path": "data/database-server-captures/h3/capture-h3-schedules.json", "sizeBytes": 12270274, "sha256": "9708c70f07480235bb60958fe2d379e250b46e7c75a06ed9a0f5be704b1ba8a2" },
+    { "key": "h3_validation", "root": "capture", "path": "data/database-server-captures/h3/capture-h3-validation.json", "sizeBytes": 184, "sha256": "57b8b05b2905e1d85c8d081dfa18955dbf08018e3a4c1488f4cce874d1021fd4" },
+    { "key": "h12_payload", "root": "capture", "path": "data/database-server-captures/h12/capture-h12-readiness.json", "sizeBytes": 4431, "sha256": "02f304c804da78ce3adc5de9bc033b88491f8a5b0920ebcf5d7af1517b89837b" },
+    { "key": "h12_validation", "root": "capture", "path": "data/database-server-captures/h12/capture-h12-validation.json", "sizeBytes": 116, "sha256": "195ce5bf06c0b0e19e1143d0b34be14509ef0a4ac1dd119f6d987ce89cf3d7f2" },
+    { "key": "h13_payload", "root": "capture", "path": "data/database-server-captures/h13/capture-h13-gasha-audit.json", "sizeBytes": 2264344, "sha256": "6b1c82ddfad8672f8e1f9a22c4188cdc61c85dfae7aeee396b22ec2e687d7215" },
+    { "key": "h13_validation", "root": "capture", "path": "data/database-server-captures/h13/capture-h13-validation.json", "sizeBytes": 294, "sha256": "dab687cdf80975887509482814233c0a2739fdd52512c1c9d568da900fe50b9c" },
+    { "key": "stage_catalog", "root": "main", "path": "data/stage-catalog/latest/stage-catalog.json", "sizeBytes": 3889931, "sha256": "2e51544c6e80025c795a18899c250813b19153426c5b1cdcc763efed32796e86" },
+    { "key": "frontier_series_cache", "root": "main", "path": "data/dokkan-frontier/latest/dokkan-frontier-series.json", "sizeBytes": 504, "sha256": "ace6ad553c0855311a80633224a0d8bb0a7bf1e27b10773b000455fdb8e7db56" },
+    { "key": "frontier_chapters_cache", "root": "main", "path": "data/dokkan-frontier/latest/dokkan-frontier-chapters.json", "sizeBytes": 351037, "sha256": "3530c5e51748d347f34ba71db1c0a511ee58084c77d60173b180547fa66dd0c8" }
+  ],
+  "directories": [
+    { "key": "dokkaninfo_event_cache", "root": "main", "path": "data/dokkaninfo-events/cache", "filter": "all_json", "fileCount": 898, "totalBytes": 17460485, "aggregateSha256": "338e58151d1632b89968d433a1c883688b4e4171c77b69c4a8b47b465e0ea75e" },
+    { "key": "dokkaninfo_sdbattle_cache", "root": "main", "path": "data/dokkaninfo-events/cache", "filter": "sdbattle_json", "fileCount": 25, "totalBytes": 7723, "aggregateSha256": "5a4baee244b3d03f7527a9b0960de3efba2d83c7cdaab1040734fc8bc8154957" }
+  ]
+}

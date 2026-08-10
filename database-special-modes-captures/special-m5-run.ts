@@ -1,0 +1,11 @@
+import { createHash } from "crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
+import { getHeapStatistics } from "v8";
+import { SpecialM2Dataset } from "./special-m2-contract";
+import { SpecialM3Dataset } from "./special-m3-contract";
+import { SpecialM4Dataset } from "./special-m4-contract";
+import { SpecialM5SourceLock } from "./special-m5-contract";
+import { buildSpecialM5, validateSpecialM5 } from "./special-m5-parity";
+import { loadSpecialM5Sources } from "./special-m5-sources";
+const root = resolve(process.cwd()); if (getHeapStatistics().heap_size_limit >= 1024 * 1024 * 1024) throw new Error("M5 requires a Node heap below 1 GiB"); const read = (path: string) => readFileSync(resolve(root, path), "utf8"), m2 = JSON.parse(read("data/database-special-modes-captures/m2/special-m2-burst.json")) as SpecialM2Dataset, m3 = JSON.parse(read("data/database-special-modes-captures/m3/special-m3-database-joins.json")) as SpecialM3Dataset, m4Text = read("data/database-special-modes-captures/m4/special-m4-lossless-facts.json"), m4 = JSON.parse(m4Text) as SpecialM4Dataset, lock = JSON.parse(read("database-special-modes-captures/special-m5-source-lock.json")) as SpecialM5SourceLock, sources = loadSpecialM5Sources({ main: "D:\\Dokkan\\DokkanWebScraper", capture: "D:\\Dokkan\\DokkanWebScraper-server-captures" }, lock), dataset = buildSpecialM5(m2, m3, m4, m4Text, sources), validation = validateSpecialM5(dataset, m4, m4Text), text = `${JSON.stringify(dataset, null, 2)}\n`, manifest = { schemaVersion: 1, contractVersion: dataset.contractVersion, generatedAt: dataset.generatedAt, fileName: "special-m5-shadow-parity.json", sizeBytes: Buffer.byteLength(text), sha256: createHash("sha256").update(text).digest("hex") }, out = resolve(root, "data/database-special-modes-captures/m5"); mkdirSync(out, { recursive: true }); writeFileSync(resolve(out, manifest.fileName), text); writeFileSync(resolve(out, "special-m5-validation.json"), `${JSON.stringify(validation, null, 2)}\n`); writeFileSync(resolve(out, "special-m5-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`); process.stdout.write(`${JSON.stringify(validation)}\n`);
