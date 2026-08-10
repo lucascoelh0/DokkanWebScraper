@@ -30,6 +30,7 @@ Status: optional, additive, disabled and non-production.
 | K13 fallback safety | green | fail-closed audit boundary with no exported K11 application path; zero unsafe, ambiguous, duplicate or conflict-winning patches |
 | K14 field readiness | green | `id`, `rarity` and `type` evidence readiness GO only; K11 is audit-only and every delivery/consumer/publisher/authority action remains disabled |
 | K15 compact supported-only projection | green | offline generation and standalone validation GO; 4,296 pinned `cardId`/`stateId`/`rarity`/`type` records; no consumer, publication or authority promotion |
+| K16 opt-in compact consumer | green | offline K15-only compare-shadow over the pinned productive `Character[]`; bounded field reports and zero effective-value or catalog changes |
 
 ## K0 boundary
 
@@ -136,8 +137,19 @@ Offline generation and standalone pin validation are GO. K15 never creates,
 removes or mutates productive `Character` records, and standalone validation
 does not open K11. Details are in `specs/database-characters-k15.md`.
 
-The next gate is K16: an opt-in, K15-only compare-shadow consumer that reports
-differences without changing effective character values and can never open
-K11. K16 implementation is not yet authorized. All consumers, publication,
-authority promotion, production use, R2 and Android remain NO-GO;
-FYI/DokkanInfo remain active.
+K16 now implements the explicitly opt-in, offline K15-only compare-shadow
+consumer. It validates the pinned K15 release before and after use, validates
+the exact 121,390,313-byte productive `Character[]` pin with 4,090 top-level
+records, compares all 4,296 compact records by structural ID, and reports
+bounded `id`/`rarity`/`type` agreement, difference, missing and ambiguous
+counts. Top-level records outrank nested transformations; equal nested repeats
+use the first exact path and divergent duplicates fail closed. The consumer has
+no writer, apply, merge or changed-`Character[]` API and does not load K11 or
+K0-K14 sidecars. The pinned real-data comparison reports 4,296 `id` agreements,
+4,296 `type` agreements and 4,085 `rarity` agreements plus 211 differences
+where the productive nested value is null, with zero missing or ambiguous
+bindings. Details are in `specs/database-characters-k16.md`.
+
+GO is limited to explicit offline compare-shadow. Publication, authority
+promotion, production use, effective-value changes, R2, publishers and Android
+remain NO-GO; FYI/DokkanInfo remain active.

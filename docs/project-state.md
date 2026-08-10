@@ -137,10 +137,17 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   `803346fc61a7e659ccb8aeea62c273fcdf24ef3d66d3d03564a6fad29627c81f`.
   Two complete generations were byte-identical and peak RSS was 248,946,688
   bytes. Generated `data/` remains ignored and unpublished.
-- K15 generation and validation are GO. Publication, consumers, authority
-  promotion, production, publisher, R2 and Android remain disabled/NO-GO;
-  FYI/DokkanInfo remain active. The next gate is K16: a K15-only opt-in shadow
-  consumer that does not change effective values and can never read K11.
+- K16 now adds an explicitly opt-in, offline K15-only compare-shadow consumer.
+  It validates K15 before and after use, reads only the exact 121,390,313-byte,
+  4,090-record productive `Character[]` pin, compares all 4,296 compact records
+  by structural ID and emits a bounded deterministic stdout report. It has no
+  writer, apply, merge, catalog mutation, K11 payload reader or K0-K14 sidecar
+  input. The pinned real-data result is 4,296 `id` agreements, 4,296 `type`
+  agreements and 4,085 `rarity` agreements plus 211 productive-null
+  differences, with zero missing or ambiguous bindings.
+- K15 generation/validation and K16 offline compare-shadow are GO. Authority
+  promotion, effective-value changes, production, publisher, R2, Android and
+  FYI/DokkanInfo removal remain disabled/NO-GO.
 
 ## Operating Constraints
 
