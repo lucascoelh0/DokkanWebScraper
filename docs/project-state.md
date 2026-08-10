@@ -9,13 +9,14 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 ## Repository Checkpoints
 
 - `D:\Dokkan\DokkanWebScraper` owns the TypeScript data pipeline.
-  `main == origin/main == 40a73a9`; it contains the integrated E0–E9,
-  H0–H13, F0–F6 and M0–M6 campaigns.
-- Character productization K0–K9 was reapplied without conflicts from the
-  historical `7858333` tip onto `codex/database-character-productization-current`,
-  based on `origin/main` at `40a73a9`. It is not integrated into `main`.
+  Its integrated history includes E0–E9, H0–H13, F0–F6 and M0–M6, together
+  with the DB0–DB50/C1–C5 database-first foundation.
+- This history line also contains the reviewed K0–K9 character-productization
+  checkpoint, reapplied in order from the historical campaign and followed by
+  artifact-path hardening. Exact branch pointers remain operational Git state,
+  not a durable project-state assertion.
 - The historical `codex/database-character-productization` branch remains
-  intact at `7858333`; its merge-base with current `main` is `d28b3f2`.
+  intact as the original campaign record.
 - `D:\Dokkan\Dokkanpanion` owns the Android consumer. Its synchronized
   `master` checkpoint remains `fe58fe1`; no database-first shadow consumer is
   implemented or authorized.
@@ -85,11 +86,12 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   two reconstructions were byte-identical and peak memory was 258,596,864
   bytes.
 
-### K0–K9 — character productization reapplied
+### K0–K9 — reviewed character productization checkpoint
 
-- K0–K9 is reapplied byte-for-byte at the tracked source/lib/documentation
-  surface. It remains optional, additive, absent-compatible, default-off and
-  non-production; no Android, R2, publisher or productive dataset was added.
+- K0–K9 evidence, contracts and matching compiled outputs are present on this
+  history line. The infrastructure remains optional, additive,
+  absent-compatible, default-off and non-production; no Android, R2, publisher
+  or productive dataset was added.
 - Only merging the disabled infrastructure and pinned optional generation are
   GO. Every authority promotion or consumer path remains NO-GO, including
   production replacement, FYI/DokkanInfo removal, asset delivery, Android,

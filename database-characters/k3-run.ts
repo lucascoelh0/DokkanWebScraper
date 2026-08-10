@@ -3,6 +3,7 @@ import { resolve } from "path";
 import { IntegrationC1Dataset } from "../database-integration/integration-c1-contract";
 import { IntegrationC2Dataset } from "../database-integration/integration-c2-contract";
 import { buildDeterministicJsonGzipArtifact, sha256Bytes } from "./artifact";
+import { resolveCharacterInputFile } from "./artifact-path";
 import { buildDatabaseCharacterSkillsCoverage, buildDatabaseCharacterSkillsDataset } from "./skills-builder";
 import { DatabaseCharacterSkillsCoverage, DatabaseCharacterSkillsValidation } from "./skills-contract";
 import { validateDatabaseCharacterSkillsDataset } from "./skills-validator";
@@ -19,8 +20,12 @@ async function run() {
     let peakRssBytes = process.memoryUsage().rss; const timer = setInterval(() => peakRssBytes = Math.max(peakRssBytes, process.memoryUsage().rss), 25);
     try {
         const source = await readCharacterSourceInput(inputDir);
-        const c1 = await readPinnedGzipJson<IntegrationC1Dataset>(resolve(integrationDir, C1.fileName), C1);
-        const c2 = await readPinnedGzipJson<IntegrationC2Dataset>(resolve(integrationDir, C2.fileName), C2);
+        const [c1Path, c2Path] = await Promise.all([
+            resolveCharacterInputFile(integrationDir, C1.fileName, C1.fileName),
+            resolveCharacterInputFile(integrationDir, C2.fileName, C2.fileName),
+        ]);
+        const c1 = await readPinnedGzipJson<IntegrationC1Dataset>(c1Path, C1);
+        const c2 = await readPinnedGzipJson<IntegrationC2Dataset>(c2Path, C2);
         await assertPinnedDatabaseFile(database);
         const generate = async (): Promise<{ artifact: ReturnType<typeof buildDeterministicJsonGzipArtifact>; coverage: DatabaseCharacterSkillsCoverage; validation: DatabaseCharacterSkillsValidation }> => {
             const dataset = await buildDatabaseCharacterSkillsDataset({ source, c1, c2, c1Artifact: C1, c2Artifact: C2 });

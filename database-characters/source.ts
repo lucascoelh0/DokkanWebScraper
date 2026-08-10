@@ -5,6 +5,11 @@ import { resolve } from "path";
 import { createGunzip, gunzipSync } from "zlib";
 import { DatabaseCardRecord } from "../database-experiment/contract";
 import { ReadOnlySqliteAdapter, SqliteRow } from "../database-experiment/sqlite-readonly-adapter";
+import { resolveCharacterInputFile } from "./artifact-path";
+
+const DB1_MANIFEST_FILE = "manifest.json";
+const DB1_SOURCE_MANIFEST_FILE = "source-manifest.json";
+const DB1_ARTIFACT_FILE = "characters-db-experiment.json.gz";
 
 export const CHARACTER_SOURCE_PROFILE = {
     snapshotVersion: "global-6.4.0-v338-2026-08-05",
@@ -30,6 +35,7 @@ export interface CharacterSourceInput {
 }
 
 interface Db1Manifest {
+    schemaVersion: number;
     contractVersion: string;
     datasetVersion: string;
     generatedAt: string;
@@ -39,9 +45,13 @@ interface Db1Manifest {
     uncompressedSizeBytes: number;
     cardCount: number;
     sourceSha256: string;
+    sourceManifestFile: string;
+    compression: string;
 }
 
 interface Db1SourceManifest {
+    schemaVersion: number;
+    sourceKind: string;
     snapshotVersion: string;
     sha256: string;
     sizeBytes: number;
@@ -61,21 +71,32 @@ export async function sha256File(filePath: string): Promise<string> {
 
 export async function readCharacterSourceInput(inputDir: string): Promise<CharacterSourceInput> {
     const resolvedInputDir = resolve(inputDir);
-    const manifest = JSON.parse(await readFile(resolve(resolvedInputDir, "manifest.json"), "utf8")) as Db1Manifest;
-    const source = JSON.parse(await readFile(resolve(resolvedInputDir, "source-manifest.json"), "utf8")) as Db1SourceManifest;
-    const artifactPath = resolve(resolvedInputDir, manifest.fileName);
-    const actualHash = await sha256File(artifactPath);
+    const [manifestPath, sourceManifestPath] = await Promise.all([
+        resolveCharacterInputFile(resolvedInputDir, DB1_MANIFEST_FILE, DB1_MANIFEST_FILE),
+        resolveCharacterInputFile(resolvedInputDir, DB1_SOURCE_MANIFEST_FILE, DB1_SOURCE_MANIFEST_FILE),
+    ]);
+    const [manifest, source] = await Promise.all([
+        readFile(manifestPath, "utf8").then(value => JSON.parse(value) as Db1Manifest),
+        readFile(sourceManifestPath, "utf8").then(value => JSON.parse(value) as Db1SourceManifest),
+    ]);
     const failures: string[] = [];
+    if (manifest.schemaVersion !== 1 || manifest.compression !== "gzip") failures.push("DB1 manifest schema changed");
     if (manifest.contractVersion !== "1.1.0") failures.push(`DB1 contract ${manifest.contractVersion} is not supported`);
+    if (manifest.fileName !== DB1_ARTIFACT_FILE) failures.push("DB1 manifest file name changed");
+    if (manifest.sourceManifestFile !== DB1_SOURCE_MANIFEST_FILE) failures.push("DB1 source manifest file name changed");
+    if (source.schemaVersion !== 1 || source.sourceKind !== "first-party-global-sqlite") failures.push("source manifest schema changed");
     if (source.snapshotVersion !== CHARACTER_SOURCE_PROFILE.snapshotVersion) failures.push("snapshot version changed");
     if (source.sha256 !== CHARACTER_SOURCE_PROFILE.databaseSha256 || manifest.sourceSha256 !== source.sha256) failures.push("database hash changed");
     if (source.sizeBytes !== CHARACTER_SOURCE_PROFILE.databaseSizeBytes) failures.push("database size changed");
     if (source.tableCount !== 232 || source.readOnlyMode !== "sqlite-uri-mode-ro+immutable+query-only") failures.push("source read-only/schema profile changed");
-    if (manifest.sha256 !== CHARACTER_SOURCE_PROFILE.db1ArtifactSha256 || actualHash !== manifest.sha256) failures.push("DB1 artifact hash changed");
+    if (manifest.sha256 !== CHARACTER_SOURCE_PROFILE.db1ArtifactSha256) failures.push("DB1 artifact hash changed");
     if (manifest.sizeBytes !== CHARACTER_SOURCE_PROFILE.db1ArtifactSizeBytes) failures.push("DB1 artifact size changed");
     if (manifest.uncompressedSizeBytes !== CHARACTER_SOURCE_PROFILE.db1UncompressedSizeBytes) failures.push("DB1 uncompressed size changed");
     if (manifest.cardCount !== CHARACTER_SOURCE_PROFILE.db1CardCount) failures.push("DB1 card count changed");
     if (failures.length > 0) throw new Error(`Incompatible character source input: ${failures.join("; ")}`);
+    const artifactPath = await resolveCharacterInputFile(resolvedInputDir, manifest.fileName, DB1_ARTIFACT_FILE);
+    const [actualHash, artifactMetadata] = await Promise.all([sha256File(artifactPath), stat(artifactPath)]);
+    if (actualHash !== manifest.sha256 || artifactMetadata.size !== manifest.sizeBytes) throw new Error("Incompatible character source input: DB1 artifact identity changed");
     return {
         inputDir: resolvedInputDir,
         artifactPath,

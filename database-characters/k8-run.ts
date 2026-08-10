@@ -1,6 +1,7 @@
 import { open, mkdir, readFile, stat, writeFile } from "fs/promises";
 import { resolve } from "path";
 import { buildDeterministicJsonGzipArtifact, sha256Bytes } from "./artifact";
+import { resolveCharacterInputDirectory, resolveCharacterInputFile } from "./artifact-path";
 import { buildDatabaseCharacterRefreshCoverage, buildDatabaseCharacterRefreshReceipt } from "./refresh-builder";
 import { CHARACTER_REFRESH_PROFILE, CharacterSidecarProfile, PinnedFileIdentity } from "./refresh-contract";
 import { validateDatabaseCharacterRefreshReceipt } from "./refresh-validator";
@@ -28,18 +29,24 @@ async function assertElf(path: string): Promise<void> {
 }
 
 async function verifySidecar(root: string, profile: CharacterSidecarProfile): Promise<void> {
-    const directory = resolve(root, profile.gate);
+    const directory = await resolveCharacterInputDirectory(root, profile.gate, profile.gate);
+    const [artifactPath, manifestPath, coveragePath, validationPath] = await Promise.all([
+        resolveCharacterInputFile(directory, profile.artifact.fileName, profile.artifact.fileName),
+        resolveCharacterInputFile(directory, profile.manifest.fileName, profile.manifest.fileName),
+        resolveCharacterInputFile(directory, profile.coverage.fileName, profile.coverage.fileName),
+        resolveCharacterInputFile(directory, profile.validation.fileName, profile.validation.fileName),
+    ]);
     await Promise.all([
-        assertExactFile(resolve(directory, profile.artifact.fileName), profile.artifact),
-        assertExactFile(resolve(directory, profile.manifest.fileName), profile.manifest),
-        assertExactFile(resolve(directory, profile.coverage.fileName), profile.coverage),
-        assertExactFile(resolve(directory, profile.validation.fileName), profile.validation),
+        assertExactFile(artifactPath, profile.artifact),
+        assertExactFile(manifestPath, profile.manifest),
+        assertExactFile(coveragePath, profile.coverage),
+        assertExactFile(validationPath, profile.validation),
     ]);
     const [manifest, validation] = await Promise.all([
-        readFile(resolve(directory, profile.manifest.fileName), "utf8").then(JSON.parse),
-        readFile(resolve(directory, profile.validation.fileName), "utf8").then(JSON.parse),
+        readFile(manifestPath, "utf8").then(JSON.parse),
+        readFile(validationPath, "utf8").then(JSON.parse),
     ]);
-    if (manifest.contractVersion !== profile.contractVersion || manifest.fileName !== profile.artifact.fileName || manifest.sha256 !== profile.artifact.sha256 || manifest.sizeBytes !== profile.artifact.sizeBytes || manifest.uncompressedSizeBytes !== profile.artifact.uncompressedSizeBytes || manifest.coverageFile !== profile.coverage.fileName || manifest.coverageSha256 !== profile.coverage.sha256 || manifest.coverageSizeBytes !== profile.coverage.sizeBytes || manifest.validationFile !== profile.validation.fileName || manifest.validationSha256 !== profile.validation.sha256 || manifest.validationSizeBytes !== profile.validation.sizeBytes || manifest.sourceDb1ArtifactSha256 !== CHARACTER_REFRESH_PROFILE.db1.sha256) throw new Error(`${profile.gate.toUpperCase()} manifest contract changed`);
+    if (manifest.schemaVersion !== 1 || manifest.contractVersion !== profile.contractVersion || manifest.compression !== "gzip" || manifest.fileName !== profile.artifact.fileName || manifest.sha256 !== profile.artifact.sha256 || manifest.sizeBytes !== profile.artifact.sizeBytes || manifest.uncompressedSizeBytes !== profile.artifact.uncompressedSizeBytes || manifest.coverageFile !== profile.coverage.fileName || manifest.coverageSha256 !== profile.coverage.sha256 || manifest.coverageSizeBytes !== profile.coverage.sizeBytes || manifest.validationFile !== profile.validation.fileName || manifest.validationSha256 !== profile.validation.sha256 || manifest.validationSizeBytes !== profile.validation.sizeBytes || manifest.sourceDb1ArtifactSha256 !== CHARACTER_REFRESH_PROFILE.db1.sha256) throw new Error(`${profile.gate.toUpperCase()} manifest contract changed`);
     if (validation.valid !== true || !Array.isArray(validation.failures) || validation.failures.length !== 0) throw new Error(`${profile.gate.toUpperCase()} validation is not green`);
 }
 
@@ -50,7 +57,10 @@ async function preflight(options: { databasePath: string; elfPath: string; input
     const db1 = await readCharacterSourceInput(options.inputDir);
     if (db1.snapshotVersion !== CHARACTER_REFRESH_PROFILE.snapshotVersion || db1.artifactSha256 !== CHARACTER_REFRESH_PROFILE.db1.sha256 || db1.artifactSizeBytes !== CHARACTER_REFRESH_PROFILE.db1.sizeBytes || db1.uncompressedSizeBytes !== CHARACTER_REFRESH_PROFILE.db1.uncompressedSizeBytes || db1.cardCount !== CHARACTER_REFRESH_PROFILE.db1.cardCount) throw new Error("DB1 refresh identity changed");
     await assertElf(options.elfPath);
-    for (const identity of CHARACTER_REFRESH_PROFILE.semanticFiles) await assertExactFile(resolve(options.semanticDir, identity.fileName), identity);
+    for (const identity of CHARACTER_REFRESH_PROFILE.semanticFiles) {
+        const semanticPath = await resolveCharacterInputFile(options.semanticDir, identity.fileName, identity.fileName);
+        await assertExactFile(semanticPath, identity);
+    }
     for (const sidecar of CHARACTER_REFRESH_PROFILE.sidecars) await verifySidecar(options.sidecarRoot, sidecar);
 }
 

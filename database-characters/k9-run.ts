@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { resolve } from "path";
 import { buildDeterministicJsonGzipArtifact, sha256Bytes } from "./artifact";
+import { resolveCharacterInputFile } from "./artifact-path";
 import { buildDatabaseCharacterReadinessCoverage, buildDatabaseCharacterReadinessDataset } from "./readiness-builder";
 import { validateDatabaseCharacterReadinessDataset } from "./readiness-validator";
 import { assertPinnedArtifactFile } from "./source";
@@ -18,12 +19,17 @@ function arg(name: string): string | undefined {
 }
 
 async function verifyK8(directory: string): Promise<void> {
-    for (const file of K8_FILES) await assertPinnedArtifactFile(resolve(directory, file.fileName), file);
+    const paths = new Map<string, string>();
+    for (const file of K8_FILES) {
+        const path = await resolveCharacterInputFile(directory, file.fileName, file.fileName);
+        paths.set(file.fileName, path);
+        await assertPinnedArtifactFile(path, file);
+    }
     const [manifest, validation] = await Promise.all([
-        readFile(resolve(directory, "database-characters-k8-manifest.json"), "utf8").then(JSON.parse),
-        readFile(resolve(directory, "database-characters-k8-validation.json"), "utf8").then(JSON.parse),
+        readFile(paths.get("database-characters-k8-manifest.json")!, "utf8").then(JSON.parse),
+        readFile(paths.get("database-characters-k8-validation.json")!, "utf8").then(JSON.parse),
     ]);
-    if (manifest.sha256 !== K8_FILES[0].sha256 || manifest.sidecarCount !== 8 || manifest.projectedSidecarBytes !== 10_166_877 || validation.valid !== true || validation.failures.length !== 0) throw new Error("K8 readiness source is not green");
+    if (manifest.schemaVersion !== 1 || manifest.contractVersion !== "1.0.0" || manifest.compression !== "gzip" || manifest.fileName !== K8_FILES[0].fileName || manifest.coverageFile !== K8_FILES[2].fileName || manifest.validationFile !== K8_FILES[3].fileName || manifest.sha256 !== K8_FILES[0].sha256 || manifest.sidecarCount !== 8 || manifest.projectedSidecarBytes !== 10_166_877 || validation.valid !== true || validation.failures.length !== 0) throw new Error("K8 readiness source is not green");
 }
 
 async function run() {
