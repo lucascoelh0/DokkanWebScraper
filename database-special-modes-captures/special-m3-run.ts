@@ -1,0 +1,10 @@
+import { createHash } from "crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
+import { getHeapStatistics } from "v8";
+import { SpecialM1Dataset } from "./special-m1-contract";
+import { SpecialM2Dataset } from "./special-m2-contract";
+import { SpecialM3SourceLock } from "./special-m3-contract";
+import { buildSpecialM3, validateSpecialM3 } from "./special-m3-joins";
+import { loadSpecialM3Sources } from "./special-m3-sources";
+const root = resolve(process.cwd()); if (getHeapStatistics().heap_size_limit >= 1024 * 1024 * 1024) throw new Error("M3 requires a Node heap below 1 GiB"); const read = (path: string) => readFileSync(resolve(root, path), "utf8"), m1Text = read("data/database-special-modes-captures/m1/special-m1-pettan.json"), m2Text = read("data/database-special-modes-captures/m2/special-m2-burst.json"), m1 = JSON.parse(m1Text) as SpecialM1Dataset, m2 = JSON.parse(m2Text) as SpecialM2Dataset, lock = JSON.parse(read("database-special-modes-captures/special-m3-source-lock.json")) as SpecialM3SourceLock, inputs = loadSpecialM3Sources("D:\\Dokkan\\DokkanWebScraper", lock), dataset = buildSpecialM3(m1, m1Text, m2, m2Text, inputs), validation = validateSpecialM3(dataset, m1, m1Text, m2, m2Text), text = `${JSON.stringify(dataset, null, 2)}\n`, manifest = { schemaVersion: 1, contractVersion: dataset.contractVersion, generatedAt: dataset.generatedAt, fileName: "special-m3-database-joins.json", sizeBytes: Buffer.byteLength(text), sha256: createHash("sha256").update(text).digest("hex") }, out = resolve(root, "data/database-special-modes-captures/m3"); mkdirSync(out, { recursive: true }); writeFileSync(resolve(out, manifest.fileName), text); writeFileSync(resolve(out, "special-m3-validation.json"), `${JSON.stringify(validation, null, 2)}\n`); writeFileSync(resolve(out, "special-m3-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`); process.stdout.write(`${JSON.stringify(validation)}\n`);
