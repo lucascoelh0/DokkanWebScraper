@@ -1,0 +1,3 @@
+import { strict as assert } from "assert";
+import { classifyStructuralPresence } from "./frontier-f5-parity";
+describe("Frontier F5 parity classifier", () => { it("keeps absence, gain and representation mismatch distinct", () => { assert.equal(classifyStructuralPresence(true, true), "agreement"); assert.equal(classifyStructuralPresence(true, true, false), "representation_mismatch"); assert.equal(classifyStructuralPresence(true, false), "representation_gain"); assert.equal(classifyStructuralPresence(false, true), "coverage_gap"); assert.equal(classifyStructuralPresence(false, false), "unknown"); }); });
