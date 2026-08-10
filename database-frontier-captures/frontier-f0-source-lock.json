@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-frontier-offline-capture-source-lock",
+  "contractVersion": "0.1.0",
+  "captureRoot": "dokkan-har-0810",
+  "captureId": "frontier-2026-08-10",
+  "fileName": "frontier.har",
+  "sizeBytes": 2181883,
+  "sha256": "2bd584040f46025fa5f9cd7275846bf68dd27bb9c52a65ef3429d872a74f61cb",
+  "entryCount": 155
+}
