@@ -110,7 +110,9 @@ export function buildCharacterShadowProjection(inputs: CharacterShadowInputs): C
             const fyiValue = externalValue(rule.field, fyiExternal);
             const productionComparison = comparison(rule.field, context.value, productionValue, context.status, productionJoin.status === "joined");
             const fyiComparison = comparison(rule.field, context.value, fyiValue, context.status, fyiJoin.status === "joined");
-            const safeDatabaseCandidate = context.status === "supported" && ["agreement", "representation_gain"].includes(productionComparison);
+            const presentationNeedsExternalLocale = ["name", "title", "categories", "links"].includes(rule.field);
+            const safeDatabaseCandidate = context.status === "supported" && ["agreement", "representation_gain"].includes(productionComparison)
+                && (!presentationNeedsExternalLocale || productionComparison === "agreement");
             const authority = safeDatabaseCandidate ? "database_candidate" : rule.characterField && productionJoin.status === "joined" ? "external_fallback" : "unsupported";
             const fallbackReason = authority === "database_candidate" ? null
                 : productionComparison === "unjoinable" ? "production structural ID is unjoinable; no Character may be created"
