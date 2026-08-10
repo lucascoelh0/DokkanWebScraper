@@ -31,6 +31,7 @@ Status: optional, additive, disabled and non-production.
 | K14 field readiness | green | `id`, `rarity` and `type` evidence readiness GO only; K11 is audit-only and every delivery/consumer/publisher/authority action remains disabled |
 | K15 compact supported-only projection | green | offline generation and standalone validation GO; 4,296 pinned `cardId`/`stateId`/`rarity`/`type` records; no consumer, publication or authority promotion |
 | K16 opt-in compact consumer | green | offline K15-only compare-shadow over the pinned productive `Character[]`; bounded field reports and zero effective-value or catalog changes |
+| K17 opt-in promotion overlay | green | offline in-memory clone proof; 211 `rarity` null-fill candidates, zero blockers and 4,296 post-overlay agreements; no persisted or returned catalog |
 
 ## K0 boundary
 
@@ -110,7 +111,7 @@ remaining server/FYI/DokkanInfo dependencies, four confirmed FYI cap conflicts,
 field-authority strategy and per-sidecar sizes are in
 `specs/database-characters-k9.md`.
 
-## K10-K15 product shadow
+## K10-K17 product shadow
 
 The field-scoped `1.0.0` shadow contains 109,421 projections and keeps all
 5,759 K0 cards, including the 1,463 cards without a production structural
@@ -150,6 +151,20 @@ K0-K14 sidecars. The pinned real-data comparison reports 4,296 `id` agreements,
 where the productive nested value is null, with zero missing or ambiguous
 bindings. Details are in `specs/database-characters-k16.md`.
 
-GO is limited to explicit offline compare-shadow. Publication, authority
-promotion, production use, effective-value changes, R2, publishers and Android
-remain NO-GO; FYI/DokkanInfo remain active.
+K17 adds an explicitly opt-in, offline and memory-only overlay proof over the
+same exact K15 and productive pins. It duplicates K16 state precedence without
+opening K11 or K0-K14 sources, permits `type` agreements only, and permits
+`rarity` candidates only for productive values normalized to null. Candidate
+application is confined to selected paths in a deep clone; original bytes and
+objects are revalidated before and after, and no `Character[]` is returned or
+written. The pinned result contains 211 candidates, zero blockers, zero `type`
+changes and 4,296 all-field agreements after the clone overlay. The canonical
+candidate-list SHA-256 is
+`da56af2745acd0a0791b9df659da7148d8784d88c658cbf4a6ab33cbadc65b71`;
+two bounded stdout reports were byte-identical with SHA-256
+`3b75e45ee9f117e49519cda81468d89e7bda6f5366c13e6ee7e7550bb95280fc`.
+Details are in `specs/database-characters-k17.md`.
+
+GO is limited to explicit offline compare-shadow and in-memory overlay proof.
+Publication, authority promotion, production use, persisted effective-value
+changes, R2, publishers and Android remain NO-GO; FYI/DokkanInfo remain active.

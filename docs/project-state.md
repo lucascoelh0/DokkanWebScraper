@@ -108,7 +108,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K15 — field-scoped and compact character product shadow
+### K10–K17 — field-scoped and compact character product shadow
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -145,9 +145,18 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   input. The pinned real-data result is 4,296 `id` agreements, 4,296 `type`
   agreements and 4,085 `rarity` agreements plus 211 productive-null
   differences, with zero missing or ambiguous bindings.
-- K15 generation/validation and K16 offline compare-shadow are GO. Authority
-  promotion, effective-value changes, production, publisher, R2, Android and
-  FYI/DokkanInfo removal remain disabled/NO-GO.
+- K17 now adds an explicitly opt-in, offline and memory-only promotion overlay
+  proof over those same exact pins. It proposes 211 `rarity` null fills, permits
+  zero `type` changes, applies only to selected paths in a deep clone, and proves
+  4,296 all-field agreements with zero blockers. The complete canonical
+  candidate-list SHA-256 is
+  `da56af2745acd0a0791b9df659da7148d8784d88c658cbf4a6ab33cbadc65b71`;
+  two bounded stdout reports were byte-identical with SHA-256
+  `3b75e45ee9f117e49519cda81468d89e7bda6f5366c13e6ee7e7550bb95280fc`.
+- K15 generation/validation, K16 offline compare-shadow and K17 in-memory
+  overlay proof are GO. Authority promotion, persisted/effective production
+  changes, publisher, R2, Android and FYI/DokkanInfo removal remain
+  disabled/NO-GO.
 
 ## Operating Constraints
 
