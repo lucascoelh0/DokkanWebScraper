@@ -17,7 +17,13 @@ type Exclusion = keyof CharacterCompactCoverage["exclusions"];
 interface CardAccumulator {
     binding?: string;
     ambiguousBinding: boolean;
-    fields: Partial<Record<CompactField, CharacterFieldProjection>>;
+    fields: Partial<Record<CompactField, CompactFieldCandidate>>;
+}
+
+interface CompactFieldCandidate {
+    databaseValue: unknown;
+    comparison: "agreement" | "representation_gain";
+    exclusion: Exclusion | null;
 }
 
 const compactFields = new Set<CompactField>(["id", "rarity", "type"]);
@@ -42,7 +48,11 @@ export class CharacterCompactProjectionBuilder {
         if (!item.stateId) card.ambiguousBinding = true;
         else if (card.binding !== undefined && card.binding !== item.stateId) card.ambiguousBinding = true;
         else card.binding = item.stateId;
-        card.fields[field] = item;
+        card.fields[field] = {
+            databaseValue: item.databaseValue,
+            comparison: item.comparison === "agreement" ? "agreement" : "representation_gain",
+            exclusion: classifyFieldExclusion(item),
+        };
         this.cards.set(item.cardId, card);
     }
 
@@ -122,14 +132,22 @@ function classifyExclusion(card: CardAccumulator): Exclusion | null {
     if (card.ambiguousBinding || !card.binding) return "ambiguousBinding";
     const values = [card.fields.id, card.fields.rarity, card.fields.type];
     if (values.some(item => !item)) return "incomplete";
-    const fields = values as CharacterFieldProjection[];
-    if (fields.some(item => item.productionJoin?.status !== "joined" || item.comparison === "unjoinable")) return "unjoinable";
-    if (fields.some(item => item.evidenceStatus === "partial")) return "partial";
-    if (fields.some(item => item.evidenceStatus !== "supported" || item.comparison === "unknown")) return "unknown";
-    if (fields.some(item => item.comparison === "confirmed_conflict" || item.sourceComparisons?.production === "confirmed_conflict")) return "conflict";
-    if (fields.some(item => !["agreement", "representation_gain"].includes(item.comparison))) return "mismatch";
-    if (fields.some(item => item.authority !== "database_candidate" || item.characterField !== item.field)) return "mismatch";
-    if (!rarities.has(String(card.fields.rarity!.databaseValue)) || !types.has(String(card.fields.type!.databaseValue))) return "invalidEnum";
+    const fields = values as CompactFieldCandidate[];
+    for (const exclusion of ["unjoinable", "partial", "unknown", "conflict", "mismatch", "invalidEnum"] as const) {
+        if (fields.some(item => item.exclusion === exclusion)) return exclusion;
+    }
+    return null;
+}
+
+function classifyFieldExclusion(item: CharacterFieldProjection): Exclusion | null {
+    if (item.productionJoin?.status !== "joined" || item.comparison === "unjoinable") return "unjoinable";
+    if (item.evidenceStatus === "partial") return "partial";
+    if (item.evidenceStatus !== "supported" || item.comparison === "unknown") return "unknown";
+    if (item.comparison === "confirmed_conflict" || item.sourceComparisons?.production === "confirmed_conflict") return "conflict";
+    if (!["agreement", "representation_gain"].includes(item.comparison)) return "mismatch";
+    if (item.authority !== "database_candidate" || item.characterField !== item.field) return "mismatch";
+    if (item.field === "rarity" && !rarities.has(String(item.databaseValue))) return "invalidEnum";
+    if (item.field === "type" && !types.has(String(item.databaseValue))) return "invalidEnum";
     return null;
 }
 

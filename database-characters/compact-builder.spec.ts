@@ -35,10 +35,20 @@ describe("database character K15 compact builder", () => {
     it("allows agreements and a rarity representation gain while retaining only the minimum binding", () => {
         const builder = new CharacterCompactProjectionBuilder(pinnedCharacterCompactLineage(), "2026-08-05T00:00:00.000Z", "global-6.4.0-v338-2026-08-05-k15-v1");
         addCard(builder, "2");
-        addCard(builder, "1", { rarity: { comparison: "representation_gain", sourceComparisons: { production: "representation_gain", fyi: "unjoinable" }, externalValue: { production: null, fyi: null } } });
+        addCard(builder, "1", { rarity: {
+            databaseValue: "SSR",
+            comparison: "representation_gain",
+            sourceComparisons: { production: "representation_gain", fyi: "unjoinable" },
+            externalValue: { production: "UR", fyi: null },
+            provenance: [{ source: "database", artifact: "k2", path: "cards.rarity" } as any],
+        } });
+        const retained = (builder as any).cards.get("1");
+        deepStrictEqual(retained.fields.rarity, { databaseValue: "SSR", comparison: "representation_gain", exclusion: null });
+        equal("externalValue" in retained.fields.rarity, false);
+        equal("provenance" in retained.fields.rarity, false);
         const result = builder.finish();
         deepStrictEqual(result.projection.records, [
-            { cardId: "1", stateId: "state-1", rarity: "UR", type: "AGL" },
+            { cardId: "1", stateId: "state-1", rarity: "SSR", type: "AGL" },
             { cardId: "2", stateId: "state-2", rarity: "UR", type: "AGL" },
         ]);
         equal(result.coverage.comparisons.rarity.representationGains, 1);

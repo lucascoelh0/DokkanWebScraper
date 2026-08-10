@@ -29,6 +29,7 @@ Status: optional, additive, disabled and non-production.
 | K12 field parity | green | exclusive per-field classifications, label/ID/order audits and four preserved K7 cap conflicts |
 | K13 fallback safety | green | fail-closed audit boundary with no exported K11 application path; zero unsafe, ambiguous, duplicate or conflict-winning patches |
 | K14 field readiness | green | `id`, `rarity` and `type` evidence readiness GO only; K11 is audit-only and every delivery/consumer/publisher/authority action remains disabled |
+| K15 compact supported-only projection | green | offline generation and standalone validation GO; 4,296 pinned `cardId`/`stateId`/`rarity`/`type` records; no consumer, publication or authority promotion |
 
 ## K0 boundary
 
@@ -108,7 +109,7 @@ remaining server/FYI/DokkanInfo dependencies, four confirmed FYI cap conflicts,
 field-authority strategy and per-sidecar sizes are in
 `specs/database-characters-k9.md`.
 
-## K10-K14 product shadow
+## K10-K15 product shadow
 
 The field-scoped `1.0.0` shadow contains 109,421 projections and keeps all
 5,759 K0 cards, including the 1,463 cards without a production structural
@@ -124,11 +125,19 @@ matrix are in `specs/database-characters-k10-k14.md`.
 
 Only `id`, `rarity` and `type` satisfy the K14 per-field readiness criteria;
 these are evidence decisions, not delivery or authority promotion. K11 remains
-audit-only and cannot be read by Android, runtime consumers or publishers. The
-only next GO is to generate and validate a new compact, supported-only,
-content-addressed K15 sidecar containing minimal binding/`id`, `rarity`, `type`
-and compact hash/version provenance, with its own manifest and explicit
-K11/K0-K2 lineage. K15 does not yet exist. Its generation, publication and
-consumption remain separate gates; publication, consumption, authority
-promotion, production, R2 and Android are NO-GO, and FYI/DokkanInfo remain
-active.
+audit-only and cannot be read by Android, runtime consumers or publishers.
+
+K15 now provides the pinned, compact supported-only projection authorized by
+K14. Its 4,296 deterministic records contain exactly `cardId`, `stateId`,
+`rarity` and `type`; the 1,463 production-unjoinable cards remain excluded.
+The payload is 29,902 bytes gzip / 558,190 bytes raw, with gzip SHA-256
+`803346fc61a7e659ccb8aeea62c273fcdf24ef3d66d3d03564a6fad29627c81f`.
+Offline generation and standalone pin validation are GO. K15 never creates,
+removes or mutates productive `Character` records, and standalone validation
+does not open K11. Details are in `specs/database-characters-k15.md`.
+
+The next gate is K16: an opt-in, K15-only compare-shadow consumer that reports
+differences without changing effective character values and can never open
+K11. K16 implementation is not yet authorized. All consumers, publication,
+authority promotion, production use, R2 and Android remain NO-GO;
+FYI/DokkanInfo remain active.

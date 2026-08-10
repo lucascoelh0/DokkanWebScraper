@@ -1,11 +1,12 @@
 import { createHash } from "crypto";
 import { deepStrictEqual, equal, ok, rejects } from "assert";
-import { mkdtemp, readFile, rename, rm, symlink, writeFile } from "fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm, symlink, unlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
-import { join } from "path";
-import { gzipSync } from "zlib";
+import { basename, join, resolve } from "path";
+import { gunzipSync, gzipSync } from "zlib";
 import {
     CHARACTER_COMPACT_EXPECTATIONS,
+    CHARACTER_COMPACT_PINNED_RELEASE,
     CharacterCompactCoverage,
     CharacterCompactManifest,
     CharacterCompactProjection,
@@ -18,8 +19,13 @@ import {
 } from "./compact-validator";
 import * as compactValidator from "./compact-validator";
 
+const TEST_HOOK = Symbol.for("dokkan.k15.compact-validator.test-hook");
 const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const jsonBytes = (value: unknown) => Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
+const repositoryRoot = (): string => {
+    const parent = resolve(__dirname, "..");
+    return basename(parent).toLowerCase() === "lib" ? resolve(parent, "..") : parent;
+};
 
 function projection(): CharacterCompactProjection {
     return {
@@ -55,8 +61,35 @@ function coverage(): CharacterCompactCoverage {
     };
 }
 
-async function writeRelease(root: string): Promise<CharacterCompactManifest> {
-    const payload = projection();
+function pinnedManifest(): CharacterCompactManifest {
+    const release = CHARACTER_COMPACT_PINNED_RELEASE;
+    return {
+        schemaVersion: 1,
+        contract: "dokkan-database-character-compact-shadow-manifest",
+        contractVersion: "1.0.0",
+        generatedAt: "2026-08-05T00:00:00.000Z",
+        datasetVersion: "global-6.4.0-v338-2026-08-05-k15-v1",
+        fileName: release.payloadFile,
+        compression: "gzip",
+        sha256: release.payloadSha256,
+        sizeBytes: release.payloadSizeBytes,
+        uncompressedSha256: release.rawSha256,
+        uncompressedSizeBytes: release.rawSizeBytes,
+        recordCount: release.recordCount,
+        lineage: pinnedCharacterCompactLineage(),
+        coverageFile: release.coverageFile,
+        coverageSha256: release.coverageSha256,
+        coverageSizeBytes: release.coverageSizeBytes,
+        validationFile: release.validationFile,
+        validationSha256: release.validationSha256,
+        validationSizeBytes: release.validationSizeBytes,
+        readinessFile: release.readinessFile,
+        readinessSha256: release.readinessSha256,
+        readinessSizeBytes: release.readinessSizeBytes,
+    };
+}
+
+async function writeRelease(root: string, payload = projection()): Promise<CharacterCompactManifest> {
     const raw = jsonBytes(payload);
     const gzip = gzipSync(raw, { level: 9 });
     const sha256 = digest(gzip);
@@ -88,13 +121,11 @@ describe("database character K15 compact validation", () => {
     beforeEach(async () => { root = await mkdtemp(join(tmpdir(), "dokkan-k15-")); });
     afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
-    it("validates the nominal 4,296-record artifact and its own manifest lineage", async () => {
-        await writeRelease(root);
-        const result = await validateCharacterCompactArtifact(root);
-        equal(result.projection.records.length, 4_296);
-        equal(result.coverage.exclusions.unjoinable, 1_463);
-        equal(result.validation.valid, true);
-        equal(result.readiness.nextGate.gate, "K16");
+    it("validates the nominal 4,296-record projection and pinned lineage", () => {
+        const result = validateCharacterCompactProjection(projection(), coverage(), undefined, true);
+        equal(result.valid, true);
+        equal(result.safety.runtimeK11ReadImplemented, false);
+        equal(CHARACTER_COMPACT_PINNED_RELEASE.recordCount, 4_296);
     });
 
     it("rejects old/future schemas, duplicate IDs, unstable order, enums, extra fields, missing bindings and lineage drift", () => {
@@ -125,29 +156,157 @@ describe("database character K15 compact validation", () => {
         const manifest = await writeRelease(root);
         for (const fileName of ["../payload.json.gz", "C:\\payload.json.gz"]) {
             await writeFile(join(root, "database-characters-k15-manifest.json"), jsonBytes({ ...manifest, fileName }));
-            await rejects(validateCharacterCompactArtifact(root), /content-addressed file name|manifest path/);
+            await rejects(validateCharacterCompactArtifact(root), /pinned release manifest identity/);
         }
         await writeFile(join(root, "database-characters-k15-manifest.json"), jsonBytes(manifest));
         await writeFile(join(root, manifest.fileName), Buffer.from("mutated"));
-        await rejects(validateCharacterCompactArtifact(root), /payload identity/);
+        await rejects(validateCharacterCompactArtifact(root), /pinned release manifest identity/);
     });
 
-    it("rejects payload mutation after a previously successful validation and auxiliary hash drift", async () => {
+    it("rejects rarity or stateId changes even when every payload and auxiliary hash is recalculated", async () => {
+        for (const field of ["rarity", "stateId"] as const) {
+            const payload = projection();
+            payload.records[0] = field === "rarity"
+                ? { ...payload.records[0], rarity: "SSR" as any }
+                : { ...payload.records[0], stateId: "attacker-rebound-state" };
+            const manifest = await writeRelease(root, payload);
+            equal(manifest.sha256, digest(await readFile(join(root, manifest.fileName))));
+            await rejects(validateCharacterCompactArtifact(root), /pinned release manifest identity/);
+        }
+    });
+
+    it("rejects recomputed rarity and stateId adulteration of the authorized local release", async function () {
+        const release = CHARACTER_COMPACT_PINNED_RELEASE;
+        const sourceRoot = join(repositoryRoot(), "data", "database-characters", "compact");
+        let manifest: CharacterCompactManifest;
+        let payloadBytes: Buffer;
+        let coverageBytes: Buffer;
+        let readinessBytes: Buffer;
+        try {
+            manifest = JSON.parse((await readFile(join(sourceRoot, release.manifestFile))).toString("utf8"));
+            [payloadBytes, coverageBytes, readinessBytes] = await Promise.all([
+                readFile(join(sourceRoot, manifest.fileName)),
+                readFile(join(sourceRoot, manifest.coverageFile)),
+                readFile(join(sourceRoot, manifest.readinessFile)),
+            ]);
+        } catch {
+            this.skip();
+            return;
+        }
+        await validateCharacterCompactArtifact(sourceRoot);
+        const original = JSON.parse(gunzipSync(payloadBytes).toString("utf8")) as CharacterCompactProjection;
+        const compactCoverage = JSON.parse(coverageBytes.toString("utf8")) as CharacterCompactCoverage;
+
+        for (const field of ["rarity", "stateId"] as const) {
+            const altered: CharacterCompactProjection = JSON.parse(JSON.stringify(original));
+            altered.records[0] = field === "rarity"
+                ? { ...altered.records[0], rarity: altered.records[0].rarity === "UR" ? "SSR" as any : "UR" as any }
+                : { ...altered.records[0], stateId: `${altered.records[0].stateId}-altered` };
+            const raw = jsonBytes(altered);
+            const gzip = gzipSync(raw, { level: 9 });
+            const validationBytes = jsonBytes(validateCharacterCompactProjection(
+                altered,
+                compactCoverage,
+                { gzipSizeBytes: gzip.length, rawSizeBytes: raw.length },
+                true,
+            ));
+            const alteredManifest: CharacterCompactManifest = {
+                ...manifest,
+                fileName: `database-characters-k15-compact-supported.${digest(gzip)}.json.gz`,
+                sha256: digest(gzip),
+                sizeBytes: gzip.length,
+                uncompressedSha256: digest(raw),
+                uncompressedSizeBytes: raw.length,
+                recordCount: altered.records.length,
+                coverageSha256: digest(coverageBytes),
+                coverageSizeBytes: coverageBytes.length,
+                validationSha256: digest(validationBytes),
+                validationSizeBytes: validationBytes.length,
+                readinessSha256: digest(readinessBytes),
+                readinessSizeBytes: readinessBytes.length,
+            };
+            await Promise.all([
+                writeFile(join(root, release.manifestFile), jsonBytes(alteredManifest)),
+                writeFile(join(root, alteredManifest.fileName), gzip),
+                writeFile(join(root, alteredManifest.coverageFile), coverageBytes),
+                writeFile(join(root, alteredManifest.validationFile), validationBytes),
+                writeFile(join(root, alteredManifest.readinessFile), readinessBytes),
+            ]);
+            await rejects(validateCharacterCompactArtifact(root), /pinned release manifest identity/);
+        }
+    });
+
+    it("rejects internally consistent but unauthorized releases and auxiliary hash drift", async () => {
         const manifest = await writeRelease(root);
-        await validateCharacterCompactArtifact(root);
-        const payload = await readFile(join(root, manifest.fileName));
-        payload[payload.length - 1] ^= 1;
-        await writeFile(join(root, manifest.fileName), payload);
-        await rejects(validateCharacterCompactArtifact(root), /payload identity/);
+        await rejects(validateCharacterCompactArtifact(root), /pinned release manifest identity/);
         await writeRelease(root);
         await writeFile(join(root, "database-characters-k15-manifest.json"), jsonBytes({ ...manifest, coverageSha256: "0".repeat(64) }));
-        await rejects(validateCharacterCompactArtifact(root), /coverage identity/);
+        await rejects(validateCharacterCompactArtifact(root), /pinned release manifest identity/);
+    });
+
+    it("rejects final-window identity or byte mutation of the pinned manifest, payload and every auxiliary", async function () {
+        const release = CHARACTER_COMPACT_PINNED_RELEASE;
+        const sourceRoot = join(repositoryRoot(), "data", "database-characters", "compact");
+        const files = [
+            ["manifest", release.manifestFile],
+            ["payload", release.payloadFile],
+            ["coverage", release.coverageFile],
+            ["validation", release.validationFile],
+            ["readiness", release.readinessFile],
+        ] as const;
+        try {
+            await Promise.all(files.map(([, fileName]) => readFile(join(sourceRoot, fileName))));
+        } catch {
+            this.skip();
+            return;
+        }
+        const previousNodeEnv = process.env.NODE_ENV;
+        process.env.NODE_ENV = "test";
+        try {
+            for (const mutationKind of ["identity", "bytes"] as const) {
+                for (const [label, mutatedFile] of files) {
+                    const releaseRoot = join(root, `${mutationKind}-${label}`);
+                    await mkdir(releaseRoot);
+                    await Promise.all(files.map(([, fileName]) => copyFile(join(sourceRoot, fileName), join(releaseRoot, fileName))));
+                    let mutated = false;
+                    (global as any)[TEST_HOOK] = async (point: string) => {
+                        if (point !== "before-final-artifact-revalidation" || mutated) return;
+                        mutated = true;
+                        const path = join(releaseRoot, mutatedFile);
+                        const bytes = await readFile(path);
+                        if (mutationKind === "bytes") {
+                            await writeFile(path, Buffer.concat([bytes, Buffer.from([0])]));
+                            return;
+                        }
+                        const replacement = `${path}.replacement`;
+                        await writeFile(replacement, bytes);
+                        await unlink(path);
+                        await rename(replacement, path);
+                    };
+                    await rejects(validateCharacterCompactArtifact(releaseRoot), new RegExp(`K15 ${label} mutated during validation`));
+                    equal(mutated, true, `${mutationKind} ${label} mutation hook did not run`);
+                }
+            }
+        } finally {
+            delete (global as any)[TEST_HOOK];
+            if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+            else process.env.NODE_ENV = previousNodeEnv;
+        }
     });
 
     it("rejects a payload symlink or junction when the environment permits it", async function () {
-        const manifest = await writeRelease(root);
+        const manifest = pinnedManifest();
+        const manifestBytes = jsonBytes(manifest);
+        equal(manifestBytes.length, CHARACTER_COMPACT_PINNED_RELEASE.manifestSizeBytes);
+        equal(digest(manifestBytes), CHARACTER_COMPACT_PINNED_RELEASE.manifestSha256);
         const external = join(root, "external.gz");
-        await rename(join(root, manifest.fileName), external);
+        await Promise.all([
+            writeFile(join(root, CHARACTER_COMPACT_PINNED_RELEASE.manifestFile), manifestBytes),
+            writeFile(external, "not the payload"),
+            writeFile(join(root, manifest.coverageFile), "placeholder"),
+            writeFile(join(root, manifest.validationFile), "placeholder"),
+            writeFile(join(root, manifest.readinessFile), "placeholder"),
+        ]);
         try { await symlink(external, join(root, manifest.fileName), "file"); } catch { this.skip(); return; }
         await rejects(validateCharacterCompactArtifact(root), /symlink or junction/);
     });

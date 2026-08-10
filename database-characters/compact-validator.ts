@@ -1,5 +1,6 @@
+import { constants, Stats } from "fs";
 import { createHash } from "crypto";
-import { lstat, readFile } from "fs/promises";
+import { lstat, open } from "fs/promises";
 import { join, resolve } from "path";
 import { Readable } from "stream";
 import { createGunzip } from "zlib";
@@ -12,6 +13,7 @@ import {
     CHARACTER_COMPACT_GZIP_BUDGET_BYTES,
     CHARACTER_COMPACT_POLICY_ID,
     CHARACTER_COMPACT_POLICY_VERSION,
+    CHARACTER_COMPACT_PINNED_RELEASE,
     CHARACTER_COMPACT_RAW_BUDGET_BYTES,
     CharacterCompactCoverage,
     CharacterCompactManifest,
@@ -29,6 +31,25 @@ const keysEqual = (value: unknown, keys: string[]) => !!value && typeof value ==
 const numeric = (left: string, right: string) => Number(left) - Number(right) || left.localeCompare(right);
 const rarities = new Set<string>(Object.values(Rarities));
 const types = new Set<string>(Object.values(Types));
+const TEST_HOOK = Symbol.for("dokkan.k15.compact-validator.test-hook");
+
+interface ArtifactSnapshot {
+    path: string;
+    bytes: Buffer;
+    metadata: Stats;
+}
+
+type TestHook = (point: string) => void | Promise<void>;
+
+async function invokeTestHook(point: string): Promise<void> {
+    if (process.env.NODE_ENV !== "test") return;
+    const hook = (global as any)[TEST_HOOK] as TestHook | undefined;
+    if (hook) await hook(point);
+}
+
+function sameFileIdentity(left: Stats, right: Stats): boolean {
+    return left.dev === right.dev && left.ino === right.ino;
+}
 
 export function pinnedCharacterCompactLineage(): CharacterCompactSourceLineage {
     const gate = (name: "k0" | "k1" | "k2") => {
@@ -55,6 +76,23 @@ export function pinnedCharacterCompactLineage(): CharacterCompactSourceLineage {
         k14: { contractVersion: "1.0.1", sha256: "4773a9f3ae7019b4b5d9b133329aebe15db92ca2b9db242dc226890156344b2f", sizeBytes: 54_486 },
         productionCharacters: { sha256: "421c8fec6f7ba22e270af19b2278da4fbba19b6299205a54cc3d1ed570319dbc", sizeBytes: 121_390_313, characterCount: 4_090 },
     };
+}
+
+export function assertPinnedCharacterCompactReleaseManifest(manifest: CharacterCompactManifest, manifestBytes: Buffer): void {
+    const release = CHARACTER_COMPACT_PINNED_RELEASE;
+    if (manifestBytes.length !== release.manifestSizeBytes || hash(manifestBytes) !== release.manifestSha256) {
+        throw new Error("K15 pinned release manifest identity rejected");
+    }
+    if (manifest.fileName !== release.payloadFile || manifest.sha256 !== release.payloadSha256
+        || manifest.sizeBytes !== release.payloadSizeBytes || manifest.uncompressedSha256 !== release.rawSha256
+        || manifest.uncompressedSizeBytes !== release.rawSizeBytes || manifest.recordCount !== release.recordCount
+        || manifest.coverageFile !== release.coverageFile || manifest.coverageSha256 !== release.coverageSha256
+        || manifest.coverageSizeBytes !== release.coverageSizeBytes || manifest.validationFile !== release.validationFile
+        || manifest.validationSha256 !== release.validationSha256 || manifest.validationSizeBytes !== release.validationSizeBytes
+        || manifest.readinessFile !== release.readinessFile || manifest.readinessSha256 !== release.readinessSha256
+        || manifest.readinessSizeBytes !== release.readinessSizeBytes) {
+        throw new Error("K15 pinned release manifest fields rejected");
+    }
 }
 
 export function validateCharacterCompactProjection(
@@ -179,8 +217,42 @@ async function exactRegularFile(root: string, fileName: unknown, exactName?: str
     if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory()) throw new Error("manifest root symlink or junction rejected");
     const candidate = join(rootPath, fileName);
     const metadata = await lstat(candidate);
-    if (metadata.isSymbolicLink() || !metadata.isFile()) throw new Error("manifest symlink or junction rejected");
+    if (metadata.isSymbolicLink() || !metadata.isFile() || metadata.nlink !== 1) throw new Error("manifest symlink or junction rejected");
     return resolveCharacterInputFile(rootPath, fileName, fileName);
+}
+
+async function readArtifactSnapshot(root: string, fileName: unknown, exactName?: string): Promise<ArtifactSnapshot> {
+    const path = await exactRegularFile(root, fileName, exactName);
+    const before = await lstat(path);
+    const noFollow = constants.O_NOFOLLOW ?? 0;
+    const handle = await open(path, constants.O_RDONLY | noFollow);
+    try {
+        const opened = await handle.stat();
+        if (!opened.isFile() || opened.nlink !== 1 || !sameFileIdentity(before, opened)) {
+            throw new Error("K15 artifact identity changed while opening");
+        }
+        const bytes = await handle.readFile();
+        const afterRead = await handle.stat();
+        const afterPath = await lstat(path);
+        if (!sameFileIdentity(opened, afterRead) || !sameFileIdentity(opened, afterPath)
+            || afterRead.size !== bytes.length || afterPath.size !== bytes.length
+            || afterRead.mtimeMs !== opened.mtimeMs || afterRead.ctimeMs !== opened.ctimeMs) {
+            throw new Error("K15 artifact identity or bytes changed while reading");
+        }
+        return { path, bytes, metadata: afterRead };
+    } finally {
+        await handle.close();
+    }
+}
+
+function assertSnapshotUnchanged(before: ArtifactSnapshot, after: ArtifactSnapshot, label: string): void {
+    if (before.path !== after.path || !sameFileIdentity(before.metadata, after.metadata)
+        || before.metadata.size !== after.metadata.size
+        || before.metadata.mtimeMs !== after.metadata.mtimeMs
+        || before.metadata.ctimeMs !== after.metadata.ctimeMs
+        || !before.bytes.equals(after.bytes)) {
+        throw new Error(`K15 ${label} mutated during validation`);
+    }
 }
 
 async function gunzipBounded(bytes: Buffer): Promise<Buffer> {
@@ -206,30 +278,36 @@ export async function validateCharacterCompactArtifact(root: string): Promise<{
     validation: CharacterCompactValidation;
     readiness: CharacterCompactReadiness;
 }> {
-    const manifestPath = await exactRegularFile(root, "database-characters-k15-manifest.json", "database-characters-k15-manifest.json");
-    const manifestBytes = await readFile(manifestPath);
+    const release = CHARACTER_COMPACT_PINNED_RELEASE;
+    const manifestSnapshot = await readArtifactSnapshot(root, release.manifestFile, release.manifestFile);
+    const manifestBytes = manifestSnapshot.bytes;
     const manifest = JSON.parse(manifestBytes.toString("utf8")) as CharacterCompactManifest;
     const manifestKeys = ["schemaVersion", "contract", "contractVersion", "generatedAt", "datasetVersion", "fileName", "compression", "sha256", "sizeBytes", "uncompressedSha256", "uncompressedSizeBytes", "recordCount", "lineage", "coverageFile", "coverageSha256", "coverageSizeBytes", "validationFile", "validationSha256", "validationSizeBytes", "readinessFile", "readinessSha256", "readinessSizeBytes"];
     if (!keysEqual(manifest, manifestKeys) || manifest.schemaVersion !== 1 || manifest.contract !== "dokkan-database-character-compact-shadow-manifest" || manifest.contractVersion !== "1.0.0" || manifest.compression !== "gzip") throw new Error("K15 manifest contract rejected");
     if (manifest.generatedAt !== CHARACTER_REFRESH_PROFILE.generatedAt || manifest.datasetVersion !== `${CHARACTER_REFRESH_PROFILE.snapshotVersion}-k15-v1` || JSON.stringify(manifest.lineage) !== JSON.stringify(pinnedCharacterCompactLineage())) throw new Error("K15 manifest lineage rejected");
+    assertPinnedCharacterCompactReleaseManifest(manifest, manifestBytes);
     if (manifest.fileName !== `database-characters-k15-compact-supported.${manifest.sha256}.json.gz`) throw new Error("K15 content-addressed file name rejected");
-    const [payloadPath, coveragePath, validationPath, readinessPath] = await Promise.all([
-        exactRegularFile(root, manifest.fileName),
-        exactRegularFile(root, manifest.coverageFile, "database-characters-k15-coverage.json"),
-        exactRegularFile(root, manifest.validationFile, "database-characters-k15-validation.json"),
-        exactRegularFile(root, manifest.readinessFile, "database-characters-k15-readiness.json"),
+    const [payloadSnapshot, coverageSnapshot, validationSnapshot, readinessSnapshot] = await Promise.all([
+        readArtifactSnapshot(root, manifest.fileName),
+        readArtifactSnapshot(root, manifest.coverageFile, "database-characters-k15-coverage.json"),
+        readArtifactSnapshot(root, manifest.validationFile, "database-characters-k15-validation.json"),
+        readArtifactSnapshot(root, manifest.readinessFile, "database-characters-k15-readiness.json"),
     ]);
-    const [payloadBytes, coverageBytes, validationBytes, readinessBytes] = await Promise.all([
-        readFile(payloadPath), readFile(coveragePath), readFile(validationPath), readFile(readinessPath),
-    ]);
-    if (payloadBytes.length !== manifest.sizeBytes || hash(payloadBytes) !== manifest.sha256 || payloadBytes.length > CHARACTER_COMPACT_GZIP_BUDGET_BYTES) throw new Error("K15 payload identity or gzip budget rejected");
+    const { bytes: payloadBytes } = payloadSnapshot;
+    const { bytes: coverageBytes } = coverageSnapshot;
+    const { bytes: validationBytes } = validationSnapshot;
+    const { bytes: readinessBytes } = readinessSnapshot;
+    if (payloadBytes.length !== manifest.sizeBytes || hash(payloadBytes) !== manifest.sha256
+        || payloadBytes.length !== release.payloadSizeBytes || hash(payloadBytes) !== release.payloadSha256
+        || payloadBytes.length > CHARACTER_COMPACT_GZIP_BUDGET_BYTES) throw new Error("K15 payload identity or gzip budget rejected");
     for (const [bytes, sha256, size, label] of [
         [coverageBytes, manifest.coverageSha256, manifest.coverageSizeBytes, "coverage"],
         [validationBytes, manifest.validationSha256, manifest.validationSizeBytes, "validation"],
         [readinessBytes, manifest.readinessSha256, manifest.readinessSizeBytes, "readiness"],
     ] as const) if (bytes.length !== size || hash(bytes) !== sha256) throw new Error(`K15 ${label} identity rejected`);
     const raw = await gunzipBounded(payloadBytes);
-    if (raw.length !== manifest.uncompressedSizeBytes || hash(raw) !== manifest.uncompressedSha256) throw new Error("K15 raw identity rejected");
+    if (raw.length !== manifest.uncompressedSizeBytes || hash(raw) !== manifest.uncompressedSha256
+        || raw.length !== release.rawSizeBytes || hash(raw) !== release.rawSha256) throw new Error("K15 raw identity rejected");
     const projection = JSON.parse(raw.toString("utf8")) as CharacterCompactProjection;
     const coverage = JSON.parse(coverageBytes.toString("utf8")) as CharacterCompactCoverage;
     const validation = JSON.parse(validationBytes.toString("utf8")) as CharacterCompactValidation;
@@ -237,7 +315,31 @@ export async function validateCharacterCompactArtifact(root: string): Promise<{
     const expectedValidation = validateCharacterCompactProjection(projection, coverage, { gzipSizeBytes: payloadBytes.length, rawSizeBytes: raw.length }, true);
     if (!expectedValidation.valid || JSON.stringify(validation) !== JSON.stringify(expectedValidation)) throw new Error(`K15 validation rejected: ${expectedValidation.failures.join("; ")}`);
     if (manifest.recordCount !== projection.records.length || JSON.stringify(readiness) !== JSON.stringify(buildCharacterCompactReadiness(manifest.generatedAt))) throw new Error("K15 manifest/readiness cardinality rejected");
-    const payloadAfterValidation = await readFile(payloadPath);
-    if (!payloadAfterValidation.equals(payloadBytes)) throw new Error("K15 payload mutated during validation");
+    await invokeTestHook("before-final-artifact-revalidation");
+    const [manifestAfter, payloadAfter, coverageAfter, validationAfter, readinessAfter] = await Promise.all([
+        readArtifactSnapshot(root, release.manifestFile, release.manifestFile),
+        readArtifactSnapshot(root, manifest.fileName),
+        readArtifactSnapshot(root, manifest.coverageFile, "database-characters-k15-coverage.json"),
+        readArtifactSnapshot(root, manifest.validationFile, "database-characters-k15-validation.json"),
+        readArtifactSnapshot(root, manifest.readinessFile, "database-characters-k15-readiness.json"),
+    ]);
+    assertSnapshotUnchanged(manifestSnapshot, manifestAfter, "manifest");
+    assertSnapshotUnchanged(payloadSnapshot, payloadAfter, "payload");
+    assertSnapshotUnchanged(coverageSnapshot, coverageAfter, "coverage");
+    assertSnapshotUnchanged(validationSnapshot, validationAfter, "validation");
+    assertSnapshotUnchanged(readinessSnapshot, readinessAfter, "readiness");
+    const finalManifest = JSON.parse(manifestAfter.bytes.toString("utf8")) as CharacterCompactManifest;
+    assertPinnedCharacterCompactReleaseManifest(finalManifest, manifestAfter.bytes);
+    if (payloadAfter.bytes.length !== finalManifest.sizeBytes || hash(payloadAfter.bytes) !== finalManifest.sha256
+        || payloadAfter.bytes.length !== release.payloadSizeBytes || hash(payloadAfter.bytes) !== release.payloadSha256) {
+        throw new Error("K15 payload final identity rejected");
+    }
+    for (const [snapshot, sha256, size, label] of [
+        [coverageAfter, finalManifest.coverageSha256, finalManifest.coverageSizeBytes, "coverage"],
+        [validationAfter, finalManifest.validationSha256, finalManifest.validationSizeBytes, "validation"],
+        [readinessAfter, finalManifest.readinessSha256, finalManifest.readinessSizeBytes, "readiness"],
+    ] as const) if (snapshot.bytes.length !== size || hash(snapshot.bytes) !== sha256) {
+        throw new Error(`K15 ${label} final identity rejected`);
+    }
     return { manifest, projection, coverage, validation, readiness };
 }

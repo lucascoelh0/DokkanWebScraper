@@ -14,7 +14,9 @@ can open it.
 The documented hard budgets are 4 MiB for raw JSON and 1 MiB for gzip. The
 generator fails closed rather than relaxing either budget. It streams the K11
 field array and discards each large field projection immediately after
-collecting the four compact values needed per eligible card.
+extracting only its database value, common `stateId`, comparison class and
+single exclusion classification. Full provenance, joins, external/FYI values
+and the rest of `CharacterFieldProjection` are not retained in the accumulator.
 
 ## Contract
 
@@ -41,12 +43,26 @@ The payload file name embeds its gzip SHA-256. The fixed manifest separately
 binds the payload, raw bytes, coverage, validation and readiness files by exact
 name, size and SHA-256.
 
+Standalone validation additionally requires the one authorized K15 release
+pin. It binds the exact 3,115-byte manifest
+`490573185c487306958c272b1c7b3658f0c38643a64b0d5e146b51f35cb73793`,
+the payload and raw identities below, 4,296 records, and the exact hashes and
+sizes of coverage (766 bytes), validation (612 bytes) and readiness (771
+bytes). Internal consistency is not authorization: recalculating every
+manifest and auxiliary hash after changing `cardId`, `stateId`, `rarity` or
+`type` is rejected. This pin is contained in K15 code; standalone validation
+and K16 never open K11.
+
 ## Selection and current result
 
 A card is emitted only when all three fields have an unequivocal structural
 production join, supported evidence, `agreement` or `representation_gain`, no
 confirmed conflict, a common non-empty state binding and valid productive
 enums. Any drift from the pinned inventory fails generation.
+
+Emitted `rarity` is the K11 database value derived from K2 `cards.rarity` for
+the selected `cardId`/`stateId`. `originalRarity` remains a separate dimension
+and is never read into or emitted by K15.
 
 | Measure | Result |
 | --- | ---: |
@@ -73,7 +89,35 @@ Validation rejects duplicate or unordered IDs, unknown enums, extra fields,
 missing/ambiguous bindings, non-supported selection evidence, lineage/version
 drift, old/future schemas, traversal/absolute paths, links/junction roots,
 mutated payloads, hash/size drift and either budget violation. The artifact is
-re-read after validation to detect mutation during the validation window.
+closed by re-opening and re-reading the manifest, payload, coverage, validation
+and readiness files. Every final file must retain its original filesystem
+identity and bytes and must again satisfy the exact pinned manifest hashes and
+sizes; mutation of any one during the validation window fails closed.
+
+The productive CLI writes only to the repository-owned literal
+`data/database-characters/compact`, derived internally from the running module.
+It does not accept `--output-dir`; absolute, traversal, alternate and mixed
+separator overrides therefore have no CLI surface. Any symlink, junction or
+reparse redirection at the repository root or output parents is rejected.
+
+Files are created exclusively and sequentially in an unpredictable staging
+directory under the controlled output. The generator holds directory handles,
+writes through exclusive file handles, checks file and directory identity
+before and after each operation, and promotes one verified file at a time. The
+fixed order is payload, coverage, validation, readiness, run report and finally
+the manifest. The manifest is therefore the last visible commit marker: a
+failure after any earlier promotion cannot expose a new manifest, and no run
+report write occurs after it. Cleanup uses only individually revalidated
+regular files and never recursively removes an unproved staging path. Existing
+pinned files must be byte-identical; an existing run report is retained instead
+of overwritten.
+
+Node does not expose Windows `openat`/`renameat` operations relative to a held
+directory handle. Consequently this protocol minimizes and detects namespace
+swaps but cannot claim an impossible race-free guarantee against a hostile
+same-user process between syscalls. Identity loss fails closed; if safe cleanup
+cannot be proved, staging may be left for manual inspection rather than risk
+following a replaced path.
 
 GO is limited to offline K15 generation and compact artifact validation.
 In-memory consumption, `Character[]` changes, Android, R2/publication,

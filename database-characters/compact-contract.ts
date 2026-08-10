@@ -17,6 +17,28 @@ export const CHARACTER_COMPACT_EXPECTATIONS = {
     idAgreements: 4_296,
 } as const;
 
+/** Exact K15 release authorized for standalone validation and future K15-only consumers. */
+export const CHARACTER_COMPACT_PINNED_RELEASE = {
+    manifestFile: "database-characters-k15-manifest.json",
+    manifestSha256: "490573185c487306958c272b1c7b3658f0c38643a64b0d5e146b51f35cb73793",
+    manifestSizeBytes: 3_115,
+    payloadFile: "database-characters-k15-compact-supported.803346fc61a7e659ccb8aeea62c273fcdf24ef3d66d3d03564a6fad29627c81f.json.gz",
+    payloadSha256: "803346fc61a7e659ccb8aeea62c273fcdf24ef3d66d3d03564a6fad29627c81f",
+    payloadSizeBytes: 29_902,
+    rawSha256: "5866b075e1cfc2d45eacb6e2055dd975b885accc05379423aac3d7d45b1f793a",
+    rawSizeBytes: 558_190,
+    recordCount: 4_296,
+    coverageFile: "database-characters-k15-coverage.json",
+    coverageSha256: "13eb0e44a0010de3a7a708ec9444b284aec0a0b89ab8e938e6ccff7166166d63",
+    coverageSizeBytes: 766,
+    validationFile: "database-characters-k15-validation.json",
+    validationSha256: "3ff2ec37d9dd3f035a5dfa159d78b7917778b936a41a0d045850d66851d046b0",
+    validationSizeBytes: 612,
+    readinessFile: "database-characters-k15-readiness.json",
+    readinessSha256: "a6481aa20445c56bfd1c3a61defd973d3a2f68fe57feca0ba543974776b00748",
+    readinessSizeBytes: 771,
+} as const;
+
 export interface CharacterCompactLineageEntry {
     contractVersion: string;
     sha256: string;

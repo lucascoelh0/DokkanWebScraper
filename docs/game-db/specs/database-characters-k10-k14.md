@@ -167,6 +167,12 @@ consumer may read only K15, never K11. Generating and validating K15,
 publishing K15 and consuming K15 are three separate gates. Publication,
 consumption, authority promotion, R2, Android and production remain NO-GO.
 
+Historical checkpoint: the preceding "K15 does not exist" statement records
+the state at the close of K14. K15 was subsequently implemented and validated
+as the separate offline artifact specified in `database-characters-k15.md`;
+that later result does not retroactively rewrite the K14 decision or authorize
+publication, consumption, authority promotion, R2, Android or production.
+
 ## Artifacts and verification
 
 | Artifact | Bytes | SHA-256 |
