@@ -57,6 +57,7 @@ export interface CharacterExternalFieldValues {
 
 export interface CharacterFieldProjection {
     cardId: string;
+    recordKind: "collectable" | "form";
     characterId: string;
     stateId: string;
     releaseState: "initial" | "eza" | "seza" | "unknown";

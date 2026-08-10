@@ -121,6 +121,7 @@ export function buildCharacterShadowProjection(inputs: CharacterShadowInputs): C
                                     : "shadow-only dimension has no Character field";
             fields.push({
                 cardId: identity.cardId,
+                recordKind: identity.recordKind,
                 characterId: identity.characterId,
                 stateId: selected.stateId,
                 releaseState: selected.releaseState,

@@ -3,7 +3,7 @@ import { applyCharacterShadowInMemory } from "./shadow-builder";
 import { CharacterFieldProjection, CharacterShadowProjection } from "./shadow-contract";
 
 const baseProjection = (patch: Partial<CharacterFieldProjection>): CharacterFieldProjection => ({
-    cardId: "1", characterId: "10", stateId: "card-state:1:initial", releaseState: "initial", growthRowId: null,
+    cardId: "1", recordKind: "collectable", characterId: "10", stateId: "card-state:1:initial", releaseState: "initial", growthRowId: null,
     productionJoin: { status: "joined", externalId: "1", comparisonState: {} as any }, fyiJoin: { status: "unjoinable", externalId: null, comparisonState: {} as any },
     field: "rarity", characterField: "rarity", databaseValue: "UR", externalValue: { production: "SSR", fyi: null }, effectiveShadowValue: "SSR",
     evidenceStatus: "supported", authority: "external_fallback", comparison: "confirmed_conflict", sourceComparisons: { production: "confirmed_conflict", fyi: "unjoinable" }, provenance: [], fallbackReason: "conflict",
