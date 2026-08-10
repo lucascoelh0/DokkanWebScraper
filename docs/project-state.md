@@ -8,71 +8,110 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ## Repository Checkpoints
 
-- `D:\Dokkan\DokkanWebScraper` owns the TypeScript data pipeline. At the
-  database-first integration gate, `main == origin/main == ba29759`; this
-  context-only follow-up intentionally advances `main` beyond that checkpoint.
+- `D:\Dokkan\DokkanWebScraper` owns the TypeScript data pipeline.
+  `main == origin/main == 40a73a9`; it contains the integrated E0–E9,
+  H0–H13, F0–F6 and M0–M6 campaigns.
+- Character productization K0–K9 was reapplied without conflicts from the
+  historical `7858333` tip onto `codex/database-character-productization-current`,
+  based on `origin/main` at `40a73a9`. It is not integrated into `main`.
+- The historical `codex/database-character-productization` branch remains
+  intact at `7858333`; its merge-base with current `main` is `d28b3f2`.
 - `D:\Dokkan\Dokkanpanion` owns the Android consumer. Its synchronized
-  `master` checkpoint is `fe58fe1`.
-- Both repositories were synchronized at this checkpoint; no older commits
-  remain local-only.
+  `master` checkpoint remains `fe58fe1`; no database-first shadow consumer is
+  implemented or authorized.
 - The project uses Codex exclusively. Provider-neutral workflow, verification,
   repository and publication rules are defined in `AGENTS.md`.
 
-## Database-first Checkpoint
+## Database-first Foundation
 
-- The database-first Character and Team Analysis campaign DB0–DB50 and its
-  integration campaign C1–C5 are merged as one dependency-complete unit.
+- Character and Team Analysis DB0–DB50 and integration C1–C5 are integrated as
+  one dependency-complete unit from the `ba29759` checkpoint.
 - The database-first sidecar is optional, additive, absent-compatible and
   disabled by default. Production generation, contracts, publishers, R2 and
   Android do not consume it.
-- Current decisions are **GO** only for the reviewed infrastructure and for
-  optional generation against the exact C4-pinned SQLite, ELF and semantic
-  evidence identity.
-- Current decisions remain **NO-GO** for R2 publication, Android shadow
-  consumption, authoritative combat calculation and full simulation.
-- Supported-only projection excludes every `partial` or `unknown` dimension;
-  joins use structural IDs rather than names or localized text.
+- `supported`, `partial` and `unknown` remain distinct. Supported-only
+  projections exclude every partial/unknown dimension; joins use structural
+  IDs rather than names or localized text; provenance is field-scoped.
+- The durable decision remains
+  [`ADR-0005`](adr/0005-use-an-optional-database-first-team-analysis-sidecar.md).
 
-Shadow parity joins 571 of 575 sidecar states. The four known unjoinable states
-remain explicit and non-blocking while the infrastructure is disabled:
+## Current Campaign Checkpoints
 
-- `1017121:4017141:initial`;
-- `1024381:4024401:initial`;
-- `1028161:1028161:eza`;
-- `1032710:1032710:initial`.
+### E0–E9 — events, stages, enemies and bosses
 
-The durable decision is recorded in
-[`ADR-0005`](adr/0005-use-an-optional-database-first-team-analysis-sidecar.md),
-and detailed evidence remains in the database-first frontier report and C1–C5
-specifications.
+- E0–E9 `1.0.0` is complete, experimental, optional and non-production.
+- E9 permits only reviewed disabled infrastructure and generation with the
+  exact audited profile. Scraper replacement, R2, Android, event screens,
+  beneficial-character calculation and boss/damage simulation remain NO-GO.
+- E9 payload SHA-256 is
+  `f7a111572485e0c55758a186d753e40eebf59f2de4c262c192a5ad5cf0cf781c`;
+  the full sequential refresh was deterministic and peaked at 847,204,352
+  bytes, below 1 GiB.
 
-## Android Checkpoint
+### H0–H13 — offline server captures
 
-- Android `master` includes the Team Analysis foundation (`0f0d88f`) and cache
-  transition hardening (`fe58fe1`).
-- Android continues to preserve usable cached data across invalid, missing or
-  older datasets.
-- Database-first shadow consumption is not implemented or authorized.
+- H0–H13 is integrated as offline, additive, default-off capture evidence.
+  It adds no credential acquisition, replay, scheduler, publisher, Android
+  consumer or production switch.
+- H12 remains two GO decisions (reviewed disabled infrastructure and ignored
+  sanitized local fixtures) and five NO-GOs: authenticated refresh, scraper
+  replacement, R2, Android shadow mode and FYI/DokkanInfo retirement.
+- H13 corrects H11 without changing H0–H10: the 627 unique gasha facts are 612
+  representation mismatches and 15 coverage gaps, with zero confirmed
+  conflicts. The former 1,254 count is a non-exclusive comparison-cell total.
 
-## Offline Capture Checkpoint
+### F0–F6 — Frontier capture audit
 
-- H13 corrected the H11 gasha comparison on `codex/database-server-capture-audit` without requests, replay or production changes.
-- The 627 unique legacy conflict facts resolve to 612 representation mismatches, 15 coverage gaps and zero confirmed conflicts.
-- The old 1,254 figure is a non-exclusive comparison-cell total, not a distinct-fact total.
-- H12 readiness remains 2 GO and 5 NO-GO; scraper replacement, authenticated refresh, R2, Android shadow and community-source retirement remain disabled.
+- F0–F6 is complete as offline-only, additive, default-off and fail-closed
+  evidence. It cannot replay or automate battle traffic.
+- Only disabled infrastructure and synthetic fixtures are GO. Real-body
+  decoding, E0–E9 replacement, Android, R2, automated refresh, protocol
+  consumption and replay/automation remain NO-GO.
+- F6 artifact SHA-256 is
+  `6280ec896beda1150df84a1933f6f76ece28e278ba47a310922cfac6d28c8f63`;
+  two reconstructions were byte-identical and peak memory was 488,800,256
+  bytes.
 
-## Next Independent Domain
+### M0–M6 — Pettan/Burst special-mode captures
 
-The next independent data domain is events, stages, enemies and bosses. It
-should begin on a new branch from the current scraper `main`, without activating
-the database-first sidecar or expanding its production authority.
+- M0–M6 is complete with current evidence as optional, offline-only,
+  default-off infrastructure. It has no request/replay/mutation, Android, R2,
+  publisher or production capability.
+- Only disabled infrastructure and synthetic fixtures are GO. Pettan battle,
+  Burst gameplay/scoring, opaque start configuration, E/S/H replacement,
+  Android, R2, production and request/replay automation remain NO-GO.
+- M6 artifact SHA-256 is
+  `bc4978334f5ad14f68b4af9e502a250cc2ede9bff74e572516c0a68b86fd0751`;
+  two reconstructions were byte-identical and peak memory was 258,596,864
+  bytes.
+
+### K0–K9 — character productization reapplied
+
+- K0–K9 is reapplied byte-for-byte at the tracked source/lib/documentation
+  surface. It remains optional, additive, absent-compatible, default-off and
+  non-production; no Android, R2, publisher or productive dataset was added.
+- Only merging the disabled infrastructure and pinned optional generation are
+  GO. Every authority promotion or consumer path remains NO-GO, including
+  production replacement, FYI/DokkanInfo removal, asset delivery, Android,
+  Team Builder and combat calculation.
+- K7 preserves the four field-scoped conflicts rather than selecting a winner:
+  FYI reports `maxLevel=120` and `maxSALevel=10` for EZA cards `1027621` and
+  `1028161`, while first-party EZA step-7 growth rows report `140` and `15`.
+  Both snapshot/state/growth-row provenances remain explicit.
+- Dynamic acquisition and availability remain server-owned; asset delivery,
+  portrait/card-art roles, unproved presentation mappings and runtime/combat
+  semantics remain unknown or unsupported.
+- K9 payload SHA-256 is
+  `db0f86e858b091521ab72ae72b89d2531abb0fcd1bf684877bcb991197d5ff85`;
+  K0–K9 generation evidence is deterministic and every recorded peak stays
+  below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
 - Keep verbose output in ignored `.agent-logs/` and start with focused checks.
-- Do not commit generated `data/` artifacts; keep only matching tracked `lib/`
-  output for changed TypeScript sources.
+- Do not commit generated `data/`, SQLite, ELF, APK or raw capture artifacts;
+  keep only matching tracked `lib/` output for changed TypeScript sources.
 - Treat commit, push, R2 publication and Android changes as separate actions
   requiring explicit authorization.
 - Run an R2 publisher dry-run and inspect projected bytes before any upload.
