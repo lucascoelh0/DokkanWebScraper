@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "inputRoot": "dokkan-local-captures-0810",
+  "captures": [
+    { "captureId": "event-mission-crash", "path": "login_until_crash_when_accepting_event_missions.har" },
+    { "captureId": "mainly-events", "path": "mainly_events.har" },
+    { "captureId": "mainly-gasha", "path": "mainly_gasha.har" },
+    { "captureId": "misc", "path": "misc.har" },
+    { "captureId": "profile", "path": "profile.har" }
+  ]
+}
