@@ -20,7 +20,10 @@ export interface CharacterShadowFieldCoverage {
     partial: number;
     unknownEvidence: number;
     patchableCharacterCount: number;
+    /** State recorded on the field projection itself. */
     stateCoverage: Record<"initial" | "eza" | "seza" | "form", number>;
+    /** K7 comparison-state views retained separately; neither silently replaces the selected state. */
+    comparisonStateCoverage: Record<"production" | "fyi", Record<"initial" | "eza" | "seza" | "form", number>>;
 }
 
 export interface CharacterShadowOrderingAudit {

@@ -12,6 +12,7 @@ import { DatabaseCharacterTaxonomyDataset } from "./taxonomy-contract";
 
 export interface CompactShadowExternalCharacter {
     id: string;
+    sourceRecordPath: string;
     name: unknown;
     title: unknown;
     rarity: unknown;
@@ -43,32 +44,51 @@ export interface CharacterShadowInputs {
 
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
-function compactCharacters(input: any[]): Map<string, CompactShadowExternalCharacter> {
-    const result = new Map<string, CompactShadowExternalCharacter>();
-    const visit = (value: any): void => {
-        if (!value || value.id === undefined || value.id === null) return;
-        const transformations = Array.isArray(value.transformations) ? value.transformations : [];
-        const awakenings = Array.isArray(value.awakeningCards) ? value.awakeningCards : [];
-        const id = String(value.id);
-        const compact: CompactShadowExternalCharacter = {
-            id,
-            name: value.name ?? null,
-            title: value.title ?? null,
-            rarity: value.rarity ?? null,
-            type: value.type ?? null,
-            characterClass: value.characterClass ?? null,
-            categories: Array.isArray(value.categories) ? value.categories : null,
-            links: Array.isArray(value.links) ? value.links : null,
-            transformationIds: transformations.flatMap((item: any) => item?.id === undefined ? [] : [String(item.id)]),
-            awakeningCardIds: awakenings.flatMap((item: any) => item?.id === undefined ? [] : [String(item.id)]),
-        };
-        // Legacy Character[] can repeat a top-level card as nested presentation. The
-        // first traversal occurrence is the product record; K7 is used only to prove
-        // that the structural ID joins, never to select values from either duplicate.
-        if (!result.has(id)) result.set(id, compact);
-        transformations.forEach(visit);
+function compactCharacter(value: any, sourceRecordPath: string): CompactShadowExternalCharacter {
+    const transformations = Array.isArray(value.transformations) ? value.transformations : [];
+    const awakenings = Array.isArray(value.awakeningCards) ? value.awakeningCards : [];
+    return {
+        id: String(value.id),
+        sourceRecordPath,
+        name: value.name ?? null,
+        title: value.title ?? null,
+        rarity: value.rarity ?? null,
+        type: value.type ?? null,
+        characterClass: value.characterClass ?? null,
+        categories: Array.isArray(value.categories) ? value.categories : null,
+        links: Array.isArray(value.links) ? value.links : null,
+        transformationIds: transformations.flatMap((item: any) => item?.id === undefined ? [] : [String(item.id)]),
+        awakeningCardIds: awakenings.flatMap((item: any) => item?.id === undefined ? [] : [String(item.id)]),
     };
-    input.forEach(visit);
+}
+
+const comparableExternal = ({ sourceRecordPath: _path, ...value }: CompactShadowExternalCharacter) => JSON.stringify(value);
+
+/** Top-level Character[] records outrank nested presentation; equal nested repeats use their first exact path. */
+export function compactCharacters(input: any[]): Map<string, CompactShadowExternalCharacter> {
+    const result = new Map<string, CompactShadowExternalCharacter>();
+    const topLevelIds = new Set<string>();
+    input.forEach((value, index) => {
+        if (!value || value.id === undefined || value.id === null) return;
+        const id = String(value.id);
+        if (topLevelIds.has(id)) throw new Error(`duplicate top-level external character ID ${id}`);
+        topLevelIds.add(id);
+        result.set(id, compactCharacter(value, `$[${index}]`));
+    });
+    const visitNested = (value: any, path: string): void => {
+        const transformations = Array.isArray(value?.transformations) ? value.transformations : [];
+        transformations.forEach((item: any, index: number) => {
+            const itemPath = `${path}.transformations[${index}]`;
+            if (!item || item.id === undefined || item.id === null) return;
+            const id = String(item.id);
+            const compact = compactCharacter(item, itemPath);
+            const previous = result.get(id);
+            if (!previous) result.set(id, compact);
+            else if (!topLevelIds.has(id) && comparableExternal(previous) !== comparableExternal(compact)) throw new Error(`ambiguous duplicate nested external character ID ${id}`);
+            visitNested(item, itemPath);
+        });
+    };
+    input.forEach((value, index) => visitNested(value, `$[${index}]`));
     return result;
 }
 

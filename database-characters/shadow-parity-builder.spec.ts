@@ -14,6 +14,9 @@ describe("database character K12 field parity", () => {
         const conflict = (cardId: string, rowId: string) => ({ cardId, fyi: { conflicts: [{ field: "maxLevel", databaseValue: 140, externalValue: 120 }, { field: "maxSALevel", databaseValue: 15, externalValue: 10 }], comparisonState: { stateKey: `${cardId}:growth-7`, releaseState: "eza", growthStepSource: { table: "optimal_awakening_growths", rowId } } } });
         const result = buildCharacterShadowCoverage(projection, { cards: [conflict("1027621", "4885"), conflict("1028161", "4844")] } as any);
         equal(result.fieldCoverage[0].production.agreements, 1);
+        equal(result.fieldCoverage[0].stateCoverage.initial, 1);
+        equal(result.fieldCoverage[0].stateCoverage.eza, 0);
+        equal(result.fieldCoverage[0].comparisonStateCoverage.fyi.eza, 1);
         equal(result.fieldCoverage[1].production.externalFallback, 1);
         equal(result.preservedK7Conflicts.length, 4);
         deepStrictEqual(result.preservedK7Conflicts.map(item => item.cardId), ["1027621", "1027621", "1028161", "1028161"]);

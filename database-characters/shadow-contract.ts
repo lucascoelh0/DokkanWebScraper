@@ -42,6 +42,9 @@ export interface CharacterFieldProvenance {
     table: string;
     rowId: string;
     column?: string;
+    /** Exact JSON record selected when the source is production or FYI Character[]. */
+    sourceRecordPath?: string;
+    recordSelectionPolicy?: "top_level_then_first_nested_structural_id";
     sourceState: {
         stateId: string;
         sourceStateKey: string;
@@ -203,6 +206,10 @@ export const CHARACTER_FIELD_AUTHORITY_MATRIX: CharacterFieldAuthorityRule[] = [
     external("standby", "standby details and text are outside K0-K2"),
     external("finishSkills", "finish details and text are outside K0-K2"),
     external("reversibleExchange", "conditions and presentation remain external"),
+    external("transformations", "form presentation, conditions and aliases remain external"),
+    external("awakeningCards", "awakening presentation and asset references remain external"),
+    external("previousAwakenings", "awakening presentation and direction remain external"),
+    external("nextAwakenings", "awakening presentation and direction remain external"),
     external("exclusiveSkillOrbs", "equipment is outside K0-K2"),
     external("equipment", "equipment is outside K0-K2"),
     external("dokkanFrontierPassives", "external enrichment remains external"),
@@ -218,6 +225,7 @@ export interface CharacterShadowManifest {
     compression: "gzip";
     sha256: string;
     sizeBytes: number;
+    uncompressedSha256: string;
     uncompressedSizeBytes: number;
     fieldProjectionCount: number;
     productionPatchableCardCount: number;

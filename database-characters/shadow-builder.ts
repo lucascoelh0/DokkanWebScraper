@@ -14,6 +14,7 @@ import {
     CharacterShadowProjection,
 } from "./shadow-contract";
 import { CharacterShadowInputs, CompactShadowExternalCharacter } from "./shadow-source";
+import { isVerifiedCharacterShadowProjection } from "./shadow-release";
 
 const numeric = (left: string, right: string) => Number(left) - Number(right) || left.localeCompare(right);
 const missing = (value: unknown) => value === null || value === undefined;
@@ -62,6 +63,13 @@ function externalValue(field: CharacterShadowField, external: CompactShadowExter
     }
 }
 
+function externalColumn(field: CharacterShadowField): string {
+    if (field === "awakeningGraph") return "awakeningCards[].id";
+    if (field === "formGraph") return "transformations[].id";
+    if (["id", "name", "title", "rarity", "type", "characterClass", "categories", "links"].includes(field)) return field;
+    return "(structural dimension absent from Character)";
+}
+
 interface FieldContext {
     rule: CharacterFieldAuthorityRule;
     value: unknown;
@@ -85,9 +93,11 @@ export function buildCharacterShadowProjection(inputs: CharacterShadowInputs): C
         const identity = k0Cards.get(parityCard.cardId);
         const taxonomy = k2Cards.get(parityCard.cardId);
         if (!identity || !taxonomy) throw new Error(`K0/K2 card missing for K7 card ${parityCard.cardId}`);
-        const selected = k0States.get(parityCard.production.comparisonState.stateKey ?? "")
-            ?? k0States.get(parityCard.fyi.comparisonState.stateKey ?? "");
+        const productionState = k0States.get(parityCard.production.comparisonState.stateKey ?? "");
+        const fyiState = k0States.get(parityCard.fyi.comparisonState.stateKey ?? "");
+        const selected = productionState ?? fyiState;
         if (!selected) throw new Error(`K7 comparison state has no K0 binding for ${parityCard.cardId}`);
+        const selectedComparisonSource = productionState ? "production" : "fyi";
         const productionExternal = inputs.production.characters.get(parityCard.cardId);
         const fyiExternal = inputs.fyi.characters.get(parityCard.cardId);
         const productionJoin = join(parityCard.production);
@@ -100,7 +110,7 @@ export function buildCharacterShadowProjection(inputs: CharacterShadowInputs): C
             sourceSnapshotVersion: inputs.k0.source.snapshotVersion,
             table: "cards",
             rowId: parityCard.cardId,
-            column: "production.comparisonState",
+            column: `${selectedComparisonSource}.comparisonState`,
             sourceState: stateSource(selected),
         };
 
@@ -108,6 +118,17 @@ export function buildCharacterShadowProjection(inputs: CharacterShadowInputs): C
             const context = buildFieldContext(rule, identity, selected, taxonomy, categories, links, releaseByCard.get(identity.cardId) ?? [], awakeningsByCard.get(identity.cardId) ?? [], formsByCard.get(identity.cardId) ?? [], inputs);
             const productionValue = externalValue(rule.field, productionExternal);
             const fyiValue = externalValue(rule.field, fyiExternal);
+            const externalProvenance = (source: "production" | "fyi", external: CompactShadowExternalCharacter | undefined, parity: CharacterExternalParity): CharacterFieldProvenance[] => external ? [{
+                sidecar: source,
+                sidecarSha256: source === "production" ? inputs.production.sha256 : inputs.fyi.sha256,
+                sourceSnapshotVersion: source === "production" ? inputs.k7.source.productionCharacters.asOf : inputs.fyi.generatedAt,
+                table: "Character[]",
+                rowId: external.id,
+                column: externalColumn(rule.field),
+                sourceRecordPath: external.sourceRecordPath,
+                recordSelectionPolicy: "top_level_then_first_nested_structural_id",
+                sourceState: stateSource(k0States.get(parity.comparisonState.stateKey ?? "")),
+            }] : [];
             const productionComparison = comparison(rule.field, context.value, productionValue, context.status, productionJoin.status === "joined");
             const fyiComparison = comparison(rule.field, context.value, fyiValue, context.status, fyiJoin.status === "joined");
             const presentationNeedsExternalLocale = ["name", "title", "categories", "links"].includes(rule.field);
@@ -139,7 +160,12 @@ export function buildCharacterShadowProjection(inputs: CharacterShadowInputs): C
                 authority,
                 comparison: productionComparison,
                 sourceComparisons: { production: productionComparison, fyi: fyiComparison },
-                provenance: [...context.provenance, k7StateProvenance],
+                provenance: [
+                    ...context.provenance,
+                    ...externalProvenance("production", productionExternal, parityCard.production),
+                    ...externalProvenance("fyi", fyiExternal, parityCard.fyi),
+                    k7StateProvenance,
+                ],
                 fallbackReason,
             });
         }
@@ -238,13 +264,27 @@ function buildFieldContext(
 /** Applies only supported, conflict-free product fields to an in-memory clone. */
 export function applyCharacterShadowInMemory<T extends Character>(characters: T[], projection: CharacterShadowProjection): T[] {
     const clone = JSON.parse(JSON.stringify(characters)) as T[];
-    const byId = new Map<string, any>();
-    const visit = (character: any): void => { if (character?.id) byId.set(String(character.id), character); (character?.transformations ?? []).forEach(visit); };
-    clone.forEach(visit);
+    if (!isVerifiedCharacterShadowProjection(projection)) return clone;
+    const byPath = new Map<string, any>();
+    const visit = (character: any, path: string): void => {
+        if (character?.id !== undefined && character?.id !== null) byPath.set(path, character);
+        (character?.transformations ?? []).forEach((item: any, index: number) => visit(item, `${path}.transformations[${index}]`));
+    };
+    clone.forEach((character, index) => visit(character, `$[${index}]`));
+    const rules = new Map(CHARACTER_FIELD_AUTHORITY_MATRIX.map(rule => [rule.field, rule]));
     for (const patch of projection.fields) {
-        if (!patch.characterField || patch.authority !== "database_candidate" || patch.evidenceStatus !== "supported" || !["agreement", "representation_gain"].includes(patch.comparison)) continue;
-        const target = byId.get(patch.cardId);
-        if (target) target[patch.characterField] = patch.databaseValue;
+        const rule = rules.get(patch.field);
+        const source = patch.provenance.find(value => value.sidecar === "production" && value.sidecarSha256 === projection.source.productionCharacters.sha256 && value.rowId === patch.cardId);
+        if (!rule || rule.owner === "external" || !rule.characterField || patch.characterField !== rule.characterField
+            || patch.productionJoin.status !== "joined" || patch.authority !== "database_candidate" || patch.evidenceStatus !== "supported"
+            || !["agreement", "representation_gain"].includes(patch.comparison) || !source?.sourceRecordPath) continue;
+        const target = byPath.get(source.sourceRecordPath);
+        if (!target || String(target.id) !== patch.cardId) continue;
+        const currentValue = target[rule.characterField];
+        const comparisonIsTrue = patch.comparison === "agreement"
+            ? jsonEqual(patch.databaseValue, patch.externalValue.production) && jsonEqual(currentValue, patch.externalValue.production)
+            : missing(patch.externalValue.production) && missing(currentValue);
+        if (comparisonIsTrue) target[rule.characterField] = patch.databaseValue;
     }
     return clone;
 }

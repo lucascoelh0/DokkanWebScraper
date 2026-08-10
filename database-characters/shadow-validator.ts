@@ -1,7 +1,8 @@
 import { Character } from "../character";
 import { applyCharacterShadowInMemory } from "./shadow-builder";
-import { CharacterFieldProjection, CharacterShadowProjection } from "./shadow-contract";
+import { CHARACTER_FIELD_AUTHORITY_MATRIX, CharacterFieldProjection, CharacterShadowManifest, CharacterShadowProjection } from "./shadow-contract";
 import { DatabaseCharacterShadowCoverage } from "./shadow-parity-contract";
+import { verifyPinnedCharacterShadowRelease } from "./shadow-release";
 
 export interface DatabaseCharacterShadowValidation {
     schemaVersion: 1;
@@ -22,12 +23,15 @@ export interface DatabaseCharacterShadowValidation {
 const presentationFields = new Set(["name", "title", "categories", "links"]);
 const key = (item: CharacterFieldProjection) => `${item.cardId}:${item.field}`;
 
-export function validateCharacterShadowProjection(projection: CharacterShadowProjection, coverage?: DatabaseCharacterShadowCoverage): DatabaseCharacterShadowValidation {
+function validateCharacterShadowProjectionUnsafe(projection: CharacterShadowProjection, coverage?: DatabaseCharacterShadowCoverage): DatabaseCharacterShadowValidation {
     const failures: string[] = [];
     if (projection?.schemaVersion !== 1 || projection.contract !== "dokkan-database-character-field-shadow" || projection.contractVersion !== "1.0.0") failures.push("projection schema");
+    if (!Array.isArray(projection?.authorityMatrix) || !Array.isArray(projection?.fields)) throw new Error("projection collections");
     if (!projection?.policy?.structuralIdsOnly || projection.policy.nameTextOrNumericProximityInference || !projection.policy.fieldScopedPatches
         || projection.policy.unsupportedDefaults || projection.policy.k7ValuesConsumed || projection.policy.productionModified || projection.policy.publisherEnabled || projection.policy.androidEnabled) failures.push("projection policy");
-    const matrixFields = projection?.authorityMatrix?.map(item => item.field) ?? [];
+    if (JSON.stringify(projection.authorityMatrix) !== JSON.stringify(CHARACTER_FIELD_AUTHORITY_MATRIX)) failures.push("non-canonical authority matrix");
+    const matrixFields = projection.authorityMatrix.map(item => item.field);
+    const canonicalRules = new Map(CHARACTER_FIELD_AUTHORITY_MATRIX.map(item => [item.field, item]));
     if (matrixFields.length !== new Set(matrixFields).size) failures.push("duplicate authority field");
     const identities = projection?.fields?.map(key) ?? [];
     const duplicateProjectionIdentityCount = identities.length - new Set(identities).size;
@@ -37,15 +41,30 @@ export function validateCharacterShadowProjection(projection: CharacterShadowPro
     let conflictWinnerCount = 0;
     let ambiguousStateBindingCount = 0;
     const bindingByCard = new Map<string, string>();
-    for (const item of projection?.fields ?? []) {
+    for (const item of projection.fields) {
+        if (!item || typeof item !== "object") throw new Error("projection field shape");
+        const canonicalRule = canonicalRules.get(item.field);
         if (!matrixFields.includes(item.field)) failures.push(`field outside authority matrix:${key(item)}`);
+        if (!canonicalRule || canonicalRule.owner === "external" || item.characterField !== canonicalRule.characterField) failures.push(`non-canonical field mapping:${key(item)}`);
         if ((item.evidenceStatus === "partial" || item.evidenceStatus === "unknown") && item.authority === "database_candidate") partialOrUnknownPatchCount++;
         if (item.productionJoin.status === "unjoinable" && item.authority === "database_candidate") unjoinableDatabaseCandidateCount++;
         if (item.comparison === "confirmed_conflict" && (item.authority === "database_candidate" || JSON.stringify(item.effectiveShadowValue) !== JSON.stringify(item.externalValue.production))) conflictWinnerCount++;
         if (presentationFields.has(item.field) && item.sourceComparisons.production === "representation_gain" && item.authority === "database_candidate") failures.push(`missing locale presentation patch:${key(item)}`);
         if (item.authority === "database_candidate" && (item.evidenceStatus !== "supported" || !["agreement", "representation_gain"].includes(item.comparison))) failures.push(`unsafe database candidate:${key(item)}`);
+        if (item.authority === "database_candidate" && JSON.stringify(item.effectiveShadowValue) !== JSON.stringify(item.databaseValue)) failures.push(`database candidate effective value:${key(item)}`);
+        if (item.comparison !== item.sourceComparisons?.production) failures.push(`primary comparison mismatch:${key(item)}`);
+        if (item.comparison === "agreement" && JSON.stringify(item.databaseValue) !== JSON.stringify(item.externalValue?.production)) failures.push(`false agreement:${key(item)}`);
+        if (item.comparison === "representation_gain" && item.externalValue?.production !== null && item.externalValue?.production !== undefined) failures.push(`false representation gain:${key(item)}`);
         if (item.authority !== "database_candidate" && JSON.stringify(item.effectiveShadowValue) !== JSON.stringify(item.externalValue.production)) failures.push(`fallback value changed:${key(item)}`);
         if (!item.provenance.some(value => value.sidecar === "k7" && value.sidecarSha256 === projection.source.sidecars.k7.sha256 && value.sourceState?.stateId === item.stateId)) failures.push(`K7 state provenance:${key(item)}`);
+        for (const source of ["production", "fyi"] as const) {
+            const join = source === "production" ? item.productionJoin : item.fyiJoin;
+            if (join.status !== "joined") continue;
+            const expectedHash = source === "production" ? projection.source.productionCharacters.sha256 : projection.source.fyiCharacters.sha256;
+            const external = item.provenance.find(value => value.sidecar === source && value.sidecarSha256 === expectedHash && value.rowId === item.cardId);
+            if (!external?.sourceRecordPath || external.recordSelectionPolicy !== "top_level_then_first_nested_structural_id") failures.push(`external record provenance:${source}:${key(item)}`);
+            if (join.comparisonState?.stateKey && external?.sourceState?.sourceStateKey !== join.comparisonState.stateKey) failures.push(`external state provenance:${source}:${key(item)}`);
+        }
         const binding = JSON.stringify({ stateId: item.stateId, releaseState: item.releaseState, growthRowId: item.growthRowId, production: item.productionJoin.comparisonState, fyi: item.fyiJoin.comparisonState });
         const previous = bindingByCard.get(item.cardId);
         if (previous !== undefined && previous !== binding) ambiguousStateBindingCount++;
@@ -62,6 +81,29 @@ export function validateCharacterShadowProjection(projection: CharacterShadowPro
         failures: [...new Set(failures)].sort(),
         safety: { productionFilesWritten: false, publisherEnabled: false, androidEnabled: false, partialOrUnknownPatchCount, unjoinableDatabaseCandidateCount, conflictWinnerCount, ambiguousStateBindingCount, duplicateProjectionIdentityCount },
     };
+}
+
+/** Validation is total: any corrupt or unknown object becomes an invalid result, never an exception. */
+export function validateCharacterShadowProjection(projection: CharacterShadowProjection, coverage?: DatabaseCharacterShadowCoverage): DatabaseCharacterShadowValidation {
+    try {
+        return validateCharacterShadowProjectionUnsafe(projection, coverage);
+    } catch {
+        return {
+            schemaVersion: 1,
+            valid: false,
+            failures: ["projection shape"],
+            safety: {
+                productionFilesWritten: false,
+                publisherEnabled: false,
+                androidEnabled: false,
+                partialOrUnknownPatchCount: 0,
+                unjoinableDatabaseCandidateCount: 0,
+                conflictWinnerCount: 0,
+                ambiguousStateBindingCount: 0,
+                duplicateProjectionIdentityCount: 0,
+            },
+        };
+    }
 }
 
 function validateCoverage(projection: CharacterShadowProjection, coverage: DatabaseCharacterShadowCoverage, failures: string[]): void {
@@ -91,10 +133,13 @@ export interface OptionalCharacterShadowResult<T extends Character> {
 }
 
 /** Fail-closed optional consumer: invalid/unknown input returns the exact original value. */
-export function applyOptionalCharacterShadowInMemory<T extends Character>(characters: T[], projection: unknown, coverage?: DatabaseCharacterShadowCoverage): OptionalCharacterShadowResult<T> {
+export function applyOptionalCharacterShadowInMemory<T extends Character>(characters: T[], projection: unknown, coverage?: DatabaseCharacterShadowCoverage, manifest?: CharacterShadowManifest): OptionalCharacterShadowResult<T> {
     if (projection === null || projection === undefined) return { characters, applied: false, reason: "absent" };
     if (typeof projection !== "object") return { characters, applied: false, reason: "invalid" };
     const validation = validateCharacterShadowProjection(projection as CharacterShadowProjection, coverage);
     if (!validation.valid) return { characters, applied: false, reason: "invalid", validation };
+    if (!coverage || !manifest || !verifyPinnedCharacterShadowRelease(projection as CharacterShadowProjection, coverage, manifest)) {
+        return { characters, applied: false, reason: "invalid", validation: { ...validation, valid: false, failures: [...validation.failures, "unverified release identity"] } };
+    }
     return { characters: applyCharacterShadowInMemory(characters, projection as CharacterShadowProjection), applied: true, reason: "applied_in_memory", validation };
 }

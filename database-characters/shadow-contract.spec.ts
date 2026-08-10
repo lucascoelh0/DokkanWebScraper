@@ -12,9 +12,11 @@ describe("database character K10 shadow authority", () => {
             authority: "database_candidate",
             note: "shadow-only structural Z-route roots",
         });
-        for (const field of ["leaderSkill", "passive", "baseHP", "portraitURL", "releaseDate", "equipment"] as const) {
+        for (const field of ["leaderSkill", "passive", "baseHP", "portraitURL", "releaseDate", "equipment", "transformations", "awakeningCards", "previousAwakenings", "nextAwakenings"] as const) {
             equal(byField.get(field)?.authority, "external_fallback");
         }
+        equal(CHARACTER_FIELD_AUTHORITY_MATRIX.filter(rule => rule.owner === "external").length, 74);
+        equal(new Set(CHARACTER_FIELD_AUTHORITY_MATRIX.flatMap(rule => rule.characterField ? [rule.characterField] : [])).size, 82);
         ok(byField.get("formGraph")?.characterField === null);
     });
 

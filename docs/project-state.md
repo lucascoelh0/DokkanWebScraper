@@ -116,14 +116,17 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 - The optional shadow contains 109,421 field projections over 5,759 database
   cards, preserves 4,296 production joins and 1,463 unjoinables, and creates no
   `Character` records or production writes.
+- Its canonical matrix covers all `Character` fields, and every joined external
+  comparison records the exact top-level/nested JSON path selected under a
+  fail-closed, payload-independent authority policy.
 - `id`, `rarity` and `type` satisfy field readiness; `rarity` and `type` are
   the meaningful first migration candidates. All authority remains unchanged,
   and FYI/DokkanInfo remain active.
 - The four K7 conflicts on `1027621` and `1028161` remain unresolved and retain
   exact EZA growth-row provenance. They are not K0-K2 value inputs.
 - K11 payload SHA-256 is
-  `a71b2202902bf7702ba3724c6431b16e907bcb858e6aa4a826c919a2f9257722`;
-  two complete generations were byte-identical and peak RSS was 626,032,640
+  `baa78b0cb06ec404eb6df3b008a27e746b82e0f6601dd6622e8d6cb6ab46b074`;
+  two complete generations were byte-identical and peak RSS was 715,735,040
   bytes.
 
 ## Operating Constraints

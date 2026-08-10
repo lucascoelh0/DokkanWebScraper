@@ -1,4 +1,5 @@
 import { createWriteStream } from "fs";
+import { createHash } from "crypto";
 import { copyFile, mkdir, readFile, stat, writeFile } from "fs/promises";
 import { once } from "events";
 import { resolve } from "path";
@@ -11,6 +12,7 @@ import { buildCharacterShadowReadiness } from "./shadow-readiness-builder";
 import { loadCharacterShadowInputs } from "./shadow-source";
 import { sha256File } from "./source";
 import { validateCharacterShadowProjection } from "./shadow-validator";
+import { manifestMatchesPinnedCharacterShadowRelease } from "./shadow-release";
 
 const value = (name: string): string | undefined => { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; };
 const jsonBytes = (input: unknown) => Buffer.from(`${JSON.stringify(input, null, 2)}\n`, "utf8");
@@ -19,12 +21,13 @@ async function writeChunk(stream: NodeJS.WritableStream, chunk: string): Promise
     if (!stream.write(chunk, "utf8")) await once(stream, "drain");
 }
 
-async function writeProjection(path: string, projection: CharacterShadowProjection): Promise<{ sha256: string; sizeBytes: number; uncompressedSizeBytes: number }> {
+async function writeProjection(path: string, projection: CharacterShadowProjection): Promise<{ sha256: string; sizeBytes: number; uncompressedSha256: string; uncompressedSizeBytes: number }> {
     const gzip = createGzip({ level: 9 });
     const output = createWriteStream(path, { flags: "w" });
     gzip.pipe(output);
     let rawBytes = 0;
-    const write = async (chunk: string) => { rawBytes += Buffer.byteLength(chunk); await writeChunk(gzip, chunk); };
+    const rawHash = createHash("sha256");
+    const write = async (chunk: string) => { rawBytes += Buffer.byteLength(chunk); rawHash.update(chunk, "utf8"); await writeChunk(gzip, chunk); };
     const { fields, ...header } = projection;
     const prefix = `${JSON.stringify(header).slice(0, -1)},\"fields\":[`;
     await write(prefix);
@@ -33,7 +36,7 @@ async function writeProjection(path: string, projection: CharacterShadowProjecti
     gzip.end();
     await once(output, "close");
     const metadata = await stat(path);
-    return { sha256: await sha256File(path), sizeBytes: metadata.size, uncompressedSizeBytes: rawBytes };
+    return { sha256: await sha256File(path), sizeBytes: metadata.size, uncompressedSha256: rawHash.digest("hex"), uncompressedSizeBytes: rawBytes };
 }
 
 async function generate(options: { sidecarRoot: string; productionRoot: string; fyiRoot: string; artifactPath: string }) {
@@ -70,13 +73,14 @@ async function run(): Promise<void> {
         await copyFile(firstPath, finalPath);
         const manifest: CharacterShadowManifest = {
             schemaVersion: 1, contractVersion: "1.0.0", generatedAt: "2026-08-05T00:00:00.000Z", fileName: "database-characters-k11-shadow-projection.json.gz", compression: "gzip",
-            sha256: first.artifact.sha256, sizeBytes: first.artifact.sizeBytes, uncompressedSizeBytes: first.artifact.uncompressedSizeBytes,
+            sha256: first.artifact.sha256, sizeBytes: first.artifact.sizeBytes, uncompressedSha256: first.artifact.uncompressedSha256, uncompressedSizeBytes: first.artifact.uncompressedSizeBytes,
             fieldProjectionCount: first.fieldProjectionCount, productionPatchableCardCount: first.productionPatchableCardCount,
             coverageFile: "database-characters-k12-shadow-coverage.json", coverageSha256: sha256Bytes(first.coverageBytes), coverageSizeBytes: first.coverageBytes.length,
             validationFile: "database-characters-k13-shadow-validation.json", validationSha256: sha256Bytes(first.validationBytes), validationSizeBytes: first.validationBytes.length,
             readinessFile: "database-characters-k14-readiness.json", readinessSha256: sha256Bytes(first.readinessBytes), readinessSizeBytes: first.readinessBytes.length,
         };
         const manifestBytes = jsonBytes(manifest);
+        if (!manifestMatchesPinnedCharacterShadowRelease(manifest)) throw new Error(`K10-K14 release identity changed from the pinned offline profile: ${JSON.stringify(manifest)}`);
         await Promise.all([
             writeFile(resolve(outputDir, "database-characters-k10-k14-manifest.json"), manifestBytes),
             writeFile(resolve(outputDir, manifest.coverageFile), first.coverageBytes),

@@ -3,6 +3,7 @@ import { CharacterFieldProjection, CharacterShadowComparison, CharacterShadowFie
 import { CharacterShadowClassificationCounts, CharacterShadowFieldCoverage, CharacterShadowOrderingAudit, DatabaseCharacterShadowCoverage, PreservedK7Conflict } from "./shadow-parity-contract";
 
 const emptyCounts = (): CharacterShadowClassificationCounts => ({ agreements: 0, representationGains: 0, representationMismatches: 0, confirmedConflicts: 0, unknown: 0, unjoinable: 0, externalFallback: 0 });
+const emptyStateCounts = () => ({ initial: 0, eza: 0, seza: 0, form: 0 });
 const add = (counts: CharacterShadowClassificationCounts, value: CharacterShadowComparison): void => {
     const key: Record<CharacterShadowComparison, keyof CharacterShadowClassificationCounts> = {
         agreement: "agreements", representation_gain: "representationGains", representation_mismatch: "representationMismatches",
@@ -65,13 +66,17 @@ export function buildCharacterShadowCoverage(projection: CharacterShadowProjecti
         } else {
             values.forEach(item => { add(production, item.sourceComparisons.production); add(fyi, item.sourceComparisons.fyi); });
         }
-        const stateCoverage = { initial: 0, eza: 0, seza: 0, form: 0 };
+        const stateCoverage = emptyStateCounts();
+        const comparisonStateCoverage = { production: emptyStateCounts(), fyi: emptyStateCounts() };
         values.filter(item => item.evidenceStatus === "supported").forEach(item => {
-            if (item.recordKind === "form") stateCoverage.form++;
-            else {
-                const release = item.fyiJoin.comparisonState.releaseState;
-                if (release === "eza" || release === "seza") stateCoverage[release]++;
-                else stateCoverage.initial++;
+            for (const [target, release] of [
+                [stateCoverage, item.releaseState],
+                [comparisonStateCoverage.production, item.productionJoin.comparisonState.releaseState],
+                [comparisonStateCoverage.fyi, item.fyiJoin.comparisonState.releaseState],
+            ] as const) {
+                if (item.recordKind === "form") target.form++;
+                else if (release === "eza" || release === "seza") target[release]++;
+                else target.initial++;
             }
         });
         return {
@@ -80,7 +85,7 @@ export function buildCharacterShadowCoverage(projection: CharacterShadowProjecti
             partial: values.filter(item => item.evidenceStatus === "partial").length,
             unknownEvidence: values.filter(item => item.evidenceStatus === "unknown").length,
             patchableCharacterCount: values.filter(item => item.characterField && item.authority === "database_candidate" && item.productionJoin.status === "joined").length,
-            stateCoverage,
+            stateCoverage, comparisonStateCoverage,
         };
     });
     const totals = emptyCounts();
