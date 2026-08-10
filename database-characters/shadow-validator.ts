@@ -1,8 +1,6 @@
 import { Character } from "../character";
-import { applyCharacterShadowInMemory } from "./shadow-builder";
 import { CHARACTER_FIELD_AUTHORITY_MATRIX, CharacterFieldProjection, CharacterShadowManifest, CharacterShadowProjection } from "./shadow-contract";
 import { DatabaseCharacterShadowCoverage } from "./shadow-parity-contract";
-import { verifyPinnedCharacterShadowRelease } from "./shadow-release";
 
 export interface DatabaseCharacterShadowValidation {
     schemaVersion: 1;
@@ -128,18 +126,15 @@ function validateCoverage(projection: CharacterShadowProjection, coverage: Datab
 export interface OptionalCharacterShadowResult<T extends Character> {
     characters: T[];
     applied: boolean;
-    reason: "applied_in_memory" | "absent" | "invalid";
+    reason: "absent" | "invalid" | "audit_only";
     validation?: DatabaseCharacterShadowValidation;
 }
 
-/** Fail-closed optional consumer: invalid/unknown input returns the exact original value. */
+/** Legacy fail-closed entrypoint: K11 is audit-only, so present objects are rejected without inspection. */
 export function applyOptionalCharacterShadowInMemory<T extends Character>(characters: T[], projection: unknown, coverage?: DatabaseCharacterShadowCoverage, manifest?: CharacterShadowManifest): OptionalCharacterShadowResult<T> {
     if (projection === null || projection === undefined) return { characters, applied: false, reason: "absent" };
     if (typeof projection !== "object") return { characters, applied: false, reason: "invalid" };
-    const validation = validateCharacterShadowProjection(projection as CharacterShadowProjection, coverage);
-    if (!validation.valid) return { characters, applied: false, reason: "invalid", validation };
-    if (!coverage || !manifest || !verifyPinnedCharacterShadowRelease(projection as CharacterShadowProjection, coverage, manifest)) {
-        return { characters, applied: false, reason: "invalid", validation: { ...validation, valid: false, failures: [...validation.failures, "unverified release identity"] } };
-    }
-    return { characters: applyCharacterShadowInMemory(characters, projection as CharacterShadowProjection), applied: true, reason: "applied_in_memory", validation };
+    void coverage;
+    void manifest;
+    return { characters, applied: false, reason: "audit_only" };
 }

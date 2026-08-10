@@ -44,11 +44,12 @@ describe("database character K13 fallback safety", () => {
         const source: any[] = [{ id: "1", maxLevel: 120 }];
         const result = applyOptionalCharacterShadowInMemory(source, forged);
         equal(result.applied, false);
+        equal(result.reason, "audit_only");
         deepStrictEqual(result.characters, source);
-        ok(result.validation?.failures.includes("non-canonical authority matrix"));
+        ok(validateCharacterShadowProjection(forged).failures.includes("non-canonical authority matrix"));
     });
 
-    it("rejects a self-declared canonical candidate without the pinned manifest and coverage", () => {
+    it("rejects a self-declared canonical candidate at the audit-only boundary", () => {
         const selfDeclared = projection([patch({
             field: "type", characterField: "type", databaseValue: "PHY", externalValue: { production: null, fyi: null }, effectiveShadowValue: "PHY",
             authority: "database_candidate", comparison: "representation_gain", sourceComparisons: { production: "representation_gain", fyi: "unjoinable" },
@@ -56,8 +57,8 @@ describe("database character K13 fallback safety", () => {
         const source: any[] = [{ id: "1" }];
         const result = applyOptionalCharacterShadowInMemory(source, selfDeclared);
         equal(result.applied, false);
+        equal(result.reason, "audit_only");
         equal(result.characters[0].type, undefined);
-        ok(result.validation?.failures.includes("unverified release identity"));
     });
 
     it("rejects partial, unjoinable, conflicting, duplicate and ambiguous patches", () => {
@@ -77,15 +78,23 @@ describe("database character K13 fallback safety", () => {
         ok(validation.failures.includes("ambiguous state binding"));
     });
 
-    it("keeps missing locale text external and requires the pinned release before in-memory application", () => {
+    it("keeps missing locale text external in the offline pinned-release safety probe", () => {
         const localeFallback = patch({ field: "name", characterField: "name", databaseValue: "Global", externalValue: { production: null, fyi: null }, effectiveShadowValue: null, authority: "external_fallback", comparison: "representation_gain", sourceComparisons: { production: "representation_gain", fyi: "unjoinable" } });
         const source: any[] = [{ id: "1", rarity: "SSR", name: "External" }];
         const result = applyOptionalCharacterShadowInMemory(source, projection([localeFallback]));
         equal(result.applied, false);
-        equal(result.reason, "invalid");
-        ok(result.validation?.failures.includes("unverified release identity"));
+        equal(result.reason, "audit_only");
         equal(result.characters[0].name, "External");
         deepStrictEqual(source, [{ id: "1", rarity: "SSR", name: "External" }]);
+    });
+
+    it("rejects a present K11 object without inspecting it", () => {
+        const guarded = new Proxy({}, { get: () => { throw new Error("K11 must not be inspected"); } });
+        const source: any[] = [{ id: "1", rarity: "SSR" }];
+        const result = applyOptionalCharacterShadowInMemory(source, guarded);
+        equal(result.applied, false);
+        equal(result.reason, "audit_only");
+        deepStrictEqual(result.characters, source);
     });
 
     it("rejects paths outside the controlled root", async () => {

@@ -1,7 +1,7 @@
 # Database Characters K10-K14 — field-scoped product shadow
 
-Status: complete on `codex/database-character-shadow-projection`, optional,
-offline-only and non-production. Contract version `1.0.0`.
+Status: complete, optional, offline-only and non-production. K10-K13 remain at
+contract version `1.0.0`; the K14 readiness contract is `1.0.1`.
 
 ## Boundary
 
@@ -42,6 +42,10 @@ and all Dokkan Frontier enrichment. The machine-readable readiness artifact
 enumerates every `Character` field.
 
 ## K11 projection
+
+K11 is **audit-only**. Its 511,791,355 uncompressed bytes are not a delivery
+artifact and must never be read by Android, a normal runtime, an opt-in
+consumer or a publisher.
 
 - 5,759 database cards and 109,421 field projections;
 - 4,296 production structural joins and 1,463 explicit unjoinables;
@@ -116,17 +120,17 @@ outside this campaign.
 
 Focused tests and real-corpus validation prove:
 
-- absent, old, corrupt or unknown-schema projection returns the exact original
-  `Character[]` value;
+- the legacy optional entrypoint returns the exact original `Character[]` and
+  rejects every present K11 object as `audit_only` without inspecting it;
 - the canonical authority matrix is code-owned; a payload cannot relabel an
   external field as a database candidate;
-- optional application requires the exact pinned manifest, raw projection hash
-  and coverage hash; self-declared values/provenance cannot activate patches;
+- offline identity audit verifies the exact pinned manifest, raw projection
+  hash and coverage hash but cannot activate patches;
 - partial/unknown evidence, unjoinables, conflicts and missing presentation
   locale cannot become database patches;
 - duplicate field identities and ambiguous state bindings fail validation;
 - path traversal and non-exact input names fail closed;
-- valid patches operate on an in-memory clone only;
+- no K11 application path is exported;
 - zero production writes, zero publisher/Android capability and deterministic
   ordering/provenance.
 
@@ -152,8 +156,16 @@ duplicate projection identities.
 
 GO is a readiness result, not authority promotion. Production is unchanged;
 publisher, R2 and Android are disabled; FYI and DokkanInfo remain active.
-The first plausible migration slice is `rarity` plus `type`, behind the same
-optional in-memory/fallback contract and only after separate authorization.
+K14 authorizes no data consumer and no delivery of K11.
+
+The only next GO is `generate_compact_supported_projection`: project and
+validate K15 as a new compact, supported-only, content-addressed sidecar. K15
+does not exist in this campaign. Its payload must contain only the minimum
+binding/`id`, `rarity` and `type` data plus compact hash/version provenance; it
+must have its own manifest and explicit lineage to K11 and K0-K2. A future
+consumer may read only K15, never K11. Generating and validating K15,
+publishing K15 and consuming K15 are three separate gates. Publication,
+consumption, authority promotion, R2, Android and production remain NO-GO.
 
 ## Artifacts and verification
 
@@ -163,9 +175,12 @@ optional in-memory/fallback contract and only after separate authorization.
 | K11 raw JSON | 511,791,355 | `6797869b430bec1cb56315c66839d0db24726603718bb0315763a9d626a7523c` |
 | K12 coverage | 108,935 | `5018f4e4a9a01e0d9c2ac568e9555f91878cad79c47f07f0cc540e28380febd7` |
 | K13 validation | 365 | `f6db1919c3caac43c54508e3e4022ea70f6e318ddab86c6b2efc1ce9316f2319` |
-| K14 readiness | 53,259 | `783f5d2152ad2a6e5243464bd07a656c76c1976f6ad4696232c71a1a07eb1cca` |
-| K10-K14 manifest | 1,057 | `85b5b15b2fb677ce30f8f53eac38eb3d28c20b776dd4367d4453d056e3b7bff0` |
+| K14 readiness | 54,486 | `4773a9f3ae7019b4b5d9b133329aebe15db92ca2b9db242dc226890156344b2f` |
+| K10-K14 manifest | 1,057 | `c86d7860ff56a97df3b10894ad69554ff01f64cb5455171fcb55e3548251d86f` |
 
-Two complete load/build/validate/readiness/streaming-gzip generations were
-byte-identical. Peak RSS was 715,735,040 bytes. Generated `data/` artifacts are
-ignored and are not committed or published.
+The original K10-K13/K11 offline run completed two byte-identical
+load/build/validate/streaming-gzip generations and peaked at 715,735,040 bytes.
+K14 `1.0.1` was then generated twice, byte-identically, from the unchanged
+pinned K12/K13 artifacts and the code-owned authority matrix without
+regenerating K11. Generated `data/` artifacts are ignored and are not committed
+or published.

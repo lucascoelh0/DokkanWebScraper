@@ -1,4 +1,3 @@
-import { Character } from "../character";
 import { CharacterEvidenceStatus, CardIdentityRecord, CharacterStateIdentityRecord } from "./identity-contract";
 import { CharacterComparisonState, CharacterExternalParity } from "./parity-contract";
 import { CharacterAwakeningTransition, CharacterFormTransition, CharacterReleaseStateTransition } from "./state-graph-contract";
@@ -14,7 +13,6 @@ import {
     CharacterShadowProjection,
 } from "./shadow-contract";
 import { CharacterShadowInputs, CompactShadowExternalCharacter } from "./shadow-source";
-import { isVerifiedCharacterShadowProjection } from "./shadow-release";
 
 const numeric = (left: string, right: string) => Number(left) - Number(right) || left.localeCompare(right);
 const missing = (value: unknown) => value === null || value === undefined;
@@ -259,32 +257,4 @@ function buildFieldContext(
         };
         default: throw new Error(`unsupported K0-K2 shadow field: ${rule.field}`);
     }
-}
-
-/** Applies only supported, conflict-free product fields to an in-memory clone. */
-export function applyCharacterShadowInMemory<T extends Character>(characters: T[], projection: CharacterShadowProjection): T[] {
-    const clone = JSON.parse(JSON.stringify(characters)) as T[];
-    if (!isVerifiedCharacterShadowProjection(projection)) return clone;
-    const byPath = new Map<string, any>();
-    const visit = (character: any, path: string): void => {
-        if (character?.id !== undefined && character?.id !== null) byPath.set(path, character);
-        (character?.transformations ?? []).forEach((item: any, index: number) => visit(item, `${path}.transformations[${index}]`));
-    };
-    clone.forEach((character, index) => visit(character, `$[${index}]`));
-    const rules = new Map(CHARACTER_FIELD_AUTHORITY_MATRIX.map(rule => [rule.field, rule]));
-    for (const patch of projection.fields) {
-        const rule = rules.get(patch.field);
-        const source = patch.provenance.find(value => value.sidecar === "production" && value.sidecarSha256 === projection.source.productionCharacters.sha256 && value.rowId === patch.cardId);
-        if (!rule || rule.owner === "external" || !rule.characterField || patch.characterField !== rule.characterField
-            || patch.productionJoin.status !== "joined" || patch.authority !== "database_candidate" || patch.evidenceStatus !== "supported"
-            || !["agreement", "representation_gain"].includes(patch.comparison) || !source?.sourceRecordPath) continue;
-        const target = byPath.get(source.sourceRecordPath);
-        if (!target || String(target.id) !== patch.cardId) continue;
-        const currentValue = target[rule.characterField];
-        const comparisonIsTrue = patch.comparison === "agreement"
-            ? jsonEqual(patch.databaseValue, patch.externalValue.production) && jsonEqual(currentValue, patch.externalValue.production)
-            : missing(patch.externalValue.production) && missing(currentValue);
-        if (comparisonIsTrue) target[rule.characterField] = patch.databaseValue;
-    }
-    return clone;
 }

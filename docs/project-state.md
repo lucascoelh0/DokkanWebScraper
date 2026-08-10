@@ -110,24 +110,30 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ### K10–K14 — field-scoped character product shadow
 
-- K10–K14 is complete on the isolated
-  `codex/database-character-shadow-projection` branch and is not integrated,
-  published or consumed by Android.
+- The reviewed K10–K14 infrastructure is present in this history, remains
+  disabled and is available for offline audit. Presence in the repository is
+  not production activation or authority promotion.
 - The optional shadow contains 109,421 field projections over 5,759 database
   cards, preserves 4,296 production joins and 1,463 unjoinables, and creates no
   `Character` records or production writes.
 - Its canonical matrix covers all `Character` fields, and every joined external
   comparison records the exact top-level/nested JSON path selected under a
   fail-closed, payload-independent authority policy.
-- `id`, `rarity` and `type` satisfy field readiness; `rarity` and `type` are
-  the meaningful first migration candidates. All authority remains unchanged,
-  and FYI/DokkanInfo remain active.
+- `id`, `rarity` and `type` satisfy field-evidence readiness only. K14 does not
+  authorize a data consumer, publication or authority promotion.
 - The four K7 conflicts on `1027621` and `1028161` remain unresolved and retain
   exact EZA growth-row provenance. They are not K0-K2 value inputs.
-- K11 payload SHA-256 is
+- K11 is audit-only: its 511,791,355 raw bytes must not be read by Android,
+  runtime consumers, opt-in consumers or publishers. Its payload SHA-256 is
   `baa78b0cb06ec404eb6df3b008a27e746b82e0f6601dd6622e8d6cb6ab46b074`;
   two complete generations were byte-identical and peak RSS was 715,735,040
   bytes.
+- The compact supported-only K15 sidecar does not exist. The only next GO is
+  to generate and validate K15 with minimal binding/`id`, `rarity`, `type`,
+  compact hash/version provenance, its own content-addressed manifest and
+  explicit K11/K0-K2 lineage. K15 generation, publication and consumption are
+  separate gates; publication, consumers, authority promotion, production,
+  publisher, R2 and Android remain disabled/NO-GO. FYI/DokkanInfo remain active.
 
 ## Operating Constraints
 

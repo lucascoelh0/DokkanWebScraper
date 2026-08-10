@@ -27,21 +27,55 @@ export function buildCharacterShadowReadiness(projection: CharacterShadowProject
         if (!criteria.productFieldExists) blockers.push("shadow-only structural dimension has no Character field");
         return { field: rule.field, decision: Object.values(criteria).every(Boolean) ? "GO" as const : "NO-GO" as const, criteria, blockers, patchableCharacterCount: field.patchableCharacterCount };
     });
-    const firstMigrationCandidates = fields.filter(item => item.decision === "GO" && item.field !== "id").map(item => item.field);
     return {
         schemaVersion: 1,
         contract: "dokkan-database-character-field-shadow-readiness",
-        contractVersion: "1.0.0",
+        contractVersion: "1.0.1",
         generatedAt: projection.generatedAt,
         decisionPolicy: "all_six_field_criteria_required",
+        decisionScope: "field_evidence_only_no_delivery_authorization",
         fields,
-        firstMigrationCandidates,
+        firstMigrationCandidates: [],
         fieldsRemainingExternal: projection.authorityMatrix.filter(rule => rule.owner === "external").map(rule => rule.field),
         preservedConflictCount: 4,
         production: { modified: false, publisherEnabled: false, r2Enabled: false, androidEnabled: false, authorityPromoted: false, fyiActive: true, dokkanInfoActive: true },
+        artifactPolicy: {
+            k11: {
+                classification: "audit_only",
+                uncompressedSizeBytes: 511_791_355,
+                runtimeConsumption: "NO-GO",
+                optInConsumption: "NO-GO",
+                publication: "NO-GO",
+                androidConsumption: "NO-GO",
+            },
+            k15: {
+                status: "not_implemented",
+                projection: "compact_supported_only",
+                fields: ["id", "rarity", "type"],
+                provenance: "compact_hashes_and_versions",
+                contentAddressed: true,
+                ownManifestRequired: true,
+                lineageRequired: ["k11", "k0", "k1", "k2"],
+                futureConsumerInput: "k15_only",
+            },
+        },
+        nextGate: {
+            action: "generate_compact_supported_projection",
+            artifact: "k15",
+            decision: "GO",
+            gates: {
+                generateAndValidate: "GO",
+                publication: "NO-GO",
+                consumption: "NO-GO",
+                authorityPromotion: "NO-GO",
+                r2: "NO-GO",
+                android: "NO-GO",
+                production: "NO-GO",
+            },
+        },
         nextSlice: {
-            recommendation: "Review an opt-in, in-memory rarity/type consumer slice with the same manifest and external fallback contract; do not publish or promote authority in this campaign.",
-            constraints: ["keep FYI and DokkanInfo active", "preserve 1,463 unjoinable cards", "no R2 or Android activation without separate authorization", "re-run field parity for a newer snapshot"],
+            recommendation: "Generate and validate K15 as a new compact, supported-only, content-addressed id/rarity/type projection with its own manifest and explicit K11/K0-K2 lineage.",
+            constraints: ["K11 remains audit-only and is never a consumer input", "K15 does not exist in this campaign", "keep generation, publication and consumption as separate gates", "keep FYI and DokkanInfo active", "preserve 1,463 unjoinable cards", "keep publication, consumption, authority promotion, R2, Android and production NO-GO"],
         },
     };
 }

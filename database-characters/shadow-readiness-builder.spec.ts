@@ -16,10 +16,34 @@ describe("database character K14 readiness", () => {
         ] };
         const validation: any = { valid: true, safety: { ambiguousStateBindingCount: 0, partialOrUnknownPatchCount: 0, unjoinableDatabaseCandidateCount: 0, conflictWinnerCount: 0 } };
         const result = buildCharacterShadowReadiness({ generatedAt: "x", authorityMatrix: matrix } as any, coverage, validation);
+        equal(result.contractVersion, "1.0.1");
+        equal(result.decisionScope, "field_evidence_only_no_delivery_authorization");
         equal(result.fields.find(item => item.field === "type")?.decision, "GO");
         equal(result.fields.find(item => item.field === "name")?.decision, "NO-GO");
         equal(result.fields.find(item => item.field === "leaderSkill")?.decision, "NO-GO");
-        deepStrictEqual(result.firstMigrationCandidates, ["type"]);
+        deepStrictEqual(result.firstMigrationCandidates, []);
         equal(result.production.authorityPromoted, false);
+        equal(result.artifactPolicy.k11.classification, "audit_only");
+        equal(result.artifactPolicy.k11.uncompressedSizeBytes, 511_791_355);
+        equal(result.artifactPolicy.k11.runtimeConsumption, "NO-GO");
+        equal(result.artifactPolicy.k11.optInConsumption, "NO-GO");
+        equal(result.artifactPolicy.k11.publication, "NO-GO");
+        equal(result.artifactPolicy.k11.androidConsumption, "NO-GO");
+        deepStrictEqual(result.artifactPolicy.k15.fields, ["id", "rarity", "type"]);
+        deepStrictEqual(result.artifactPolicy.k15.lineageRequired, ["k11", "k0", "k1", "k2"]);
+        equal(result.artifactPolicy.k15.status, "not_implemented");
+        equal(result.artifactPolicy.k15.futureConsumerInput, "k15_only");
+        equal(result.nextGate.action, "generate_compact_supported_projection");
+        equal(result.nextGate.artifact, "k15");
+        equal(result.nextGate.decision, "GO");
+        equal(result.nextGate.gates.generateAndValidate, "GO");
+        for (const decision of [result.nextGate.gates.publication, result.nextGate.gates.consumption, result.nextGate.gates.authorityPromotion, result.nextGate.gates.r2, result.nextGate.gates.android, result.nextGate.gates.production]) equal(decision, "NO-GO");
+        for (const fieldDecision of result.fields.filter(item => item.decision === "GO")) equal(/k11|manifest/i.test(JSON.stringify(fieldDecision)), false);
+        const ambiguousGuidance = [
+            new RegExp(["same", "manifest"].join("\\s+"), "i"),
+            new RegExp(["in-memory", "consumer"].join("\\s+"), "i"),
+            new RegExp(["consume", "K11"].join("\\s+"), "i"),
+        ];
+        for (const pattern of ambiguousGuidance) equal(pattern.test(JSON.stringify(result)), false);
     });
 });

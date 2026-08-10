@@ -4,7 +4,7 @@ import { DatabaseCharacterShadowCoverage } from "./shadow-parity-contract";
 
 /** Exact offline K10-K14 release identity. It is not a production authority promotion. */
 export const CHARACTER_SHADOW_PINNED_RELEASE = {
-    manifestSha256: "85b5b15b2fb677ce30f8f53eac38eb3d28c20b776dd4367d4453d056e3b7bff0",
+    manifestSha256: "c86d7860ff56a97df3b10894ad69554ff01f64cb5455171fcb55e3548251d86f",
     manifestSizeBytes: 1_057,
     artifactSha256: "baa78b0cb06ec404eb6df3b008a27e746b82e0f6601dd6622e8d6cb6ab46b074",
     artifactSizeBytes: 15_906_227,
@@ -14,7 +14,6 @@ export const CHARACTER_SHADOW_PINNED_RELEASE = {
     coverageSizeBytes: 108_935,
 } as const;
 
-const verifiedProjections = new WeakSet<object>();
 const hash = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
 const prettyBytes = (value: unknown) => Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
 
@@ -44,6 +43,7 @@ export function manifestMatchesPinnedCharacterShadowRelease(manifest: CharacterS
     } catch { return false; }
 }
 
+/** Offline identity audit only; successful verification never authorizes K11 delivery or consumption. */
 export function verifyPinnedCharacterShadowRelease(projection: CharacterShadowProjection, coverage: DatabaseCharacterShadowCoverage, manifest: CharacterShadowManifest): boolean {
     try {
         if (!manifestMatchesPinnedCharacterShadowRelease(manifest)) return false;
@@ -51,16 +51,6 @@ export function verifyPinnedCharacterShadowRelease(projection: CharacterShadowPr
         const coverageBytes = prettyBytes(coverage);
         const valid = raw.sha256 === manifest.uncompressedSha256 && raw.sizeBytes === manifest.uncompressedSizeBytes
             && coverageBytes.length === manifest.coverageSizeBytes && hash(coverageBytes) === manifest.coverageSha256;
-        if (valid) verifiedProjections.add(projection);
         return valid;
-    } catch { return false; }
-}
-
-export function isVerifiedCharacterShadowProjection(projection: CharacterShadowProjection): boolean {
-    if (!verifiedProjections.has(projection)) return false;
-    try {
-        const raw = projectionRawIdentity(projection);
-        return raw.sha256 === CHARACTER_SHADOW_PINNED_RELEASE.uncompressedSha256
-            && raw.sizeBytes === CHARACTER_SHADOW_PINNED_RELEASE.uncompressedSizeBytes;
     } catch { return false; }
 }

@@ -25,10 +25,10 @@ Status: optional, additive, disabled and non-production.
 | K8 optional sidecars and refresh | green | eight content-addressed optional sidecars; six supported-only consumer scopes; exact SQLite/DB1/ELF/C1–C3 profile and fail-before-write receipt |
 | K9 readiness | green | infrastructure-only readiness: two narrow GOs, twelve prerequisite-backed NO-GOs and zero authority promotion |
 | K10 field authority | green | explicit 19-dimension K0-K2 candidate matrix plus 74 mandatory external-fallback fields covering every `Character` field |
-| K11 product shadow projection | green | 109,421 field patches over 5,759 cards; 4,296 production joins and 1,463 preserved unjoinables; no production mutation |
+| K11 product shadow projection | green | audit-only; 109,421 field projections over 5,759 cards; 4,296 production joins and 1,463 preserved unjoinables; no delivery or production mutation |
 | K12 field parity | green | exclusive per-field classifications, label/ID/order audits and four preserved K7 cap conflicts |
-| K13 fallback safety | green | fail-closed optional in-memory application; zero unsafe, ambiguous, duplicate or conflict-winning patches |
-| K14 field readiness | green | `id`, `rarity` and `type` field readiness GO; every consumer/publisher/authority action remains disabled |
+| K13 fallback safety | green | fail-closed audit boundary with no exported K11 application path; zero unsafe, ambiguous, duplicate or conflict-winning patches |
+| K14 field readiness | green | `id`, `rarity` and `type` evidence readiness GO only; K11 is audit-only and every delivery/consumer/publisher/authority action remains disabled |
 
 ## K0 boundary
 
@@ -123,6 +123,12 @@ bytes. The detailed coverage, conflict inventory, ordering audit and GO/NO-GO
 matrix are in `specs/database-characters-k10-k14.md`.
 
 Only `id`, `rarity` and `type` satisfy the K14 per-field readiness criteria;
-`rarity` and `type` are the meaningful first migration candidates. This is not
-an authority promotion. Production, publisher, R2 and Android remain disabled,
-and FYI/DokkanInfo remain active.
+these are evidence decisions, not delivery or authority promotion. K11 remains
+audit-only and cannot be read by Android, runtime consumers or publishers. The
+only next GO is to generate and validate a new compact, supported-only,
+content-addressed K15 sidecar containing minimal binding/`id`, `rarity`, `type`
+and compact hash/version provenance, with its own manifest and explicit
+K11/K0-K2 lineage. K15 does not yet exist. Its generation, publication and
+consumption remain separate gates; publication, consumption, authority
+promotion, production, R2 and Android are NO-GO, and FYI/DokkanInfo remain
+active.
