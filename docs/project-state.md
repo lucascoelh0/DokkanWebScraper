@@ -1,6 +1,6 @@
 # Dokkanpanion Project State
 
-**Last updated**: 2026-08-07
+**Last updated**: 2026-08-10
 
 This is the concise operational checkpoint for future sessions. Durable
 decisions live in [`adr/`](adr/), and current workflow instructions live in
@@ -53,6 +53,13 @@ specifications.
 - Android continues to preserve usable cached data across invalid, missing or
   older datasets.
 - Database-first shadow consumption is not implemented or authorized.
+
+## Offline Capture Checkpoint
+
+- H13 corrected the H11 gasha comparison on `codex/database-server-capture-audit` without requests, replay or production changes.
+- The 627 unique legacy conflict facts resolve to 612 representation mismatches, 15 coverage gaps and zero confirmed conflicts.
+- The old 1,254 figure is a non-exclusive comparison-cell total, not a distinct-fact total.
+- H12 readiness remains 2 GO and 5 NO-GO; scraper replacement, authenticated refresh, R2, Android shadow and community-source retirement remain disabled.
 
 ## Next Independent Domain
 

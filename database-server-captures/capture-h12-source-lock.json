@@ -1,11 +1,12 @@
 {
   "schemaVersion": 1,
   "contract": "dokkan-official-capture-h12-source-lock",
-  "contractVersion": "0.13.0",
+  "contractVersion": "0.13.1",
   "artifacts": [
     { "key": "h8", "path": "data/database-server-captures/h8/capture-h8-inventory.json", "sizeBytes": 1332088, "sha256": "43877b787f693a1e3d72f164411ea5d3c004d39f3118fedd8a6a5c953e88ae38" },
     { "key": "h9", "path": "data/database-server-captures/h9/capture-h9-observed-schemas.json", "sizeBytes": 2487767, "sha256": "5f22bdbf3c6936efe40f66e1362d195738dea7aa018614d020d1e7fb06049513" },
     { "key": "h10", "path": "data/database-server-captures/h10/capture-h10-domains.json", "sizeBytes": 995080, "sha256": "f7e104a93ecc1b9314ae91dbabd338d67f2044d0d73a3a34b59819bd78a601b3" },
-    { "key": "h11", "path": "data/database-server-captures/h11/capture-h11-shadow-parity.json", "sizeBytes": 6575, "sha256": "630c5756a7e167b036e3be41a1150368f96399e30860607535ad178f3b06187e" }
+    { "key": "h11", "path": "data/database-server-captures/h11/capture-h11-shadow-parity.json", "sizeBytes": 8054, "sha256": "8921825ce18113e5dee55f02072378d9b42dd963f6aed688e0e427e73535b1eb" },
+    { "key": "h13", "path": "data/database-server-captures/h13/capture-h13-gasha-audit.json", "sizeBytes": 2264344, "sha256": "6b1c82ddfad8672f8e1f9a22c4188cdc61c85dfae7aeee396b22ec2e687d7215" }
   ]
 }
