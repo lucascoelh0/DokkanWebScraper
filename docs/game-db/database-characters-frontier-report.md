@@ -24,6 +24,11 @@ Status: optional, additive, disabled and non-production.
 | K7 shadow parity | green | structural-ID-only shadow join; 56,484 agreements, 14,002 representation gains, four state-proven conflicts and explicit unknown/unjoinable domains |
 | K8 optional sidecars and refresh | green | eight content-addressed optional sidecars; six supported-only consumer scopes; exact SQLite/DB1/ELF/C1–C3 profile and fail-before-write receipt |
 | K9 readiness | green | infrastructure-only readiness: two narrow GOs, twelve prerequisite-backed NO-GOs and zero authority promotion |
+| K10 field authority | green | explicit 19-dimension K0-K2 candidate matrix plus 70 mandatory external-fallback fields |
+| K11 product shadow projection | green | 109,421 field patches over 5,759 cards; 4,296 production joins and 1,463 preserved unjoinables; no production mutation |
+| K12 field parity | green | exclusive per-field classifications, label/ID/order audits and four preserved K7 cap conflicts |
+| K13 fallback safety | green | fail-closed optional in-memory application; zero unsafe, ambiguous, duplicate or conflict-winning patches |
+| K14 field readiness | green | `id`, `rarity` and `type` field readiness GO; every consumer/publisher/authority action remains disabled |
 
 ## K0 boundary
 
@@ -102,3 +107,22 @@ prerequisites. No authority was promoted. The complete decision matrix,
 remaining server/FYI/DokkanInfo dependencies, four confirmed FYI cap conflicts,
 field-authority strategy and per-sidecar sizes are in
 `specs/database-characters-k9.md`.
+
+## K10-K14 product shadow
+
+The field-scoped `1.0.0` shadow contains 109,421 projections and keeps all
+5,759 K0 cards, including the 1,463 cards without a production structural
+join. It does not construct `Character` placeholders. Production/FYI values,
+database values, effective shadow fallback, evidence status, authority,
+comparison, state selection and row/sidecar/hash provenance remain explicit.
+
+K11 gzip is 14,174,570 bytes / 458,865,360 bytes raw, SHA-256
+`a71b2202902bf7702ba3724c6431b16e907bcb858e6aa4a826c919a2f9257722`.
+Two complete generations were byte-identical and peak RSS was 626,032,640
+bytes. The detailed coverage, conflict inventory, ordering audit and GO/NO-GO
+matrix are in `specs/database-characters-k10-k14.md`.
+
+Only `id`, `rarity` and `type` satisfy the K14 per-field readiness criteria;
+`rarity` and `type` are the meaningful first migration candidates. This is not
+an authority promotion. Production, publisher, R2 and Android remain disabled,
+and FYI/DokkanInfo remain active.

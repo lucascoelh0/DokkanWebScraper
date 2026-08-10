@@ -108,6 +108,24 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
+### K10–K14 — field-scoped character product shadow
+
+- K10–K14 is complete on the isolated
+  `codex/database-character-shadow-projection` branch and is not integrated,
+  published or consumed by Android.
+- The optional shadow contains 109,421 field projections over 5,759 database
+  cards, preserves 4,296 production joins and 1,463 unjoinables, and creates no
+  `Character` records or production writes.
+- `id`, `rarity` and `type` satisfy field readiness; `rarity` and `type` are
+  the meaningful first migration candidates. All authority remains unchanged,
+  and FYI/DokkanInfo remain active.
+- The four K7 conflicts on `1027621` and `1028161` remain unresolved and retain
+  exact EZA growth-row provenance. They are not K0-K2 value inputs.
+- K11 payload SHA-256 is
+  `a71b2202902bf7702ba3724c6431b16e907bcb858e6aa4a826c919a2f9257722`;
+  two complete generations were byte-identical and peak RSS was 626,032,640
+  bytes.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
