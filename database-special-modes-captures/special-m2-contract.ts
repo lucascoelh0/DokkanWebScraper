@@ -7,7 +7,7 @@ export interface SpecialM2Asset { path: string; status: number; mimeType: string
 export interface SpecialM2Dataset {
     schemaVersion: 1;
     contract: "dokkan-special-modes-burst-offline-observation";
-    contractVersion: "0.3.0";
+    contractVersion: "0.3.1";
     generatedAt: string;
     generatedAtPolicy: "inherits_m0_capture_timestamp";
     collectionMode: "offline_local_har_no_requests_no_replay";
@@ -19,7 +19,7 @@ export interface SpecialM2Dataset {
     m0ArtifactSizeBytes: number;
     briefing: { sourceSpan: SpecialSourceSpan; questId: number; queryKeyNames: string[]; genkaiBattleId: number; scheduleId: number; factCount: number; familyEvidence: "explicit_genkai_battle_object" };
     facts: SpecialM2Fact[];
-    startObservation: { sourceSpan: SpecialSourceSpan; method: "POST"; normalizedPath: "/quests/:id/sugoroku_maps/start"; questId: number; status: number; requestDisposition: "opaque_sign_omitted"; responseDisposition: "opaque_sign_omitted"; configurationStatus: "unknown"; replayCapability: false };
+    startObservation: { sourceSpan: SpecialSourceSpan; method: "POST"; normalizedPath: "/quests/:id/sugoroku_maps/start"; questId: number; status: number; requestDisposition: "opaque_sign_omitted"; responseDisposition: "opaque_sign_omitted"; configurationStatus: "unknown"; burstAssociationStatus: "unknown"; associationEvidence: { sameQuestRouteAsBriefing: true; temporallyAfterBriefing: true; bodyStructuralIdCount: 0; boundary: "route_and_order_are_insufficient_while_bodies_are_opaque" }; replayCapability: false };
     announcements: SpecialM2Announcement[];
     assets: SpecialM2Asset[];
     omitted: Array<{ jsonPointer: string; reason: "account_value" | "presentation_text" | "opaque_signature" }>;

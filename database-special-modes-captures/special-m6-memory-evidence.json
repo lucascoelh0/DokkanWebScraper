@@ -6,14 +6,14 @@
   "measurementPolicy": "isolated_sequential_node_runner_working_set_sampled_every_2ms",
   "limitBytes": 1073741824,
   "measurements": [
-    { "gate": "m0", "peakWorkingSetBytes": 63008768 },
-    { "gate": "m1", "peakWorkingSetBytes": 56795136 },
-    { "gate": "m2", "peakWorkingSetBytes": 57962496 },
-    { "gate": "m3", "peakWorkingSetBytes": 89112576 },
-    { "gate": "m4", "peakWorkingSetBytes": 55341056 },
-    { "gate": "m5", "peakWorkingSetBytes": 125968384 },
-    { "gate": "m6", "peakWorkingSetBytes": 71675904 }
+    { "gate": "m0", "peakWorkingSetBytes": 63160320 },
+    { "gate": "m1", "peakWorkingSetBytes": 55091200 },
+    { "gate": "m2", "peakWorkingSetBytes": 58236928 },
+    { "gate": "m3", "peakWorkingSetBytes": 258596864 },
+    { "gate": "m4", "peakWorkingSetBytes": 55050240 },
+    { "gate": "m5", "peakWorkingSetBytes": 125128704 },
+    { "gate": "m6", "peakWorkingSetBytes": 72220672 }
   ],
-  "maximumPeakWorkingSetBytes": 125968384,
+  "maximumPeakWorkingSetBytes": 258596864,
   "withinLimit": true
 }

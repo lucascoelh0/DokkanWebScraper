@@ -6,7 +6,7 @@ export interface SpecialM6Decision { id: SpecialM6DecisionId; status: SpecialM6D
 export interface SpecialM6Artifact { gate: "m0" | "m1" | "m2" | "m3" | "m4" | "m5"; fileName: string; sizeBytes: number; sha256: string }
 export interface SpecialM6MemoryEvidence { schemaVersion: 1; contract: "dokkan-special-modes-memory-evidence"; contractVersion: "0.7.0"; platform: "windows"; measurementPolicy: string; limitBytes: 1073741824; measurements: Array<{ gate: string; peakWorkingSetBytes: number }>; maximumPeakWorkingSetBytes: number; withinLimit: boolean }
 export interface SpecialM6CaptureStep { order: number; action: string; retain: string[]; stopBoundary: string; expectedStatus: "supported" | "partial" | "unknown" }
-export interface SpecialM6CaptureFlow { id: string; domain: "pettan" | "burst" | "representation" | "zstandard"; precondition: string; steps: SpecialM6CaptureStep[]; completionEvidence: string }
+export interface SpecialM6CaptureFlow { id: string; domain: "pettan" | "burst" | "representation" | "zstandard"; requiredForCurrentCampaign: false; activation: "future_event_window_only" | "conditional_future_zstandard_only"; precondition: string; steps: SpecialM6CaptureStep[]; completionEvidence: string }
 export interface SpecialM6Dataset {
     schemaVersion: 1;
     contract: "dokkan-special-modes-capture-readiness";
@@ -16,7 +16,9 @@ export interface SpecialM6Dataset {
     collectionMode: "offline_local_artifacts_no_requests_no_replay";
     defaultEnabled: false;
     productionMutation: false;
+    campaignClosure: { m0m6Complete: true; additionalPettanCaptureRequired: false; startOrFinishCaptureRequired: false; interceptionCrashAcceptedAsCaptureBoundary: true };
     coverage: { harEntries: number; pettanObservedPacks: number; pettanBattleRoutes: number; burstFacts: number; losslessFacts: number; sourceSpans: number; parityFacts: number; parityByClassification: Record<SpecialM5Classification, number> };
+    scoreRecomputationHypothesis: { status: "partial"; strength: "strong"; reportedObservation: "modifier_selection_changed_displayed_predicted_score_without_observed_additional_api_call"; inference: "client_recomputes_locally_from_previously_received_data"; briefingPointFactCount: 38; sqliteMatchedSubcategoryCount: 13; eventsResponsesWithoutPersistedBodies: 3; capturedAssetBodyCount: 4; sourceAssessment: { briefing: "structural_candidate"; sqlite: "structural_taxonomy_only"; events: "unavailable_body_not_evidence"; assets: "presentation_binary_not_formula_authority" }; formulaStatus: "unknown" };
     zstandard: { observedBodyCount: 0; dictionaryIdOfInterest: 315060143; dictionaryIdentityStatus: "not_proved_and_not_needed_for_current_inputs"; decodeStatus: "not_attempted"; proofBoundary: "exact_dictionary_bytes_size_sha256_id_and_independent_provenance_required_id_alone_never_proves_identity" };
     artifacts: SpecialM6Artifact[];
     fixture: { fileName: "special-modes-synthetic-shapes.json"; sizeBytes: number; sha256: string; synthetic: true };
