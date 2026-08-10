@@ -108,7 +108,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K14 — field-scoped character product shadow
+### K10–K15 — field-scoped and compact character product shadow
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -128,12 +128,19 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   `baa78b0cb06ec404eb6df3b008a27e746b82e0f6601dd6622e8d6cb6ab46b074`;
   two complete generations were byte-identical and peak RSS was 715,735,040
   bytes.
-- The compact supported-only K15 sidecar does not exist. The only next GO is
-  to generate and validate K15 with minimal binding/`id`, `rarity`, `type`,
-  compact hash/version provenance, its own content-addressed manifest and
-  explicit K11/K0-K2 lineage. K15 generation, publication and consumption are
-  separate gates; publication, consumers, authority promotion, production,
-  publisher, R2 and Android remain disabled/NO-GO. FYI/DokkanInfo remain active.
+- K15 now implements offline-only generation and validation of a compact,
+  supported-only `cardId`/`stateId`/`rarity`/`type` projection. It contains
+  4,296 deterministic records, excludes the 1,463 unjoinables, creates or
+  removes no `Character`, and carries K0-K2/K11-K14 plus productive
+  `Character[]` lineage only in its header/manifest.
+- The K15 payload is 29,902 gzip bytes / 558,190 raw bytes with SHA-256
+  `803346fc61a7e659ccb8aeea62c273fcdf24ef3d66d3d03564a6fad29627c81f`.
+  Two complete generations were byte-identical and peak RSS was 248,946,688
+  bytes. Generated `data/` remains ignored and unpublished.
+- K15 generation and validation are GO. Publication, consumers, authority
+  promotion, production, publisher, R2 and Android remain disabled/NO-GO;
+  FYI/DokkanInfo remain active. The next gate is K16: a K15-only opt-in shadow
+  consumer that does not change effective values and can never read K11.
 
 ## Operating Constraints
 
