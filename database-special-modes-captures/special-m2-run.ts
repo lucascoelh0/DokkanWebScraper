@@ -1,0 +1,9 @@
+import { createHash } from "crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
+import { getHeapStatistics } from "v8";
+import { readValidatedCaptureSnapshot } from "../database-server-captures/capture-h0-audit";
+import { SpecialM0Dataset, SpecialM0SourceLock } from "./special-m0-contract";
+import { buildSpecialM2, validateSpecialM2 } from "./special-m2-burst";
+
+const root = resolve(process.cwd()); if (getHeapStatistics().heap_size_limit >= 1024 * 1024 * 1024) throw new Error("M2 requires a Node heap below 1 GiB"); const read = (path: string) => readFileSync(resolve(root, path), "utf8"), m0Text = read("data/database-special-modes-captures/m0/special-m0-inventory.json"), m0 = JSON.parse(m0Text) as SpecialM0Dataset, lock = JSON.parse(read("database-special-modes-captures/special-m0-source-lock.json")) as SpecialM0SourceLock, source = lock.captures.find(value => value.captureId === "burst-mode-2026-08-10"); if (!source) throw new Error("M2 source lock missing"); const harText = readValidatedCaptureSnapshot("D:\\Dokkan\\har logs\\08-10", source.fileName, source.captureId).text, dataset = buildSpecialM2(harText, m0, m0Text), validation = validateSpecialM2(dataset, m0, m0Text), text = `${JSON.stringify(dataset, null, 2)}\n`, manifest = { schemaVersion: 1, contractVersion: dataset.contractVersion, generatedAt: dataset.generatedAt, fileName: "special-m2-burst.json", sizeBytes: Buffer.byteLength(text), sha256: createHash("sha256").update(text).digest("hex") }, out = resolve(root, "data/database-special-modes-captures/m2"); mkdirSync(out, { recursive: true }); writeFileSync(resolve(out, manifest.fileName), text); writeFileSync(resolve(out, "special-m2-validation.json"), `${JSON.stringify(validation, null, 2)}\n`); writeFileSync(resolve(out, "special-m2-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`); process.stdout.write(`${JSON.stringify(validation)}\n`);
