@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "synthetic": true,
+  "valuePolicy": "no_real_capture_values",
+  "routes": [
+    { "method": "GET", "path": "/sd/packs", "responseFields": ["$.sd_packs:array", "$.sd_packs[].id:number", "$.sd_packs[].sd_map_id:number"] },
+    { "method": "GET", "path": "/quests/:id/briefing", "responseFields": ["$.genkai_battle.genkai_battle_id:number", "$.genkai_battle.genkai_battle_schedule_id:number", "$.genkai_battle.genkai_gimmicks:array"] },
+    { "method": "GET", "path": "/resources/home", "responseFields": ["$.[special-mode-structural-id]:number", "$.[account-subtree]:omitted"] }
+  ]
+}

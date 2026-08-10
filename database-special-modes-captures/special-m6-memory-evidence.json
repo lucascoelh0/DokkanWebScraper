@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-special-modes-memory-evidence",
+  "contractVersion": "0.7.0",
+  "platform": "windows",
+  "measurementPolicy": "isolated_sequential_node_runner_working_set_sampled_every_2ms",
+  "limitBytes": 1073741824,
+  "measurements": [
+    { "gate": "m0", "peakWorkingSetBytes": 63008768 },
+    { "gate": "m1", "peakWorkingSetBytes": 56795136 },
+    { "gate": "m2", "peakWorkingSetBytes": 57962496 },
+    { "gate": "m3", "peakWorkingSetBytes": 89112576 },
+    { "gate": "m4", "peakWorkingSetBytes": 55341056 },
+    { "gate": "m5", "peakWorkingSetBytes": 125968384 },
+    { "gate": "m6", "peakWorkingSetBytes": 71675904 }
+  ],
+  "maximumPeakWorkingSetBytes": 125968384,
+  "withinLimit": true
+}
