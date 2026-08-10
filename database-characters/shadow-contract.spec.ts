@@ -15,7 +15,7 @@ describe("database character K10 shadow authority", () => {
         for (const field of ["leaderSkill", "passive", "baseHP", "portraitURL", "releaseDate", "equipment"] as const) {
             equal(byField.get(field)?.authority, "external_fallback");
         }
-        ok(byField.get("formGraph")?.characterField === "transformations");
+        ok(byField.get("formGraph")?.characterField === null);
     });
 
     it("contains no unsupported product defaults or promoted owner", () => {
