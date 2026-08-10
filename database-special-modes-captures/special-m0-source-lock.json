@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-special-modes-offline-source-lock",
+  "contractVersion": "0.1.0",
+  "captureRoot": "special-modes-2026-08-10",
+  "captures": [
+    {
+      "captureId": "burst-mode-2026-08-10",
+      "fileName": "burst_mode.har",
+      "sizeBytes": 1172149,
+      "sha256": "f38177e42e4e8aa89140033eae5e470e842391a575a869b0b5464c89b6947875",
+      "entryCount": 118
+    },
+    {
+      "captureId": "pettan-not-live-2026-08-10",
+      "fileName": "pettan_but_not_live.har",
+      "sizeBytes": 1282236,
+      "sha256": "2ceee1373ab93ec33ee32e322cf09b48d25ac5ed5c8f2ef5580b22a85bbd92de",
+      "entryCount": 165
+    }
+  ]
+}
