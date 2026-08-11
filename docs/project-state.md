@@ -108,7 +108,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K17 — field-scoped and compact character product shadow
+### K10–K20 — field-scoped compact shadow and FYI candidate implementation
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -157,6 +157,26 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   overlay proof are GO. Authority promotion, persisted/effective production
   changes, publisher, R2, Android and FYI/DokkanInfo removal remain
   disabled/NO-GO.
+- K18-K20 are present in this history as a reviewed, default-off checkpoint: a
+  pure K18 field-scoped overlay API, an explicit K19 FYI candidate path and an
+  offline K20 compare/readiness gate. Presence is not production activation or
+  authority promotion.
+- K19 scopes validated K15 records to structural IDs actually present in the
+  FYI target catalog. Against the exact current FYI payload pin, 1,576 of 4,296
+  K15 records are in scope, 2,720 are `excludedByTargetCatalog`, and 49 of
+  1,625 FYI states are not covered by K15. The selected scope has 1,576 type
+  agreements, 1,387 rarity agreements, 189 null fills and zero blockers.
+  Out-of-scope and uncovered states are neither agreements nor authority.
+- K20 independently rebuilt that exact candidate in memory and returned GO
+  only for candidate generation/validation, with zero type, non-rarity,
+  cardinality, ID, order or portrait-reference changes. No FYI scrape,
+  portrait download, candidate directory, `latest`, `data/latest`, publisher,
+  R2 or Android write was performed. Promotion, production, publisher, R2 and
+  Android remain NO-GO and require separate user authorization.
+- Candidate persistence is fail-closed: portrait filenames are canonicalized,
+  the fixed directory is reserved exactly once, and a content-addressed commit
+  marker is written last. K20 validates that marker plus the complete K19/K15
+  contract, lineage and safety declaration before it can return GO.
 
 ## Operating Constraints
 

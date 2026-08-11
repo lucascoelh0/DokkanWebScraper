@@ -11,7 +11,16 @@ export function normalizeAssetId(cardId: number): number {
     return Math.floor(cardId / 10) * 10;
 }
 
+export function assertPortraitFilename(portraitFilename: unknown): asserts portraitFilename is string {
+    if (typeof portraitFilename !== "string"
+        || portraitFilename.length > 64
+        || !/^portrait_[0-9]+$/.test(portraitFilename)) {
+        throw new Error("Portrait filename must use the canonical portrait_<numeric-id> form");
+    }
+}
+
 export function portraitOutputUrl(portraitFilename: string): string {
+    assertPortraitFilename(portraitFilename);
     return `images/${portraitFilename}.png`;
 }
 
@@ -118,6 +127,7 @@ export async function savePortraitFile(
     outputDir = resolve(__dirname, "..", "data", "images"),
     force = false,
 ): Promise<void> {
+    assertPortraitFilename(portraitFilename);
     await mkdir(outputDir, { recursive: true });
     const outputPath = resolve(outputDir, `${portraitFilename}.png`);
     if (!force && await isCurrentPortrait(outputPath)) {

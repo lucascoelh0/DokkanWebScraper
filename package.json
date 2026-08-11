@@ -86,6 +86,8 @@
     "run:fyi-categories": "npx ts-node fyi-categories-run.ts",
     "run:fyi-character-catalog": "npx ts-node fyi-character-catalog-run.ts",
     "run:fyi-character-dataset": "npx ts-node fyi-character-dataset-run.ts",
+    "run:fyi-character-candidate-k19": "npx ts-node fyi-character-dataset-run.ts --candidate-k19",
+    "validate:fyi-character-candidate-k20": "npx ts-node fyi-character-candidate-readiness.ts --opt-in-k20",
     "run:fyi-team-analysis": "npx ts-node fyi-team-analysis-run.ts",
     "validate:team-analysis": "npx ts-node team-analysis-validate.ts",
     "publish:team-analysis-r2": "npx ts-node publish-team-analysis-r2.ts",

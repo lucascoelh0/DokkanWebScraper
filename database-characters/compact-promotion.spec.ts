@@ -4,6 +4,8 @@ import * as ModuleApi from "module";
 import { basename, dirname, join, resolve } from "path";
 import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
 import type { CharacterCompactManifest, CharacterCompactProjection } from "./compact-contract";
+import { createCharacterCompactRarityOverlay } from "./compact-overlay";
+import * as compactOverlay from "./compact-overlay";
 import {
     parseCharacterCompactPromotionCli,
     runCharacterCompactPromotion,
@@ -13,7 +15,7 @@ import * as compactPromotion from "./compact-promotion";
 type Evaluate = (projection: CharacterCompactProjection, manifest: CharacterCompactManifest, characters: any[]) => any;
 type Index = (characters: any[]) => { selected: Map<string, { sourceRecordPath: string }>; ambiguous: Map<string, string[]> };
 
-async function loadInternals(fileName: "compact-consumer" | "compact-promotion"): Promise<{ evaluate?: Evaluate; index: Index }> {
+async function loadInternals(fileName: "compact-consumer" | "compact-promotion"): Promise<{ evaluate?: Evaluate; index?: Index }> {
     const parent = resolve(__dirname, "..");
     const sourceRoot = basename(parent).toLowerCase() === "lib" ? resolve(parent, "..") : parent;
     const sourcePath = join(sourceRoot, "database-characters", `${fileName}.ts`);
@@ -22,7 +24,7 @@ async function loadInternals(fileName: "compact-consumer" | "compact-promotion")
         : sourcePath;
     const source = await readFile(sourcePath, "utf8");
     const names = fileName === "compact-promotion"
-        ? "evaluateValidatedInputs as __testEvaluate, indexProductionStates as __testIndex"
+        ? "evaluateValidatedInputs as __testEvaluate"
         : "indexProductionStates as __testIndex";
     const compiled = transpileModule(`${source}\nexport { ${names} };\n`, {
         compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2022 },
@@ -125,6 +127,11 @@ describe("database character K17 compact in-memory promotion overlay", () => {
         equal(report.readiness.experimentalInMemoryOverlay, "NO-GO");
         equal(JSON.stringify(compact), compactBefore);
         equal(JSON.stringify(characters), charactersBefore);
+
+        const overlay = createCharacterCompactRarityOverlay(characters as any, compact);
+        equal(overlay.decision.candidates.count, 1);
+        equal(overlay.decision.overlayProof.candidatesAppliedToClone, 0);
+        deepStrictEqual(overlay.characters, characters);
     });
 
     it("blocks missing bindings and missing type values", () => {
@@ -192,7 +199,7 @@ describe("database character K17 compact in-memory promotion overlay", () => {
     });
 
     it("matches K16 precedence and first-path selection", async () => {
-        const [k16, k17] = await Promise.all([loadInternals("compact-consumer"), loadInternals("compact-promotion")]);
+        const k16 = await loadInternals("compact-consumer");
         const characters = [
             { id: "1", rarity: "SSR", type: "AGL", transformations: [{ id: "1", rarity: "UR", type: "AGL" }] },
             { id: "base", rarity: "UR", type: "STR", transformations: [
@@ -202,13 +209,16 @@ describe("database character K17 compact in-memory promotion overlay", () => {
                 { id: "3", rarity: "SSR", type: "PHY" },
             ] },
         ];
-        const oldIndex = k16.index(characters);
-        const newIndex = k17.index(characters);
-        deepStrictEqual([...newIndex.selected.keys()], [...oldIndex.selected.keys()]);
-        deepStrictEqual([...newIndex.ambiguous.keys()], [...oldIndex.ambiguous.keys()]);
-        equal(newIndex.selected.get("1")!.sourceRecordPath, oldIndex.selected.get("1")!.sourceRecordPath);
-        equal(newIndex.selected.get("2")!.sourceRecordPath, oldIndex.selected.get("2")!.sourceRecordPath);
-        equal(newIndex.selected.get("2")!.sourceRecordPath, "$[1].transformations[0]");
+        const oldIndex = k16.index!(characters);
+        const overlay = createCharacterCompactRarityOverlay(characters as any, projection([
+            { cardId: "1", stateId: "10", rarity: "SSR", type: "AGL" },
+            { cardId: "2", stateId: "20", rarity: "UR", type: "TEQ" },
+            { cardId: "3", stateId: "30", rarity: "UR", type: "PHY" },
+        ]));
+        equal(oldIndex.selected.get("1")!.sourceRecordPath, "$[0]");
+        equal(oldIndex.selected.get("2")!.sourceRecordPath, "$[1].transformations[0]");
+        equal(overlay.patches[0].productionPath, oldIndex.selected.get("2")!.sourceRecordPath);
+        equal(overlay.decision.evaluation.binding.ambiguous, oldIndex.ambiguous.has("3") ? 1 : 0);
     });
 
     it("does not mutate K15, production, or expose Character/application APIs", async () => {
@@ -226,6 +236,9 @@ describe("database character K17 compact in-memory promotion overlay", () => {
         equal((compactPromotion as any).merge, undefined);
         equal((compactPromotion as any).write, undefined);
         equal((compactPromotion as any).characters, undefined);
+        equal((compactOverlay as any).apply, undefined);
+        equal((compactOverlay as any).merge, undefined);
+        equal((compactOverlay as any).write, undefined);
 
         const parent = resolve(__dirname, "..");
         const sourceRoot = basename(parent).toLowerCase() === "lib" ? resolve(parent, "..") : parent;

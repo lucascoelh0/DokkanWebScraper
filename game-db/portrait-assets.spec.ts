@@ -1,7 +1,13 @@
-import { deepEqual, equal } from "assert";
+import { deepEqual, equal, throws } from "assert";
 import { describe, it } from "mocha";
 import { Rarities } from "../character";
-import { cardArtUrlFromCardId, normalizeAssetId, portraitOutputUrl, portraitSpecFromElement } from "./portrait-assets";
+import {
+    assertPortraitFilename,
+    cardArtUrlFromCardId,
+    normalizeAssetId,
+    portraitOutputUrl,
+    portraitSpecFromElement,
+} from "./portrait-assets";
 
 describe("portrait asset helpers", function () {
     it("normalizes asset ids and portrait output urls", () => {
@@ -20,6 +26,13 @@ describe("portrait asset helpers", function () {
             rarity: Rarities.LR,
             elementCode: "24",
         });
+    });
+
+    it("rejects portrait filenames that could escape the output directory", () => {
+        for (const value of ["../portrait_1", "portrait_1/../../latest", "C:\\portrait_1", "portrait_alpha", "portrait_1.png"]) {
+            throws(() => assertPortraitFilename(value), /canonical/);
+        }
+        assertPortraitFilename("portrait_1033061");
     });
 });
 

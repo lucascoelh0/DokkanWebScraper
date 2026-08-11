@@ -2,7 +2,7 @@ import { existsSync } from "fs";
 import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import { resolve } from "path";
 import { Character, PortraitSpec } from "./character";
-import { savePortraitFile } from "./game-db/portrait-assets";
+import { assertPortraitFilename, savePortraitFile } from "./game-db/portrait-assets";
 
 const PORTRAIT_FORMAT_VERSION = "2";
 const PORTRAIT_FORMAT_MARKER = ".portrait-format-version";
@@ -44,6 +44,7 @@ export function collectFyiPortraitTargets(characters: Character[]): PortraitTarg
             return;
         }
 
+        assertPortraitFilename(filename);
         targets.set(filename, { filename, spec });
     };
 
@@ -77,6 +78,7 @@ export async function mirrorFyiPortraits(
 
     let downloadedCount = 0;
     await mapWithConcurrency(targets, requestedPortraitConcurrency(), async target => {
+        assertPortraitFilename(target.filename);
         const outputPath = resolve(outputDir, `${target.filename}.png`);
         if (hasCurrentFormat && await isCurrentPortrait(outputPath)) {
             return;
@@ -92,7 +94,9 @@ export async function mirrorFyiPortraits(
 }
 
 function localPortraitUrl(filename: string, fallback: string): string {
-    return filename ? `${PORTRAIT_ASSET_DIRECTORY}/${filename}.png` : fallback;
+    if (!filename) return fallback;
+    assertPortraitFilename(filename);
+    return `${PORTRAIT_ASSET_DIRECTORY}/${filename}.png`;
 }
 
 async function isCurrentPortrait(path: string): Promise<boolean> {
