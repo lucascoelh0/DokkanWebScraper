@@ -212,6 +212,13 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   bytes and conservatively project the bucket to 362,797,554 bytes, safely
   below 10 GB. This makes the versioned delivery plan ready for a separately
   reviewed publisher gate, but does not authorize or perform publication.
+- K28 adds that publisher behind exact dry-run/publish CLIs, a required
+  delivery-ID confirmation and bucket-scoped R2 S3 credentials. It repeats
+  K27, directly validates every immutable object and its cache metadata, uses
+  `If-None-Match: *` for immutable creates, and promotes the manifest last with
+  ETag-based `If-Match` or create-only semantics. It implements no delete or
+  production switch. Merging K28 does not authorize its write path; real R2
+  publication remains a separate explicit user action.
 
 ## Operating Constraints
 

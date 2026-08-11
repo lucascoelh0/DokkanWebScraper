@@ -91,6 +91,7 @@
     "prepare:fyi-character-release-k21-k23": "npx ts-node fyi-character-release.ts --opt-in-k21-k23",
     "preflight:fyi-character-release-k24": "npx ts-node fyi-character-release-preflight.ts",
     "preflight:fyi-character-versioned-k25-k27": "node --max-old-space-size=512 -r ts-node/register fyi-character-versioned-portraits.ts",
+    "publish:fyi-character-versioned-r2": "node --max-old-space-size=512 -r ts-node/register publish-fyi-character-versioned-r2.ts",
     "run:fyi-team-analysis": "npx ts-node fyi-team-analysis-run.ts",
     "validate:team-analysis": "npx ts-node team-analysis-validate.ts",
     "publish:team-analysis-r2": "npx ts-node publish-team-analysis-r2.ts",
@@ -122,6 +123,7 @@
     "ts-node": "^10.9.1"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1107.0",
     "@types/mocha": "^9.1.1",
     "@types/node": "16.x",
     "assert": "^2.0.0",

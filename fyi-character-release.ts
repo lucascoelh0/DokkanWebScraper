@@ -554,6 +554,20 @@ export async function readValidatedFyiCharacterRelease(
     return { ...expected, payload };
 }
 
+export async function readValidatedFyiCharacterReleasePortrait(
+    validated: ValidatedFyiCharacterRelease,
+    fileName: string,
+): Promise<Buffer> {
+    if (!/^portrait_\d+\.png$/.test(fileName)) throw new Error("K28 portrait file name rejected");
+    const entry = validated.release.portraits.entries.find(portrait => portrait.fileName === fileName);
+    if (!entry || entry.objectKey !== `images/v2/${fileName}`) throw new Error("K28 portrait inventory entry rejected");
+    const bytes = await readContainedFile(validated.releaseDirectory, `portraits/${fileName}`);
+    if (bytes.length !== entry.sizeBytes || sha256(bytes) !== entry.sha256) {
+        throw new Error(`K28 portrait changed after validation: ${fileName}`);
+    }
+    return bytes;
+}
+
 async function collectPortraitEntries(candidateDirectory: string, characters: Character[]): Promise<FyiCharacterReleasePortrait[]> {
     const keys = [...collectPortraitKeys(characters)].sort();
     return Promise.all(keys.map(async objectKey => {
