@@ -161,6 +161,13 @@ export interface FyiCharacterReleasePipelineResult {
     receipt: FyiCharacterReleaseK23;
 }
 
+export interface ValidatedFyiCharacterRelease {
+    releaseDirectory: string;
+    release: FyiCharacterReleaseK21;
+    plan: FyiCharacterReleaseK22;
+    receipt: FyiCharacterReleaseK23;
+}
+
 function assertReleaseId(value: string): void {
     if (!RELEASE_ID.test(value)) throw new Error("K21 release ID rejected");
 }
@@ -499,6 +506,47 @@ async function verifyReleaseDirectory(releaseDirectory: string, expected: FyiCha
     if (JSON.stringify(marker) !== JSON.stringify(releaseMarker(expected.release, expected.plan, expected.receipt))) {
         throw new Error("K21 existing release marker rejected");
     }
+}
+
+export async function readValidatedFyiCharacterRelease(
+    fyiRoot: string,
+    releaseId: string,
+): Promise<ValidatedFyiCharacterRelease> {
+    assertReleaseId(releaseId);
+    const releaseRoot = resolve(fyiRoot, FYI_CHARACTER_RELEASE_ROOT);
+    const releaseDirectory = await resolveContainedArtifactPath(
+        { trustedRoot: releaseRoot, untrustedPath: releaseId, expectedType: "directory" },
+        (code, artifactType) => new DatabaseCharacterArtifactPathError(code, artifactType),
+    );
+    const [releaseBytes, planBytes, receiptBytes, sourceMarker, k20Bytes] = await Promise.all([
+        readContainedFile(releaseDirectory, FYI_CHARACTER_RELEASE_REPORT),
+        readContainedFile(releaseDirectory, FYI_CHARACTER_RELEASE_PLAN),
+        readContainedFile(releaseDirectory, FYI_CHARACTER_RELEASE_RECEIPT),
+        readContainedFile(releaseDirectory, FYI_CHARACTER_RELEASE_SOURCE_MARKER),
+        readContainedFile(releaseDirectory, FYI_CHARACTER_RELEASE_K20),
+    ]);
+    const release = JSON.parse(releaseBytes.toString("utf8")) as FyiCharacterReleaseK21;
+    const plan = JSON.parse(planBytes.toString("utf8")) as FyiCharacterReleaseK22;
+    const receipt = JSON.parse(receiptBytes.toString("utf8")) as FyiCharacterReleaseK23;
+    const k20 = JSON.parse(k20Bytes.toString("utf8")) as FyiCharacterCandidateReadinessReport;
+    if (release.releaseId !== releaseId
+        || !releaseBytes.equals(JSON_BYTES(release))
+        || !planBytes.equals(JSON_BYTES(plan))
+        || !receiptBytes.equals(JSON_BYTES(receipt))
+        || !k20Bytes.equals(JSON_BYTES(k20))
+        || sha256(k20Bytes) !== release.source.k20ReadinessSha256
+        || sha256(sourceMarker) !== release.source.candidateReadyMarkerSha256) {
+        throw new Error("K24 release metadata rejected");
+    }
+    const rebuiltPlan = buildFyiCharacterReleaseK22(release);
+    const rebuiltReceipt = buildFyiCharacterReleaseK23(release, rebuiltPlan);
+    if (JSON.stringify(plan) !== JSON.stringify(rebuiltPlan)
+        || JSON.stringify(receipt) !== JSON.stringify(rebuiltReceipt)) {
+        throw new Error("K24 release derivation rejected");
+    }
+    const expected: FyiCharacterReleasePipelineResult = { releaseDirectory, release, plan, receipt };
+    await verifyReleaseDirectory(releaseDirectory, expected, sourceMarker, k20);
+    return expected;
 }
 
 async function collectPortraitEntries(candidateDirectory: string, characters: Character[]): Promise<FyiCharacterReleasePortrait[]> {

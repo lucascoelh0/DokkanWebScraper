@@ -186,6 +186,20 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   receipt. No module imports Wrangler or the production publisher; remote
   inventory, publication, production, Android and R2 remain NO-GO. Stable
   portrait keys require remote hash proof before any future upload.
+- K24 is the separately opt-in remote read-only preflight. It revalidates the
+  complete K21-K23 release, GETs every immutable payload/portrait key from the
+  fixed public asset domain, observes the mutable manifest, and runs only the
+  fixed Wrangler bucket-info command. Hash conflicts, read failures, unknown
+  bucket usage, or a projected conservative upper bound at or above 10 GB fail
+  closed. K24 has no upload/delete/promotion command; publication still needs
+  explicit authorization and remains a separate gate.
+- The first real K24 run inspected all 1,628 immutable objects with zero read
+  failures: 1,568 matched, five were missing and 55 stable `images/v2` portrait
+  keys contained different pixels. Bucket capacity is not a blocker (about
+  345.3 MB projected versus the 10 GB ceiling), but immutable-key collisions
+  make this release NO-GO. Android already resolves arbitrary relative portrait
+  paths, so the next safe gate is content-addressed portrait delivery rather
+  than overwriting any existing `images/v2` object.
 
 ## Operating Constraints
 
