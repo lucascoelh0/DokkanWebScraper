@@ -167,16 +167,25 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   1,625 FYI states are not covered by K15. The selected scope has 1,576 type
   agreements, 1,387 rarity agreements, 189 null fills and zero blockers.
   Out-of-scope and uncovered states are neither agreements nor authority.
-- K20 independently rebuilt that exact candidate in memory and returned GO
-  only for candidate generation/validation, with zero type, non-rarity,
-  cardinality, ID, order or portrait-reference changes. No FYI scrape,
-  portrait download, candidate directory, `latest`, `data/latest`, publisher,
-  R2 or Android write was performed. Promotion, production, publisher, R2 and
-  Android remain NO-GO and require separate user authorization.
+- A subsequent explicit real K19 run produced 1,436 characters, 1,627
+  structural states and 1,627 referenced portraits. K20 independently rebuilt
+  the candidate in memory and returned GO with 189 authorized rarity fills and
+  zero type, non-rarity, cardinality, ID, order or portrait-reference changes.
+  The real candidate remains ignored and has not replaced `latest`,
+  `data/latest`, any publisher input, R2 or Android data.
 - Candidate persistence is fail-closed: portrait filenames are canonicalized,
   the fixed directory is reserved exactly once, and a content-addressed commit
   marker is written last. K20 validates that marker plus the complete K19/K15
   contract, lineage and safety declaration before it can return GO.
+- K21-K23 are a local-only, default-off delivery checkpoint. K21 re-runs K20,
+  materializes an immutable content-addressed release containing the exact
+  candidate payload and referenced portraits, and writes its commit marker
+  last. K22 produces a deterministic object/budget plan under a proven 50 MB
+  local namespace guard and records the 10 GB bucket ceiling as unknown until
+  remote usage is inspected. K23 binds both artifacts in a stopped
+  receipt. No module imports Wrangler or the production publisher; remote
+  inventory, publication, production, Android and R2 remain NO-GO. Stable
+  portrait keys require remote hash proof before any future upload.
 
 ## Operating Constraints
 
