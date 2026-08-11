@@ -200,6 +200,18 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   make this release NO-GO. Android already resolves arbitrary relative portrait
   paths, so the next safe gate is content-addressed portrait delivery rather
   than overwriting any existing `images/v2` object.
+- K25-K27 implement that stopped, read-only correction. K25 derives a new
+  payload in memory and proves that only `portraitURL` values changed. K26
+  plans a new content-addressed payload plus `images/v3/portrait_<id>.<sha>.png`
+  objects while reusing the validated K21 portrait bytes locally. K27 GETs
+  every planned immutable key and reads bucket usage conservatively. There is
+  still no writer, publisher import, manifest promotion, production switch,
+  Android change or R2 mutation; those require a separate authorized gate.
+- The first real K27 run found all 1,628 versioned immutable objects missing,
+  with zero conflicts and zero failures. Publication would add 18,797,554
+  bytes and conservatively project the bucket to 362,797,554 bytes, safely
+  below 10 GB. This makes the versioned delivery plan ready for a separately
+  reviewed publisher gate, but does not authorize or perform publication.
 
 ## Operating Constraints
 

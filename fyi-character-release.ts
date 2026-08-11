@@ -166,6 +166,7 @@ export interface ValidatedFyiCharacterRelease {
     release: FyiCharacterReleaseK21;
     plan: FyiCharacterReleaseK22;
     receipt: FyiCharacterReleaseK23;
+    payload: Buffer;
 }
 
 function assertReleaseId(value: string): void {
@@ -546,7 +547,11 @@ export async function readValidatedFyiCharacterRelease(
     }
     const expected: FyiCharacterReleasePipelineResult = { releaseDirectory, release, plan, receipt };
     await verifyReleaseDirectory(releaseDirectory, expected, sourceMarker, k20);
-    return expected;
+    const payload = await readContainedFile(releaseDirectory, "characters.json.gz");
+    if (payload.length !== release.dataset.sizeBytes || sha256(payload) !== release.dataset.sha256) {
+        throw new Error("K24 release payload changed after validation");
+    }
+    return { ...expected, payload };
 }
 
 async function collectPortraitEntries(candidateDirectory: string, characters: Character[]): Promise<FyiCharacterReleasePortrait[]> {

@@ -90,6 +90,7 @@
     "validate:fyi-character-candidate-k20": "npx ts-node fyi-character-candidate-readiness.ts --opt-in-k20",
     "prepare:fyi-character-release-k21-k23": "npx ts-node fyi-character-release.ts --opt-in-k21-k23",
     "preflight:fyi-character-release-k24": "npx ts-node fyi-character-release-preflight.ts",
+    "preflight:fyi-character-versioned-k25-k27": "node --max-old-space-size=512 -r ts-node/register fyi-character-versioned-portraits.ts",
     "run:fyi-team-analysis": "npx ts-node fyi-team-analysis-run.ts",
     "validate:team-analysis": "npx ts-node team-analysis-validate.ts",
     "publish:team-analysis-r2": "npx ts-node publish-team-analysis-r2.ts",
