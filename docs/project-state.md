@@ -217,8 +217,21 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K27, directly validates every immutable object and its cache metadata, uses
   `If-None-Match: *` for immutable creates, and promotes the manifest last with
   ETag-based `If-Match` or create-only semantics. It implements no delete or
-  production switch. Merging K28 does not authorize its write path; real R2
-  publication remains a separate explicit user action.
+  production switch. Merging K28 did not authorize its write path.
+- The separately authorized K28 publication completed on 2026-08-11. It
+  uploaded 1,628 immutable objects (18,797,554 bytes), verified all 1,628 plus
+  the promoted manifest, and changed `characters-manifest.json` last through
+  ETag compare-and-swap. The public manifest is 445 bytes with SHA-256
+  `8413123534ec16fb2f1e2ee3d9cbe5e8392abce5c410e40a4e25b8c0d16f24ff`;
+  it exposes dataset version `2026-08-11T00:56:35.327Z`, 1,436 characters and
+  payload SHA-256
+  `e6c7770f8db88412879ee92ed12731e874463557eb94f2e326871af1b7725275`.
+- The immediate post-publication dry-run found 1,628 matches, zero missing,
+  zero conflicts, zero failed reads and zero bytes left to upload. Wrangler
+  reported approximately 352 MB in the bucket; the conservative upper bound
+  was 353,000,000 bytes, safely below the fixed 10 GB ceiling. Existing
+  Android clients may discover this release through the unchanged manifest
+  URL, but no Android code or UI changed during publication.
 
 ## Operating Constraints
 
