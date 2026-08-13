@@ -160,8 +160,7 @@ export function scanVersionableTargets(values: Set<string>, targets: Array<{ nam
         let failed = false;
         const haystack = `${target.name}\n${target.text}`;
         for (const value of values) {
-            const quoted = JSON.stringify(value);
-            const exact = value.length >= 8 ? haystack.includes(value) : target.text.includes(`:${quoted}`) || target.text.includes(`: ${quoted}`) || target.name.includes(`=${value}.`);
+            const exact = value.length >= 8 && haystack.includes(value);
             if (exact) { failed = true; break; }
         }
         if (/Bearer\s+[A-Za-z0-9._~+\/-]{8,}|[?&](?:signature|token|nonce|user_id|device_id)=|device_asset_size_bytes=\d+/i.test(haystack)) failed = true;
