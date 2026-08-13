@@ -57,14 +57,51 @@ name, title, portrait, passive text, or another display field. Golden fixtures
 cover two equal display names with no canonical source relation and require
 both variant groups to remain absent.
 
-## Current state projection boundary
+## State projection boundary
 
-The audited character payload projects the latest released passive per form.
-It yields 1,623 states: 969 initial, 620 EZA, and 34 SEZA, with 1,556 non-empty
-passives. The raw source exposes an initial passive and one current extreme-Z
-passive; for SEZA cards it does not expose the intermediate historical EZA
-passive separately. This slice therefore emits the exact current release state
-present in the compatible character payload and does not fabricate missing
-historical states. When another compatible character payload explicitly
-provides `ezaPassive`/`ezaPassiveDetails` or `sezaPassive`, the same generator
-emits those additional release states with the unchanged hard-duplicate group.
+The 2026-08-03 audited analysis artifact yielded 1,623 states: 969 initial,
+620 EZA, and 34 SEZA, with 1,556 non-empty passives. Those counts describe
+that historical artifact, not the current Characters release or the pending
+replacement Team Analysis artifact.
+
+The Dokkan.FYI character mapper now
+preserves the raw initial combat fields as BASE and projects the one current
+extreme-Z state into the compatible EZA or SEZA fields. For SEZA cards the raw
+source still does not expose the intermediate historical EZA passive
+separately. The analysis generator therefore emits every explicit compatible
+release state and does not fabricate that missing intermediate passive. All
+states retain the unchanged hard-duplicate group.
+
+The compatible character-field projection is:
+
+- `leaderSkill`, `passive`, and base super-attack fields are INITIAL/BASE;
+- `ezaLeaderSkill` and EZA super-attack fields come only from an explicit
+  extreme-Z payload (and remain the applicable leader/super-attack facts for a
+  SEZA card, because SEZA changes the passive only);
+- `ezaPassive` is emitted only when the latest explicit state is EZA;
+- `sezaPassive` and `sezaPassiveDetails` are emitted only when the latest
+  explicit state is SEZA;
+- the generator consumes SEZA passive details and keeps their conditions and
+  structural provenance on the SEZA state;
+- EZA Super Attack and Ultra Super Attack fields remain attached to a SEZA
+  state because SEZA changes only the passive in the available source;
+- the mapper does not project BASE facts into awakened character fields when
+  the release-state label is unknown or the extreme-Z payload is missing.
+
+## Current delivery lineage
+
+The public Characters release is `2026-08-13T03:49:01.219Z`, with payload
+SHA-256
+`de6268219039f0bbafda7b01b473e957e0cd5442682caab361a32470a2a2e899`,
+1,436 characters and 1,627 structural states. Its K15 overlay changed only 189
+missing rarities within the same collection baseline. The full delta from the
+previous public release additionally contains the BASE/EZA/SEZA projection
+changes, 720 modified states, two added states, two removed states and 111
+changed portrait references.
+
+The public Team Analysis manifest still points to the 2026-08-04 Characters
+lineage and reports 1,625 states. It is therefore incompatible with the
+current Characters payload under Android's exact source-version and
+source-SHA checks. Regeneration must use the exact public Characters gzip and
+must let the generator derive its own state count; the Characters structural
+state count is not a forced Team Analysis count.

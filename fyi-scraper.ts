@@ -32,7 +32,7 @@ import { parseLeaderSkillDetails, splitPassiveSections } from "./scraper";
 
 const DOKKAN_FYI_BASE_URL = "https://dokkan.fyi";
 const DOKKAN_FYI_CDN_URL = "https://cdn.dokkan.fyi";
-const DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION = 8;
+const DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION = 9;
 
 export const DEFAULT_DOKKAN_FYI_EXPERIMENT_CHARACTER_IDS = [
     1032521, 1033761, 1032771, 1026251, 1033941,
@@ -562,12 +562,14 @@ export async function writeDokkanFyiContractReferenceSample(characterIds?: numbe
     return outputPath;
 }
 
-async function mapDokkanFyiCharacter(
+export async function mapDokkanFyiCharacter(
     page: CachedFyiPage,
     client: DokkanFyiClient,
 ): Promise<Character> {
     const character = page.payload.props.character;
-    const currentState = selectCurrentState(character);
+    const initialState = selectInitialState(character);
+    const awakenedState = selectAwakenedState(character);
+    const currentState = awakenedState ?? initialState;
     const standby = standbyDetailsFromFyi(character.standby_skill);
     const transformations = await buildTransformations(character, page.payload.props.transformationPath ?? [], client);
     const enrichedTransformations = await attachStandbyMetadataToTransformations(
@@ -580,20 +582,35 @@ async function mapDokkanFyiCharacter(
     const reversibleExchange = reversibleExchangeDetailsFromFyi(character, enrichedTransformations);
     const exclusiveSkillOrbs = exclusiveSkillOrbsFromFyi(character.skill_orbs);
     const activeSkill = character.active_skills?.[0];
-    const releaseState = releaseStateFromLatestType(currentState.latestType);
-    const passive = passiveDetailsFromSkill(currentState.passiveSkill, {
+    const releaseState = awakenedState
+        ? releaseStateFromLatestType(awakenedState.latestType)
+        : "initial";
+    const passive = passiveDetailsFromSkill(initialState.passiveSkill, {
+        characterId: character.id.toString(),
+        formId: character.id.toString(),
+        releaseState: "initial",
+        sourceVersion: page.version,
+        payloadField: "props.character.passive_skill.description",
+    });
+    const awakenedPassive = awakenedState?.passiveSkill ? passiveDetailsFromSkill(awakenedState.passiveSkill, {
         characterId: character.id.toString(),
         formId: character.id.toString(),
         releaseState,
         sourceVersion: page.version,
-        payloadField: releaseState === "initial"
-            ? "props.character.passive_skill.description"
-            : "props.character.extreme_z_awakening.passive_skill.description",
-    });
-    const currentSuperAttacks = currentState.currentSuperAttacks;
-    const normalSuperAttack = matchingFyiSuperAttack(currentSuperAttacks, "normal");
-    const ultraSuperAttack = matchingFyiSuperAttack(currentSuperAttacks, "ultra");
-    const extraSuperAttack = matchingFyiSuperAttack(currentSuperAttacks, "extra");
+        payloadField: "props.character.extreme_z_awakening.passive_skill.description",
+    }) : undefined;
+    const initialSuperAttacks = initialState.currentSuperAttacks;
+    const awakenedSuperAttacks = awakenedState?.currentSuperAttacks ?? [];
+    const normalSuperAttack = matchingFyiSuperAttack(initialSuperAttacks, "normal");
+    const ultraSuperAttack = matchingFyiSuperAttack(initialSuperAttacks, "ultra");
+    const extraSuperAttack = matchingFyiSuperAttack(initialSuperAttacks, "extra");
+    const ezaNormalSuperAttack = matchingFyiSuperAttack(awakenedSuperAttacks, "normal");
+    const ezaUltraSuperAttack = matchingFyiSuperAttack(awakenedSuperAttacks, "ultra");
+    const ezaExtraSuperAttack = matchingFyiSuperAttack(awakenedSuperAttacks, "extra");
+    const initialLeaderSkill = formatSkillDescription(initialState.leaderSkill);
+    const awakenedLeaderSkill = formatSkillDescription(awakenedState?.leaderSkill);
+    const initialLeaderSkillDetails = parseLeaderSkillDetails(initialLeaderSkill);
+    const awakenedLeaderSkillDetails = parseLeaderSkillDetails(awakenedLeaderSkill);
 
     return {
         name: cleanInlineText(character.name),
@@ -616,29 +633,47 @@ async function mapDokkanFyiCharacter(
         portraitURL: portraitUrl(character.thumbnail_id),
         portraitFilename: `portrait_${character.id}`,
         portraitSpec: portraitSpecFromCharacter(character),
-        leaderSkill: formatSkillDescription(currentState.leaderSkill),
-        leaderSkillBoost: parseLeaderSkillDetails(formatSkillDescription(currentState.leaderSkill))?.displayBoost,
-        leaderSkillDetails: parseLeaderSkillDetails(formatSkillDescription(currentState.leaderSkill)),
+        leaderSkill: initialLeaderSkill,
+        ezaLeaderSkill: awakenedLeaderSkill || undefined,
+        leaderSkillBoost: awakenedLeaderSkillDetails?.displayBoost ?? initialLeaderSkillDetails?.displayBoost,
+        leaderSkillDetails: initialLeaderSkillDetails,
+        ezaLeaderSkillDetails: awakenedLeaderSkillDetails,
         superAttack: formatSuperAttackEffect(normalSuperAttack),
+        ezaSuperAttack: formatSuperAttackEffect(ezaNormalSuperAttack) || undefined,
         ultraSuperAttack: formatSuperAttackEffect(ultraSuperAttack),
+        ezaUltraSuperAttack: formatSuperAttackEffect(ezaUltraSuperAttack) || undefined,
         exSuperAttack: formatSuperAttackEffect(extraSuperAttack),
+        ezaExSuperAttack: formatSuperAttackEffect(ezaExtraSuperAttack) || undefined,
         superAttackDetails: mapSuperAttackDetails(normalSuperAttack, superAttackEvidenceContext(
+            character.id.toString(), character.id.toString(), "initial", page.version, "normal",
+        )),
+        ezaSuperAttackDetails: mapSuperAttackDetails(ezaNormalSuperAttack, superAttackEvidenceContext(
             character.id.toString(), character.id.toString(), releaseState, page.version, "normal",
         )),
         ultraSuperAttackDetails: mapSuperAttackDetails(ultraSuperAttack, superAttackEvidenceContext(
+            character.id.toString(), character.id.toString(), "initial", page.version, "ultra",
+        )),
+        ezaUltraSuperAttackDetails: mapSuperAttackDetails(ezaUltraSuperAttack, superAttackEvidenceContext(
             character.id.toString(), character.id.toString(), releaseState, page.version, "ultra",
         )),
         exSuperAttackDetails: mapSuperAttackDetails(extraSuperAttack, superAttackEvidenceContext(
+            character.id.toString(), character.id.toString(), "initial", page.version, "extra",
+        )),
+        ezaExSuperAttackDetails: mapSuperAttackDetails(ezaExtraSuperAttack, superAttackEvidenceContext(
             character.id.toString(), character.id.toString(), releaseState, page.version, "extra",
         )),
-        unitSuperAttacks: unitSuperAttacksFromFyi(currentSuperAttacks, {
+        unitSuperAttacks: unitSuperAttacksFromFyi(initialState.currentSuperAttacks, {
             characterId: character.id.toString(),
             formId: character.id.toString(),
-            releaseState,
+            releaseState: "initial",
             sourceVersion: page.version,
         }),
         passive: passive?.text ?? "",
         passiveDetails: passive,
+        ezaPassive: releaseState === "eza" ? awakenedPassive?.text : undefined,
+        ezaPassiveDetails: releaseState === "eza" ? awakenedPassive : undefined,
+        sezaPassive: releaseState === "seza" ? awakenedPassive?.text : undefined,
+        sezaPassiveDetails: releaseState === "seza" ? awakenedPassive : undefined,
         activeSkill: formatActiveSkill(activeSkill),
         activeSkillCondition: cleanMultilineText(activeSkill?.condition),
         transformationCondition: "",
@@ -845,21 +880,33 @@ function mapDokkanFyiTransformation(
     entry: FyiTransformationPathEntry,
     sourceVersion: string,
 ): Transformation {
-    const currentState = selectCurrentState(character);
-    const releaseState = releaseStateFromLatestType(currentState.latestType);
-    const passive = passiveDetailsFromSkill(currentState.passiveSkill, {
+    const initialState = selectInitialState(character);
+    const awakenedState = selectAwakenedState(character);
+    const releaseState = awakenedState
+        ? releaseStateFromLatestType(awakenedState.latestType)
+        : "initial";
+    const passive = passiveDetailsFromSkill(initialState.passiveSkill, {
+        characterId: baseCharacterId.toString(),
+        formId: character.id.toString(),
+        releaseState: "initial",
+        sourceVersion,
+        payloadField: "props.character.passive_skill.description",
+    });
+    const awakenedPassive = awakenedState?.passiveSkill ? passiveDetailsFromSkill(awakenedState.passiveSkill, {
         characterId: baseCharacterId.toString(),
         formId: character.id.toString(),
         releaseState,
         sourceVersion,
-        payloadField: releaseState === "initial"
-            ? "props.character.passive_skill.description"
-            : "props.character.extreme_z_awakening.passive_skill.description",
-    });
-    const currentSuperAttacks = currentState.currentSuperAttacks;
-    const normalSuperAttack = matchingFyiSuperAttack(currentSuperAttacks, "normal");
-    const ultraSuperAttack = matchingFyiSuperAttack(currentSuperAttacks, "ultra");
-    const extraSuperAttack = matchingFyiSuperAttack(currentSuperAttacks, "extra");
+        payloadField: "props.character.extreme_z_awakening.passive_skill.description",
+    }) : undefined;
+    const initialSuperAttacks = initialState.currentSuperAttacks;
+    const awakenedSuperAttacks = awakenedState?.currentSuperAttacks ?? [];
+    const normalSuperAttack = matchingFyiSuperAttack(initialSuperAttacks, "normal");
+    const ultraSuperAttack = matchingFyiSuperAttack(initialSuperAttacks, "ultra");
+    const extraSuperAttack = matchingFyiSuperAttack(initialSuperAttacks, "extra");
+    const ezaNormalSuperAttack = matchingFyiSuperAttack(awakenedSuperAttacks, "normal");
+    const ezaUltraSuperAttack = matchingFyiSuperAttack(awakenedSuperAttacks, "ultra");
+    const ezaExtraSuperAttack = matchingFyiSuperAttack(awakenedSuperAttacks, "extra");
     const activeSkill = character.active_skills?.[0];
     const standby = standbyDetailsFromFyi(character.standby_skill);
     const obtainability = obtainabilityDetailsFromFyi(character);
@@ -879,19 +926,35 @@ function mapDokkanFyiTransformation(
         characterClass: classFromAwakeningType(character.awakening_type_text),
         type: typeFromText(character.type_text),
         superAttack: formatSuperAttackEffect(normalSuperAttack),
+        ezaSuperAttack: formatSuperAttackEffect(ezaNormalSuperAttack) || undefined,
         ultraSuperAttack: formatSuperAttackEffect(ultraSuperAttack),
+        ezaUltraSuperAttack: formatSuperAttackEffect(ezaUltraSuperAttack) || undefined,
         exSuperAttack: formatSuperAttackEffect(extraSuperAttack),
+        ezaExSuperAttack: formatSuperAttackEffect(ezaExtraSuperAttack) || undefined,
         superAttackDetails: mapSuperAttackDetails(normalSuperAttack, superAttackEvidenceContext(
+            baseCharacterId.toString(), character.id.toString(), "initial", sourceVersion, "normal",
+        )),
+        ezaSuperAttackDetails: mapSuperAttackDetails(ezaNormalSuperAttack, superAttackEvidenceContext(
             baseCharacterId.toString(), character.id.toString(), releaseState, sourceVersion, "normal",
         )),
         ultraSuperAttackDetails: mapSuperAttackDetails(ultraSuperAttack, superAttackEvidenceContext(
+            baseCharacterId.toString(), character.id.toString(), "initial", sourceVersion, "ultra",
+        )),
+        ezaUltraSuperAttackDetails: mapSuperAttackDetails(ezaUltraSuperAttack, superAttackEvidenceContext(
             baseCharacterId.toString(), character.id.toString(), releaseState, sourceVersion, "ultra",
         )),
         exSuperAttackDetails: mapSuperAttackDetails(extraSuperAttack, superAttackEvidenceContext(
+            baseCharacterId.toString(), character.id.toString(), "initial", sourceVersion, "extra",
+        )),
+        ezaExSuperAttackDetails: mapSuperAttackDetails(ezaExtraSuperAttack, superAttackEvidenceContext(
             baseCharacterId.toString(), character.id.toString(), releaseState, sourceVersion, "extra",
         )),
         passive: passive?.text ?? "",
         passiveDetails: passive,
+        ezaPassive: releaseState === "eza" ? awakenedPassive?.text : undefined,
+        ezaPassiveDetails: releaseState === "eza" ? awakenedPassive : undefined,
+        sezaPassive: releaseState === "seza" ? awakenedPassive?.text : undefined,
+        sezaPassiveDetails: releaseState === "seza" ? awakenedPassive : undefined,
         activeSkill: formatActiveSkill(activeSkill),
         activeSkillCondition: cleanMultilineText(activeSkill?.condition),
         transformationCondition: cleanMultilineText(entry.description),
@@ -914,32 +977,39 @@ function mapDokkanFyiTransformation(
 }
 
 export function selectCurrentState(character: FyiCharacter): CurrentState {
-    const latestType = character.release_dates?.latest_type ?? "initial";
-    const useExtremeState = latestType !== "initial" && Boolean(character.extreme_z_awakening);
+    return selectAwakenedState(character) ?? selectInitialState(character);
+}
+
+export function selectInitialState(character: FyiCharacter): CurrentState {
+    return {
+        latestType: "initial",
+        maxLevel: toNumber(character.max_level),
+        maxSuperAttackLevel: toNumber(character.max_super_attack_level),
+        leaderSkill: character.leader_skill,
+        passiveSkill: character.passive_skill,
+        currentSuperAttacks: preferredSuperAttacks(character.super_attacks ?? [], false),
+    };
+}
+
+export function selectAwakenedState(character: FyiCharacter): CurrentState | undefined {
+    const latestType = character.release_dates?.latest_type;
+    if ((latestType !== "eza" && latestType !== "seza") || !character.extreme_z_awakening) {
+        return undefined;
+    }
 
     return {
         latestType,
-        maxLevel: useExtremeState
-            ? toNumber(character.extreme_z_awakening?.max_level ?? character.max_level)
-            : toNumber(character.max_level),
-        maxSuperAttackLevel: useExtremeState
-            ? toNumber(character.extreme_z_awakening?.max_super_attack_level ?? character.max_super_attack_level)
-            : toNumber(character.max_super_attack_level),
-        leaderSkill: useExtremeState
-            ? (character.extreme_z_awakening?.leader_skill ?? character.leader_skill)
-            : character.leader_skill,
-        passiveSkill: useExtremeState
-            ? (character.extreme_z_awakening?.passive_skill ?? character.passive_skill)
-            : character.passive_skill,
-        currentSuperAttacks: preferredSuperAttacks(character.super_attacks ?? [], useExtremeState),
+        maxLevel: toNumber(character.extreme_z_awakening.max_level),
+        maxSuperAttackLevel: toNumber(character.extreme_z_awakening.max_super_attack_level),
+        leaderSkill: character.extreme_z_awakening.leader_skill,
+        passiveSkill: character.extreme_z_awakening.passive_skill,
+        currentSuperAttacks: preferredSuperAttacks(character.super_attacks ?? [], true),
     };
 }
 
 function releaseStateFromLatestType(value: string): "initial" | "eza" | "seza" {
-    if (value === "seza") {
-        return "seza";
-    }
-    return value === "initial" ? "initial" : "eza";
+    if (value === "eza" || value === "seza") return value;
+    return "initial";
 }
 
 export function preferredSuperAttacks(
@@ -949,7 +1019,10 @@ export function preferredSuperAttacks(
     const grouped = new Map<string, FyiSuperAttack[]>();
 
     for (const superAttack of superAttacks) {
-        const key = `${superAttackKind(superAttack)}:${cleanInlineText(superAttack.name)}:${toNumber(superAttack.ki)}`;
+        const kind = superAttackKind(superAttack);
+        const key = kind === "unit"
+            ? `${kind}:${cleanInlineText(superAttack.name)}:${toNumber(superAttack.ki)}`
+            : `${kind}:${toNumber(superAttack.ki)}`;
         const current = grouped.get(key);
         if (current) {
             current.push(superAttack);
@@ -959,17 +1032,26 @@ export function preferredSuperAttacks(
     }
 
     return Array.from(grouped.values())
-        .map(group => selectPreferredAttack(group, useExtremeState))
+        .map(group => selectPreferredAttack(
+            group,
+            useExtremeState,
+            superAttackKind(group[0]) === "unit",
+        ))
         .filter((superAttack): superAttack is FyiSuperAttack => Boolean(superAttack));
 }
 
-function selectPreferredAttack(group: FyiSuperAttack[], useExtremeState: boolean): FyiSuperAttack | undefined {
+function selectPreferredAttack(
+    group: FyiSuperAttack[],
+    useExtremeState: boolean,
+    allowBaseFallback: boolean,
+): FyiSuperAttack | undefined {
     const sorted = [...group].sort((left, right) => toNumber(right.level) - toNumber(left.level));
     if (!useExtremeState) {
-        return sorted.find(superAttack => toNumber(superAttack.level) === 0) ?? sorted[0];
+        return sorted.find(superAttack => toNumber(superAttack.level) === 0);
     }
 
-    return sorted.find(superAttack => toNumber(superAttack.level) > 0) ?? sorted[0];
+    return sorted.find(superAttack => toNumber(superAttack.level) > 0) ??
+        (allowBaseFallback ? sorted[0] : undefined);
 }
 
 function matchingFyiSuperAttack(
@@ -2014,12 +2096,12 @@ function currentBaseStat(value: FyiStatRange | undefined): number {
     return toNumber(value?.base);
 }
 
-function currentMaxStat(value: FyiStatRange | undefined, latestType: string): number {
+export function currentMaxStat(value: FyiStatRange | undefined, latestType: string): number {
     if (!value) {
         return 0;
     }
 
-    if (latestType !== "initial" && value.eza !== undefined && value.eza !== null) {
+    if (latestType !== "initial") {
         return toNumber(value.eza);
     }
 

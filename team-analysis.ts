@@ -19,7 +19,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.7.1";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.7.2";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
@@ -635,6 +635,7 @@ interface AnalysisFormSource {
     ezaPassive?: string,
     ezaPassiveDetails?: PassiveDetails,
     sezaPassive?: string,
+    sezaPassiveDetails?: PassiveDetails,
     superAttack?: string,
     ezaSuperAttack?: string,
     ultraSuperAttack?: string,
@@ -816,7 +817,7 @@ function resolveIdentity(
 function analysisReleaseSources(form: AnalysisFormSource): AnalysisReleaseSource[] {
     const initialPassiveText = form.passiveDetails?.text ?? form.passive;
     const ezaPassiveText = form.ezaPassiveDetails?.text ?? form.ezaPassive ?? "";
-    const sezaPassiveText = form.sezaPassive ?? "";
+    const sezaPassiveText = form.sezaPassiveDetails?.text ?? form.sezaPassive ?? "";
     if (!ezaPassiveText && !sezaPassiveText) {
         return [{
             releaseState: releaseStateFromForm(form),
@@ -844,6 +845,8 @@ function analysisReleaseSources(form: AnalysisFormSource): AnalysisReleaseSource
         releases.push({
             releaseState: "seza",
             passiveText: sezaPassiveText,
+            passiveName: form.sezaPassiveDetails?.name,
+            passiveDetails: form.sezaPassiveDetails,
         });
     }
     return releases;
@@ -854,7 +857,8 @@ function analysisSuperAttackSources(
     releaseState: ReleaseState,
     singleReleaseState: boolean,
 ): AnalysisSuperAttackSource[] {
-    const useBaseFields = releaseState === "initial" || singleReleaseState;
+    const useBaseFields = releaseState === "initial";
+    const useAwakenedFields = releaseState === "eza" || releaseState === "seza";
     const slots: Array<{
         variant: Exclude<SuperAttackVariant, "unit">,
         baseText?: string,
@@ -887,12 +891,12 @@ function analysisSuperAttackSources(
     const attacks: AnalysisSuperAttackSource[] = [];
 
     for (const slot of slots) {
-        const details = releaseState === "eza"
+        const details = useAwakenedFields
             ? slot.ezaDetails ?? (singleReleaseState ? slot.baseDetails : undefined)
             : useBaseFields
                 ? slot.baseDetails
                 : undefined;
-        const fallbackText = releaseState === "eza"
+        const fallbackText = useAwakenedFields
             ? slot.ezaText ?? (singleReleaseState ? slot.baseText : undefined)
             : useBaseFields
                 ? slot.baseText

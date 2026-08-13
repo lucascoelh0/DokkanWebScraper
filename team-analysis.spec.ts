@@ -1347,6 +1347,56 @@ describe("team-analysis Gate A7 Super Attack effect channel", function () {
     deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
   });
 
+  it("keeps SEZA passive details and the still-applicable EZA Super Attacks on the SEZA state", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters.find(item => item.id === "1005001") as Character;
+    character.ezaPassive = undefined;
+    character.ezaPassiveDetails = undefined;
+    character.sezaPassiveDetails = passiveDetailsFromSkill({
+      id: 5001,
+      name: "SEZA passive",
+      description: "*When the target enemy is in the following status: {passiveImg:atk_down}*\n- DEF 250%",
+    } as any, {
+      characterId: character.id,
+      formId: character.id,
+      releaseState: "seza",
+      sourceVersion: "9b8400b8f2f713f705f9ee5b2c56470d",
+      payloadField: "props.character.extreme_z_awakening.passive_skill.description",
+    });
+    character.sezaPassive = character.sezaPassiveDetails?.text;
+    character.superAttack = "Raises DEF for 1 turn";
+    character.superAttackDetails = { name: "Base SA", effect: character.superAttack, ki: 12 };
+    character.ezaSuperAttackDetails = mapSuperAttackDetails({
+      id: 5002,
+      name: "EZA SA",
+      description: "{passiveImg:once}Raises ATK & DEF for 3 turns",
+      condition: "When HP is 50% or more",
+      ki: 12,
+    } as any, {
+      characterId: character.id,
+      formId: character.id,
+      releaseState: "seza",
+      sourceVersion: "9b8400b8f2f713f705f9ee5b2c56470d",
+      attackVariant: "normal",
+      payloadField: "props.character.super_attacks[].description",
+    });
+    character.ezaSuperAttack = character.ezaSuperAttackDetails?.effect;
+
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    const initial = state(dataset.states, "1005001:1005001:initial");
+    const seza = state(dataset.states, "1005001:1005001:seza");
+    equal(dataset.states.some(item => item.stateKey === "1005001:1005001:eza"), false);
+    equal(seza.hardDuplicateGroupId, initial.hardDuplicateGroupId);
+    equal(seza.passive?.name, "SEZA passive");
+    equal(seza.passive?.rawText, character.sezaPassive);
+    equal(seza.passive?.conditionEvidence?.[0].stateKey, seza.stateKey);
+    equal(seza.superAttacks?.[0]?.name, "EZA SA");
+    equal(seza.superAttacks?.[0]?.rawText, character.ezaSuperAttack);
+    equal(seza.superAttacks?.[0]?.condition.rawText, "When HP is 50% or more");
+    equal(seza.superAttacks?.[0]?.structuralEvidence?.[0].stateKey, seza.stateKey);
+    deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
+  });
+
   it("prefers an explicit EZA attack over the generic fallback in a sole current EZA state", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
     const character = characters[0];
@@ -2338,7 +2388,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.7\.1/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.7\.2/);
   });
 });
 
