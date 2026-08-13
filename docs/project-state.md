@@ -38,6 +38,28 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ## Current Campaign Checkpoints
 
+### AQ0–AQ6 — manual official SQLite acquisition infrastructure
+
+- AQ0–AQ6 is implemented as an offline-by-default, manual and fail-closed
+  acquisition boundary. It validates an externally supplied Global EN
+  `/client_assets/database` descriptor or inspects an already downloaded local
+  artifact; import, parsing and dry-run issue no requests.
+- A future separately authorized download is restricted to one exact official
+  HTTPS CDN URL, redirects disabled, streamed under a hard byte/timeout limit,
+  SHA-256 validated locally and committed marker-last into ignored immutable
+  content-addressed storage with an atomic local latest/rollback pointer.
+- Acquisition remains separate from SQLCipher decryption, first-party export,
+  C4/C1–C3 shadow refresh, authenticated refresh, publisher/R2, production and
+  Android. No real API/CDN request or decryption was executed in AQ0–AQ6.
+- The SQLite compatibility gate reports exact profile match, schema-compatible
+  evidence refresh required, incompatible or unknown. It never reuses pinned
+  ELF/DB48/DB49/DB50 evidence automatically, including on an exact SQLite-only
+  match.
+- Offline descriptor/artifact validation and merge of reviewed disabled
+  infrastructure are GO. Official download, decryption, refresh, publication,
+  production promotion and Android remain NO-GO pending independent and
+  separately authorized gates.
+
 ### E0–E9 — events, stages, enemies and bosses
 
 - E0–E9 `1.0.0` is complete, experimental, optional and non-production.

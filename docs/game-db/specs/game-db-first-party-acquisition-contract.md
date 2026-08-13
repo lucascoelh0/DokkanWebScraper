@@ -92,15 +92,22 @@ Recommended fields:
 - `apkVersion`
 - `notes`
 
-## What the future acquisition step should produce
+## Upstream acquisition is a separate contract
 
-The future first-party acquisition step should be responsible for:
+AQ0–AQ6 defines a narrower upstream artifact acquisition contract in
+[`game-db-manual-sqlite-acquisition-aq0-aq6.md`](game-db-manual-sqlite-acquisition-aq0-aq6.md).
+It can validate and retain an official Global EN database artifact, but it does
+not decrypt it, write this CSV export, invoke the update runner or promote any
+production data.
 
-1. obtaining the latest Global DB/assets
-2. decrypting/exporting the DB as needed
-3. writing normalized CSV tables
-4. writing `metadata.json`
-5. placing the export in a stable folder the runner can consume
+Producing this first-party export remains a later, explicit transformation:
+
+1. acquire and validate the Global EN artifact under AQ0–AQ6;
+2. decrypt locally if the artifact is `encrypted_or_packaged`;
+3. run the read-only SQLite/C4 compatibility evaluation;
+4. write the normalized CSV tables;
+5. write this contract's `metadata.json`;
+6. place the export in a stable folder the runner can consume.
 
 The rest of the pipeline should then stay unchanged:
 

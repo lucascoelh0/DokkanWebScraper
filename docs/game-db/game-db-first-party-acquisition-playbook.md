@@ -202,132 +202,108 @@ Practical project stance:
 - do not make project progress depend on Frida interception succeeding
 - keep the rooted-emulator artifact path as the more reliable fallback, since it is already producing decryptable local DB artifacts
 
-## The staged path
+## Manual AQ0–AQ6 flow
 
-### Stage 1: Readable SQLite in hand
+The detailed contract is
+[`specs/game-db-manual-sqlite-acquisition-aq0-aq6.md`](specs/game-db-manual-sqlite-acquisition-aq0-aq6.md).
+The downloader is offline by default and no longer accepts a direct URL,
+arbitrary output directory or output filename.
 
-This stage is done.
+### 1. Save the descriptor externally
 
-Command:
+The user saves only the response body of `/client_assets/database` in an
+external local file. Do not save or copy a HAR, request headers, Authorization,
+cookies, tokens, account data or query values into this repository.
 
-```powershell
-npm run run:game-db-build-first-party-export -- --sqlite-path "C:\path\to\database.db" --settings-json "C:\path\to\settings.json"
-```
-
-Then:
-
-```powershell
-npm run run:game-db-update -- --acquisition-mode first-party-export --first-party-dir ".\game-db\data\game-db-acquisition\first-party\latest" --dry-run --local
-```
-
-### Stage 2: Download the DB artifact from a captured `/client_assets/database`
-
-This is the new manual-first-party bridge.
-
-If we have either:
-
-- the direct DB URL
-- or a captured JSON response from `/client_assets/database`
-
-we can now download the artifact into a stable local acquisition folder with metadata:
+### 2. Validate the descriptor offline
 
 ```powershell
-npm run run:game-db-download-database-artifact -- --client-assets-json "C:\path\to\client-assets-database.json" --settings-json "C:\path\to\settings.json"
+npm run run:game-db-download-database-artifact -- --descriptor-json "C:\external\client-assets-database.json" --dry-run
 ```
 
-Or directly from a URL:
+This validates the exact Global EN descriptor schema, version binding and
+official HTTPS CDN path. It performs no request and persists no URL or descriptor
+body. `--database-url` and the former `--client-assets-json` path are disabled.
+
+### 3. Validate an already downloaded artifact offline
 
 ```powershell
-npm run run:game-db-download-database-artifact -- --database-url "https://example.com/database.db"
+npm run run:game-db-download-database-artifact -- --artifact-path "C:\external\database.db"
 ```
 
-This writes:
+This streams the local file, enforces the hard size ceiling, calculates local
+SHA-256 and reports `readable_sqlite` or `encrypted_or_packaged`. Because this
+mode has no descriptor lineage, it does not promote the file into the immutable
+store.
 
-- `.\game-db\data\game-db-acquisition\downloads\latest\database.db`
-- `.\game-db\data\game-db-acquisition\downloads\latest\download-metadata.json`
+### 4. Future separately authorized official GET
 
-The metadata file tells us whether the artifact already looks like a readable SQLite DB and prints the next suggested command.
-
-### Stage 2B: Pull the local backup artifact from a rooted emulator
-
-If live MITM is incomplete but we do have a rooted emulator with Dokkan installed, we can also pull the app's local backup artifact directly:
+Do not run this command during AQ0–AQ6. After independent review and a separate
+explicit authorization for one official download, the command is:
 
 ```powershell
-npm run run:game-db-pull-emulator-database-artifact -- --device-serial "emulator-5554"
+npm run run:game-db-download-database-artifact -- --descriptor-json "C:\external\client-assets-database.json" --authorize-download
 ```
 
-Default source path:
+The implementation issues one redirect-disabled HTTPS GET to the exact validated
+URL, streams into a same-filesystem temporary, validates `Content-Length`, byte
+count and local SHA-256, then commits an immutable content-addressed artifact and
+promotes `latest.json` atomically. The previous identity remains in the pointer
+and all prior artifact directories are retained. No descriptor endpoint, login
+or refresh request is implemented.
 
-- `/data/data/com.bandainamcogames.dbzdokkanww/files/backup/database.db`
+### 5. Decrypt locally only when necessary
 
-This writes:
+This is a separate decision and is NO-GO during AQ0–AQ6. For an
+`encrypted_or_packaged` artifact, use the existing SQLCipher helper only after
+separate authorization and keep the key outside Git/logs:
 
-- `.\game-db\data\game-db-acquisition\downloads\emulator-backup-latest\database.db`
-- `.\game-db\data\game-db-acquisition\downloads\emulator-backup-latest\pull-metadata.json`
+```powershell
+.\.venv-sqlcipher\Scripts\python game-db\game-db-decrypt-sqlcipher.py --input-path "<immutable-artifact-path>" --output-path "<local-decrypted-sqlite-path>" --key "<local-key>" --cipher-compatibility 4
+```
 
-This gives us a repeatable artifact-acquisition path even when HTTPS interception is only partially successful.
+The acquisition metadata never contains the key or the decrypted output path.
 
-### Stage 3: Decrypt when needed
+### 6. Validate the SQLite read-only and compare C4
 
-If the downloaded artifact is not plain SQLite, the missing local capability is SQLCipher-compatible decryption.
+```powershell
+npm run run:game-db-sqlite-compatibility -- --sqlite-path "C:\local\decrypted-database.sqlite" --output-file ".\game-db\data\game-db-acquisition\compatibility.json"
+```
 
-We already have good research inputs for this:
+The result is `exact_profile_match`,
+`schema_compatible_but_evidence_refresh_required`, `incompatible` or `unknown`.
+It never authorizes native evidence reuse. A changed SQLite must refresh bounded
+ELF/DB48/DB49/DB50 evidence and receive a reviewed C4 baseline before C1–C3.
+Even an exact SQLite match still requires C4 with the exact pinned ELF and
+semantic artifacts. Never run DB0–DB50 cumulatively for this refresh.
 
-- `tanukijs/dokkan-bot` shows the live `GET /client_assets/database` flow
-- `bensnilloc/...Database-Decryptor` shows a small SQLCipher export approach
-- `kxdokkan-wiki` confirms older tools worked with encrypted DB assets and known keys/passwords
+### 7. Build only a shadow first-party export
 
-What is still missing in this workspace:
+Only after the prior local gates are separately authorized:
 
-- a local decrypt helper that works in this environment without relying on third-party closed tooling
+```powershell
+npm run run:game-db-build-first-party-export -- --sqlite-path "C:\local\decrypted-database.sqlite" --settings-json "C:\external\settings.json"
+npm run run:game-db-update -- --acquisition-mode first-party-export --first-party-dir ".\game-db\data\game-db-acquisition\first-party\latest" --skip-publish
+```
 
-Practical blocker right now:
+Stop after the local comparison. Do not publish, promote production data or
+change Android.
 
-- native Python bindings were initially missing, but we now have a working local Windows venv path with `sqlcipher3`
+## Independent decisions and current readiness
 
-So the shortest route is:
+| Decision | Status after AQ0–AQ6 |
+| --- | --- |
+| merge manual/default-off infrastructure | GO after independent review |
+| offline descriptor validation | GO |
+| offline artifact validation | GO |
+| official database GET | NO-GO pending review and separate authorization |
+| local SQLCipher decryption | NO-GO in this campaign |
+| focused shadow refresh | NO-GO in this campaign |
+| authenticated refresh or credential acquisition | NO-GO |
+| R2 publication or productive promotion | NO-GO |
+| Android | NO-GO |
 
-1. capture/download the artifact with our helper
-2. decrypt it with the local `sqlcipher3` helper or another SQLCipher-capable toolchain
-3. feed the readable DB into `run:game-db-build-first-party-export`
-
-### Stage 4: Automate the endpoint call itself
-
-The future target is to call `/client_assets/database` ourselves instead of relying on a captured response.
-
-Research indicates this should likely require:
-
-- current client version headers
-- asset/db version headers
-- request MAC/auth context
-- possibly an authenticated game account/session
-
-The historical Charles-proxy clue suggests that the cleanest discovery path here is probably:
-
-1. capture startup/login traffic from a current client
-2. isolate the request chain that yields the DB artifact URL
-3. reimplement only that chain first
-
-This is the part we should spike next after Stage 2 and Stage 3 are solid.
-
-## What "full independence" means in practice
-
-The end-state flow should look like this:
-
-1. authenticate or bootstrap a valid client session
-2. call `/client_assets/database`
-3. download the latest DB artifact
-4. decrypt/export it
-5. build the first-party export
-6. build/validate/publish the Dokkanpanion dataset
-7. schedule that runner
-
-## Recommended immediate order
-
-1. use the new download helper with captured `/client_assets/database` payloads
-2. decide which SQLCipher-capable local tool we want for decryption
-3. once download + decrypt is stable, run a real traffic-capture spike against current startup/login
-4. then build the real endpoint-calling acquisition spike
-
-That order keeps us moving without pretending the hardest unknown is already solved.
+The immediate next gate is independent review. Full acquisition automation,
+authenticated refresh, publication, production promotion and Android remain
+outside this playbook slice.
 
