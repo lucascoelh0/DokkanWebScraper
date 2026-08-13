@@ -70,6 +70,35 @@ export interface GameDbArtifactInspection {
     artifactState: "readable_sqlite" | "encrypted_or_packaged",
 }
 
+export interface GameDbOperationalReceiptLineage {
+    region: "global",
+    locale: "en",
+    databaseVersion: number,
+    logicalFilePath: typeof LOGICAL_FILE_PATH,
+    declaredIntegrity: { algorithm: "version", hash: string },
+}
+
+interface GameDbOperationalReceiptBase {
+    schemaVersion: 1,
+    contract: "dokkan-game-db-acquisition-operation",
+    contractVersion: "1.0.0",
+    artifactIdentity: string,
+    artifactState: "readable_sqlite" | "encrypted_or_packaged",
+    lineage: GameDbOperationalReceiptLineage,
+}
+
+export type GameDbOperationalReceipt =
+    | (GameDbOperationalReceiptBase & {
+        mode: "official_descriptor_download",
+        acquiredAt: string,
+        result: "acquired" | "reused",
+    })
+    | (GameDbOperationalReceiptBase & {
+        mode: "offline_existing_artifact_validation",
+        validatedAt: string,
+        result: "validated",
+    });
+
 export interface DatabaseArtifactTransportResponse {
     statusCode: number,
     headers: Record<string, string | string[] | undefined>,
@@ -87,6 +116,7 @@ export interface AcquireDatabaseArtifactOptions {
     maxBytes?: number,
     timeoutMs?: number,
     signal?: AbortSignal,
+    now?: () => Date,
 }
 
 export interface AcquiredDatabaseArtifactResult {
@@ -97,6 +127,8 @@ export interface AcquiredDatabaseArtifactResult {
     latestPointerPath: string,
     metadata: GameDbAcquiredArtifactMetadata,
     reused: boolean,
+    receiptPath: string,
+    receipt: GameDbOperationalReceipt,
 }
 
 function requiredValue(argv: string[], index: number, inline: string | undefined, token: string): string {
@@ -328,6 +360,29 @@ function artifactIdentity(metadata: GameDbAcquiredArtifactMetadata): string {
     })).digest("hex");
 }
 
+function operationTimestamp(now: (() => Date) | undefined): string {
+    const value = (now ?? (() => new Date()))();
+    if (!(value instanceof Date) || Number.isNaN(value.getTime())) throw new Error("Operational receipt timestamp is invalid");
+    return value.toISOString();
+}
+
+function receiptBase(descriptor: ValidatedDatabaseDescriptor, metadata: GameDbAcquiredArtifactMetadata, identity: string): GameDbOperationalReceiptBase {
+    return {
+        schemaVersion: 1,
+        contract: "dokkan-game-db-acquisition-operation",
+        contractVersion: "1.0.0",
+        artifactIdentity: identity,
+        artifactState: metadata.artifactState,
+        lineage: {
+            region: descriptor.region,
+            locale: descriptor.locale,
+            databaseVersion: descriptor.databaseVersion,
+            logicalFilePath: descriptor.logicalFilePath,
+            declaredIntegrity: { algorithm: descriptor.algorithm, hash: descriptor.declaredHash },
+        },
+    };
+}
+
 function ensureContained(root: string, candidate: string): void {
     const relation = relative(root, candidate);
     if (!relation || relation === ".." || relation.startsWith(`..${sep}`) || isAbsolute(relation)) throw new Error("Artifact store path escaped containment");
@@ -365,6 +420,25 @@ async function promoteLatest(root: string, identity: string): Promise<string> {
     await writeFile(temporary, canonicalJson(pointer), { flag: "wx" });
     await rename(temporary, latestPath);
     return latestPath;
+}
+
+async function writeOperationalReceipt(root: string, receipt: GameDbOperationalReceipt): Promise<string> {
+    const receiptsRoot = await assertStoreRoot(resolve(root, "receipts"));
+    const occurredAt = "acquiredAt" in receipt ? receipt.acquiredAt : receipt.validatedAt;
+    const timestamp = occurredAt.replace(/[^0-9A-Za-z]/g, "");
+    const fileName = `${receipt.mode}-${timestamp}-${randomBytes(6).toString("hex")}.json`;
+    const target = resolve(receiptsRoot, fileName);
+    ensureContained(receiptsRoot, target);
+    const temporary = resolve(receiptsRoot, `.${fileName}.${process.pid}.tmp`);
+    ensureContained(receiptsRoot, temporary);
+    try {
+        await writeFile(temporary, canonicalJson(receipt), { flag: "wx" });
+        await rename(temporary, target);
+        return target;
+    } catch (error) {
+        await rm(temporary, { force: true }).catch(() => undefined);
+        throw error;
+    }
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, controller: AbortController): Promise<T> {
@@ -453,6 +527,13 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
             pendingDirectory = undefined;
         }
         await validateCommittedArtifact(finalDirectory, identity, metadata);
+        const receipt: GameDbOperationalReceipt = {
+            ...receiptBase(descriptor, metadata, identity),
+            mode: "official_descriptor_download",
+            acquiredAt: operationTimestamp(options.now),
+            result: reused ? "reused" : "acquired",
+        };
+        const receiptPath = await writeOperationalReceipt(root, receipt);
         const latestPointerPath = await promoteLatest(root, identity);
         return {
             identity,
@@ -462,6 +543,8 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
             latestPointerPath,
             metadata,
             reused,
+            receiptPath,
+            receipt,
         };
     } catch (error) {
         controller.abort();
@@ -474,15 +557,28 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
     }
 }
 
-export async function runDownloadDatabaseArtifact(options: GameDbDownloadDatabaseArtifactOptions, dependencies: { transport?: DatabaseArtifactTransport } = {}): Promise<
+export async function runDownloadDatabaseArtifact(options: GameDbDownloadDatabaseArtifactOptions, dependencies: { transport?: DatabaseArtifactTransport, now?: () => Date } = {}): Promise<
     | { mode: "descriptor_validation", descriptor: Omit<ValidatedDatabaseDescriptor, "url"> }
-    | { mode: "artifact_validation", descriptor: Omit<ValidatedDatabaseDescriptor, "url">, inspection: GameDbArtifactInspection }
+    | { mode: "artifact_validation", descriptor: Omit<ValidatedDatabaseDescriptor, "url">, inspection: GameDbArtifactInspection, identity: string, receiptPath: string, receipt: GameDbOperationalReceipt }
     | { mode: "authorized_download", result: AcquiredDatabaseArtifactResult }
 > {
     if (!options.descriptorJson) throw new Error("Descriptor input is required");
     const descriptor = await readAndValidateDatabaseDescriptor(options.descriptorJson);
     const { url: _url, ...sanitized } = descriptor;
-    if (options.artifactPath) return { mode: "artifact_validation", descriptor: sanitized, inspection: await inspectDownloadedDatabaseArtifact(options.artifactPath) };
+    if (options.artifactPath) {
+        const inspection = await inspectDownloadedDatabaseArtifact(options.artifactPath);
+        const metadata = metadataFor(descriptor, inspection);
+        const identity = artifactIdentity(metadata);
+        const root = await assertStoreRoot(options.storeRoot);
+        const receipt: GameDbOperationalReceipt = {
+            ...receiptBase(descriptor, metadata, identity),
+            mode: "offline_existing_artifact_validation",
+            validatedAt: operationTimestamp(dependencies.now),
+            result: "validated",
+        };
+        const receiptPath = await writeOperationalReceipt(root, receipt);
+        return { mode: "artifact_validation", descriptor: sanitized, inspection, identity, receiptPath, receipt };
+    }
     if (!options.authorizeDownload || options.dryRun) {
         return { mode: "descriptor_validation", descriptor: sanitized };
     }
@@ -495,7 +591,7 @@ export async function runDownloadDatabaseArtifact(options: GameDbDownloadDatabas
         patch: null,
         patch_hash: null,
     };
-    const result = await acquireDatabaseArtifact({ descriptor: rawDescriptor, storeRoot: options.storeRoot, transport: dependencies.transport ?? httpsDatabaseArtifactTransport });
+    const result = await acquireDatabaseArtifact({ descriptor: rawDescriptor, storeRoot: options.storeRoot, transport: dependencies.transport ?? httpsDatabaseArtifactTransport, now: dependencies.now });
     return { mode: "authorized_download", result };
 }
 
@@ -505,6 +601,10 @@ async function main(): Promise<void> {
     if (result.mode === "authorized_download") {
         console.log(`Acquired immutable database artifact ${result.result.identity}`);
         console.log(`Artifact state: ${result.result.metadata.artifactState}`);
+        console.log(`Wrote operational receipt to ${result.result.receiptPath}`);
+    } else if (result.mode === "artifact_validation") {
+        console.log(JSON.stringify({ mode: result.mode, descriptor: result.descriptor, inspection: result.inspection, identity: result.identity, receipt: result.receipt }, null, 2));
+        console.log(`Wrote operational receipt to ${result.receiptPath}`);
     } else {
         console.log(JSON.stringify(result, null, 2));
     }

@@ -49,13 +49,18 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   HTTPS CDN URL, redirects disabled, streamed under a hard byte/timeout limit,
   SHA-256 validated locally and committed marker-last into ignored immutable
   content-addressed storage with an atomic local latest/rollback pointer.
+- Immutable artifact metadata/identity remain deterministic and timestamp-free.
+  Download and offline-validation times live only in separate sanitized local
+  operational receipts and never affect content addressing, markers or reuse.
 - Acquisition remains separate from SQLCipher decryption, first-party export,
   C4/C1–C3 shadow refresh, authenticated refresh, publisher/R2, production and
   Android. No real API/CDN request or decryption was executed in AQ0–AQ6.
 - The SQLite compatibility gate reports exact profile match, schema-compatible
   evidence refresh required, incompatible or unknown. It never reuses pinned
   ELF/DB48/DB49/DB50 evidence automatically, including on an exact SQLite-only
-  match.
+  match. Its source boundary fingerprints one canonical regular file before and
+  after sequential header/hash/inspection and fails closed on target or byte
+  drift.
 - Offline descriptor/artifact validation and merge of reviewed disabled
   infrastructure are GO. Official download, decryption, refresh, publication,
   production promotion and Android remain NO-GO pending independent and

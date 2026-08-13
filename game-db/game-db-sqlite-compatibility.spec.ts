@@ -1,6 +1,9 @@
-import { deepEqual, equal, throws } from "assert";
+import { deepEqual, equal, rejects, throws } from "assert";
 import { createHash } from "crypto";
-import { evaluateGameDbSqliteCompatibility, parseGameDbSqliteCompatibilityArgs } from "./game-db-sqlite-compatibility";
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { buildGameDbSqliteCompatibility, evaluateGameDbSqliteCompatibility, parseGameDbSqliteCompatibilityArgs } from "./game-db-sqlite-compatibility";
 import { integrationC4SchemaSha256 } from "../database-integration/integration-c4-builder";
 
 const inspection = {
@@ -30,6 +33,19 @@ const baseline: any = {
         DB50: { contractVersion: "1", sha256: evidenceSha256 },
     },
 };
+
+function temp(): string { return mkdtempSync(join(tmpdir(), "dokkan-c4-toctou-")); }
+function sqliteBytes(fill: number): Buffer { return Buffer.concat([Buffer.from("SQLite format 3\0"), Buffer.alloc(64, fill)]); }
+function runtimeBaseline(root: string, bytes: Buffer): string {
+    const value = JSON.parse(JSON.stringify(baseline));
+    value.sourceDatabase.sha256 = createHash("sha256").update(bytes).digest("hex");
+    value.sourceDatabase.sizeBytes = bytes.byteLength;
+    value.sourceDatabase.tableCount = inspection.tableCount;
+    value.sourceDatabase.schemaSha256 = integrationC4SchemaSha256(inspection);
+    const path = join(root, "baseline.json");
+    writeFileSync(path, JSON.stringify(value));
+    return path;
+}
 
 describe("game DB SQLite compatibility", () => {
     it("classifies an exact SQLite profile without authorizing native evidence reuse", () => {
@@ -65,11 +81,61 @@ describe("game DB SQLite compatibility", () => {
         equal(JSON.stringify(evaluateGameDbSqliteCompatibility(input)), JSON.stringify(evaluateGameDbSqliteCompatibility(input)));
         throws(() => evaluateGameDbSqliteCompatibility({ ...input, sourceDatabase: { ...input.sourceDatabase, sha256: "bad" } }), /identity/);
         throws(() => evaluateGameDbSqliteCompatibility({ baseline, acquiredArtifactState: "readable_sqlite" }), /requires/);
+        throws(() => evaluateGameDbSqliteCompatibility({ ...input, acquiredArtifactState: "forged" } as any), /artifact state/);
     });
 
     it("parses only the bounded manual compatibility CLI", () => {
         deepEqual(parseGameDbSqliteCompatibilityArgs(["--sqlite-path", "database.db", "--output-file=report.json"]), { sqlitePath: "database.db", baselineFile: undefined, outputFile: "report.json" });
         throws(() => parseGameDbSqliteCompatibilityArgs(["--url", "https://example.test"]), /Unexpected/);
         throws(() => parseGameDbSqliteCompatibilityArgs([]), /sqlite-path/);
+    });
+
+    it("builds a report only from one stable canonical SQLite identity", async () => {
+        const root = temp(), bytes = sqliteBytes(1), sqlitePath = join(root, "database.db");
+        try {
+            writeFileSync(sqlitePath, bytes);
+            const report = await buildGameDbSqliteCompatibility({ sqlitePath, baselineFile: runtimeBaseline(root, bytes) }, { inspectSqlite: async canonicalPath => {
+                equal(canonicalPath, sqlitePath);
+                return inspection;
+            } });
+            equal(report.status, "exact_profile_match");
+            equal(report.c4Profile.sourceDatabase.actualSha256, createHash("sha256").update(bytes).digest("hex"));
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("rejects a pathname whose target is replaced after canonical resolution", async () => {
+        const root = temp(), original = sqliteBytes(1), replacement = sqliteBytes(2), sqlitePath = join(root, "database.db"), displaced = join(root, "displaced.db");
+        let inspectionCalls = 0;
+        try {
+            writeFileSync(sqlitePath, original);
+            await rejects(buildGameDbSqliteCompatibility({ sqlitePath, baselineFile: runtimeBaseline(root, original) }, {
+                inspectSqlite: async () => { inspectionCalls += 1; return inspection; },
+                hooks: { afterCanonicalResolution: () => { renameSync(sqlitePath, displaced); writeFileSync(sqlitePath, replacement); } },
+            }), /target changed during canonical resolution/);
+            equal(inspectionCalls, 0);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("rejects deterministic mutation performed during SQLite inspection", async () => {
+        const root = temp(), original = sqliteBytes(3), sqlitePath = join(root, "database.db");
+        try {
+            writeFileSync(sqlitePath, original);
+            await rejects(buildGameDbSqliteCompatibility({ sqlitePath, baselineFile: runtimeBaseline(root, original) }, {
+                inspectSqlite: async canonicalPath => { writeFileSync(canonicalPath, sqliteBytes(4)); return inspection; },
+            }), /changed after inspection|changed during inspection/);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("rejects file replacement between fingerprint and inspection", async () => {
+        const root = temp(), original = sqliteBytes(5), replacement = sqliteBytes(6), sqlitePath = join(root, "database.db"), displaced = join(root, "old.db");
+        let inspectionCalls = 0;
+        try {
+            writeFileSync(sqlitePath, original);
+            await rejects(buildGameDbSqliteCompatibility({ sqlitePath, baselineFile: runtimeBaseline(root, original) }, {
+                inspectSqlite: async () => { inspectionCalls += 1; return inspection; },
+                hooks: { afterPreInspectionFingerprint: () => { renameSync(sqlitePath, displaced); writeFileSync(sqlitePath, replacement); } },
+            }), /target changed after inspection/);
+            equal(inspectionCalls, 1);
+        } finally { rmSync(root, { recursive: true, force: true }); }
     });
 });

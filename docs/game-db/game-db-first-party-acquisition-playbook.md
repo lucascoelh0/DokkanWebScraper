@@ -235,7 +235,9 @@ This streams the local file, enforces the hard size ceiling, calculates local
 SHA-256 and reports `readable_sqlite` or `encrypted_or_packaged` together with
 sanitized descriptor lineage. An artifact without `--descriptor-json` fails
 closed. This offline validation does not promote the file into the immutable
-store.
+store. It writes a separate sanitized operational receipt under the ignored
+local store with mode `offline_existing_artifact_validation`, `validatedAt`,
+result `validated`, artifact identity/state and minimum descriptor lineage.
 
 ### 4. Future separately authorized official GET
 
@@ -250,8 +252,11 @@ The implementation issues one redirect-disabled HTTPS GET to the exact validated
 URL, streams into a same-filesystem temporary, validates `Content-Length`, byte
 count and local SHA-256, then commits an immutable content-addressed artifact and
 promotes `latest.json` atomically. The previous identity remains in the pointer
-and all prior artifact directories are retained. No descriptor endpoint, login
-or refresh request is implemented.
+and all prior artifact directories are retained. It also writes a separate
+operational receipt with mode `official_descriptor_download`, `acquiredAt` and
+result `acquired` or `reused`. Receipt time never affects immutable metadata,
+identity, marker or reuse. No descriptor endpoint, login or refresh request is
+implemented.
 
 ### 5. Decrypt locally only when necessary
 
@@ -276,7 +281,11 @@ The result is `exact_profile_match`,
 It never authorizes native evidence reuse. A changed SQLite must refresh bounded
 ELF/DB48/DB49/DB50 evidence and receive a reviewed C4 baseline before C1–C3.
 Even an exact SQLite match still requires C4 with the exact pinned ELF and
-semantic artifacts. Never run DB0–DB50 cumulatively for this refresh.
+semantic artifacts. The command resolves one regular canonical input, performs
+header/hash/inspection sequentially, then revalidates realpath, device/inode,
+size, nanosecond mtime/ctime and SHA-256. Any replacement or mutation fails
+closed without emitting a compatibility report. Never run DB0–DB50 cumulatively
+for this refresh.
 
 ### 7. Build only a shadow first-party export
 

@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { createReadStream, existsSync } from "fs";
-import { mkdir, open, readFile, rename, stat, unlink, writeFile } from "fs/promises";
+import { lstat, mkdir, open, readFile, realpath, rename, stat, unlink, writeFile } from "fs/promises";
 import { dirname, resolve } from "path";
 import { ReadOnlySqliteAdapter, SqliteInspection } from "../database-experiment/sqlite-readonly-adapter";
 import { integrationC4SchemaSha256 } from "../database-integration/integration-c4-builder";
@@ -56,6 +56,29 @@ export interface GameDbSqliteCompatibilityOptions {
     pythonCommand?: string,
 }
 
+export interface GameDbSqliteCompatibilityDependencies {
+    inspectSqlite?: (canonicalPath: string, pythonCommand?: string) => Promise<SqliteInspection>,
+    hooks?: {
+        afterCanonicalResolution?: (context: { requestedPath: string, canonicalPath: string }) => void | Promise<void>,
+        afterPreInspectionFingerprint?: (context: { requestedPath: string, canonicalPath: string, sha256: string }) => void | Promise<void>,
+        afterInspection?: (context: { requestedPath: string, canonicalPath: string, sha256: string }) => void | Promise<void>,
+    },
+}
+
+interface GameDbSqliteFileIdentity {
+    dev: string,
+    ino: string,
+    sizeBytes: number,
+    mtimeNs: string,
+    ctimeNs: string,
+}
+
+interface GameDbSqliteFileFingerprint {
+    identity: GameDbSqliteFileIdentity,
+    sha256: string,
+    readableSqliteHeader: boolean,
+}
+
 function defaultBaselinePath(): string {
     const adjacent = resolve(__dirname, "..", "database-integration", "integration-c4-baseline.json");
     return existsSync(adjacent)
@@ -103,6 +126,9 @@ export function evaluateGameDbSqliteCompatibility(input: {
     sourceDatabase?: { sha256: string, sizeBytes: number, inspection: SqliteInspection },
 }): GameDbSqliteCompatibilityReport {
     assertBaseline(input.baseline);
+    if (input.acquiredArtifactState !== "readable_sqlite" && input.acquiredArtifactState !== "encrypted_or_packaged") {
+        throw new Error("Invalid acquired artifact state");
+    }
     const source = input.sourceDatabase;
     if (input.acquiredArtifactState === "readable_sqlite" && !source) {
         throw new Error("Readable SQLite compatibility requires a source inspection");
@@ -186,23 +212,110 @@ async function hasReadableSqliteHeader(filePath: string): Promise<boolean> {
     }
 }
 
-export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompatibilityOptions): Promise<GameDbSqliteCompatibilityReport> {
-    const sqlitePath = resolve(options.sqlitePath);
+function fileIdentity(metadata: any): GameDbSqliteFileIdentity {
+    if (!metadata?.isFile?.() || metadata?.isSymbolicLink?.()) throw new Error("SQLite input must be a regular file");
+    const size = BigInt(metadata.size);
+    if (size <= 0n || size > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("SQLite input size is invalid");
+    return {
+        dev: BigInt(metadata.dev).toString(),
+        ino: BigInt(metadata.ino).toString(),
+        sizeBytes: Number(size),
+        mtimeNs: BigInt(metadata.mtimeNs).toString(),
+        ctimeNs: BigInt(metadata.ctimeNs).toString(),
+    };
+}
+
+function sameIdentity(left: GameDbSqliteFileIdentity, right: GameDbSqliteFileIdentity): boolean {
+    return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sameCanonicalPath(left: string, right: string): boolean {
+    return process.platform === "win32" ? resolve(left).toLowerCase() === resolve(right).toLowerCase() : resolve(left) === resolve(right);
+}
+
+async function canonicalSqliteInput(inputPath: string, dependencies: GameDbSqliteCompatibilityDependencies): Promise<{
+    requestedPath: string,
+    canonicalPath: string,
+    initialIdentity: GameDbSqliteFileIdentity,
+}> {
+    const requestedPath = resolve(inputPath);
+    let initial: any;
+    try { initial = await lstat(requestedPath, { bigint: true }); }
+    catch { throw new Error("SQLite input must resolve to a regular file"); }
+    const initialIdentity = fileIdentity(initial);
+    let canonicalPath: string;
+    try { canonicalPath = await realpath(requestedPath); }
+    catch { throw new Error("SQLite input realpath resolution failed"); }
+    await dependencies.hooks?.afterCanonicalResolution?.({ requestedPath, canonicalPath });
+    let currentRequested: any, currentCanonical: any, currentRealpath: string;
+    try {
+        currentRequested = await lstat(requestedPath, { bigint: true });
+        currentCanonical = await lstat(canonicalPath, { bigint: true });
+        currentRealpath = await realpath(requestedPath);
+    } catch { throw new Error("SQLite input target changed during canonical resolution"); }
+    const requestedIdentity = fileIdentity(currentRequested), canonicalIdentity = fileIdentity(currentCanonical);
+    if (!sameCanonicalPath(currentRealpath, canonicalPath)
+        || !sameIdentity(initialIdentity, requestedIdentity)
+        || !sameIdentity(initialIdentity, canonicalIdentity)) {
+        throw new Error("SQLite input target changed during canonical resolution");
+    }
+    return { requestedPath, canonicalPath, initialIdentity };
+}
+
+async function fingerprintCanonicalSqlite(canonicalPath: string, expectedIdentity: GameDbSqliteFileIdentity): Promise<GameDbSqliteFileFingerprint> {
+    const before = fileIdentity(await stat(canonicalPath, { bigint: true }));
+    if (!sameIdentity(before, expectedIdentity)) throw new Error("SQLite input identity changed before fingerprinting");
+    const readableSqliteHeader = await hasReadableSqliteHeader(canonicalPath);
+    const afterHeader = fileIdentity(await stat(canonicalPath, { bigint: true }));
+    if (!sameIdentity(before, afterHeader)) throw new Error("SQLite input changed during header validation");
+    const sha256 = await sha256File(canonicalPath);
+    const afterHash = fileIdentity(await stat(canonicalPath, { bigint: true }));
+    if (!sameIdentity(before, afterHash)) throw new Error("SQLite input changed during hashing");
+    return { identity: before, sha256, readableSqliteHeader };
+}
+
+async function verifyCanonicalSqliteUnchanged(input: {
+    requestedPath: string,
+    canonicalPath: string,
+    fingerprint: GameDbSqliteFileFingerprint,
+}): Promise<void> {
+    let requestedMetadata: any, canonicalMetadata: any, currentRealpath: string;
+    try {
+        requestedMetadata = await lstat(input.requestedPath, { bigint: true });
+        canonicalMetadata = await lstat(input.canonicalPath, { bigint: true });
+        currentRealpath = await realpath(input.requestedPath);
+    } catch { throw new Error("SQLite input target changed after inspection"); }
+    if (!sameCanonicalPath(currentRealpath, input.canonicalPath)
+        || !sameIdentity(fileIdentity(requestedMetadata), input.fingerprint.identity)
+        || !sameIdentity(fileIdentity(canonicalMetadata), input.fingerprint.identity)) {
+        throw new Error("SQLite input target changed after inspection");
+    }
+    const after = await fingerprintCanonicalSqlite(input.canonicalPath, input.fingerprint.identity);
+    if (after.sha256 !== input.fingerprint.sha256 || after.readableSqliteHeader !== input.fingerprint.readableSqliteHeader) {
+        throw new Error("SQLite input bytes changed during inspection");
+    }
+}
+
+export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompatibilityOptions, dependencies: GameDbSqliteCompatibilityDependencies = {}): Promise<GameDbSqliteCompatibilityReport> {
     const baseline = JSON.parse(await readFile(resolve(options.baselineFile ?? defaultBaselinePath()), "utf8")) as unknown;
     assertBaseline(baseline);
-    if (!await hasReadableSqliteHeader(sqlitePath)) {
-        return evaluateGameDbSqliteCompatibility({ baseline, acquiredArtifactState: "encrypted_or_packaged" });
+    const canonical = await canonicalSqliteInput(options.sqlitePath, dependencies);
+    const fingerprint = await fingerprintCanonicalSqlite(canonical.canonicalPath, canonical.initialIdentity);
+    await dependencies.hooks?.afterPreInspectionFingerprint?.({ requestedPath: canonical.requestedPath, canonicalPath: canonical.canonicalPath, sha256: fingerprint.sha256 });
+    let inspection: SqliteInspection | undefined;
+    if (fingerprint.readableSqliteHeader) {
+        inspection = await (dependencies.inspectSqlite
+            ? dependencies.inspectSqlite(canonical.canonicalPath, options.pythonCommand)
+            : new ReadOnlySqliteAdapter(canonical.canonicalPath, options.pythonCommand).inspect());
     }
-    const [metadata, sha256, inspection] = await Promise.all([
-        stat(sqlitePath),
-        sha256File(sqlitePath),
-        new ReadOnlySqliteAdapter(sqlitePath, options.pythonCommand).inspect(),
-    ]);
-    if (!metadata.isFile()) throw new Error("SQLite input must be a regular file");
+    await dependencies.hooks?.afterInspection?.({ requestedPath: canonical.requestedPath, canonicalPath: canonical.canonicalPath, sha256: fingerprint.sha256 });
+    await verifyCanonicalSqliteUnchanged({ requestedPath: canonical.requestedPath, canonicalPath: canonical.canonicalPath, fingerprint });
+    if (!fingerprint.readableSqliteHeader) return evaluateGameDbSqliteCompatibility({ baseline, acquiredArtifactState: "encrypted_or_packaged" });
+    if (!inspection) throw new Error("SQLite inspection result is missing");
     return evaluateGameDbSqliteCompatibility({
         baseline,
         acquiredArtifactState: "readable_sqlite",
-        sourceDatabase: { sha256, sizeBytes: metadata.size, inspection },
+        sourceDatabase: { sha256: fingerprint.sha256, sizeBytes: fingerprint.identity.sizeBytes, inspection },
     });
 }
 

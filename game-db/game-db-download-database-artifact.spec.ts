@@ -146,12 +146,19 @@ describe("game DB manual database artifact acquisition", function () {
             const descriptorPath = join(root, "descriptor.json"), artifactPath = join(root, "database.db");
             writeFileSync(descriptorPath, JSON.stringify(descriptor()));
             writeFileSync(artifactPath, Buffer.from("encrypted-or-packaged"));
-            const result = await runDownloadDatabaseArtifact({ descriptorJson: descriptorPath, artifactPath, storeRoot: join(root, "store"), authorizeDownload: false, dryRun: false });
+            const validatedAt = "2026-08-13T20:00:00.000Z";
+            const result = await runDownloadDatabaseArtifact({ descriptorJson: descriptorPath, artifactPath, storeRoot: join(root, "store"), authorizeDownload: false, dryRun: false }, { now: () => new Date(validatedAt) });
             equal(result.mode, "artifact_validation");
             if (result.mode !== "artifact_validation") throw new Error("unexpected mode");
             equal(result.descriptor.databaseVersion, version);
             equal(result.descriptor.logicalFilePath, "sqlite/current/en/database.db");
             equal(result.inspection.artifactState, "encrypted_or_packaged");
+            equal(result.receipt.mode, "offline_existing_artifact_validation");
+            equal(result.receipt.result, "validated");
+            if (result.receipt.mode !== "offline_existing_artifact_validation") throw new Error("unexpected receipt mode");
+            equal(result.receipt.validatedAt, validatedAt);
+            equal(result.receipt.artifactIdentity, result.identity);
+            equal(readFileSync(result.receiptPath, "utf8"), `${JSON.stringify(result.receipt, null, 2)}\n`);
             writeFileSync(descriptorPath, JSON.stringify(descriptor({ url: "https://evil.invalid/database.db" })));
             await rejects(runDownloadDatabaseArtifact({ descriptorJson: descriptorPath, artifactPath, storeRoot: join(root, "store"), authorizeDownload: false, dryRun: false }), /host/);
         } finally { rmSync(root, { recursive: true, force: true }); }
@@ -223,14 +230,26 @@ describe("game DB manual database artifact acquisition", function () {
     it("commits immutable content marker-last and emits portable deterministic metadata", async () => {
         const root = temp(); const bytes = Buffer.concat([Buffer.from("SQLite format 3\0"), Buffer.alloc(64, 7)]);
         try {
-            const input = { descriptor: descriptor(), storeRoot: root, transport: fakeTransport(bytes) };
-            const first = await acquireDatabaseArtifact(input);
+            const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(bytes), now: () => new Date("2026-08-13T20:00:00.000Z") });
             const firstMetadata = readFileSync(first.metadataPath, "utf8");
-            const second = await acquireDatabaseArtifact(input);
+            const firstMarker = readFileSync(first.commitMarkerPath, "utf8");
+            const second = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(bytes), now: () => new Date("2026-08-13T21:00:00.000Z") });
             equal(second.reused, true); equal(second.identity, first.identity); equal(readFileSync(second.metadataPath, "utf8"), firstMetadata);
-            const text = `${firstMetadata}\n${readFileSync(first.commitMarkerPath, "utf8")}`;
+            equal(readFileSync(second.commitMarkerPath, "utf8"), firstMarker);
+            equal(first.receipt.mode, "official_descriptor_download"); equal(first.receipt.result, "acquired");
+            equal(second.receipt.mode, "official_descriptor_download"); equal(second.receipt.result, "reused");
+            if (first.receipt.mode !== "official_descriptor_download" || second.receipt.mode !== "official_descriptor_download") throw new Error("unexpected receipt mode");
+            equal(first.receipt.acquiredAt, "2026-08-13T20:00:00.000Z");
+            equal(second.receipt.acquiredAt, "2026-08-13T21:00:00.000Z");
+            equal(first.receipt.artifactIdentity, second.receipt.artifactIdentity);
+            equal(first.receiptPath === second.receiptPath, false);
+            const receiptText = `${readFileSync(first.receiptPath, "utf8")}\n${readFileSync(second.receiptPath, "utf8")}`;
+            const text = `${firstMetadata}\n${firstMarker}`;
             equal(text.includes(OFFICIAL_SECRET), false);
             equal(text.includes(root), false); equal(text.includes("https://"), false); equal(text.includes("url"), false);
+            equal(/acquiredAt|validatedAt/.test(text), false);
+            equal(receiptText.includes(OFFICIAL_SECRET), false); equal(receiptText.includes(root), false); equal(receiptText.includes("https://"), false);
+            equal(/query|headers|token|account|descriptorJson|artifactPath/i.test(receiptText), false);
             equal(first.metadata.artifactState, "readable_sqlite");
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
@@ -265,6 +284,19 @@ describe("game DB manual database artifact acquisition", function () {
             equal(await readFile(first.latestPointerPath, "utf8"), latestBefore);
             equal(readFileSync(first.artifactPath).toString(), "first-valid-bytes");
             equal(readdirSync(root).some(name => name.startsWith(".download-") || name.startsWith(".pending-")), false);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("does not promote latest when the operational receipt cannot be committed", async () => {
+        const root = temp();
+        try {
+            const raw = descriptor();
+            const first = await acquireDatabaseArtifact({ descriptor: raw, storeRoot: root, transport: fakeTransport(Buffer.from("first-valid-bytes")), now: () => new Date("2026-08-13T20:00:00.000Z") });
+            const latestBefore = await readFile(first.latestPointerPath, "utf8");
+            rmSync(join(root, "receipts"), { recursive: true, force: true });
+            writeFileSync(join(root, "receipts"), "blocks receipt directory");
+            await rejects(acquireDatabaseArtifact({ descriptor: raw, storeRoot: root, transport: fakeTransport(Buffer.from("second-valid-bytes")), now: () => new Date("2026-08-13T21:00:00.000Z") }), /EEXIST|directory|store root/i);
+            equal(await readFile(first.latestPointerPath, "utf8"), latestBefore);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 

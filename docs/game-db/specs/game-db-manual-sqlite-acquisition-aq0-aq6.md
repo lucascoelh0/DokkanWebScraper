@@ -114,7 +114,7 @@ The implementation never buffers the approximately 100 MB artifact.
 
 No real transport was executed in AQ0–AQ6. Tests use injected streams only.
 
-## AQ4 — immutable store and portable metadata
+## AQ4 — immutable store, deterministic metadata and operational receipts
 
 Validated bytes are promoted into a content-addressed directory in the ignored
 acquisition root. Promotion is same-filesystem and atomic; a commit marker is
@@ -122,11 +122,27 @@ written last. A single-writer lock serializes acquisition. An existing committed
 identity is immutable and reusable only after its marker and byte identity
 validate again.
 
-Portable metadata contains only contract/schema versions, Global/en identity,
-database version, logical path, declared algorithm/hash, observed byte length,
-local SHA-256, readability state, the minimum descriptor lineage, acquisition
-timestamp and the allowed next step. It contains no URL, query, headers, token,
-descriptor body, account data or absolute filesystem path.
+Immutable portable metadata contains only contract/schema versions, Global/en
+identity, database version, logical path, declared algorithm/hash, observed byte
+length, local SHA-256, readability state, minimum descriptor lineage and the
+allowed next step. It is deterministic for the same descriptor and bytes and is
+the only metadata used by the content address, immutable reuse comparison and
+commit marker. It contains no operational timestamp.
+
+Every completed artifact operation writes a separate sanitized receipt below
+the ignored local `receipts/` directory. An authorized descriptor download uses
+mode `official_descriptor_download`, `acquiredAt` and result `acquired` or
+`reused`. Offline validation uses mode
+`offline_existing_artifact_validation`, `validatedAt` and result `validated`.
+Both receipts bind the artifact identity/state and minimum region, locale,
+database-version, logical-path and declared-integrity lineage. A receipt and its
+timestamp never participate in the content address, immutable metadata, commit
+marker, latest pointer identity or deterministic comparison.
+
+Neither immutable metadata nor operational receipt contains URL, query,
+headers, token, raw descriptor, account data or an absolute filesystem path.
+The receipt filename/path is local operational state and is not embedded in its
+JSON body.
 
 The local `latest` pointer is promoted atomically only after artifact, metadata
 and commit marker validation. The previous content-addressed version is retained
@@ -154,6 +170,16 @@ not inspect them and always sets automatic native-evidence reuse to false. Even
 an exact SQLite profile must run C4 against the exact pinned ELF and semantic
 artifacts. A changed SQLite requires bounded evidence refresh and reviewed C4
 baseline changes before C1–C3. The cumulative DB0–DB50 runner is never invoked.
+
+The compatibility boundary resolves one canonical `realpath`, rejects a
+non-regular input or changing target, and records device/inode, size, nanosecond
+mtime/ctime, header and SHA-256 before SQLite inspection. Header, hash and
+inspection execute sequentially against that canonical path. After inspection,
+the requested path/realpath and complete fingerprint are revalidated and the
+bytes are hashed again. Any target replacement, in-place mutation or identity,
+timestamp, size, header or SHA-256 drift fails closed before a report is
+returned; observations from different identities can never produce a compatible
+report.
 
 ## AQ6 — decisions
 
