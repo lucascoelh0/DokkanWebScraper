@@ -13,6 +13,8 @@
     "run:game-db-dataset": "npx ts-node game-db/game-db-dataset.ts",
     "run:game-db-build-first-party-export": "npx ts-node game-db/game-db-build-first-party-export.ts",
     "run:game-db-download-database-artifact": "npx ts-node game-db/game-db-download-database-artifact.ts",
+    "run:game-db-sqlite-compatibility": "npx ts-node game-db/game-db-sqlite-compatibility.ts",
+    "scan:game-db-acquisition-staged": "node lib/game-db/game-db-acquisition-staged-scan.js",
     "run:game-db-experiment": "npx ts-node game-db/game-db-experiment.ts",
     "run:database-experiment": "npx ts-node database-experiment/run.ts",
     "run:database-events-e0": "npx ts-node database-events/events-e0-run.ts",
