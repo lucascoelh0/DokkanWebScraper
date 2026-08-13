@@ -258,14 +258,18 @@ containment, realpath, device/inode, size, birth/modify/change times and SHA-256
 and keeps those handles open across promotion where the platform permits it.
 Because Node has no portable directory rename-no-replace, promotion first reserves
 the final identity with exclusive `mkdir` in the pinned `artifacts/` parent, then
-installs the same inodes with create-only hard links in database/metadata/marker
-order. The pending names are removed only after all links validate; final names
-are then revalidated against the pre-promotion snapshot. A destination that wins
+streams each already-open pending handle into an independently created `wx` file
+in database/metadata/marker order. Every final member is fsynced, rehashed,
+required to have `nlink == 1`, made read-only and rebound to its pathname; the
+directory is fsynced where supported. No hard link is used. Pending names are
+removed only after all source/final inode pairs prove independent and the complete
+final commit revalidates against the pre-promotion snapshot. A destination that wins
 the reservation race is never replaced or removed and is reused only if it is an
 independently valid complete commit of the exact identity. An invalid owned
 reservation is moved under an exclusive quarantine container only while its
 directory identity remains pinned, leaving the legitimate content-addressed name
-unoccupied. Receipts use the same create-only hard-link rule.
+unoccupied. Receipt and rollback-pointer installation also use independent
+create-only copies rather than aliases.
 Before replacing `latest.json`, the implementation atomically moves
 the pathname into a new controlled history directory and validates the identity
 actually moved; it then creates the complete new pointer exclusively. Rollback
@@ -302,7 +306,9 @@ The acquisition metadata never contains the key or the decrypted output path.
 ### 6. Validate the SQLite read-only and compare C4
 
 ```powershell
-npm run run:game-db-sqlite-compatibility -- --sqlite-path "C:\local\decrypted-database.sqlite" --output-file ".\game-db\data\game-db-acquisition\compatibility.json"
+npm run run:game-db-sqlite-compatibility -- --store-root ".\game-db\data\game-db-acquisition\database-artifacts" --artifact-identity "<64-char-sha256-identity>" --output-file ".\game-db\data\game-db-acquisition\compatibility.json"
+# Or explicitly ask C4 to revalidate and resolve latest:
+npm run run:game-db-sqlite-compatibility -- --store-root ".\game-db\data\game-db-acquisition\database-artifacts" --latest --output-file ".\game-db\data\game-db-acquisition\compatibility.json"
 ```
 
 The result is `exact_profile_match`,
@@ -310,11 +316,34 @@ The result is `exact_profile_match`,
 It never authorizes native evidence reuse. A changed SQLite must refresh bounded
 ELF/DB48/DB49/DB50 evidence and receive a reviewed C4 baseline before C1–C3.
 Even an exact SQLite match still requires C4 with the exact pinned ELF and
-semantic artifacts. The command resolves one regular canonical input, performs
-header/hash/inspection sequentially, then revalidates realpath, device/inode,
-size, nanosecond mtime/ctime and SHA-256. Any replacement or mutation fails
-closed without emitting a compatibility report. Never run DB0–DB50 cumulatively
-for this refresh.
+semantic artifacts. The command first validates deterministic AQ metadata,
+marker, content-addressed identity, descriptor lineage, artifact SHA/size/state,
+containment, exact members, `nlink == 1` and read-only mode. It derives the SQLite
+path from that commit, performs header/hash/inspection sequentially, then
+revalidates both the file fingerprint and complete AQ commit. `latest` is accepted
+only through the explicit flag and its current/previous commits are revalidated.
+The productive API and CLI accept no arbitrary SQLite path. A locally decrypted
+SQLite therefore needs a separately reviewed deterministic derived-artifact
+commit before C4; the loose decrypted pathname is not C4 authority. Any
+replacement or mutation fails closed without emitting a compatibility report.
+Never run DB0–DB50 cumulatively for this refresh.
+
+## Threat model
+
+Treat every descriptor, supplied path, pointer, receipt and artifact member as
+untrusted. Acquisition and C4 detect corruption, substitution and races inside
+their operation boundaries. Promotion creates no writable aliases; complete
+commits are revalidated before pointer installation, immediately after it and at
+every consumption. If post-install validation fails, the prior validated pointer
+is restored atomically and the operation fails. Later corruption is a closed failure, never
+silent use. The workflow is manual/default-off, and neither a sanitized receipt
+nor `latest.json` grants authority over bytes.
+
+This model does not promise protection against a malicious process or
+administrator using the same OS identity after an operation returns, a
+filesystem/kernel compromise, or permanent physical immutability on writable
+storage. Reproducible races during acquisition, promotion, pointer update or C4
+consumption remain in scope despite those exclusions and must fail closed.
 
 ### 7. Build only a shadow first-party export
 

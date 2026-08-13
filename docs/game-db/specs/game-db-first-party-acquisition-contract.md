@@ -104,10 +104,39 @@ Producing this first-party export remains a later, explicit transformation:
 
 1. acquire and validate the Global EN artifact under AQ0–AQ6;
 2. decrypt locally if the artifact is `encrypted_or_packaged`;
-3. run the read-only SQLite/C4 compatibility evaluation;
+3. commit any readable SQLite under the AQ deterministic identity contract and
+   run the descriptor-bound read-only SQLite/C4 compatibility evaluation;
 4. write the normalized CSV tables;
 5. write this contract's `metadata.json`;
 6. place the export in a stable folder the runner can consume.
+
+The productive C4 contract accepts only `storeRoot + artifactIdentity`, or an
+explicit `storeRoot + useLatest` selector. It never accepts an arbitrary SQLite
+path and derives its path only after validating deterministic metadata, the
+commit marker, the content-addressed directory identity, descriptor lineage,
+artifact SHA/size/state, containment and the exact member set. `latest` is
+revalidated together with current and rollback commits whenever selected.
+Operational receipts are optional sanitized evidence of an operation; they are
+not deterministic identity and cannot authorize bytes or produce
+`acquiredArtifactState`.
+
+## Threat model
+
+Descriptors, paths, pointers, receipts and artifacts are untrusted inputs.
+Within each operation, AQ and its consumers detect corruption, replacement and
+races at their validated handle/path boundaries. Promotion creates independent
+read-only files rather than writable aliases, validates the complete commit
+before and immediately after atomic pointer installation, and atomically restores
+the prior validated pointer when post-install validation fails. Every consumer revalidates
+the complete commit before using bytes; subsequent corruption therefore fails
+closed and is never silently accepted. Manual/default-off status grants no
+authority to receipts or pointers.
+
+The contract does not claim protection against a malicious process or
+administrator operating under the same OS identity after return, a compromised
+filesystem or kernel, or permanent physical immutability on writable storage.
+These exclusions do not cover reproducible races during the operation; such
+races remain inside the threat model and must fail closed.
 
 The rest of the pipeline should then stay unchanged:
 

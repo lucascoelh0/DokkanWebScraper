@@ -4,6 +4,15 @@
 
 C4 refreshes only C1, C2, and C3 from already decrypted, read-only SQLite/ELF snapshots and already validated DB48/DB49/DB50 semantic artifacts. It never invokes the cumulative DB0–DB50 runner and does not rediscover native semantics.
 
+The productive compatibility entry point is descriptor-bound. It accepts only
+an AQ `storeRoot` plus a committed `artifactIdentity`, or an explicit `latest`
+selector. It validates deterministic metadata, marker, content-addressed
+identity, artifact SHA/size/state, descriptor lineage, containment and the exact
+member set before inspection, then revalidates the same commit after inspection.
+The CLI has no `--sqlite-path`, and no productive export can inspect an arbitrary
+SQLite file or publish `acquiredArtifactState` from one. `latest` and sanitized
+operational receipts are evidence/navigation only, never authority over bytes.
+
 Acceptance requires streaming SHA-256/size checks, a canonical SQLite table/column schema fingerprint, required-column checks, ELF format checks, exact semantic-artifact identities, source-artifact binding, read-only before/after fingerprints, deterministic downstream artifacts, a validated receipt, and a working-set ceiling of 1 GiB.
 
 ## Compatibility policy

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "crypto";
-import { FileHandle, link, lstat, mkdir, open, readdir, realpath, rename, rm, rmdir } from "fs/promises";
+import { FileHandle, lstat, mkdir, open, readdir, realpath, rename, rm, rmdir } from "fs/promises";
 import { request } from "https";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "path";
 import { Readable } from "stream";
@@ -234,8 +234,22 @@ export async function readAndValidateDatabaseDescriptor(filePath: string): Promi
     return validateClientAssetsDatabaseDescriptor(parsed);
 }
 
+export type ValidateAcquiredDatabaseArtifactOptions =
+    | { storeRoot: string, artifactIdentity: string }
+    | { storeRoot: string, useLatest: true };
+
+export interface ValidatedAcquiredDatabaseArtifact {
+    identity: string,
+    artifactDirectory: string,
+    artifactPath: string,
+    metadataPath: string,
+    commitMarkerPath: string,
+    metadata: GameDbAcquiredArtifactMetadata,
+    resolvedFromLatest: boolean,
+}
+
 interface DirectoryIdentity { path: string, realPath: string, dev: string, ino: string, mode: number }
-interface FileIdentity { path: string, dev: string, ino: string, size: string, mode: number, birthtimeNs: string, mtimeNs: string, ctimeNs: string }
+interface FileIdentity { path: string, dev: string, ino: string, nlink: string, size: string, mode: number, birthtimeNs: string, mtimeNs: string, ctimeNs: string }
 
 const ARTIFACT_MEMBER_NAMES = ["database.db", "metadata.json", "commit-marker.json"] as const;
 type ArtifactMemberName = typeof ARTIFACT_MEMBER_NAMES[number];
@@ -273,7 +287,7 @@ async function captureDirectoryIdentity(path: string, label: string): Promise<Di
     if (!metadata.isDirectory() || metadata.isSymbolicLink() || !samePath(canonical, resolved)) {
         throw new Error(`${label} must be a regular real directory, not a symlink, junction or reparse point`);
     }
-    return { path: resolved, realPath: resolve(canonical), dev: BigInt(metadata.dev).toString(), ino: BigInt(metadata.ino).toString(), mode: metadata.mode };
+    return { path: resolved, realPath: resolve(canonical), dev: BigInt(metadata.dev).toString(), ino: BigInt(metadata.ino).toString(), mode: Number(metadata.mode) };
 }
 
 async function sameDirectoryIdentity(expected: DirectoryIdentity): Promise<boolean> {
@@ -300,8 +314,9 @@ function fileIdentityFromStats(path: string, metadata: any): FileIdentity {
         path: resolve(path),
         dev: BigInt(metadata.dev).toString(),
         ino: BigInt(metadata.ino).toString(),
+        nlink: BigInt(metadata.nlink).toString(),
         size: BigInt(metadata.size).toString(),
-        mode: metadata.mode,
+        mode: Number(metadata.mode),
         birthtimeNs: BigInt(metadata.birthtimeNs).toString(),
         mtimeNs: BigInt(metadata.mtimeNs).toString(),
         ctimeNs: BigInt(metadata.ctimeNs).toString(),
@@ -309,14 +324,26 @@ function fileIdentityFromStats(path: string, metadata: any): FileIdentity {
 }
 
 function sameFileIdentity(left: FileIdentity, right: FileIdentity, includeMutableAttributes = true): boolean {
-    return left.dev === right.dev && left.ino === right.ino && left.mode === right.mode
+    return left.dev === right.dev && left.ino === right.ino && left.nlink === right.nlink && left.mode === right.mode
         && (!includeMutableAttributes || (left.size === right.size && left.birthtimeNs === right.birthtimeNs && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs));
 }
 
-function samePromotedMemberIdentity(before: FileIdentity, after: FileIdentity): boolean {
-    return before.dev === after.dev && before.ino === after.ino && before.mode === after.mode
-        && before.size === after.size && before.birthtimeNs === after.birthtimeNs && before.mtimeNs === after.mtimeNs
-        && BigInt(after.ctimeNs) >= BigInt(before.ctimeNs);
+function assertSingleLink(identity: FileIdentity, label: string): void {
+    if (identity.nlink !== "1") throw new Error(`${label} must have exactly one hard link`);
+}
+
+function assertReadOnlyMode(identity: FileIdentity, label: string): void {
+    if ((identity.mode & 0o222) !== 0) throw new Error(`${label} must be read-only`);
+}
+
+async function syncDirectoryIfSupported(directory: string): Promise<void> {
+    let handle: FileHandle | undefined;
+    try {
+        handle = await open(directory, "r");
+        await handle.sync();
+    } catch (error: any) {
+        if (!["EINVAL", "ENOTSUP", "EISDIR", "EBADF", "EPERM", "EACCES"].includes(error?.code)) throw error;
+    } finally { await handle?.close().catch(() => undefined); }
 }
 
 async function captureHandleFileIdentity(handle: FileHandle, path: string, label: string): Promise<FileIdentity> {
@@ -370,6 +397,25 @@ async function writeHandleFully(handle: FileHandle, bytes: Buffer): Promise<void
         const { bytesWritten } = await handle.write(bytes, offset, bytes.byteLength - offset, null);
         if (bytesWritten <= 0) throw new Error("Artifact store file write made no progress");
         offset += bytesWritten;
+    }
+}
+
+async function copyHandleFully(source: FileHandle, destination: FileHandle, size: number, hash?: ReturnType<typeof createHash>): Promise<void> {
+    if (!Number.isSafeInteger(size) || size < 0) throw new Error("Artifact store copy size is invalid");
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    let offset = 0;
+    while (offset < size) {
+        const { bytesRead } = await source.read(buffer, 0, Math.min(buffer.byteLength, size - offset), offset);
+        if (bytesRead <= 0) throw new Error("Artifact store source changed or copy made no progress");
+        const chunk = buffer.subarray(0, bytesRead);
+        hash?.update(chunk);
+        let written = 0;
+        while (written < bytesRead) {
+            const result = await destination.write(chunk, written, bytesRead - written, offset + written);
+            if (result.bytesWritten <= 0) throw new Error("Artifact store destination copy made no progress");
+            written += result.bytesWritten;
+        }
+        offset += bytesRead;
     }
 }
 
@@ -489,9 +535,9 @@ class ArtifactStoreGuard {
             || !await sameDirectoryIdentity(snapshot.directory)) throw new Error("Pending artifact directory identity changed");
 
         // Node has no portable rename-no-replace for directories. Reserve the
-        // final content-addressed name with exclusive mkdir, then install each
-        // already-open member with create-only link(2), marker last. An EEXIST
-        // reservation failure is never removed or replaced by this operation.
+        // final content-addressed name with exclusive mkdir, then copy each
+        // already-open member into an exclusive file, marker last. No final
+        // member shares an inode with mutable pending state.
         throwIfCancelled(signal);
         let reservation: { path: string, identity: DirectoryIdentity };
         try { reservation = await this.createExclusiveDirectory(target, "Reserved committed artifact directory"); }
@@ -505,30 +551,49 @@ class ArtifactStoreGuard {
                 const member = snapshot.members.get(name);
                 if (!member) throw new Error(`Pending artifact snapshot is missing ${name}`);
                 await assertPathMatchesFileIdentity(member.sourcePath, member.identity, `Pending artifact ${name}`);
-                const beforeLink = await captureHandleFileIdentity(member.handle, member.sourcePath, `Pending artifact ${name}`);
-                if (!sameFileIdentity(member.identity, beforeLink)) throw new Error(`Pending artifact ${name} changed before promotion`);
+                const beforeCopy = await captureHandleFileIdentity(member.handle, member.sourcePath, `Pending artifact ${name}`);
+                if (!sameFileIdentity(member.identity, beforeCopy)) throw new Error(`Pending artifact ${name} changed before promotion`);
                 throwIfCancelled(signal);
                 const installedPath = resolve(reservation.path, name);
                 await this.assertParent(installedPath, reservation.path);
-                await link(member.sourcePath, installedPath);
-                const linkedSource = await capturePathFileIdentity(member.sourcePath, `Pending artifact ${name} after link`);
-                const installed = await capturePathFileIdentity(installedPath, `Committed artifact ${name}`);
-                const opened = await captureHandleFileIdentity(member.handle, member.sourcePath, `Pending artifact ${name} after link`);
-                if (!sameFileIdentity(linkedSource, installed) || !sameFileIdentity(linkedSource, opened)
-                    || !samePromotedMemberIdentity(member.identity, linkedSource)) {
-                    throw new Error(`Committed artifact ${name} did not retain the material snapshot identity`);
+                const installedHandle = await open(installedPath, "wx", 0o600);
+                try {
+                    const created = await captureHandleFileIdentity(installedHandle, installedPath, `Committed artifact ${name}`);
+                    assertSingleLink(created, `Committed artifact ${name}`);
+                    await assertPathMatchesFileIdentity(installedPath, created, `Committed artifact ${name}`);
+                    const hash = createHash("sha256");
+                    await copyHandleFully(member.handle, installedHandle, Number(member.identity.size), hash);
+                    await installedHandle.sync();
+                    if (hash.digest("hex") !== member.sha256) throw new Error(`Pending artifact ${name} changed during copy`);
+                    const sourceAfter = await captureHandleFileIdentity(member.handle, member.sourcePath, `Pending artifact ${name} after copy`);
+                    if (!sameFileIdentity(member.identity, sourceAfter)) throw new Error(`Pending artifact ${name} changed during copy`);
+                    await assertPathMatchesFileIdentity(member.sourcePath, sourceAfter, `Pending artifact ${name} after copy`);
+                    const copied = await captureHandleFileIdentity(installedHandle, installedPath, `Committed artifact ${name}`);
+                    if (!sameFileIdentity(created, copied, false) || copied.size !== member.identity.size) throw new Error(`Committed artifact ${name} identity or size changed during copy`);
+                    assertSingleLink(copied, `Committed artifact ${name}`);
+                    await installedHandle.chmod(0o444);
+                    await installedHandle.sync();
+                    const readOnly = await captureHandleFileIdentity(installedHandle, installedPath, `Committed artifact ${name}`);
+                    assertSingleLink(readOnly, `Committed artifact ${name}`);
+                    assertReadOnlyMode(readOnly, `Committed artifact ${name}`);
+                    await assertPathMatchesFileIdentity(installedPath, readOnly, `Committed artifact ${name}`);
+                    if (readOnly.dev === sourceAfter.dev && readOnly.ino === sourceAfter.ino) throw new Error(`Committed artifact ${name} shares the pending inode`);
+                    this.files.set(installedPath, readOnly);
+                } finally {
+                    await installedHandle.close();
                 }
-                this.files.set(member.sourcePath, linkedSource);
-                this.files.set(installedPath, installed);
             }
 
             await assertExactArtifactDirectoryMembers(reservation.path, "Reserved committed artifact directory");
+            await syncDirectoryIfSupported(reservation.path);
+            await syncDirectoryIfSupported(dirname(reservation.path));
+            await assertPromotedArtifactSnapshot(this, reservation.path, reservation.identity, snapshot, signal);
             for (const name of ARTIFACT_MEMBER_NAMES) {
                 const member = snapshot.members.get(name)!;
                 await this.removeRegularFile(member.sourcePath, source);
             }
             await this.removeDirectory(source, snapshot.directory, []);
-            await assertPromotedArtifactSnapshot(this, reservation.path, reservation.identity, snapshot, signal);
+            await syncDirectoryIfSupported(dirname(reservation.path));
         } catch (error) {
             try { await this.quarantineControlledDirectory(reservation.path, reservation.identity, "Failed committed artifact quarantine"); }
             catch (recoveryError) {
@@ -536,6 +601,17 @@ class ArtifactStoreGuard {
             }
             throw error;
         }
+    }
+
+    static async openExisting(storeRoot: string): Promise<ArtifactStoreGuard> {
+        const resolved = resolve(storeRoot);
+        if (!isAbsolute(resolved) || resolved.includes("\0")) throw new Error("Artifact store root is invalid");
+        const guard = new ArtifactStoreGuard(resolved);
+        for (const path of directoryChain(resolved)) {
+            guard.directories.set(path, await captureDirectoryIdentity(path, path === resolved ? "Artifact store root" : "Artifact store parent"));
+        }
+        await guard.assertStable();
+        return guard;
     }
 
     private async quarantineControlledDirectory(path: string, identity: DirectoryIdentity, label: string): Promise<void> {
@@ -600,7 +676,7 @@ class ArtifactStoreGuard {
         if (retained > LOCAL_ARTIFACT_HISTORY_MAX_BYTES - reservedBytes) throw new Error("Artifact store retained history would exceed the 256 MiB local storage budget");
     }
 
-    async cloneTrackedRegularFileCreateOnly(from: string, fromParent: string, to: string, toParent: string, signal?: AbortSignal): Promise<FileIdentity> {
+    async copyTrackedRegularFileCreateOnly(from: string, fromParent: string, to: string, toParent: string, signal?: AbortSignal): Promise<FileIdentity> {
         const source = await this.assertParent(from, fromParent);
         const target = await this.assertParent(to, toParent);
         const identity = this.files.get(source);
@@ -609,19 +685,32 @@ class ArtifactStoreGuard {
         if (signal) throwIfCancelled(signal);
         await assertPathMatchesFileIdentity(source, identity, "Artifact store source file");
         await this.assertStable();
-        // link(2) is create-only: unlike rename(), it cannot overwrite a target
-        // that appears after validation.  The source is retained until the new
-        // pathname has independently proved the same inode and attributes.
-        await link(source, target);
-        const linkedSource = await capturePathFileIdentity(source, "Artifact store source file after link");
-        const installed = await capturePathFileIdentity(target, "Installed artifact store file");
-        if (!sameFileIdentity(linkedSource, installed) || !sameFileIdentity(identity, linkedSource, false)) {
-            throw new Error("Installed artifact store file identity changed during create-only promotion");
+        let sourceHandle: FileHandle | undefined;
+        let destinationHandle: FileHandle | undefined;
+        try {
+            sourceHandle = await open(source, "r");
+            destinationHandle = await open(target, "wx", identity.mode & 0o777);
+            const openedSource = await captureHandleFileIdentity(sourceHandle, source, "Artifact store source file");
+            if (!sameFileIdentity(identity, openedSource)) throw new Error("Artifact store source file changed before create-only copy");
+            const created = await captureHandleFileIdentity(destinationHandle, target, "Installed artifact store file");
+            assertSingleLink(created, "Installed artifact store file");
+            await copyHandleFully(sourceHandle, destinationHandle, Number(identity.size));
+            await destinationHandle.sync();
+            const sourceAfter = await captureHandleFileIdentity(sourceHandle, source, "Artifact store source file after copy");
+            const installed = await captureHandleFileIdentity(destinationHandle, target, "Installed artifact store file");
+            if (!sameFileIdentity(identity, sourceAfter) || !sameFileIdentity(created, installed, false) || installed.size !== identity.size) {
+                throw new Error("Installed artifact store file identity changed during create-only copy");
+            }
+            assertSingleLink(installed, "Installed artifact store file");
+            await assertPathMatchesFileIdentity(source, sourceAfter, "Artifact store source file after copy");
+            await assertPathMatchesFileIdentity(target, installed, "Installed artifact store file");
+            if (installed.dev === sourceAfter.dev && installed.ino === sourceAfter.ino) throw new Error("Installed artifact store file unexpectedly shares the source inode");
+            this.files.set(target, installed);
+        } finally {
+            await Promise.all([sourceHandle?.close(), destinationHandle?.close()]);
         }
-        this.files.set(source, linkedSource);
-        this.files.set(target, installed);
         await this.assertStable();
-        return installed;
+        return this.files.get(target)!;
     }
 
     async moveTrackedRegularFileToHistory(from: string, fromParent: string, historyLabel: string, signal?: AbortSignal, enforceCancellation = true, historyPrefix = ".file-history"): Promise<{ path: string, identity: FileIdentity }> {
@@ -652,6 +741,28 @@ class ArtifactStoreGuard {
         }
         await this.assertStable();
         return { path: target, identity: moved };
+    }
+
+    async installTrackedRegularFileAtomic(from: string, fromParent: string, to: string, toParent: string, label: string, signal?: AbortSignal): Promise<FileIdentity> {
+        const source = await this.assertParent(from, fromParent);
+        const target = await this.assertParent(to, toParent);
+        const expected = this.files.get(source);
+        if (!expected) throw new Error(`${label} source identity is not controlled`);
+        await assertPathMatchesFileIdentity(source, expected, `${label} source`);
+        try { await lstat(target); throw new Error(`${label} target was replaced before atomic installation`); }
+        catch (error: any) { if (error?.code !== "ENOENT") throw error; }
+        if (signal) throwIfCancelled(signal);
+        await assertPathMatchesFileIdentity(source, expected, `${label} source`);
+        try { await lstat(target); throw new Error(`${label} target was replaced before atomic installation`); }
+        catch (error: any) { if (error?.code !== "ENOENT") throw error; }
+        await rename(source, target);
+        const installed = await capturePathFileIdentity(target, label);
+        this.files.delete(source);
+        this.files.set(target, installed);
+        if (!sameFileIdentity(expected, installed, false)) throw new Error(`${label} atomic installation moved a replacement identity`);
+        await syncDirectoryIfSupported(toParent);
+        await this.assertStable();
+        return installed;
     }
 
     async discardTrackedRegularFile(from: string, fromParent: string, label: string, signal?: AbortSignal): Promise<void> {
@@ -744,6 +855,7 @@ async function openArtifactMaterialSnapshot(guard: ArtifactStoreGuard, pending: 
             catch { throw new Error(`Pending artifact ${name} must be a regular real file`); }
             try {
                 const opened = await captureHandleFileIdentity(handle, path, `Pending artifact ${name}`);
+                assertSingleLink(opened, `Pending artifact ${name}`);
                 if (!sameFileIdentity(pathIdentity, opened)) throw new Error(`Pending artifact ${name} pathname does not match its opened identity`);
                 await assertPathMatchesFileIdentity(path, opened, `Pending artifact ${name}`);
                 const canonical = resolve(await realpath(path));
@@ -795,18 +907,31 @@ async function assertPromotedArtifactSnapshot(guard: ArtifactStoreGuard, directo
         throwIfCancelled(signal);
         const member = snapshot.members.get(name)!;
         const target = await guard.assertParent(resolve(directory, member.relativePath), directory);
-        const opened = await captureHandleFileIdentity(member.handle, target, `Committed artifact ${name}`);
-        const pathIdentity = await capturePathFileIdentity(target, `Committed artifact ${name}`);
-        const canonical = resolve(await realpath(target));
-        if (!samePromotedMemberIdentity(member.identity, opened) || !sameFileIdentity(opened, pathIdentity)
-            || !samePath(canonical, target) || !samePath(dirname(canonical), directory)) {
-            throw new Error(`Committed artifact ${name} does not match its pre-promotion material snapshot`);
-        }
-        const value = await digestOpenArtifactMember(member.handle, opened, false);
-        const after = await captureHandleFileIdentity(member.handle, target, `Committed artifact ${name}`);
-        if (value.sha256 !== member.sha256 || !sameFileIdentity(opened, after)) throw new Error(`Committed artifact ${name} changed during post-promotion validation`);
-        await assertPathMatchesFileIdentity(target, after, `Committed artifact ${name}`);
-        guard.trackRegularFile(target, after);
+        const sourceBefore = await captureHandleFileIdentity(member.handle, member.sourcePath, `Pending artifact ${name}`);
+        if (!sameFileIdentity(member.identity, sourceBefore)) throw new Error(`Pending artifact ${name} changed after copy`);
+        await assertPathMatchesFileIdentity(member.sourcePath, sourceBefore, `Pending artifact ${name}`);
+        const sourceValue = await digestOpenArtifactMember(member.handle, sourceBefore, false);
+        const sourceAfter = await captureHandleFileIdentity(member.handle, member.sourcePath, `Pending artifact ${name}`);
+        if (sourceValue.sha256 !== member.sha256 || !sameFileIdentity(sourceBefore, sourceAfter)) throw new Error(`Pending artifact ${name} changed after copy`);
+
+        const finalHandle = await open(target, "r");
+        try {
+            const opened = await captureHandleFileIdentity(finalHandle, target, `Committed artifact ${name}`);
+            assertSingleLink(opened, `Committed artifact ${name}`);
+            assertReadOnlyMode(opened, `Committed artifact ${name}`);
+            const canonical = resolve(await realpath(target));
+            if (!samePath(canonical, target) || !samePath(dirname(canonical), directory)
+                || (opened.dev === sourceAfter.dev && opened.ino === sourceAfter.ino)
+                || opened.size !== member.identity.size) {
+                throw new Error(`Committed artifact ${name} is not an independent copy of its material snapshot`);
+            }
+            await assertPathMatchesFileIdentity(target, opened, `Committed artifact ${name}`);
+            const value = await digestOpenArtifactMember(finalHandle, opened, false);
+            const after = await captureHandleFileIdentity(finalHandle, target, `Committed artifact ${name}`);
+            if (value.sha256 !== member.sha256 || !sameFileIdentity(opened, after)) throw new Error(`Committed artifact ${name} changed during post-promotion validation`);
+            await assertPathMatchesFileIdentity(target, after, `Committed artifact ${name}`);
+            guard.trackRegularFile(target, after);
+        } finally { await finalHandle.close(); }
     }
     await assertExactArtifactDirectoryMembers(directory, "Committed artifact directory");
     if (!await sameDirectoryIdentity(directoryIdentity)) throw new Error("Reserved committed artifact directory identity changed during post-promotion validation");
@@ -1003,25 +1128,61 @@ async function readStableTextFile(guard: ArtifactStoreGuard, filePath: string, p
 async function validateCommittedArtifact(guard: ArtifactStoreGuard, artifactsRoot: string, identity: string, expectedMetadata?: GameDbAcquiredArtifactMetadata, signal?: AbortSignal): Promise<GameDbAcquiredArtifactMetadata> {
     if (!/^[a-f0-9]{64}$/.test(identity)) throw new Error("Committed artifact identity syntax is invalid");
     const directory = await guard.trackExistingDirectory(resolve(artifactsRoot, identity), "Committed artifact directory");
-    const entries = (await readdir(directory, { withFileTypes: true })).map(value => value.name).sort();
-    if (JSON.stringify(entries) !== JSON.stringify(["commit-marker.json", "database.db", "metadata.json"])) throw new Error("Committed artifact members are incomplete or unexpected");
-    const artifactPath = resolve(directory, "database.db");
-    const metadataPath = resolve(directory, "metadata.json");
-    const markerPath = resolve(directory, "commit-marker.json");
-    const storedMetadataText = await readStableTextFile(guard, metadataPath, directory, "Committed artifact metadata", signal);
-    let storedMetadataValue: unknown;
-    try { storedMetadataValue = JSON.parse(storedMetadataText); } catch { throw new Error("Committed artifact metadata JSON is malformed"); }
-    const metadata = parseCommittedMetadata(storedMetadataValue);
-    if (storedMetadataText !== canonicalJson(metadata) || artifactIdentity(metadata) !== identity || (expectedMetadata && canonicalJson(metadata) !== canonicalJson(expectedMetadata))) {
-        throw new Error("Existing immutable artifact identity does not validate");
-    }
-    const inspection = await inspectRegularArtifact(artifactPath, DEFAULT_DATABASE_ARTIFACT_MAX_BYTES, guard, directory, signal);
-    if (JSON.stringify(inspection) !== JSON.stringify({ observedSizeBytes: metadata.observedSizeBytes, localSha256: metadata.localSha256, artifactState: metadata.artifactState })) throw new Error("Existing immutable artifact identity does not validate");
-    const markerText = await readStableTextFile(guard, markerPath, directory, "Committed artifact marker", signal);
-    const expectedMarker = canonicalJson({ schemaVersion: 1, contract: "dokkan-game-db-artifact-commit", contractVersion: "1.0.0", identity, metadataSha256: createHash("sha256").update(storedMetadataText).digest("hex") });
-    if (markerText !== expectedMarker) throw new Error("Existing immutable artifact commit marker does not validate");
-    await guard.assertStable();
-    return metadata;
+    const directoryIdentity = await captureDirectoryIdentity(directory, "Committed artifact directory");
+    await assertExactArtifactDirectoryMembers(directory, "Committed artifact directory");
+    const opened = new Map<ArtifactMemberName, { path: string, handle: FileHandle, identity: FileIdentity, value: { sha256: string, prefix: Buffer, text?: string } }>();
+    try {
+        for (const name of ARTIFACT_MEMBER_NAMES) {
+            if (signal) throwIfCancelled(signal);
+            const path = await guard.assertParent(resolve(directory, name), directory);
+            const pathIdentity = await capturePathFileIdentity(path, `Committed artifact ${name}`);
+            assertSingleLink(pathIdentity, `Committed artifact ${name}`);
+            assertReadOnlyMode(pathIdentity, `Committed artifact ${name}`);
+            const handle = await open(path, "r");
+            try {
+                const handleIdentity = await captureHandleFileIdentity(handle, path, `Committed artifact ${name}`);
+                assertSingleLink(handleIdentity, `Committed artifact ${name}`);
+                assertReadOnlyMode(handleIdentity, `Committed artifact ${name}`);
+                const canonical = resolve(await realpath(path));
+                if (!sameFileIdentity(pathIdentity, handleIdentity) || !samePath(canonical, path) || !samePath(dirname(canonical), directory)) {
+                    throw new Error(`Committed artifact ${name} containment or identity does not validate`);
+                }
+                const value = await digestOpenArtifactMember(handle, handleIdentity, name !== "database.db");
+                const after = await captureHandleFileIdentity(handle, path, `Committed artifact ${name}`);
+                if (!sameFileIdentity(handleIdentity, after)) throw new Error(`Committed artifact ${name} changed during validation`);
+                await assertPathMatchesFileIdentity(path, after, `Committed artifact ${name}`);
+                guard.trackRegularFile(path, after);
+                opened.set(name, { path, handle, identity: after, value });
+            } catch (error) {
+                await handle.close();
+                throw error;
+            }
+        }
+        const database = opened.get("database.db")!;
+        const storedMetadataText = opened.get("metadata.json")!.value.text!;
+        const markerText = opened.get("commit-marker.json")!.value.text!;
+        let storedMetadataValue: unknown;
+        try { storedMetadataValue = JSON.parse(storedMetadataText); } catch { throw new Error("Committed artifact metadata JSON is malformed"); }
+        const metadata = parseCommittedMetadata(storedMetadataValue);
+        if (storedMetadataText !== canonicalJson(metadata) || artifactIdentity(metadata) !== identity || (expectedMetadata && canonicalJson(metadata) !== canonicalJson(expectedMetadata))) {
+            throw new Error("Existing immutable artifact identity does not validate");
+        }
+        const databaseState = database.value.prefix.equals(SQLITE_HEADER) ? "readable_sqlite" : "encrypted_or_packaged";
+        if (Number(database.identity.size) !== metadata.observedSizeBytes || database.value.sha256 !== metadata.localSha256 || databaseState !== metadata.artifactState) {
+            throw new Error("Existing immutable artifact identity does not validate");
+        }
+        const expectedMarker = canonicalJson({ schemaVersion: 1, contract: "dokkan-game-db-artifact-commit", contractVersion: "1.0.0", identity, metadataSha256: opened.get("metadata.json")!.value.sha256 });
+        if (markerText !== expectedMarker) throw new Error("Existing immutable artifact commit marker does not validate");
+        await assertExactArtifactDirectoryMembers(directory, "Committed artifact directory");
+        if (!await sameDirectoryIdentity(directoryIdentity)) throw new Error("Committed artifact directory identity changed during validation");
+        for (const [name, member] of opened) {
+            const after = await captureHandleFileIdentity(member.handle, member.path, `Committed artifact ${name}`);
+            if (!sameFileIdentity(member.identity, after)) throw new Error(`Committed artifact ${name} changed during validation`);
+            await assertPathMatchesFileIdentity(member.path, after, `Committed artifact ${name}`);
+        }
+        await guard.assertStable();
+        return metadata;
+    } finally { await Promise.all([...opened.values()].map(member => member.handle.close().catch(() => undefined))); }
 }
 
 interface LatestPointer { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: string, previousIdentity: string | null }
@@ -1039,6 +1200,21 @@ function parseLatestPointer(text: string): LatestPointer {
 
 function throwIfCancelled(signal: AbortSignal): void {
     if (signal.aborted) throw new Error("Database artifact acquisition cancelled");
+}
+
+async function validateLatestPointerAndCommits(guard: ArtifactStoreGuard, artifactsRoot: string, expectedCurrentIdentity?: string, signal?: AbortSignal): Promise<{ pointer: LatestPointer, metadata: GameDbAcquiredArtifactMetadata }> {
+    const latestPath = resolve(guard.root, "latest.json");
+    const firstText = await readStableTextFile(guard, latestPath, guard.root, "Latest pointer", signal);
+    const firstIdentity = guard.trackedRegularFile(latestPath);
+    if (!firstIdentity) throw new Error("Latest pointer identity was not retained");
+    const pointer = parseLatestPointer(firstText);
+    if (expectedCurrentIdentity && pointer.currentIdentity !== expectedCurrentIdentity) throw new Error("Latest pointer does not reference the expected committed artifact");
+    const metadata = await validateCommittedArtifact(guard, artifactsRoot, pointer.currentIdentity, undefined, signal);
+    if (pointer.previousIdentity) await validateCommittedArtifact(guard, artifactsRoot, pointer.previousIdentity, undefined, signal);
+    const secondText = await readStableTextFile(guard, latestPath, guard.root, "Latest pointer", signal);
+    const secondIdentity = guard.trackedRegularFile(latestPath);
+    if (!secondIdentity || firstText !== secondText || !sameFileIdentity(firstIdentity, secondIdentity)) throw new Error("Latest pointer changed while its commits were validated");
+    return { pointer, metadata };
 }
 
 async function promoteLatest(guard: ArtifactStoreGuard, artifactsRoot: string, identity: string, signal: AbortSignal): Promise<{ path: string, rollback: () => Promise<void> }> {
@@ -1063,6 +1239,7 @@ async function promoteLatest(guard: ArtifactStoreGuard, artifactsRoot: string, i
     }
     if (previousIdentity === identity) throw new Error("Latest pointer would create an identity cycle");
     const pointer = { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: identity, previousIdentity };
+    const candidatePath = resolve(guard.root, `.latest-candidate-${process.pid}-${randomBytes(12).toString("hex")}.json`);
     let priorHistory: { path: string, identity: FileIdentity } | undefined;
     let promotedIdentity: FileIdentity | undefined;
     throwIfCancelled(signal);
@@ -1071,7 +1248,10 @@ async function promoteLatest(guard: ArtifactStoreGuard, artifactsRoot: string, i
             priorHistory = await guard.moveTrackedRegularFileToHistory(latestPath, guard.root, "Prior latest pointer history", signal, true, ".latest-history");
             if (!sameFileIdentity(originalIdentity, priorHistory.identity, false)) throw new Error("Prior latest pointer history did not retain the validated identity");
         }
-        promotedIdentity = await writeExclusiveStableFile(guard, latestPath, guard.root, canonicalJson(pointer), "Latest pointer");
+        await writeExclusiveStableFile(guard, candidatePath, guard.root, canonicalJson(pointer), "Latest pointer candidate");
+        await validateCommittedArtifact(guard, artifactsRoot, identity, undefined, signal);
+        throwIfCancelled(signal);
+        promotedIdentity = await guard.installTrackedRegularFileAtomic(candidatePath, guard.root, latestPath, guard.root, "Latest pointer", signal);
         const rollback = async () => {
             await guard.assertStable();
             if (!promotedIdentity) throw new Error("Promoted latest pointer identity is unavailable for rollback");
@@ -1079,18 +1259,57 @@ async function promoteLatest(guard: ArtifactStoreGuard, artifactsRoot: string, i
             if (!sameFileIdentity(promotedIdentity, movedCurrent.identity, false)) throw new Error("Rollback moved a replacement latest pointer; it was retained for recovery");
             if (originalText !== null) {
                 if (!priorHistory || !guard.trackedRegularFile(priorHistory.path)) throw new Error("Validated prior latest pointer history is unavailable for rollback");
-                await guard.cloneTrackedRegularFileCreateOnly(priorHistory.path, dirname(priorHistory.path), latestPath, guard.root);
+                await guard.installTrackedRegularFileAtomic(priorHistory.path, dirname(priorHistory.path), latestPath, guard.root, "Prior latest pointer restoration");
             }
         };
-        try { throwIfCancelled(signal); } catch (error) { await rollback(); throw error; }
+        try {
+            throwIfCancelled(signal);
+            await validateLatestPointerAndCommits(guard, artifactsRoot, identity, signal);
+            throwIfCancelled(signal);
+        } catch (error) { await rollback(); throw error; }
         return { path: latestPath, rollback };
     } catch (error) {
+        if (guard.trackedRegularFile(candidatePath)) await guard.discardTrackedRegularFile(candidatePath, guard.root, "Failed latest pointer candidate discard").catch(() => undefined);
         if (!promotedIdentity && priorHistory && guard.trackedRegularFile(priorHistory.path)) {
-            try { await guard.cloneTrackedRegularFileCreateOnly(priorHistory.path, dirname(priorHistory.path), latestPath, guard.root); }
+            try { await guard.installTrackedRegularFileAtomic(priorHistory.path, dirname(priorHistory.path), latestPath, guard.root, "Prior latest pointer restoration"); }
             catch { /* retain validated history; never overwrite an occupied latest pathname */ }
         }
         throw error;
     }
+}
+
+export async function validateAcquiredDatabaseArtifact(options: ValidateAcquiredDatabaseArtifactOptions): Promise<ValidatedAcquiredDatabaseArtifact> {
+    if (arguments.length !== 1 || !isJsonObject(options)) throw new Error("Acquired artifact validation options are invalid");
+    const keys = Object.keys(options).sort();
+    const explicitIdentity = exactKeys(options, ["storeRoot", "artifactIdentity"]);
+    const explicitLatest = exactKeys(options, ["storeRoot", "useLatest"]);
+    if (!explicitIdentity && !explicitLatest) throw new Error("Acquired artifact validation requires storeRoot and exactly one artifact identity selector");
+    if (typeof options.storeRoot !== "string" || !options.storeRoot || options.storeRoot.includes("\0")) throw new Error("Acquired artifact storeRoot is invalid");
+    if (explicitIdentity && (typeof (options as any).artifactIdentity !== "string" || !/^[a-f0-9]{64}$/.test((options as any).artifactIdentity))) throw new Error("Acquired artifact identity is invalid");
+    if (explicitLatest && (options as any).useLatest !== true) throw new Error("Acquired artifact latest selector must be true");
+
+    const guard = await ArtifactStoreGuard.openExisting(options.storeRoot);
+    const artifactsRoot = await guard.trackExistingDirectory(resolve(guard.root, "artifacts"), "Artifact objects directory");
+    let identity: string;
+    let metadata: GameDbAcquiredArtifactMetadata;
+    if (explicitLatest) {
+        const validated = await validateLatestPointerAndCommits(guard, artifactsRoot);
+        identity = validated.pointer.currentIdentity;
+        metadata = validated.metadata;
+    } else {
+        identity = (options as { artifactIdentity: string }).artifactIdentity;
+        metadata = await validateCommittedArtifact(guard, artifactsRoot, identity);
+    }
+    const artifactDirectory = resolve(artifactsRoot, identity);
+    return {
+        identity,
+        artifactDirectory,
+        artifactPath: resolve(artifactDirectory, "database.db"),
+        metadataPath: resolve(artifactDirectory, "metadata.json"),
+        commitMarkerPath: resolve(artifactDirectory, "commit-marker.json"),
+        metadata,
+        resolvedFromLatest: explicitLatest,
+    };
 }
 
 async function writeOperationalReceipt(guard: ArtifactStoreGuard, receipt: GameDbOperationalReceipt, signal?: AbortSignal): Promise<string> {
@@ -1105,7 +1324,7 @@ async function writeOperationalReceipt(guard: ArtifactStoreGuard, receipt: GameD
     try {
         await writeExclusiveStableFile(guard, temporary, receiptsRoot, canonicalJson(receipt), "Operational receipt temporary");
         if (signal) throwIfCancelled(signal);
-        await guard.cloneTrackedRegularFileCreateOnly(temporary, receiptsRoot, target, receiptsRoot, signal);
+        await guard.copyTrackedRegularFileCreateOnly(temporary, receiptsRoot, target, receiptsRoot, signal);
         await guard.discardTrackedRegularFile(temporary, receiptsRoot, "Receipt staging discard", signal);
         if (signal) throwIfCancelled(signal);
         return target;
@@ -1227,7 +1446,7 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
             pending = await guard.createExclusiveDirectory(resolve(artifactsRoot, `.pending-${process.pid}-${randomBytes(6).toString("hex")}`), "Pending artifact directory");
             const artifactPath = resolve(pending.path, "database.db");
             throwIfCancelled(cancellationSignal);
-            await guard.cloneTrackedRegularFileCreateOnly(temporaryPath, guard.root, artifactPath, pending.path, cancellationSignal);
+            await guard.copyTrackedRegularFileCreateOnly(temporaryPath, guard.root, artifactPath, pending.path, cancellationSignal);
             await guard.discardTrackedRegularFile(temporaryPath, guard.root, "Downloaded artifact staging discard", cancellationSignal);
             throwIfCancelled(cancellationSignal);
             const metadataText = canonicalJson(metadata);
@@ -1270,6 +1489,8 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
         const receiptPath = await writeOperationalReceipt(guard, receipt, cancellationSignal);
         throwIfCancelled(cancellationSignal);
         latestCommit = await promoteLatest(guard, artifactsRoot, identity, cancellationSignal);
+        throwIfCancelled(cancellationSignal);
+        await validateLatestPointerAndCommits(guard, artifactsRoot, identity, cancellationSignal);
         throwIfCancelled(cancellationSignal);
         return {
             identity,

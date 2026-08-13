@@ -6,8 +6,8 @@
     {
       "key": "project_state",
       "fileName": "docs/project-state.md",
-      "sizeBytes": 20669,
-      "sha256": "39abc8855eea806b2cc91fef50ab7ecc40014c98fe4e0ff9c1fef5f0a1cc8cfc"
+      "sizeBytes": 20919,
+      "sha256": "51e8bb9cdb02417ecd47a77714ffd05597abd31b3db8672dd61d6e5c6ade03f0"
     },
     {
       "key": "s0_s7",
@@ -60,14 +60,32 @@
     {
       "key": "acquisition_contract",
       "fileName": "docs/game-db/specs/game-db-first-party-acquisition-contract.md",
-      "sizeBytes": 4297,
-      "sha256": "7a3f3cba22db9cd578d91591ffb1075567e9e77e7efc2cb5be592cebf029b11f"
+      "sizeBytes": 6070,
+      "sha256": "604d757fe678732fcc65896f8714ea6125e62880a3bc8a5aed70296df11c3b44"
+    },
+    {
+      "key": "manual_sqlite_acquisition_contract",
+      "fileName": "docs/game-db/specs/game-db-manual-sqlite-acquisition-aq0-aq6.md",
+      "sizeBytes": 17252,
+      "sha256": "e52a3321603b5a8a12612e0a4fe5258b2a55aafc1e1af316d7a729e99d253744"
     },
     {
       "key": "acquisition_playbook",
       "fileName": "docs/game-db/game-db-first-party-acquisition-playbook.md",
-      "sizeBytes": 17796,
-      "sha256": "c3bab223a7cb760821811f6de320f3d38e0de7448499b75768afcf83cf95e8e4"
+      "sizeBytes": 19906,
+      "sha256": "e71e4a03e84b89d8f1bd18426c5916c47913756fe169cc28eead1a327ab84f95"
+    },
+    {
+      "key": "c4_contract",
+      "fileName": "docs/game-db/specs/database-first-integration-c4.md",
+      "sizeBytes": 2259,
+      "sha256": "8ab59fe3e352b45d1529ea87606eb637aa3d61002e1a5a41fa79d977d0e26351"
+    },
+    {
+      "key": "game_db_readme",
+      "fileName": "game-db/README.md",
+      "sizeBytes": 7718,
+      "sha256": "2bb46dbd37e7a56996ccd3f319a07e1dc35f7a6b267b151de3e9602065a6ac95"
     },
     {
       "key": "r2_adr",
@@ -78,8 +96,14 @@
     {
       "key": "current_downloader",
       "fileName": "game-db/game-db-download-database-artifact.ts",
-      "sizeBytes": 81950,
-      "sha256": "9bcb06fe34276b56731917fd473e32d5d6f4459f487af3f8562d6adbb9b1fac8"
+      "sizeBytes": 96923,
+      "sha256": "4589c8bf401e36913c73a7d5c86e5f791c0fe980546c0812d5328c8aa7a4e1ad"
+    },
+    {
+      "key": "sqlite_compatibility",
+      "fileName": "game-db/game-db-sqlite-compatibility.ts",
+      "sizeBytes": 20646,
+      "sha256": "18c9dc7da9aadfb4e1f556a6e3e55dfe92bc1a8f8f2ac9432fcee47635b3413b"
     },
     {
       "key": "current_update_runner",

@@ -93,7 +93,7 @@ A identidade estável de asset é `file_path + algorithm + hash + size`; URL de 
 
 ## DD6 — shadow parity
 
-As 14 linhas exclusivas usam unidades de evidência, não entidades somáveis: seis agreements, três representation gains, três representation mismatches, um unknown, dois unjoinable e zero confirmed conflicts. Zero conflito nunca implica completude.
+As 14 linhas exclusivas usam unidades de evidência, não entidades somáveis: sete agreements, três representation gains, dois representation mismatches, um unknown, dois unjoinable e zero confirmed conflicts. Zero conflito nunca implica completude. A atualização de hardening AQ/C4 alterou somente a source lineage pinada de DD6; nenhuma classificação ou total mudou.
 
 - H6 concorda com o descritor da database e com a fronteira de path; H12 concorda que credenciais/autorização não estão prontas.
 - S0–S7 ganham os manifests obrigatórios repetidos e o inventário completo desta versão.

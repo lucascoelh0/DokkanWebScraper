@@ -141,21 +141,50 @@ previous commits. No delivery URL, query, credential or operational timestamp
 participates in the artifact identity.
 
 Promotion is create-only on Windows and POSIX: the final identity is reserved by
-exclusive directory creation, and the already-open, identity-pinned members are
-installed into that reservation with hard links, marker last. A raced destination
-is never replaced and an owned reservation that fails final validation is moved
-to a pinned quarantine instead of remaining under the content-addressed name.
+exclusive directory creation. Each validated pending `FileHandle` is streamed
+into an independently created `wx` member, fsynced, rehashed, required to have
+`nlink == 1`, and made read-only. Database and metadata are installed before the
+marker; the directory is fsynced where supported. No promotion step creates a
+hard link. Pending is removed only after every final member proves an independent
+inode. A raced destination is never replaced and an owned reservation that fails
+final validation is moved to a pinned quarantine instead of remaining under the
+content-addressed name.
 
 Readable artifacts are checked against the tracked canonical C4 profile only
 through the production read-only SQLite adapter:
 
 ```powershell
-npm run run:game-db-sqlite-compatibility -- --sqlite-path "C:\path\to\database.db"
+npm run run:game-db-sqlite-compatibility -- --store-root ".\game-db\data\game-db-acquisition\database-artifacts" --artifact-identity "<64-char-sha256-identity>"
+# Or explicitly resolve and revalidate the current commit:
+npm run run:game-db-sqlite-compatibility -- --store-root ".\game-db\data\game-db-acquisition\database-artifacts" --latest
 ```
 
-This compatibility report does not decrypt, export, refresh evidence, publish,
-promote production data or authorize reuse of pinned native evidence. Those are
-separate reviewed workflows.
+The productive C4 API has no arbitrary SQLite-path mode. It derives `database.db`
+only from a fully validated AQ commit, checks deterministic metadata, marker,
+content identity, descriptor lineage, size/SHA/state, containment and members,
+and repeats commit validation after inspection. Receipts and `latest.json` are
+not authority over bytes. This compatibility report does not decrypt, export,
+refresh evidence, publish, promote production data or authorize reuse of pinned
+native evidence. Those are separate reviewed workflows.
+
+### Acquisition threat model
+
+Descriptors, paths, pointers, receipts and artifact members are untrusted.
+Operations detect corruption, substitution and races within their execution
+boundaries; committed members are independent read-only files, and every
+consumer revalidates the complete pointed commit. Later corruption fails closed
+instead of being consumed silently. The manual/default-off workflow grants no
+byte authority to an operational receipt or to `latest.json`.
+`latest.json` is installed from a complete fsynced candidate; if immediate
+post-install commit validation fails, the prior validated pointer is restored
+atomically and success is not returned.
+
+This boundary does not promise protection from a malicious process or
+administrator running as the same OS identity after the operation returns, from
+a compromised filesystem/kernel, or permanent physical immutability on a
+writable filesystem. Those exclusions do not excuse reproducible substitutions
+or races during acquisition, promotion, pointer update or C4 consumption; those
+remain in scope and fail closed.
 
 ## Publish the game DB dataset to R2
 

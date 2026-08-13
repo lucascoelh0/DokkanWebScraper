@@ -65,16 +65,19 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   ELF/DB48/DB49/DB50 evidence automatically, including on an exact SQLite-only
   match. Its source boundary fingerprints one canonical regular file before and
   after sequential header/hash/inspection and fails closed on target or byte
-  drift. Its productive TypeScript/JavaScript API accepts no baseline,
-  inspection, hook or Python-command injection and uses only the tracked C4
-  baseline plus the production read-only adapter.
+  drift. Its productive TypeScript/JavaScript API accepts only an AQ store plus
+  committed identity, or an explicit fully revalidated `latest`; it accepts no
+  arbitrary SQLite path, baseline, inspection, hook or Python-command injection
+  and uses only the tracked C4 baseline plus the production read-only adapter.
 - The artifact store pins the canonical root and controlled-directory
   identities, rejects symlink/junction substitutions and revalidates durable
   boundaries. Before promotion it holds open and binds `database.db`,
   `metadata.json` and `commit-marker.json` to one material snapshot. Promotion
   reserves the final identity exclusively and installs those same members with
-  create-only links, marker last; a raced destination is never overwritten and
-  can win only if it validates as the exact complete commit. A failed owned
+  independent create-only handle copies, marker last, followed by fsync, exact
+  size/SHA validation, `nlink == 1` and read-only enforcement; no hard links are
+  created. A raced destination is never overwritten and can win only if it
+  validates as the exact complete commit. A failed owned
   reservation is quarantined by its pinned directory identity, so invalid
   promoted content cannot retain the legitimate content-addressed name.
 - Complete current/previous commits remain mandatory, and late cancellation

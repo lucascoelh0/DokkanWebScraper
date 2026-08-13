@@ -2,7 +2,7 @@ import { strict as assert } from "assert";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
-import { Dd6Dataset, Dd6SourceLock, validateDd6, validateDd6SourceLock } from "./data-download-dd6";
+import { buildDd6, Dd6Dataset, Dd6SourceLock, validateDd6, validateDd6SourceLock } from "./data-download-dd6";
 
 describe("data download DD6", () => {
     it("rejects parity source paths outside the repository and lock drift", async () => {
@@ -34,6 +34,25 @@ describe("data download DD6", () => {
                 writeFileSync(target, original);
             }
         } finally { rmSync(isolatedRoot, { recursive: true, force: true }); }
+    });
+
+    it("rejects detached lineage, envelope drift and row reclassification", async () => {
+        const root = process.cwd();
+        const lock = JSON.parse(readFileSync(resolve(root, "database-data-download-captures/data-download-dd6-source-lock.json"), "utf8")) as Dd6SourceLock;
+        const value = await buildDd6(root, lock, {
+            generatedAt: "2026-08-13T00:00:00.000Z",
+            database: { descriptorObservationCount: 3 },
+            clientAssets: { descriptorObservationCount: 5 },
+        } as any);
+        assert.equal(validateDd6(value, lock).valid, true);
+        const detached: any = JSON.parse(JSON.stringify(value)); detached.sourceLineage = [];
+        assert.equal(validateDd6(detached, lock).valid, false);
+        const changedVersion: any = JSON.parse(JSON.stringify(value)); changedVersion.contractVersion = "forged";
+        assert.equal(validateDd6(changedVersion, lock).valid, false);
+        const changedRow: any = JSON.parse(JSON.stringify(value)); changedRow.rows[0].classification = "unknown"; changedRow.totals.agreement -= 1; changedRow.totals.unknown += 1;
+        assert.equal(validateDd6(changedRow, lock).valid, false);
+        const forgedLineage: any = JSON.parse(JSON.stringify(value)); forgedLineage.sourceLineage[0].sha256 = "f".repeat(64);
+        assert.equal(validateDd6(forgedLineage, lock).valid, false);
     });
 
     it("rejects false-completeness accounting and identity drift", () => {

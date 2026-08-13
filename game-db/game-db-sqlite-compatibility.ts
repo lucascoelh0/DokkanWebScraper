@@ -5,6 +5,7 @@ import { dirname, resolve } from "path";
 import { ReadOnlySqliteAdapter, SqliteInspection } from "../database-experiment/sqlite-readonly-adapter";
 import { integrationC4SchemaSha256 } from "../database-integration/integration-c4-builder";
 import { IntegrationC4Baseline } from "../database-integration/integration-c4-contract";
+import { validateAcquiredDatabaseArtifact } from "./game-db-download-database-artifact";
 
 const SQLITE_HEADER = Buffer.from("SQLite format 3\u0000", "utf8");
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
@@ -19,9 +20,16 @@ export type GameDbSqliteCompatibilityStatus =
 export interface GameDbSqliteCompatibilityReport {
     schemaVersion: 1,
     contract: "dokkan-game-db-sqlite-compatibility",
-    contractVersion: "1.0.0",
+    contractVersion: "1.1.0",
     status: GameDbSqliteCompatibilityStatus,
     acquiredArtifactState: "readable_sqlite" | "encrypted_or_packaged",
+    acquiredArtifact: {
+        identity: string,
+        databaseVersion: number,
+        sha256: string,
+        sizeBytes: number,
+        resolvedFromLatest: boolean,
+    },
     c4Profile: {
         snapshotVersion: string,
         sourceDatabase: {
@@ -50,13 +58,11 @@ export interface GameDbSqliteCompatibilityReport {
         | "stop_incompatible_sqlite",
 }
 
-export interface GameDbSqliteCompatibilityOptions {
-    sqlitePath: string,
-}
+export type GameDbSqliteCompatibilityOptions =
+    | { storeRoot: string, artifactIdentity: string }
+    | { storeRoot: string, useLatest: true };
 
-export interface GameDbSqliteCompatibilityCliOptions extends GameDbSqliteCompatibilityOptions {
-    outputFile?: string,
-}
+export type GameDbSqliteCompatibilityCliOptions = GameDbSqliteCompatibilityOptions & { outputFile?: string };
 
 interface GameDbSqliteFileIdentity {
     dev: string,
@@ -125,6 +131,7 @@ function missingRequiredColumns(baseline: IntegrationC4Baseline, inspection: Sql
 function evaluateGameDbSqliteCompatibility(input: {
     baseline: IntegrationC4Baseline,
     acquiredArtifactState: "readable_sqlite" | "encrypted_or_packaged",
+    acquiredArtifact: GameDbSqliteCompatibilityReport["acquiredArtifact"],
     sourceDatabase?: { sha256: string, sizeBytes: number, inspection: SqliteInspection },
 }): GameDbSqliteCompatibilityReport {
     assertBaseline(input.baseline);
@@ -164,9 +171,10 @@ function evaluateGameDbSqliteCompatibility(input: {
     return {
         schemaVersion: 1,
         contract: "dokkan-game-db-sqlite-compatibility",
-        contractVersion: "1.0.0",
+        contractVersion: "1.1.0",
         status,
         acquiredArtifactState: input.acquiredArtifactState,
+        acquiredArtifact: input.acquiredArtifact,
         c4Profile: {
             snapshotVersion: input.baseline.snapshotVersion,
             sourceDatabase: {
@@ -298,46 +306,69 @@ async function verifyCanonicalSqliteUnchanged(input: {
 }
 
 export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompatibilityOptions): Promise<GameDbSqliteCompatibilityReport> {
-    if (arguments.length !== 1 || !options || typeof options !== "object" || Array.isArray(options)
-        || JSON.stringify(Object.keys(options).sort()) !== JSON.stringify(["sqlitePath"])) {
-        throw new Error("SQLite compatibility options must contain only sqlitePath");
-    }
-    if (typeof options.sqlitePath !== "string" || !options.sqlitePath || options.sqlitePath.includes("\0")) {
-        throw new Error("SQLite compatibility sqlitePath is invalid");
-    }
+    if (arguments.length !== 1 || !options || typeof options !== "object" || Array.isArray(options)) throw new Error("SQLite compatibility options are invalid");
+    const keys = Object.keys(options).sort();
+    const explicitIdentity = JSON.stringify(keys) === JSON.stringify(["artifactIdentity", "storeRoot"]);
+    const explicitLatest = JSON.stringify(keys) === JSON.stringify(["storeRoot", "useLatest"]);
+    if (!explicitIdentity && !explicitLatest) throw new Error("SQLite compatibility requires storeRoot and exactly one AQ artifact selector");
+    if (typeof options.storeRoot !== "string" || !options.storeRoot || options.storeRoot.includes("\0")) throw new Error("SQLite compatibility storeRoot is invalid");
+    if (explicitIdentity && (typeof (options as any).artifactIdentity !== "string" || !SHA256_PATTERN.test((options as any).artifactIdentity))) throw new Error("SQLite compatibility artifactIdentity is invalid");
+    if (explicitLatest && (options as any).useLatest !== true) throw new Error("SQLite compatibility useLatest selector must be true");
     const baselineText = await readFile(await canonicalBaselinePath(), "utf8");
     if (createHash("sha256").update(baselineText.replace(/\r\n/g, "\n")).digest("hex") !== CANONICAL_C4_BASELINE_SHA256) throw new Error("Canonical C4 baseline identity is invalid");
     const baseline = JSON.parse(baselineText) as unknown;
     assertBaseline(baseline);
-    const canonical = await canonicalSqliteInput(options.sqlitePath);
+    const acquired = await validateAcquiredDatabaseArtifact(explicitLatest
+        ? { storeRoot: options.storeRoot, useLatest: true }
+        : { storeRoot: options.storeRoot, artifactIdentity: (options as any).artifactIdentity });
+    const acquiredArtifact: GameDbSqliteCompatibilityReport["acquiredArtifact"] = {
+        identity: acquired.identity,
+        databaseVersion: acquired.metadata.databaseVersion,
+        sha256: acquired.metadata.localSha256,
+        sizeBytes: acquired.metadata.observedSizeBytes,
+        resolvedFromLatest: acquired.resolvedFromLatest,
+    };
+    const canonical = await canonicalSqliteInput(acquired.artifactPath);
     const fingerprint = await fingerprintCanonicalSqlite(canonical.canonicalPath, canonical.initialIdentity);
     let inspection: SqliteInspection | undefined;
     if (fingerprint.readableSqliteHeader) {
         inspection = await new ReadOnlySqliteAdapter(canonical.canonicalPath).inspect();
     }
     await verifyCanonicalSqliteUnchanged({ requestedPath: canonical.requestedPath, canonicalPath: canonical.canonicalPath, fingerprint });
-    if (!fingerprint.readableSqliteHeader) return evaluateGameDbSqliteCompatibility({ baseline, acquiredArtifactState: "encrypted_or_packaged" });
+    const revalidated = await validateAcquiredDatabaseArtifact(explicitLatest
+        ? { storeRoot: options.storeRoot, useLatest: true }
+        : { storeRoot: options.storeRoot, artifactIdentity: acquired.identity });
+    if (revalidated.identity !== acquired.identity || JSON.stringify(revalidated.metadata) !== JSON.stringify(acquired.metadata)) throw new Error("AQ artifact identity changed during C4 compatibility inspection");
+    if (!fingerprint.readableSqliteHeader) return evaluateGameDbSqliteCompatibility({ baseline, acquiredArtifactState: "encrypted_or_packaged", acquiredArtifact });
     if (!inspection) throw new Error("SQLite inspection result is missing");
     return evaluateGameDbSqliteCompatibility({
         baseline,
         acquiredArtifactState: "readable_sqlite",
+        acquiredArtifact,
         sourceDatabase: { sha256: fingerprint.sha256, sizeBytes: fingerprint.identity.sizeBytes, inspection },
     });
 }
 
 export function parseGameDbSqliteCompatibilityArgs(argv: string[]): GameDbSqliteCompatibilityCliOptions {
-    let sqlitePath: string | undefined;
+    let storeRoot: string | undefined;
+    let artifactIdentity: string | undefined;
+    let useLatest = false;
     let outputFile: string | undefined;
     for (let index = 0; index < argv.length; index += 1) {
         const token = argv[index];
+        if (token === "--latest") { if (useLatest) throw new Error("Duplicate --latest"); useLatest = true; continue; }
+        const name = token.includes("=") ? token.slice(0, token.indexOf("=")) : token;
         const value = token.includes("=") ? token.slice(token.indexOf("=") + 1) : argv[++index];
-        if (!value) throw new Error(`Missing value for ${token}`);
-        if (token === "--sqlite-path" || token.startsWith("--sqlite-path=")) sqlitePath = value;
-        else if (token === "--output-file" || token.startsWith("--output-file=")) outputFile = value;
-        else throw new Error(`Unexpected argument: ${token}`);
+        if (!value) throw new Error(`Missing value for ${name}`);
+        if (name === "--store-root") storeRoot = value;
+        else if (name === "--artifact-identity") artifactIdentity = value;
+        else if (name === "--output-file") outputFile = value;
+        else throw new Error(`Unexpected argument: ${name}`);
     }
-    if (!sqlitePath) throw new Error("Missing --sqlite-path");
-    return outputFile ? { sqlitePath, outputFile } : { sqlitePath };
+    if (!storeRoot) throw new Error("Missing --store-root");
+    if (Boolean(artifactIdentity) === useLatest) throw new Error("Choose exactly one of --artifact-identity or --latest");
+    const selector = useLatest ? { storeRoot, useLatest: true as const } : { storeRoot, artifactIdentity: artifactIdentity! };
+    return outputFile ? { ...selector, outputFile } : selector;
 }
 
 async function writeReportAtomic(outputFile: string, report: GameDbSqliteCompatibilityReport): Promise<void> {
@@ -355,7 +386,9 @@ async function writeReportAtomic(outputFile: string, report: GameDbSqliteCompati
 
 async function main(): Promise<void> {
     const options = parseGameDbSqliteCompatibilityArgs(process.argv.slice(2));
-    const report = await buildGameDbSqliteCompatibility({ sqlitePath: options.sqlitePath });
+    const report = await buildGameDbSqliteCompatibility("useLatest" in options
+        ? { storeRoot: options.storeRoot, useLatest: true }
+        : { storeRoot: options.storeRoot, artifactIdentity: options.artifactIdentity });
     if (options.outputFile) await writeReportAtomic(options.outputFile, report);
     console.log(JSON.stringify(report, null, 2));
 }

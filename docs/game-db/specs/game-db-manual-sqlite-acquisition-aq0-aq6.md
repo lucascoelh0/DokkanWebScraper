@@ -136,20 +136,23 @@ Validated bytes are promoted into a content-addressed directory in the ignored
 acquisition root and a commit marker is written last. Node exposes no portable
 directory rename-no-replace. The implementation therefore snapshots and opens
 the three exact pending members, reserves the final directory name with exclusive
-`mkdir` in the pinned parent, then installs the same member inodes with create-only
-hard links in database/metadata/marker order. It removes pending names only after
-all links validate and revalidates the final members against the pre-promotion
-snapshot. A destination introduced after initial inspection is never overwritten
+`mkdir` in the pinned parent, then streams each validated pending `FileHandle`
+into an independent `wx` member in database/metadata/marker order. Each final file
+is fsynced, revalidated for exact size/SHA-256, required to have `nlink == 1`, made
+read-only and rebound to its pathname. The directory is fsynced where supported.
+No hard link is used in promotion. Pending names are removed only after the full
+final commit validates and every pending/final device+inode pair proves distinct.
+A destination introduced after initial inspection is never overwritten
 or removed; it is reusable only if it independently validates as the same complete
 commit. A failed reservation owned by this operation is quarantined only while
 its pinned directory identity still matches, so invalid promoted content does not
-occupy the legitimate content-addressed name. Receipt installation is likewise
-create-only through a hard link.
+occupy the legitimate content-addressed name. Receipt and rollback-pointer
+installation likewise use independent create-only copies.
 Replacing `latest.json` atomically moves whichever pathname identity is present
 into a new controlled history directory and validates the identity actually
 moved before creating the complete new pointer exclusively. Rollback uses the
 same move-and-validate protocol and restores the validated prior history through
-a create-only link. Histories are intentionally retained because conditionally
+a create-only independent copy. Histories are intentionally retained because conditionally
 unlinking a pathname by identity is not portable in Node; a later bounded GC
 requires its own reviewed contract. Successful download/receipt staging is moved
 into an exclusive discard directory, identity-validated there and removed without
@@ -164,10 +167,11 @@ validation boundary. Type, containment and pathname identity are compared with
 the opened `FileHandle`; hashing or reading uses that same handle, with `fstat`
 before and after and a final pathname-to-handle identity check. The marker-last
 promotion snapshot additionally records the fixed relative path, realpath,
-device/inode, size, mode, birth/modify/change timestamps and SHA-256 for all three
-members and keeps their handles open through final revalidation. Hard-link count
-changes may advance `ctime`; device/inode, mode, size, birth time, `mtime` and
-SHA-256 must remain invariant. A member replaced between validation and use
+device/inode, link count, size, mode, birth/modify/change timestamps and SHA-256
+for all three members and keeps their handles open through final revalidation.
+Pending members must retain their exact identity with one link; final members
+must independently have one link, read-only mode and the same size/SHA-256. A
+member replaced between validation and use
 therefore fails closed instead of being followed.
 
 Immutable portable metadata contains only contract/schema versions, Global/en
@@ -242,12 +246,36 @@ timestamp, size, header or SHA-256 drift fails closed before a report is
 returned; observations from different identities can never produce a compatible
 report.
 
-The productive TypeScript and compiled JavaScript API accepts exactly one
-`sqlitePath`. It exports no evaluator and accepts no baseline file, inspection
-callback, hook, Python command or additional option/positional dependency. Only
-the production `ReadOnlySqliteAdapter` performs inspection. Tests exercise the
-closed compiled export surface directly; a header-only file cannot produce
-`exact_profile_match`.
+The productive TypeScript and compiled JavaScript API accepts only
+`storeRoot + artifactIdentity`, or `storeRoot + useLatest: true`. Before
+inspection it validates deterministic metadata, marker, content-addressed
+identity, artifact SHA/size/state, descriptor lineage, containment, exact members,
+single-link and read-only invariants. It derives the SQLite path from that commit,
+uses only the production `ReadOnlySqliteAdapter`, and repeats both file and commit
+validation after inspection. `latest` is never trusted alone: the pointer and its
+current/previous commits are validated together. The API exports no arbitrary
+path evaluator and the productive CLI has no `--sqlite-path`. A sanitized receipt
+may prove an operation but is neither deterministic identity nor byte authority.
+Tests exercise the closed compiled export surface directly; a header-only file
+cannot produce `exact_profile_match`.
+
+## Threat model
+
+Descriptors, paths, pointers, receipts and artifact members are untrusted.
+Operations detect corruption, substitution and races within their handle/path
+boundaries. Promotion creates independent read-only members, complete commits are
+revalidated at every consumption, and corruption after commit causes a closed
+failure rather than silent use. The manual/default-off tool grants no authority
+to receipts or pointers. A failed validation immediately after atomic `latest`
+installation atomically restores the prior validated pointer and never returns
+success; only directories whose
+owned identities remain proven may be quarantined or removed.
+
+Outside the model are a malicious process or administrator running as the same OS
+identity and changing permissions/files after return, a compromised
+filesystem/kernel, and permanent physical immutability on writable storage. This
+does not exclude deterministic races reproduced during the operation; they remain
+in scope and must fail closed.
 
 ## AQ6 — decisions
 
