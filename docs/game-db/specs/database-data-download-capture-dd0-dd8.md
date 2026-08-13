@@ -2,6 +2,21 @@
 
 DD0–DD8 auditam três HARs e quatro corpos externos exatos, sem emitir, preparar ou reproduzir requests. A implementação é aditiva, opcional, desabilitada por padrão e não contém cliente autenticado, alteração de Android, publisher, R2 ou geração produtiva. HARs, screenshots, corpos externos, SQLite, CPKs, URLs assinadas, query values, credenciais e dados de conta permanecem fora do Git.
 
+### Execução local explícita
+
+Os runners e o scanner staged não possuem diretório de captura default. Cada invocação deve fornecer o diretório externo da campanha por exatamente um destes meios:
+
+```powershell
+$env:DOKKAN_DD0_DD8_CAPTURE_ROOT = '<diretório externo da campanha>'
+npm run run:database-data-download-dd0
+```
+
+```powershell
+npm run run:database-data-download-dd0 -- --capture-root '<diretório externo da campanha>'
+```
+
+O mesmo argumento ou variável se aplica a DD1–DD8 e a `scan:database-data-download-staged`. Fornecer ambos, omitir o root ou passar argumentos adicionais falha fechado. O valor configurado nunca é incluído nas mensagens de erro. Antes de ler qualquer fonte, o runner resolve o root com `realpath`, rejeita root em symlink/junction e confirma que cada arquivo allowlisted é um arquivo regular direto cujo `realpath` permanece contido no root. Caminhos absolutos, traversal e links/junctions externos são rejeitados. O campo `captureRoot` do source lock é apenas um identificador lógico estável, não um caminho de filesystem.
+
 ## DD0 — source lock e segurança
 
 | Fonte | Bytes | Entradas | SHA-256 |
@@ -124,7 +139,7 @@ Não é necessária outra captura para concluir esta campanha. Dependências opc
 
 - TypeScript `--noEmit`: verde.
 - Build com `lib/` rastreável: verde.
-- Suíte focada: 20 testes verdes.
+- Suíte focada: 21 testes verdes com as fontes reais; 20 testes verdes e um teste real explicitamente pulado quando o root não é configurado.
 - DD0–DD8 reais: nove validações verdes.
 - Dupla geração: 21 artefatos, zero diferença de tamanho ou SHA-256.
 - Pico observado nos runners: 307,90 MiB, sob heap Node de 768 MiB e abaixo de 1 GiB.

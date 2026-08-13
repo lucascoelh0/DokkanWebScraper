@@ -1,16 +1,10 @@
-import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 import { resolve } from "path";
-import { getHeapStatistics } from "v8";
-import { Dd0SourceLock } from "./data-download-contract";
-import { buildDd0, collectDdExternalSensitiveValues, collectDdSensitiveValues, loadDdCaptures, loadDdExternalSources, scanVersionableTargets } from "./data-download-core";
-import { buildDd1, validateDd1 } from "./data-download-dd1";
+import { loadDdContext } from "./data-download-context";
+import { collectDdExternalSensitiveValues, collectDdSensitiveValues, scanVersionableTargets } from "./data-download-core";
+import { validateDd1 } from "./data-download-dd1";
 
-if (getHeapStatistics().heap_size_limit >= 1024 * 1024 * 1024) throw new Error("DD1 requires a Node heap below 1 GiB");
-const root = resolve(process.cwd());
-const lock = JSON.parse(readFileSync(resolve(root, "database-data-download-captures/data-download-source-lock.json"), "utf8")) as Dd0SourceLock;
-const loaded = loadDdCaptures("D:\\Dokkan\\har logs\\08-10", lock);
-const external = loadDdExternalSources("D:\\Dokkan\\har logs\\08-10", lock);
-const dataset = buildDd1(loaded, lock, buildDd0(lock, loaded, external));
+const { root, lock, loaded, external, dd1: dataset } = loadDdContext();
 const validation = validateDd1(dataset, lock);
 const targets = [
     { name: "database-data-download-captures/data-download-dd1-inventory.json", text: `${JSON.stringify(dataset, null, 2)}\n` },

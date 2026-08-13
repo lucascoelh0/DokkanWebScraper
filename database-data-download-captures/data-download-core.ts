@@ -54,13 +54,12 @@ export function validateDd0SourceLock(lock: Dd0SourceLock): void {
 }
 
 export function validateVersionableTarget(name: string, text: string): void {
-    if (typeof name !== "string" || !name || typeof text !== "string" || name.includes("\0")) throw new Error("invalid versionable target");
+    if (typeof name !== "string" || !name || typeof text !== "string" || name.includes("\0") || text.includes("\0")) throw new Error("invalid versionable target");
     const normalized = name.replace(/\\/g, "/").toLowerCase(), components = normalized.split("/");
     if (rawExternalNames.has(basename(normalized)) || forbiddenExtensions.has(extname(normalized)) || components.some(value => forbiddenComponents.has(value)) || /(?:^|[-_.])raw[-_.]?bod(?:y|ies)(?:[-_.]|$)/i.test(normalized) || /"log"\s*:\s*\{\s*"entries"\s*:/s.test(text)) throw new Error("forbidden versionable target classification");
 }
 
 function readContainedExternalSource(captureRoot: string, lock: DdExternalSourceLock): LoadedDdExternalSource {
-    const rootLink = lstatSync(captureRoot); if (!rootLink.isDirectory() || rootLink.isSymbolicLink()) throw new Error("DD0 external source root must be a regular directory");
     const realRoot = realpathSync.native(captureRoot);
     let resolvedName: string, discoveredQueryValueSecret: string | null = null, discoveredFileNameSecret: string | null = null;
     if (lock.locator === "exact_file_name") {
@@ -85,20 +84,42 @@ function readContainedExternalSource(captureRoot: string, lock: DdExternalSource
     } finally { closeSync(descriptor); }
 }
 
-export function loadDdExternalSources(captureRoot: string, lock: Dd0SourceLock): LoadedDdExternalSource[] { validateDd0SourceLock(lock); return lock.externalConfidentialSources.map(value => readContainedExternalSource(captureRoot, value)); }
+export function loadDdExternalSources(captureRoot: string, lock: Dd0SourceLock): LoadedDdExternalSource[] {
+    validateDd0SourceLock(lock);
+    let realRoot: string;
+    try {
+        const rootLink = lstatSync(captureRoot);
+        if (!rootLink.isDirectory() || rootLink.isSymbolicLink()) throw new Error("rejected");
+        realRoot = realpathSync.native(captureRoot);
+    } catch { throw new Error("DD0 external source root validation failed"); }
+    return lock.externalConfidentialSources.map(value => {
+        try { return readContainedExternalSource(realRoot, value); }
+        catch { throw new Error(`DD0 external source validation failed: ${value.sourceId}`); }
+    });
+}
 
 export function loadDdCaptures(captureRoot: string, lock: Dd0SourceLock): LoadedDdCapture[] {
     validateDd0SourceLock(lock);
+    let realRoot: string;
+    try {
+        const rootLink = lstatSync(captureRoot);
+        if (!rootLink.isDirectory() || rootLink.isSymbolicLink()) throw new Error("rejected");
+        realRoot = realpathSync.native(captureRoot);
+    } catch { throw new Error("DD0 capture root validation failed"); }
     return lock.captures.map(capture => {
-        const before = statSync(`${captureRoot}\\${capture.fileName}`, { bigint: true });
-        const link = lstatSync(`${captureRoot}\\${capture.fileName}`);
-        if (!before.isFile() || link.isSymbolicLink()) throw new Error(`DD0 source is not a regular contained file: ${capture.captureId}`);
-        const snapshot = readValidatedCaptureSnapshot(captureRoot, capture.fileName, capture.captureId);
-        const after = statSync(`${captureRoot}\\${capture.fileName}`, { bigint: true });
-        if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeNs !== after.mtimeNs) throw new Error(`DD0 source changed during read: ${capture.captureId}`);
-        if (Buffer.byteLength(snapshot.text) !== capture.sizeBytes || sha256(snapshot.text) !== capture.sha256 || Number(before.size) !== capture.sizeBytes || Math.abs(Number(before.mtimeNs / 1_000_000n) - Date.parse(capture.modifiedAt)) > 0) throw new Error(`DD0 source identity mismatch: ${capture.captureId}`);
-        const har = parseDdHar(snapshot.text, capture.captureId, capture.entryCount);
-        return { lock: { ...capture }, text: snapshot.text, har, sourceIdentityFingerprint: snapshot.sourceIdentityFingerprint };
+        try {
+            if (basename(capture.fileName) !== capture.fileName || isAbsolute(capture.fileName) || capture.fileName.includes("\0")) throw new Error("rejected");
+            const candidate = resolve(realRoot, capture.fileName), relation = relative(realRoot, candidate);
+            if (!relation || relation === ".." || relation.startsWith(`..${sep}`) || isAbsolute(relation) || dirname(candidate) !== realRoot) throw new Error("rejected");
+            const before = statSync(candidate, { bigint: true }), link = lstatSync(candidate);
+            if (!before.isFile() || link.isSymbolicLink() || realpathSync.native(candidate) !== candidate) throw new Error("rejected");
+            const snapshot = readValidatedCaptureSnapshot(realRoot, capture.fileName, capture.captureId);
+            const after = statSync(candidate, { bigint: true });
+            if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeNs !== after.mtimeNs) throw new Error("changed");
+            if (Buffer.byteLength(snapshot.text) !== capture.sizeBytes || sha256(snapshot.text) !== capture.sha256 || Number(before.size) !== capture.sizeBytes || Math.abs(Number(before.mtimeNs / 1_000_000n) - Date.parse(capture.modifiedAt)) > 0) throw new Error("identity");
+            const har = parseDdHar(snapshot.text, capture.captureId, capture.entryCount);
+            return { lock: { ...capture }, text: snapshot.text, har, sourceIdentityFingerprint: snapshot.sourceIdentityFingerprint };
+        } catch { throw new Error(`DD0 capture validation failed: ${capture.captureId}`); }
     });
 }
 
@@ -170,7 +191,12 @@ export function scanVersionableTargets(values: Set<string>, targets: Array<{ nam
 }
 
 export function stagedDdVersionableTargets(): Array<{ name: string; text: string }> {
-    const names = execFileSync("git", ["diff", "--cached", "--name-only", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
+    let names: string[];
+    try { names = execFileSync("git", ["diff", "--cached", "--name-only", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean); }
+    catch { throw new Error("DD staged secret scan could not enumerate staged targets"); }
     if (names.length === 0) throw new Error("DD staged secret scan requires at least one staged target");
-    return names.map(name => ({ name, text: execFileSync("git", ["show", `:${name}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }) }));
+    return names.map(name => {
+        try { return { name, text: execFileSync("git", ["show", `:${name}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }) }; }
+        catch { throw new Error("DD staged secret scan could not read a staged target"); }
+    });
 }

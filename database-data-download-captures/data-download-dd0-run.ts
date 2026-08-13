@@ -1,15 +1,9 @@
-import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 import { resolve } from "path";
-import { getHeapStatistics } from "v8";
-import { Dd0SourceLock } from "./data-download-contract";
-import { buildDd0, collectDdExternalSensitiveValues, collectDdSensitiveValues, loadDdCaptures, loadDdExternalSources, scanVersionableTargets } from "./data-download-core";
+import { loadDdContext } from "./data-download-context";
+import { collectDdExternalSensitiveValues, collectDdSensitiveValues, scanVersionableTargets } from "./data-download-core";
 
-if (getHeapStatistics().heap_size_limit >= 1024 * 1024 * 1024) throw new Error("DD0 requires a Node heap below 1 GiB");
-const root = resolve(process.cwd());
-const lock = JSON.parse(readFileSync(resolve(root, "database-data-download-captures/data-download-source-lock.json"), "utf8")) as Dd0SourceLock;
-const loaded = loadDdCaptures("D:\\Dokkan\\har logs\\08-10", lock);
-const external = loadDdExternalSources("D:\\Dokkan\\har logs\\08-10", lock);
-const dataset = buildDd0(lock, loaded, external);
+const { root, loaded, external, dd0: dataset } = loadDdContext();
 const text = `${JSON.stringify(dataset, null, 2)}\n`;
 const sensitiveValues = collectDdSensitiveValues(loaded); for (const value of collectDdExternalSensitiveValues(external)) sensitiveValues.add(value);
 const secretScan = scanVersionableTargets(sensitiveValues, [{ name: "database-data-download-captures/data-download-dd0-source-audit.json", text }]);
