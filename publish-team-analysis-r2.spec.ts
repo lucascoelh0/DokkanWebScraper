@@ -5,7 +5,7 @@ import { tmpdir } from "os";
 import { resolve } from "path";
 import { gzipSync } from "zlib";
 import { afterEach, beforeEach, describe, it } from "mocha";
-import { buildCharacterDatasetArtifact } from "./dataset-artifacts";
+import { buildCharacterDatasetArtifact, DatasetManifest } from "./dataset-artifacts";
 import {
     buildTeamAnalysisDatasetObjectKey,
     CommandResult,
@@ -89,6 +89,28 @@ describe("Team Analysis R2 delivery gate", function () {
         equal(plan.remoteManifest.stateCount, 1);
         equal(plan.remoteManifest.sourceCharacterPayloadSha256, fixture.characterArtifact.manifest.sha256);
         equal(plan.payloadUploadNeeded, true);
+    });
+
+    it("accepts the exact content-addressed fileName used by the public Characters manifest", async () => {
+        await mutateCharacterManifest(fixture, manifest => {
+            const versionSlug = manifest.datasetVersion.replace(/:/g, "-");
+            manifest.fileName = `releases/${versionSlug}/${manifest.sha256}/characters.json.gz`;
+        });
+
+        const plan = await readTeamAnalysisR2PublishPlan(fixture.options, fixture.runner);
+        equal(plan.remoteManifest.sourceCharacterPayloadSha256, fixture.characterArtifact.manifest.sha256);
+    });
+
+    it("rejects unsafe or non-content-addressed Characters manifest keys", async () => {
+        await mutateCharacterManifest(fixture, manifest => {
+            manifest.fileName = "releases/../characters.json.gz";
+        });
+        await rejects(() => readTeamAnalysisR2PublishPlan(fixture.options, fixture.runner), /traversal-free/);
+
+        await mutateCharacterManifest(fixture, manifest => {
+            manifest.fileName = `releases/characters-v1/${"0".repeat(64)}/characters.json.gz`;
+        });
+        await rejects(() => readTeamAnalysisR2PublishPlan(fixture.options, fixture.runner), /Unexpected character manifest fileName/);
     });
 
     it("accepts a character whose optional catalog identity is absent", async () => {
@@ -523,6 +545,15 @@ async function mutateManifest(fixture: Fixture, mutate: (manifest: TeamAnalysisM
     const manifest = { ...fixture.artifact.manifest };
     mutate(manifest);
     await writeFile(fixture.options.manifestPath, serialize(manifest));
+}
+
+async function mutateCharacterManifest(
+    fixture: Fixture,
+    mutate: (manifest: DatasetManifest) => void,
+): Promise<void> {
+    const manifest = { ...fixture.characterArtifact.manifest };
+    mutate(manifest);
+    await writeFile(fixture.options.characterManifestPath, serialize(manifest));
 }
 
 function makeRemoteManifest(local: TeamAnalysisManifest): TeamAnalysisManifest {

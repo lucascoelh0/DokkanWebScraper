@@ -68,10 +68,6 @@ function validateCharacterManifest(manifest: DatasetManifest, gzipBuffer: Buffer
     if (manifest.schemaVersion !== 1 || manifest.compression !== "gzip") {
         throw new Error("Unsupported character manifest schema or compression.");
     }
-    assertSafeLocalFileName(manifest.fileName, "character manifest fileName");
-    if (manifest.fileName !== "characters.json.gz") {
-        throw new Error(`Unexpected character manifest fileName: ${manifest.fileName}`);
-    }
     if (typeof manifest.datasetVersion !== "string" || manifest.datasetVersion.trim().length === 0) {
         throw new Error("Character manifest datasetVersion must be a non-empty string.");
     }
@@ -79,6 +75,7 @@ function validateCharacterManifest(manifest: DatasetManifest, gzipBuffer: Buffer
         throw new Error("Character manifest generatedAt must be a valid timestamp.");
     }
     assertSha256(manifest.sha256, "character manifest sha256");
+    assertExpectedCharacterManifestFileName(manifest);
     assertNonNegativeSafeInteger(manifest.sizeBytes, "character manifest sizeBytes");
     assertNonNegativeSafeInteger(manifest.uncompressedSizeBytes, "character manifest uncompressedSizeBytes");
     assertNonNegativeSafeInteger(manifest.characterCount, "character manifest characterCount");
@@ -95,6 +92,21 @@ function validateCharacterManifest(manifest: DatasetManifest, gzipBuffer: Buffer
         throw new Error(
             `Character payload uncompressed size ${uncompressed.byteLength} does not match manifest uncompressedSizeBytes ${manifest.uncompressedSizeBytes}.`,
         );
+    }
+}
+
+function assertExpectedCharacterManifestFileName(manifest: DatasetManifest): void {
+    if (manifest.fileName === "characters.json.gz") {
+        return;
+    }
+    assertSafeRelativeObjectKey(manifest.fileName, "character manifest fileName");
+    const versionSlug = manifest.datasetVersion.trim().replace(/:/g, "-").replace(/[^\w.-]/g, "_");
+    if (!versionSlug || versionSlug.includes("..")) {
+        throw new Error(`Character manifest datasetVersion cannot form a safe release key: ${manifest.datasetVersion}`);
+    }
+    const expected = `releases/${versionSlug}/${manifest.sha256.toLowerCase()}/characters.json.gz`;
+    if (manifest.fileName !== expected) {
+        throw new Error(`Unexpected character manifest fileName: ${manifest.fileName}; expected ${expected}.`);
     }
 }
 
@@ -266,6 +278,20 @@ function assertSafeLocalFileName(value: unknown, label: string): asserts value i
         || value === ".."
     ) {
         throw new Error(`${label} must not be absolute or contain path traversal: ${value}`);
+    }
+}
+
+function assertSafeRelativeObjectKey(value: unknown, label: string): asserts value is string {
+    if (typeof value !== "string" || value.length === 0) {
+        throw new Error(`${label} must be a non-empty string.`);
+    }
+    const segments = value.split("/");
+    if (value.startsWith("/")
+        || value.startsWith("\\")
+        || /^[A-Za-z]:[\\/]/.test(value)
+        || value.includes("\\")
+        || segments.some(segment => segment.length === 0 || segment === "." || segment === "..")) {
+        throw new Error(`${label} must be a relative traversal-free object key: ${value}`);
     }
 }
 
