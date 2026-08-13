@@ -109,83 +109,47 @@ Useful runner-only flags:
 
 Publish flags such as `--dry-run`, `--local`, `--skip-portraits`, `--force-portraits`, and `--bucket` are forwarded through.
 
-## First-party acquisition helpers
+## Manual official SQLite acquisition
 
-### Initialize the contract folder
-
-```powershell
-npm run run:game-db-init-first-party-export
-```
-
-### Promote an existing known-good export
+The acquisition input is always an externally supplied, exact
+`/client_assets/database` descriptor. Descriptor validation is offline and
+performs no request:
 
 ```powershell
-$env:DOKKAN_GAME_DB_SOURCE_ROOT="C:\path\to\dokkan-backend"
-npm run run:game-db-promote-first-party-export
+npm run run:game-db-download-database-artifact -- --descriptor-json "C:\path\to\database-descriptor.json" --dry-run
 ```
 
-### Build directly from a readable SQLite DB
+An already available artifact can be inspected only when it is bound to the
+same validated descriptor:
 
 ```powershell
-npm run run:game-db-build-first-party-export -- --sqlite-path "C:\path\to\database.db" --settings-json "C:\path\to\settings.json"
+npm run run:game-db-download-database-artifact -- --descriptor-json "C:\path\to\database-descriptor.json" --artifact-path "C:\path\to\database.db"
 ```
 
-### Download a DB artifact from a captured `/client_assets/database`
+The one allowlisted official CDN GET is a distinct manual action and requires
+separate authorization:
 
 ```powershell
-npm run run:game-db-download-database-artifact -- --client-assets-json "C:\path\to\client-assets-database.json" --settings-json "C:\path\to\settings.json"
+npm run run:game-db-download-database-artifact -- --descriptor-json "C:\path\to\database-descriptor.json" --authorize-download
 ```
 
-Or:
+Authorized acquisition streams into an ignored content-addressed store. Each
+committed identity contains `database.db`, deterministic `metadata.json` and a
+marker-last `commit-marker.json`. Sanitized operational receipts live under
+`receipts/`; `latest.json` references only complete validated current and
+previous commits. No delivery URL, query, credential or operational timestamp
+participates in the artifact identity.
+
+Readable artifacts are checked against the tracked canonical C4 profile only
+through the production read-only SQLite adapter:
 
 ```powershell
-npm run run:game-db-download-database-artifact -- --database-url "https://example.com/database.db"
+npm run run:game-db-sqlite-compatibility -- --sqlite-path "C:\path\to\database.db"
 ```
 
-Writes:
-
-- `./game-db/data/game-db-acquisition/downloads/latest/database.db`
-- `./game-db/data/game-db-acquisition/downloads/latest/download-metadata.json`
-
-### Pull a DB artifact from a rooted emulator
-
-```powershell
-npm run run:game-db-pull-emulator-database-artifact -- --device-serial "emulator-5554"
-```
-
-Writes:
-
-- `./game-db/data/game-db-acquisition/downloads/emulator-backup-latest/database.db`
-- `./game-db/data/game-db-acquisition/downloads/emulator-backup-latest/pull-metadata.json`
-
-### Local SQLCipher toolchain
-
-```powershell
-python -m venv .venv-sqlcipher
-.\.venv-sqlcipher\Scripts\python -m pip install --upgrade pip
-.\.venv-sqlcipher\Scripts\python -m pip install sqlcipher3
-```
-
-Decrypt a DB artifact with:
-
-```powershell
-.\.venv-sqlcipher\Scripts\python game-db\game-db-decrypt-sqlcipher.py --input-path ".\game-db\data\game-db-acquisition\downloads\emulator-backup-latest\database.db" --output-path ".\game-db\data\game-db-acquisition\downloads\emulator-backup-latest\database.decrypted.sqlite" --key "<candidate-db-key>"
-```
-
-Useful flags:
-
-- `--cipher-compatibility 3` for the older backup-style artifact flow
-- `--cipher-compatibility 4` for the full rooted-emulator asset DB at `files/assets/sqlite/current/en/database.db`
-- `--key-mode hex` if the key should be interpreted as raw hex bytes instead of plain text
-
-### Full rooted-emulator asset DB flow
-
-```powershell
-npm run run:game-db-pull-emulator-database-artifact -- --device-serial "emulator-5554" --remote-path "/data/data/com.bandainamcogames.dbzdokkanww/files/assets/sqlite/current/en/database.db" --output-dir ".\game-db\data\game-db-acquisition\downloads\emulator-assets-sqlite-current-en"
-.\.venv-sqlcipher\Scripts\python game-db\game-db-decrypt-sqlcipher.py --input-path ".\game-db\data\game-db-acquisition\downloads\emulator-assets-sqlite-current-en\database.db" --output-path ".\game-db\data\game-db-acquisition\downloads\emulator-assets-sqlite-current-en\database.decrypted.sqlite" --key "<GlbDbPassword>" --cipher-compatibility 4
-npm run run:game-db-build-first-party-export -- --sqlite-path ".\game-db\data\game-db-acquisition\downloads\emulator-assets-sqlite-current-en\database.decrypted.sqlite" --settings-json "C:\path\to\settings.json"
-npm run run:game-db-update -- --acquisition-mode first-party-export --first-party-dir ".\game-db\data\game-db-acquisition\first-party\latest" --bucket dokkanpanion-data --dry-run --skip-portraits --local
-```
+This compatibility report does not decrypt, export, refresh evidence, publish,
+promote production data or authorize reuse of pinned native evidence. Those are
+separate reviewed workflows.
 
 ## Publish the game DB dataset to R2
 

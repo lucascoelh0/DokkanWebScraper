@@ -89,10 +89,21 @@ metadata are not normal inputs. Legacy URL-only use is NO-GO.
 The acquisition root is a local operator choice or the ignored default under
 `game-db/data/`. Descriptor paths are logical POSIX paths only. Absolute,
 drive-relative, UNC, device, traversal, mixed-separator and NUL-containing paths
-are rejected. Existing roots and input files are resolved with `realpath`;
-symlinks/junctions that escape the allowed root are rejected. Store filenames
+are rejected. The store resolves and pins the canonical root plus every existing
+parent by device/inode. Root, `artifacts/`, pending and committed directories,
+`receipts/` and the writer lock must be real directories; symlinks, junctions,
+reparse substitutions and concurrent identity changes fail closed. Every file
+boundary revalidates its controlled parent before and after use. Store filenames
 come from a fixed allowlist and content identities, never from descriptor URL or
 user-controlled output names.
+
+Node does not expose portable `openat`/directory-relative rename primitives.
+The implementation therefore keeps pinned directory identities and revalidates
+the root, parents and all controlled directories immediately before and after
+each durable boundary. Cleanup occurs only when the originally pinned parent
+and pending-directory identities still match; otherwise it is refused. This
+prevents path-based cleanup through a replaced root or `artifacts/` junction and
+makes any detected concurrent replacement a hard failure.
 
 ## AQ3 — transport and validation
 
@@ -145,8 +156,20 @@ The receipt filename/path is local operational state and is not embedded in its
 JSON body.
 
 The local `latest` pointer is promoted atomically only after artifact, metadata
-and commit marker validation. The previous content-addressed version is retained
-for rollback. AQ0–AQ6 performs no deletion or pruning.
+and commit marker validation. Both referenced identities must have canonical
+syntax and complete byte/metadata/marker-valid commits; missing, corrupt,
+arbitrary, equal or cyclic current/previous references fail without changing the
+existing pointer. Reacquiring the current identity preserves `previousIdentity`
+only after that rollback commit validates completely.
+
+One cancellation helper is checked before transport, after streaming, around
+artifact promotion, metadata, marker and receipt commits, immediately before and
+after `latest`, and before success returns. Cancellation never returns success or
+leaves a new latest pointer. Temporary and pending state is removed only while
+its pinned containment still validates. A marker-complete content-addressed
+artifact may remain orphaned after cancellation observed just after promotion;
+it is safe immutable content, while deleting it would create a race with reuse.
+AQ0–AQ6 performs no pruning.
 
 ## AQ5 — decryption, export and C4 boundary
 
@@ -157,7 +180,8 @@ authorized execution against local bytes. Neither transition occurs inside the
 downloader.
 
 `run:game-db-sqlite-compatibility` compares a readable SQLite identity and
-canonical schema with the current C4 baseline and returns exactly one of:
+canonical schema with the tracked canonical C4 baseline and returns exactly one
+of:
 
 - `exact_profile_match` — SQLite identity and complete schema match C4;
 - `schema_compatible_but_evidence_refresh_required` — required tables/columns
@@ -180,6 +204,13 @@ bytes are hashed again. Any target replacement, in-place mutation or identity,
 timestamp, size, header or SHA-256 drift fails closed before a report is
 returned; observations from different identities can never produce a compatible
 report.
+
+The productive TypeScript and compiled JavaScript API accepts exactly one
+`sqlitePath`. It exports no evaluator and accepts no baseline file, inspection
+callback, hook, Python command or additional option/positional dependency. Only
+the production `ReadOnlySqliteAdapter` performs inspection. Tests exercise the
+closed compiled export surface directly; a header-only file cannot produce
+`exact_profile_match`.
 
 ## AQ6 — decisions
 

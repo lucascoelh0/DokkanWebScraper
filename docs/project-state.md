@@ -40,8 +40,11 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ### AQ0–AQ6 — manual official SQLite acquisition infrastructure
 
-- AQ0–AQ6 is implemented as an offline-by-default, manual and fail-closed
-  acquisition boundary. It validates an externally supplied Global EN
+- AQ0–AQ6 is present on its dedicated correction/review branch as an
+  offline-by-default, manual and fail-closed acquisition boundary. This state
+  record does not certify the branch as ready to merge; presence after any
+  future fast-forward likewise does not authorize acquisition or production.
+  It validates an externally supplied Global EN
   `/client_assets/database` descriptor or inspects an already downloaded local
   artifact bound to that descriptor; import, parsing and dry-run issue no
   requests.
@@ -60,11 +63,17 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   ELF/DB48/DB49/DB50 evidence automatically, including on an exact SQLite-only
   match. Its source boundary fingerprints one canonical regular file before and
   after sequential header/hash/inspection and fails closed on target or byte
-  drift.
-- Offline descriptor/artifact validation and merge of reviewed disabled
-  infrastructure are GO. Official download, decryption, refresh, publication,
-  production promotion and Android remain NO-GO pending independent and
-  separately authorized gates.
+  drift. Its productive TypeScript/JavaScript API accepts no baseline,
+  inspection, hook or Python-command injection and uses only the tracked C4
+  baseline plus the production read-only adapter.
+- The artifact store pins the canonical root and controlled-directory
+  identities, rejects symlink/junction substitutions, revalidates durable
+  boundaries, validates complete current/previous commits and fails closed on
+  late cancellation without promoting `latest`.
+- Offline descriptor/artifact validation remains the only reviewable AQ path.
+  Merge is not asserted by this checkpoint. Official download, decryption,
+  refresh, publication, production promotion and Android remain NO-GO pending
+  independent and separately authorized gates.
 
 ### E0–E9 — events, stages, enemies and bosses
 

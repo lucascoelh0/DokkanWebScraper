@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { createReadStream, existsSync } from "fs";
+import { createReadStream } from "fs";
 import { lstat, mkdir, open, readFile, realpath, rename, stat, unlink, writeFile } from "fs/promises";
 import { dirname, resolve } from "path";
 import { ReadOnlySqliteAdapter, SqliteInspection } from "../database-experiment/sqlite-readonly-adapter";
@@ -8,6 +8,7 @@ import { IntegrationC4Baseline } from "../database-integration/integration-c4-co
 
 const SQLITE_HEADER = Buffer.from("SQLite format 3\u0000", "utf8");
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
+const CANONICAL_C4_BASELINE_SHA256 = "c46ccbfe6581e2c1f681c3527420cc432fa7f0b91ca32d52a24b4df6e79999a1";
 
 export type GameDbSqliteCompatibilityStatus =
     | "exact_profile_match"
@@ -51,18 +52,10 @@ export interface GameDbSqliteCompatibilityReport {
 
 export interface GameDbSqliteCompatibilityOptions {
     sqlitePath: string,
-    baselineFile?: string,
-    outputFile?: string,
-    pythonCommand?: string,
 }
 
-export interface GameDbSqliteCompatibilityDependencies {
-    inspectSqlite?: (canonicalPath: string, pythonCommand?: string) => Promise<SqliteInspection>,
-    hooks?: {
-        afterCanonicalResolution?: (context: { requestedPath: string, canonicalPath: string }) => void | Promise<void>,
-        afterPreInspectionFingerprint?: (context: { requestedPath: string, canonicalPath: string, sha256: string }) => void | Promise<void>,
-        afterInspection?: (context: { requestedPath: string, canonicalPath: string, sha256: string }) => void | Promise<void>,
-    },
+export interface GameDbSqliteCompatibilityCliOptions extends GameDbSqliteCompatibilityOptions {
+    outputFile?: string,
 }
 
 interface GameDbSqliteFileIdentity {
@@ -79,11 +72,20 @@ interface GameDbSqliteFileFingerprint {
     readableSqliteHeader: boolean,
 }
 
-function defaultBaselinePath(): string {
-    const adjacent = resolve(__dirname, "..", "database-integration", "integration-c4-baseline.json");
-    return existsSync(adjacent)
-        ? adjacent
-        : resolve(process.cwd(), "database-integration", "integration-c4-baseline.json");
+async function canonicalBaselinePath(): Promise<string> {
+    let directory = resolve(__dirname);
+    while (true) {
+        const candidate = resolve(directory, "database-integration", "integration-c4-baseline.json");
+        const packageFile = resolve(directory, "package.json");
+        try {
+            const packageReal = await realpath(packageFile);
+            const candidateReal = await realpath(candidate);
+            if (sameCanonicalPath(packageReal, packageFile) && sameCanonicalPath(candidateReal, candidate)) return candidateReal;
+        } catch { /* keep walking to the repository root */ }
+        const parent = dirname(directory);
+        if (parent === directory) throw new Error("Canonical C4 baseline is unavailable");
+        directory = parent;
+    }
 }
 
 function assertBaseline(value: unknown): asserts value is IntegrationC4Baseline {
@@ -120,7 +122,7 @@ function missingRequiredColumns(baseline: IntegrationC4Baseline, inspection: Sql
     return missing;
 }
 
-export function evaluateGameDbSqliteCompatibility(input: {
+function evaluateGameDbSqliteCompatibility(input: {
     baseline: IntegrationC4Baseline,
     acquiredArtifactState: "readable_sqlite" | "encrypted_or_packaged",
     sourceDatabase?: { sha256: string, sizeBytes: number, inspection: SqliteInspection },
@@ -233,7 +235,7 @@ function sameCanonicalPath(left: string, right: string): boolean {
     return process.platform === "win32" ? resolve(left).toLowerCase() === resolve(right).toLowerCase() : resolve(left) === resolve(right);
 }
 
-async function canonicalSqliteInput(inputPath: string, dependencies: GameDbSqliteCompatibilityDependencies): Promise<{
+async function canonicalSqliteInput(inputPath: string): Promise<{
     requestedPath: string,
     canonicalPath: string,
     initialIdentity: GameDbSqliteFileIdentity,
@@ -246,7 +248,6 @@ async function canonicalSqliteInput(inputPath: string, dependencies: GameDbSqlit
     let canonicalPath: string;
     try { canonicalPath = await realpath(requestedPath); }
     catch { throw new Error("SQLite input realpath resolution failed"); }
-    await dependencies.hooks?.afterCanonicalResolution?.({ requestedPath, canonicalPath });
     let currentRequested: any, currentCanonical: any, currentRealpath: string;
     try {
         currentRequested = await lstat(requestedPath, { bigint: true });
@@ -296,19 +297,24 @@ async function verifyCanonicalSqliteUnchanged(input: {
     }
 }
 
-export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompatibilityOptions, dependencies: GameDbSqliteCompatibilityDependencies = {}): Promise<GameDbSqliteCompatibilityReport> {
-    const baseline = JSON.parse(await readFile(resolve(options.baselineFile ?? defaultBaselinePath()), "utf8")) as unknown;
+export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompatibilityOptions): Promise<GameDbSqliteCompatibilityReport> {
+    if (arguments.length !== 1 || !options || typeof options !== "object" || Array.isArray(options)
+        || JSON.stringify(Object.keys(options).sort()) !== JSON.stringify(["sqlitePath"])) {
+        throw new Error("SQLite compatibility options must contain only sqlitePath");
+    }
+    if (typeof options.sqlitePath !== "string" || !options.sqlitePath || options.sqlitePath.includes("\0")) {
+        throw new Error("SQLite compatibility sqlitePath is invalid");
+    }
+    const baselineText = await readFile(await canonicalBaselinePath(), "utf8");
+    if (createHash("sha256").update(baselineText.replace(/\r\n/g, "\n")).digest("hex") !== CANONICAL_C4_BASELINE_SHA256) throw new Error("Canonical C4 baseline identity is invalid");
+    const baseline = JSON.parse(baselineText) as unknown;
     assertBaseline(baseline);
-    const canonical = await canonicalSqliteInput(options.sqlitePath, dependencies);
+    const canonical = await canonicalSqliteInput(options.sqlitePath);
     const fingerprint = await fingerprintCanonicalSqlite(canonical.canonicalPath, canonical.initialIdentity);
-    await dependencies.hooks?.afterPreInspectionFingerprint?.({ requestedPath: canonical.requestedPath, canonicalPath: canonical.canonicalPath, sha256: fingerprint.sha256 });
     let inspection: SqliteInspection | undefined;
     if (fingerprint.readableSqliteHeader) {
-        inspection = await (dependencies.inspectSqlite
-            ? dependencies.inspectSqlite(canonical.canonicalPath, options.pythonCommand)
-            : new ReadOnlySqliteAdapter(canonical.canonicalPath, options.pythonCommand).inspect());
+        inspection = await new ReadOnlySqliteAdapter(canonical.canonicalPath).inspect();
     }
-    await dependencies.hooks?.afterInspection?.({ requestedPath: canonical.requestedPath, canonicalPath: canonical.canonicalPath, sha256: fingerprint.sha256 });
     await verifyCanonicalSqliteUnchanged({ requestedPath: canonical.requestedPath, canonicalPath: canonical.canonicalPath, fingerprint });
     if (!fingerprint.readableSqliteHeader) return evaluateGameDbSqliteCompatibility({ baseline, acquiredArtifactState: "encrypted_or_packaged" });
     if (!inspection) throw new Error("SQLite inspection result is missing");
@@ -319,21 +325,19 @@ export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompat
     });
 }
 
-export function parseGameDbSqliteCompatibilityArgs(argv: string[]): GameDbSqliteCompatibilityOptions {
+export function parseGameDbSqliteCompatibilityArgs(argv: string[]): GameDbSqliteCompatibilityCliOptions {
     let sqlitePath: string | undefined;
-    let baselineFile: string | undefined;
     let outputFile: string | undefined;
     for (let index = 0; index < argv.length; index += 1) {
         const token = argv[index];
         const value = token.includes("=") ? token.slice(token.indexOf("=") + 1) : argv[++index];
         if (!value) throw new Error(`Missing value for ${token}`);
         if (token === "--sqlite-path" || token.startsWith("--sqlite-path=")) sqlitePath = value;
-        else if (token === "--baseline-file" || token.startsWith("--baseline-file=")) baselineFile = value;
         else if (token === "--output-file" || token.startsWith("--output-file=")) outputFile = value;
         else throw new Error(`Unexpected argument: ${token}`);
     }
     if (!sqlitePath) throw new Error("Missing --sqlite-path");
-    return { sqlitePath, baselineFile, outputFile };
+    return outputFile ? { sqlitePath, outputFile } : { sqlitePath };
 }
 
 async function writeReportAtomic(outputFile: string, report: GameDbSqliteCompatibilityReport): Promise<void> {
@@ -351,7 +355,7 @@ async function writeReportAtomic(outputFile: string, report: GameDbSqliteCompati
 
 async function main(): Promise<void> {
     const options = parseGameDbSqliteCompatibilityArgs(process.argv.slice(2));
-    const report = await buildGameDbSqliteCompatibility(options);
+    const report = await buildGameDbSqliteCompatibility({ sqlitePath: options.sqlitePath });
     if (options.outputFile) await writeReportAtomic(options.outputFile, report);
     console.log(JSON.stringify(report, null, 2));
 }

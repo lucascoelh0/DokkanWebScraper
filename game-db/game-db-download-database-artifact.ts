@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "crypto";
-import { createReadStream, existsSync } from "fs";
-import { lstat, mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from "fs/promises";
+import { createReadStream } from "fs";
+import { lstat, mkdir, open, readFile, readdir, realpath, rename, rm, rmdir, stat, writeFile } from "fs/promises";
 import { request } from "https";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "path";
 import { Readable } from "stream";
@@ -177,9 +177,13 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 function deliveryTimestampForVersion(version: number): string {
     const date = new Date(version * 1000);
     if (!Number.isFinite(date.getTime())) throw new Error("Descriptor version is outside the supported timestamp range");
-    const digits = [date.getUTCFullYear().toString().padStart(4, "0"), (date.getUTCMonth() + 1).toString().padStart(2, "0"), date.getUTCDate().toString().padStart(2, "0")].join("");
+    const year = date.getUTCFullYear();
+    if (!Number.isInteger(year) || year < 0 || year > 9999) throw new Error("Descriptor version UTC year must use exactly four digits");
+    const digits = [year.toString().padStart(4, "0"), (date.getUTCMonth() + 1).toString().padStart(2, "0"), date.getUTCDate().toString().padStart(2, "0")].join("");
     const time = [date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()].map(value => value.toString().padStart(2, "0")).join("");
-    return `${digits}-${time}`;
+    const timestamp = `${digits}-${time}`;
+    if (!/^\d{8}-\d{6}$/.test(timestamp)) throw new Error("Descriptor version timestamp is not canonical UTC");
+    return timestamp;
 }
 
 export function validateClientAssetsDatabaseDescriptor(value: unknown): ValidatedDatabaseDescriptor {
@@ -243,16 +247,152 @@ export async function readAndValidateDatabaseDescriptor(filePath: string): Promi
     return validateClientAssetsDatabaseDescriptor(parsed);
 }
 
-async function assertStoreRoot(storeRoot: string): Promise<string> {
-    const resolved = resolve(storeRoot);
-    if (!isAbsolute(resolved) || resolved.includes("\0")) throw new Error("Artifact store root is invalid");
-    await mkdir(resolved, { recursive: true });
-    const link = await lstat(resolved);
-    const real = await realpath(resolved);
-    if (!link.isDirectory() || link.isSymbolicLink() || resolve(real).toLowerCase() !== resolved.toLowerCase()) {
-        throw new Error("Artifact store root must be a regular real directory, not a symlink or junction");
+interface DirectoryIdentity { path: string, dev: string, ino: string }
+
+function samePath(left: string, right: string): boolean {
+    return process.platform === "win32" ? resolve(left).toLowerCase() === resolve(right).toLowerCase() : resolve(left) === resolve(right);
+}
+
+async function captureDirectoryIdentity(path: string, label: string): Promise<DirectoryIdentity> {
+    const resolved = resolve(path);
+    let metadata: any, canonical: string;
+    try {
+        metadata = await lstat(resolved, { bigint: true });
+        canonical = await realpath(resolved);
+    } catch { throw new Error(`${label} must be a real directory`); }
+    if (!metadata.isDirectory() || metadata.isSymbolicLink() || !samePath(canonical, resolved)) {
+        throw new Error(`${label} must be a regular real directory, not a symlink, junction or reparse point`);
     }
-    return real;
+    return { path: resolved, dev: BigInt(metadata.dev).toString(), ino: BigInt(metadata.ino).toString() };
+}
+
+async function sameDirectoryIdentity(expected: DirectoryIdentity): Promise<boolean> {
+    try {
+        const actual = await captureDirectoryIdentity(expected.path, "Controlled directory");
+        return actual.dev === expected.dev && actual.ino === expected.ino;
+    } catch { return false; }
+}
+
+function directoryChain(path: string): string[] {
+    const paths: string[] = [];
+    let current = resolve(path);
+    while (true) {
+        paths.unshift(current);
+        const parent = dirname(current);
+        if (parent === current) return paths;
+        current = parent;
+    }
+}
+
+class ArtifactStoreGuard {
+    private readonly directories = new Map<string, DirectoryIdentity>();
+
+    private constructor(readonly root: string) {}
+
+    static async open(storeRoot: string): Promise<ArtifactStoreGuard> {
+        const resolved = resolve(storeRoot);
+        if (!isAbsolute(resolved) || resolved.includes("\0")) throw new Error("Artifact store root is invalid");
+        const chain = directoryChain(resolved);
+        let existing = chain.length - 1;
+        while (existing >= 0) {
+            try { await lstat(chain[existing]); break; }
+            catch { existing -= 1; }
+        }
+        if (existing < 0) throw new Error("Artifact store root has no existing filesystem ancestor");
+        for (let index = 0; index <= existing; index += 1) await captureDirectoryIdentity(chain[index], "Artifact store parent");
+        await mkdir(resolved, { recursive: true });
+        const guard = new ArtifactStoreGuard(resolved);
+        for (const path of chain) guard.directories.set(path, await captureDirectoryIdentity(path, path === resolved ? "Artifact store root" : "Artifact store parent"));
+        await guard.assertStable();
+        return guard;
+    }
+
+    ensureContained(candidate: string, allowRoot = false): string {
+        const target = resolve(candidate);
+        if (allowRoot && samePath(target, this.root)) return target;
+        const relation = relative(this.root, target);
+        if (!relation || relation === ".." || relation.startsWith(`..${sep}`) || isAbsolute(relation)) throw new Error("Artifact store path escaped containment");
+        return target;
+    }
+
+    async assertStable(): Promise<void> {
+        for (const identity of this.directories.values()) {
+            if (!await sameDirectoryIdentity(identity)) throw new Error(`Artifact store directory identity changed: ${identity.path}`);
+        }
+    }
+
+    async trackExistingDirectory(path: string, label: string): Promise<string> {
+        await this.assertStable();
+        const target = this.ensureContained(path);
+        const identity = await captureDirectoryIdentity(target, label);
+        this.directories.set(target, identity);
+        await this.assertStable();
+        return target;
+    }
+
+    async ensureDirectory(path: string, label: string): Promise<string> {
+        await this.assertStable();
+        const target = this.ensureContained(path);
+        try { await mkdir(target); }
+        catch (error: any) { if (error?.code !== "EEXIST") throw error; }
+        return this.trackExistingDirectory(target, label);
+    }
+
+    async createExclusiveDirectory(path: string, label: string): Promise<{ path: string, identity: DirectoryIdentity }> {
+        await this.assertStable();
+        const target = this.ensureContained(path);
+        await mkdir(target);
+        const identity = await captureDirectoryIdentity(target, label);
+        this.directories.set(target, identity);
+        await this.assertStable();
+        return { path: target, identity };
+    }
+
+    async promoteDirectory(from: string, to: string): Promise<void> {
+        await this.assertStable();
+        const source = this.ensureContained(from), target = this.ensureContained(to);
+        const identity = this.directories.get(source);
+        if (!identity || !await sameDirectoryIdentity(identity)) throw new Error("Pending artifact directory identity changed");
+        await rename(source, target);
+        this.directories.delete(source);
+        const promoted = await captureDirectoryIdentity(target, "Committed artifact directory");
+        if (promoted.dev !== identity.dev || promoted.ino !== identity.ino) throw new Error("Artifact directory identity changed during promotion");
+        this.directories.set(target, promoted);
+        await this.assertStable();
+    }
+
+    async assertParent(path: string, parent: string): Promise<string> {
+        await this.assertStable();
+        const target = this.ensureContained(path);
+        const expectedParent = resolve(parent);
+        if (!samePath(dirname(target), expectedParent) || !this.directories.has(expectedParent)) throw new Error("Artifact store parent is not controlled");
+        return target;
+    }
+
+    async removeRegularFile(path: string, parent: string): Promise<void> {
+        const target = await this.assertParent(path, parent);
+        let metadata: any;
+        try { metadata = await lstat(target); }
+        catch (error: any) { if (error?.code === "ENOENT") return; throw error; }
+        const canonical = await realpath(target);
+        if (!metadata.isFile() || metadata.isSymbolicLink() || !samePath(canonical, target)) throw new Error("Refusing to clean a replaced temporary file");
+        await rm(target, { force: true });
+        await this.assertStable();
+    }
+
+    async removeDirectory(path: string, identity: DirectoryIdentity, allowedFiles: string[]): Promise<void> {
+        await this.assertStable();
+        const target = this.ensureContained(path);
+        if (!samePath(target, identity.path) || !await sameDirectoryIdentity(identity)) throw new Error("Refusing to clean a replaced controlled directory");
+        const entries = await readdir(target, { withFileTypes: true });
+        for (const entry of entries) {
+            if (!allowedFiles.includes(entry.name) || !entry.isFile() || entry.isSymbolicLink()) throw new Error("Refusing to clean unexpected pending-directory content");
+            await assertRegularRealFile(resolve(target, entry.name), "Pending artifact member");
+        }
+        this.directories.delete(target);
+        if (entries.length === 0) await rmdir(target); else await rm(target, { recursive: true });
+        await this.assertStable();
+    }
 }
 
 function normalizedHeader(headers: DatabaseArtifactTransportResponse["headers"], name: string): string | undefined {
@@ -295,7 +435,8 @@ async function inspectStreamToFile(input: {
     };
 }
 
-async function inspectRegularArtifact(filePath: string, maxBytes: number): Promise<GameDbArtifactInspection> {
+async function inspectRegularArtifact(filePath: string, maxBytes: number, guard?: ArtifactStoreGuard, parent?: string): Promise<GameDbArtifactInspection> {
+    if (guard && parent) await guard.assertParent(filePath, parent);
     const realFile = await assertRegularRealFile(filePath, "Artifact input");
     const before = await stat(realFile);
     if (before.size <= 0 || before.size > maxBytes) throw new Error("Artifact input size is outside the allowed range");
@@ -313,6 +454,7 @@ async function inspectRegularArtifact(filePath: string, maxBytes: number): Promi
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || observedSizeBytes !== after.size) {
         throw new Error("Artifact input changed during validation");
     }
+    if (guard) await guard.assertStable();
     return { observedSizeBytes, localSha256: hash.digest("hex"), artifactState: header.equals(SQLITE_HEADER) ? "readable_sqlite" : "encrypted_or_packaged" };
 }
 
@@ -383,60 +525,148 @@ function receiptBase(descriptor: ValidatedDatabaseDescriptor, metadata: GameDbAc
     };
 }
 
-function ensureContained(root: string, candidate: string): void {
-    const relation = relative(root, candidate);
-    if (!relation || relation === ".." || relation.startsWith(`..${sep}`) || isAbsolute(relation)) throw new Error("Artifact store path escaped containment");
+function exactKeys(value: Record<string, unknown>, expected: string[]): boolean {
+    return JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
 }
 
-async function validateCommittedArtifact(directory: string, identity: string, metadata: GameDbAcquiredArtifactMetadata): Promise<void> {
+function parseCommittedMetadata(value: unknown): GameDbAcquiredArtifactMetadata {
+    if (!isJsonObject(value) || !exactKeys(value, ["schemaVersion", "contract", "contractVersion", "region", "locale", "databaseVersion", "logicalFilePath", "declaredIntegrity", "observedSizeBytes", "localSha256", "artifactState", "descriptorLineage", "nextPermittedStep"])) throw new Error("Committed artifact metadata contract is invalid");
+    if (value.schemaVersion !== 1 || value.contract !== "dokkan-game-db-acquired-artifact" || value.contractVersion !== "1.0.0" || value.region !== "global" || value.locale !== "en"
+        || !Number.isSafeInteger(value.databaseVersion) || (value.databaseVersion as number) <= 0 || value.logicalFilePath !== LOGICAL_FILE_PATH
+        || !Number.isSafeInteger(value.observedSizeBytes) || (value.observedSizeBytes as number) <= 0 || typeof value.localSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.localSha256)
+        || (value.artifactState !== "readable_sqlite" && value.artifactState !== "encrypted_or_packaged")) throw new Error("Committed artifact metadata fields are invalid");
+    if (!isJsonObject(value.declaredIntegrity) || !exactKeys(value.declaredIntegrity, ["algorithm", "hash"]) || value.declaredIntegrity.algorithm !== "version"
+        || typeof value.declaredIntegrity.hash !== "string" || !/^[1-9][0-9]*$/.test(value.declaredIntegrity.hash) || value.declaredIntegrity.hash !== String(value.databaseVersion)) throw new Error("Committed artifact declared integrity is invalid");
+    if (!isJsonObject(value.descriptorLineage) || !exactKeys(value.descriptorLineage, ["source", "deliveryFamily", "patchState", "patchHashState"])
+        || value.descriptorLineage.source !== "externally_supplied_client_assets_database" || value.descriptorLineage.deliveryFamily !== "official_global_en_versioned_sqlite"
+        || value.descriptorLineage.patchState !== "observed_null" || value.descriptorLineage.patchHashState !== "observed_null") throw new Error("Committed artifact descriptor lineage is invalid");
+    const expectedNext = value.artifactState === "readable_sqlite" ? "run_read_only_sqlite_compatibility" : "decrypt_locally_then_validate_read_only_sqlite";
+    if (value.nextPermittedStep !== expectedNext) throw new Error("Committed artifact next step is invalid");
+    return value as unknown as GameDbAcquiredArtifactMetadata;
+}
+
+async function readStableTextFile(guard: ArtifactStoreGuard, filePath: string, parent: string, label: string): Promise<string> {
+    await guard.assertParent(filePath, parent);
+    const canonical = await assertRegularRealFile(filePath, label);
+    const before: any = await stat(canonical, { bigint: true });
+    const text = await readFile(canonical, "utf8");
+    const after: any = await stat(canonical, { bigint: true });
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw new Error(`${label} changed during validation`);
+    await guard.assertStable();
+    return text;
+}
+
+async function validateCommittedArtifact(guard: ArtifactStoreGuard, artifactsRoot: string, identity: string, expectedMetadata?: GameDbAcquiredArtifactMetadata): Promise<GameDbAcquiredArtifactMetadata> {
+    if (!/^[a-f0-9]{64}$/.test(identity)) throw new Error("Committed artifact identity syntax is invalid");
+    const directory = await guard.trackExistingDirectory(resolve(artifactsRoot, identity), "Committed artifact directory");
+    const entries = (await readdir(directory, { withFileTypes: true })).map(value => value.name).sort();
+    if (JSON.stringify(entries) !== JSON.stringify(["commit-marker.json", "database.db", "metadata.json"])) throw new Error("Committed artifact members are incomplete or unexpected");
     const artifactPath = resolve(directory, "database.db");
     const metadataPath = resolve(directory, "metadata.json");
     const markerPath = resolve(directory, "commit-marker.json");
     for (const path of [artifactPath, metadataPath, markerPath]) await assertRegularRealFile(path, "Committed artifact member");
-    const [storedMetadataText, markerText, inspection] = await Promise.all([
-        readFile(metadataPath, "utf8"),
-        readFile(markerPath, "utf8"),
-        inspectRegularArtifact(artifactPath, DEFAULT_DATABASE_ARTIFACT_MAX_BYTES),
-    ]);
-    if (storedMetadataText !== canonicalJson(metadata) || JSON.stringify(inspection) !== JSON.stringify({ observedSizeBytes: metadata.observedSizeBytes, localSha256: metadata.localSha256, artifactState: metadata.artifactState })) {
+    const storedMetadataText = await readStableTextFile(guard, metadataPath, directory, "Committed artifact metadata");
+    let storedMetadataValue: unknown;
+    try { storedMetadataValue = JSON.parse(storedMetadataText); } catch { throw new Error("Committed artifact metadata JSON is malformed"); }
+    const metadata = parseCommittedMetadata(storedMetadataValue);
+    if (storedMetadataText !== canonicalJson(metadata) || artifactIdentity(metadata) !== identity || (expectedMetadata && canonicalJson(metadata) !== canonicalJson(expectedMetadata))) {
         throw new Error("Existing immutable artifact identity does not validate");
     }
+    const inspection = await inspectRegularArtifact(artifactPath, DEFAULT_DATABASE_ARTIFACT_MAX_BYTES, guard, directory);
+    if (JSON.stringify(inspection) !== JSON.stringify({ observedSizeBytes: metadata.observedSizeBytes, localSha256: metadata.localSha256, artifactState: metadata.artifactState })) throw new Error("Existing immutable artifact identity does not validate");
+    const markerText = await readStableTextFile(guard, markerPath, directory, "Committed artifact marker");
     const expectedMarker = canonicalJson({ schemaVersion: 1, contract: "dokkan-game-db-artifact-commit", contractVersion: "1.0.0", identity, metadataSha256: createHash("sha256").update(storedMetadataText).digest("hex") });
     if (markerText !== expectedMarker) throw new Error("Existing immutable artifact commit marker does not validate");
+    await guard.assertStable();
+    return metadata;
 }
 
-async function promoteLatest(root: string, identity: string): Promise<string> {
-    const latestPath = resolve(root, "latest.json");
+interface LatestPointer { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: string, previousIdentity: string | null }
+
+function parseLatestPointer(text: string): LatestPointer {
+    let value: unknown;
+    try { value = JSON.parse(text); } catch { throw new Error("Existing latest pointer is invalid"); }
+    if (!isJsonObject(value) || !exactKeys(value, ["schemaVersion", "contract", "contractVersion", "currentIdentity", "previousIdentity"])
+        || value.schemaVersion !== 1 || value.contract !== "dokkan-game-db-local-latest" || value.contractVersion !== "1.0.0"
+        || typeof value.currentIdentity !== "string" || !/^[a-f0-9]{64}$/.test(value.currentIdentity)
+        || !(value.previousIdentity === null || (typeof value.previousIdentity === "string" && /^[a-f0-9]{64}$/.test(value.previousIdentity)))
+        || value.currentIdentity === value.previousIdentity) throw new Error("Existing latest pointer is invalid or cyclic");
+    return value as unknown as LatestPointer;
+}
+
+function throwIfCancelled(signal: AbortSignal): void {
+    if (signal.aborted) throw new Error("Database artifact acquisition cancelled");
+}
+
+async function promoteLatest(guard: ArtifactStoreGuard, artifactsRoot: string, identity: string, signal: AbortSignal): Promise<{ path: string, rollback: () => Promise<void> }> {
+    const latestPath = resolve(guard.root, "latest.json");
+    await validateCommittedArtifact(guard, artifactsRoot, identity);
+    let originalText: string | null = null;
     let previousIdentity: string | null = null;
-    if (existsSync(latestPath)) {
-        const current = JSON.parse(await readFile(latestPath, "utf8")) as Record<string, unknown>;
-        if (current.schemaVersion !== 1 || typeof current.currentIdentity !== "string" || !/^[a-f0-9]{64}$/.test(current.currentIdentity)) throw new Error("Existing latest pointer is invalid");
+    let latestExists = false;
+    try { await lstat(latestPath); latestExists = true; }
+    catch (error: any) { if (error?.code !== "ENOENT") throw error; }
+    if (latestExists) {
+        originalText = await readStableTextFile(guard, latestPath, guard.root, "Existing latest pointer");
+        const current = parseLatestPointer(originalText);
+        await validateCommittedArtifact(guard, artifactsRoot, current.currentIdentity);
+        if (current.previousIdentity) await validateCommittedArtifact(guard, artifactsRoot, current.previousIdentity);
         previousIdentity = current.currentIdentity === identity
-            ? (typeof current.previousIdentity === "string" ? current.previousIdentity : null)
+            ? current.previousIdentity
             : current.currentIdentity;
     }
+    if (previousIdentity === identity) throw new Error("Latest pointer would create an identity cycle");
     const pointer = { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: identity, previousIdentity };
-    const temporary = resolve(root, `.latest-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
-    await writeFile(temporary, canonicalJson(pointer), { flag: "wx" });
-    await rename(temporary, latestPath);
-    return latestPath;
+    const temporary = resolve(guard.root, `.latest-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
+    throwIfCancelled(signal);
+    await guard.assertParent(temporary, guard.root);
+    try {
+        await writeFile(temporary, canonicalJson(pointer), { flag: "wx" });
+        await assertRegularRealFile(temporary, "Latest temporary");
+        await guard.assertStable();
+        throwIfCancelled(signal);
+        await rename(temporary, latestPath);
+        await guard.assertStable();
+        const rollback = async () => {
+            await guard.assertStable();
+            if (originalText === null) await guard.removeRegularFile(latestPath, guard.root);
+            else {
+                const rollbackTemporary = resolve(guard.root, `.latest-rollback-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
+                await writeFile(rollbackTemporary, originalText, { flag: "wx" });
+                await assertRegularRealFile(rollbackTemporary, "Latest rollback temporary");
+                await rename(rollbackTemporary, latestPath);
+                await guard.assertStable();
+            }
+        };
+        try { throwIfCancelled(signal); } catch (error) { await rollback(); throw error; }
+        return { path: latestPath, rollback };
+    } catch (error) {
+        await guard.removeRegularFile(temporary, guard.root).catch(() => undefined);
+        throw error;
+    }
 }
 
-async function writeOperationalReceipt(root: string, receipt: GameDbOperationalReceipt): Promise<string> {
-    const receiptsRoot = await assertStoreRoot(resolve(root, "receipts"));
+async function writeOperationalReceipt(guard: ArtifactStoreGuard, receipt: GameDbOperationalReceipt, signal?: AbortSignal): Promise<string> {
+    const receiptsRoot = await guard.ensureDirectory(resolve(guard.root, "receipts"), "Artifact receipts directory");
     const occurredAt = "acquiredAt" in receipt ? receipt.acquiredAt : receipt.validatedAt;
     const timestamp = occurredAt.replace(/[^0-9A-Za-z]/g, "");
     const fileName = `${receipt.mode}-${timestamp}-${randomBytes(6).toString("hex")}.json`;
     const target = resolve(receiptsRoot, fileName);
-    ensureContained(receiptsRoot, target);
     const temporary = resolve(receiptsRoot, `.${fileName}.${process.pid}.tmp`);
-    ensureContained(receiptsRoot, temporary);
+    if (signal) throwIfCancelled(signal);
+    await guard.assertParent(temporary, receiptsRoot);
     try {
         await writeFile(temporary, canonicalJson(receipt), { flag: "wx" });
+        await assertRegularRealFile(temporary, "Operational receipt temporary");
+        await guard.assertStable();
+        if (signal) throwIfCancelled(signal);
         await rename(temporary, target);
+        await assertRegularRealFile(target, "Operational receipt");
+        await guard.assertStable();
+        if (signal) throwIfCancelled(signal);
         return target;
     } catch (error) {
-        await rm(temporary, { force: true }).catch(() => undefined);
+        await guard.removeRegularFile(temporary, receiptsRoot).catch(() => undefined);
         throw error;
     }
 }
@@ -475,17 +705,27 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
     const maxBytes = options.maxBytes ?? DEFAULT_DATABASE_ARTIFACT_MAX_BYTES;
     const timeoutMs = options.timeoutMs ?? DEFAULT_DATABASE_ARTIFACT_TIMEOUT_MS;
     if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error("Invalid acquisition limits");
-    const root = await assertStoreRoot(options.storeRoot);
-    const lockPath = resolve(root, ".acquisition.lock");
-    try { await mkdir(lockPath); }
-    catch { throw new Error("Database artifact acquisition already has an active writer"); }
+    const guard = await ArtifactStoreGuard.open(options.storeRoot);
+    const lockPath = resolve(guard.root, ".acquisition.lock");
+    let lock: { path: string, identity: DirectoryIdentity };
+    try { lock = await guard.createExclusiveDirectory(lockPath, "Artifact store writer lock"); }
+    catch { throw new Error("Database artifact acquisition already has an active writer or unsafe lock path"); }
     const controller = new AbortController();
     const onAbort = () => controller.abort();
     options.signal?.addEventListener("abort", onAbort, { once: true });
-    const temporaryPath = resolve(root, `.download-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
-    let pendingDirectory: string | undefined;
+    if (options.signal?.aborted) controller.abort();
+    const cancellationSignal = {
+        get aborted() { return controller.signal.aborted || Boolean(options.signal?.aborted); },
+    } as AbortSignal;
+    const temporaryPath = resolve(guard.root, `.download-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
+    let pending: { path: string, identity: DirectoryIdentity } | undefined;
+    let latestCommit: { path: string, rollback: () => Promise<void> } | undefined;
     try {
-        if (options.signal?.aborted) throw new Error("Database artifact acquisition cancelled");
+        throwIfCancelled(cancellationSignal);
+        await guard.assertStable();
+        // The transport is the first external side effect and is never called
+        // until descriptor, limits, root identity and cancellation validate.
+        throwIfCancelled(cancellationSignal);
         const response = await withTimeout(options.transport.get(new URL(descriptor.url), { signal: controller.signal }), timeoutMs, controller);
         if (response.statusCode < 200 || response.statusCode > 299) {
             response.body.destroy();
@@ -496,51 +736,84 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
         if (!contentLength || !/^[1-9][0-9]*$/.test(contentLength)) { response.body.destroy(); throw new Error("Database artifact Content-Length is required and invalid"); }
         const expectedSizeBytes = Number(contentLength);
         if (!Number.isSafeInteger(expectedSizeBytes) || expectedSizeBytes > maxBytes) { response.body.destroy(); throw new Error("Database artifact Content-Length exceeds the allowed size"); }
-        const abortBody = () => response.body.destroy(new Error("Database artifact acquisition cancelled"));
+        const destroyBody = (error: Error) => {
+            response.body.once("error", () => undefined);
+            response.body.destroy(error);
+        };
+        const abortBody = () => destroyBody(new Error("Database artifact acquisition cancelled"));
         controller.signal.addEventListener("abort", abortBody, { once: true });
-        const timer = setTimeout(() => { controller.abort(); response.body.destroy(new Error("Database artifact stream timed out")); }, timeoutMs);
+        const timer = setTimeout(() => { controller.abort(); destroyBody(new Error("Database artifact stream timed out")); }, timeoutMs);
         let inspection: GameDbArtifactInspection;
+        await guard.assertParent(temporaryPath, guard.root);
+        throwIfCancelled(cancellationSignal);
         try { inspection = await inspectStreamToFile({ body: response.body, temporaryPath, expectedSizeBytes, maxBytes, signal: controller.signal }); }
         finally { clearTimeout(timer); controller.signal.removeEventListener("abort", abortBody); }
+        await guard.assertParent(temporaryPath, guard.root);
+        await assertRegularRealFile(temporaryPath, "Downloaded artifact temporary");
+        await guard.assertStable();
+        throwIfCancelled(cancellationSignal);
         const metadata = metadataFor(descriptor, inspection);
         const identity = artifactIdentity(metadata);
-        const artifactsRoot = resolve(root, "artifacts");
-        await mkdir(artifactsRoot, { recursive: true });
+        const artifactsRoot = await guard.ensureDirectory(resolve(guard.root, "artifacts"), "Artifact objects directory");
         const finalDirectory = resolve(artifactsRoot, identity);
-        ensureContained(artifactsRoot, finalDirectory);
         let reused = false;
-        if (existsSync(finalDirectory)) {
-            await validateCommittedArtifact(finalDirectory, identity, metadata);
-            await rm(temporaryPath, { force: true });
+        let finalExists = false;
+        try { await lstat(finalDirectory); finalExists = true; }
+        catch (error: any) { if (error?.code !== "ENOENT") throw error; }
+        if (finalExists) {
+            await validateCommittedArtifact(guard, artifactsRoot, identity, metadata);
+            throwIfCancelled(cancellationSignal);
+            await guard.removeRegularFile(temporaryPath, guard.root);
             reused = true;
         } else {
-            pendingDirectory = resolve(artifactsRoot, `.pending-${process.pid}-${randomBytes(6).toString("hex")}`);
-            ensureContained(artifactsRoot, pendingDirectory);
-            await mkdir(pendingDirectory);
-            const artifactPath = resolve(pendingDirectory, "database.db");
+            pending = await guard.createExclusiveDirectory(resolve(artifactsRoot, `.pending-${process.pid}-${randomBytes(6).toString("hex")}`), "Pending artifact directory");
+            const artifactPath = resolve(pending.path, "database.db");
+            throwIfCancelled(cancellationSignal);
+            await guard.assertParent(temporaryPath, guard.root);
+            await guard.assertParent(artifactPath, pending.path);
             await rename(temporaryPath, artifactPath);
+            await assertRegularRealFile(artifactPath, "Pending database artifact");
+            await guard.assertStable();
+            throwIfCancelled(cancellationSignal);
             const metadataText = canonicalJson(metadata);
-            await writeFile(resolve(pendingDirectory, "metadata.json"), metadataText, { flag: "wx" });
+            const metadataPath = resolve(pending.path, "metadata.json");
+            throwIfCancelled(cancellationSignal);
+            await guard.assertParent(metadataPath, pending.path);
+            await writeFile(metadataPath, metadataText, { flag: "wx" });
+            await assertRegularRealFile(metadataPath, "Pending artifact metadata");
+            await guard.assertStable();
+            throwIfCancelled(cancellationSignal);
             const marker = { schemaVersion: 1, contract: "dokkan-game-db-artifact-commit", contractVersion: "1.0.0", identity, metadataSha256: createHash("sha256").update(metadataText).digest("hex") };
-            await writeFile(resolve(pendingDirectory, "commit-marker.json"), canonicalJson(marker), { flag: "wx" });
-            await rename(pendingDirectory, finalDirectory);
-            pendingDirectory = undefined;
+            const markerPath = resolve(pending.path, "commit-marker.json");
+            throwIfCancelled(cancellationSignal);
+            await guard.assertParent(markerPath, pending.path);
+            await writeFile(markerPath, canonicalJson(marker), { flag: "wx" });
+            await assertRegularRealFile(markerPath, "Pending artifact commit marker");
+            await guard.assertStable();
+            throwIfCancelled(cancellationSignal);
+            await guard.promoteDirectory(pending.path, finalDirectory);
+            pending = undefined;
+            throwIfCancelled(cancellationSignal);
         }
-        await validateCommittedArtifact(finalDirectory, identity, metadata);
+        await validateCommittedArtifact(guard, artifactsRoot, identity, metadata);
+        throwIfCancelled(cancellationSignal);
         const receipt: GameDbOperationalReceipt = {
             ...receiptBase(descriptor, metadata, identity),
             mode: "official_descriptor_download",
             acquiredAt: operationTimestamp(options.now),
             result: reused ? "reused" : "acquired",
         };
-        const receiptPath = await writeOperationalReceipt(root, receipt);
-        const latestPointerPath = await promoteLatest(root, identity);
+        throwIfCancelled(cancellationSignal);
+        const receiptPath = await writeOperationalReceipt(guard, receipt, cancellationSignal);
+        throwIfCancelled(cancellationSignal);
+        latestCommit = await promoteLatest(guard, artifactsRoot, identity, cancellationSignal);
+        throwIfCancelled(cancellationSignal);
         return {
             identity,
             artifactPath: resolve(finalDirectory, "database.db"),
             metadataPath: resolve(finalDirectory, "metadata.json"),
             commitMarkerPath: resolve(finalDirectory, "commit-marker.json"),
-            latestPointerPath,
+            latestPointerPath: latestCommit.path,
             metadata,
             reused,
             receiptPath,
@@ -548,12 +821,13 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
         };
     } catch (error) {
         controller.abort();
-        await rm(temporaryPath, { force: true }).catch(() => undefined);
-        if (pendingDirectory) await rm(pendingDirectory, { recursive: true, force: true }).catch(() => undefined);
+        if (latestCommit) await latestCommit.rollback().catch(() => undefined);
+        await guard.removeRegularFile(temporaryPath, guard.root).catch(() => undefined);
+        if (pending) await guard.removeDirectory(pending.path, pending.identity, ["database.db", "metadata.json", "commit-marker.json"]).catch(() => undefined);
         throw error;
     } finally {
         options.signal?.removeEventListener("abort", onAbort);
-        await rm(lockPath, { recursive: true, force: true });
+        await guard.removeDirectory(lock.path, lock.identity, []);
     }
 }
 
@@ -569,15 +843,21 @@ export async function runDownloadDatabaseArtifact(options: GameDbDownloadDatabas
         const inspection = await inspectDownloadedDatabaseArtifact(options.artifactPath);
         const metadata = metadataFor(descriptor, inspection);
         const identity = artifactIdentity(metadata);
-        const root = await assertStoreRoot(options.storeRoot);
+        const guard = await ArtifactStoreGuard.open(options.storeRoot);
+        const lockPath = resolve(guard.root, ".acquisition.lock");
+        let lock: { path: string, identity: DirectoryIdentity };
+        try { lock = await guard.createExclusiveDirectory(lockPath, "Artifact store writer lock"); }
+        catch { throw new Error("Database artifact acquisition already has an active writer or unsafe lock path"); }
         const receipt: GameDbOperationalReceipt = {
             ...receiptBase(descriptor, metadata, identity),
             mode: "offline_existing_artifact_validation",
             validatedAt: operationTimestamp(dependencies.now),
             result: "validated",
         };
-        const receiptPath = await writeOperationalReceipt(root, receipt);
-        return { mode: "artifact_validation", descriptor: sanitized, inspection, identity, receiptPath, receipt };
+        try {
+            const receiptPath = await writeOperationalReceipt(guard, receipt);
+            return { mode: "artifact_validation", descriptor: sanitized, inspection, identity, receiptPath, receipt };
+        } finally { await guard.removeDirectory(lock.path, lock.identity, []); }
     }
     if (!options.authorizeDownload || options.dryRun) {
         return { mode: "descriptor_validation", descriptor: sanitized };

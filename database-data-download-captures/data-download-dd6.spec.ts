@@ -1,6 +1,7 @@
 import { strict as assert } from "assert";
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { dirname, join, resolve } from "path";
 import { Dd6Dataset, Dd6SourceLock, validateDd6, validateDd6SourceLock } from "./data-download-dd6";
 
 describe("data download DD6", () => {
@@ -12,6 +13,27 @@ describe("data download DD6", () => {
         const changedContract: any = JSON.parse(JSON.stringify(lock));
         changedContract.contract = "changed";
         await assert.rejects(validateDd6SourceLock(process.cwd(), changedContract), /contract mismatch/);
+    });
+
+    it("fails closed when any pinned source file mutates", async () => {
+        const sourceRoot = process.cwd();
+        const lock = JSON.parse(readFileSync(resolve(sourceRoot, "database-data-download-captures/data-download-dd6-source-lock.json"), "utf8")) as Dd6SourceLock;
+        const isolatedRoot = mkdtempSync(join(tmpdir(), "dd6-source-lock-"));
+        try {
+            for (const item of lock.artifacts) {
+                const target = resolve(isolatedRoot, item.fileName);
+                mkdirSync(dirname(target), { recursive: true });
+                copyFileSync(resolve(sourceRoot, item.fileName), target);
+            }
+            await validateDd6SourceLock(isolatedRoot, lock);
+            for (const item of lock.artifacts) {
+                const target = resolve(isolatedRoot, item.fileName);
+                const original = readFileSync(target);
+                writeFileSync(target, Buffer.concat([original, Buffer.from("\nmutated")]))
+                await assert.rejects(validateDd6SourceLock(isolatedRoot, lock), new RegExp(`identity mismatch ${item.key}`));
+                writeFileSync(target, original);
+            }
+        } finally { rmSync(isolatedRoot, { recursive: true, force: true }); }
     });
 
     it("rejects false-completeness accounting and identity drift", () => {

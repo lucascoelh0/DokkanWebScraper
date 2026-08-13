@@ -1,141 +1,93 @@
-import { deepEqual, equal, rejects, throws } from "assert";
-import { createHash } from "crypto";
-import { mkdtempSync, renameSync, rmSync, writeFileSync } from "fs";
+import { deepEqual, equal, notEqual, rejects, throws } from "assert";
+import { execFileSync } from "child_process";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { buildGameDbSqliteCompatibility, evaluateGameDbSqliteCompatibility, parseGameDbSqliteCompatibilityArgs } from "./game-db-sqlite-compatibility";
-import { integrationC4SchemaSha256 } from "../database-integration/integration-c4-builder";
+import { buildGameDbSqliteCompatibility, parseGameDbSqliteCompatibilityArgs } from "./game-db-sqlite-compatibility";
 
-const inspection = {
-    tableCount: 2,
-    tables: [
-        { name: "cards", columns: ["id", "character_id"], rowCount: 1 },
-        { name: "passive_skills", columns: ["id", "efficacy_type"], rowCount: 2 },
-    ],
-};
-const databaseSha256 = createHash("sha256").update("database").digest("hex");
-const evidenceSha256 = createHash("sha256").update("evidence").digest("hex");
-const baseline: any = {
-    schemaVersion: 1,
-    contractVersion: "1.0.0",
-    snapshotVersion: "global-profile",
-    sourceDatabase: {
-        sha256: databaseSha256,
-        sizeBytes: 100,
-        tableCount: inspection.tableCount,
-        schemaSha256: integrationC4SchemaSha256(inspection),
-        requiredTables: { cards: ["id", "character_id"], passive_skills: ["id", "efficacy_type"] },
-    },
-    nativeRuntime: { sha256: evidenceSha256, sizeBytes: 200, elfClass: 64, endian: "little", machine: 183 },
-    semanticInputs: {
-        DB48: { contractVersion: "1", sha256: evidenceSha256 },
-        DB49: { contractVersion: "1", sha256: evidenceSha256 },
-        DB50: { contractVersion: "1", sha256: evidenceSha256 },
-    },
-};
-
-function temp(): string { return mkdtempSync(join(tmpdir(), "dokkan-c4-toctou-")); }
-function sqliteBytes(fill: number): Buffer { return Buffer.concat([Buffer.from("SQLite format 3\0"), Buffer.alloc(64, fill)]); }
-function runtimeBaseline(root: string, bytes: Buffer): string {
-    const value = JSON.parse(JSON.stringify(baseline));
-    value.sourceDatabase.sha256 = createHash("sha256").update(bytes).digest("hex");
-    value.sourceDatabase.sizeBytes = bytes.byteLength;
-    value.sourceDatabase.tableCount = inspection.tableCount;
-    value.sourceDatabase.schemaSha256 = integrationC4SchemaSha256(inspection);
-    const path = join(root, "baseline.json");
-    writeFileSync(path, JSON.stringify(value));
-    return path;
+function temp(): string { return mkdtempSync(join(tmpdir(), "dokkan-c4-closed-api-")); }
+function python(): string { return process.platform === "win32" ? "python" : "python3"; }
+function createSqlite(path: string): void {
+    execFileSync(python(), ["-c", "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute('create table cards(id integer primary key, character_id integer)'); c.commit(); c.close()", path]);
 }
 
-describe("game DB SQLite compatibility", () => {
-    it("classifies an exact SQLite profile without authorizing native evidence reuse", () => {
-        const report = evaluateGameDbSqliteCompatibility({ baseline, acquiredArtifactState: "readable_sqlite", sourceDatabase: { sha256: databaseSha256, sizeBytes: 100, inspection } });
-        equal(report.status, "exact_profile_match");
-        equal(report.pinnedNativeEvidence.evaluatedInThisStep, false);
-        equal(report.pinnedNativeEvidence.automaticReuseAuthorized, false);
-        equal(report.nextPermittedStep, "run_c4_with_exact_pinned_elf_and_semantic_artifacts");
-    });
-
-    it("requires evidence refresh for a schema-compatible changed SQLite", () => {
-        const report = evaluateGameDbSqliteCompatibility({ baseline, acquiredArtifactState: "readable_sqlite", sourceDatabase: { sha256: "a".repeat(64), sizeBytes: 101, inspection } });
-        equal(report.status, "schema_compatible_but_evidence_refresh_required");
-        equal(report.nextPermittedStep, "refresh_bounded_native_evidence_then_review_c4_baseline");
-    });
-
-    it("rejects missing required columns", () => {
-        const changed = JSON.parse(JSON.stringify(inspection));
-        changed.tables[1].columns = ["id"];
-        const report = evaluateGameDbSqliteCompatibility({ baseline, acquiredArtifactState: "readable_sqlite", sourceDatabase: { sha256: "b".repeat(64), sizeBytes: 90, inspection: changed } });
-        equal(report.status, "incompatible");
-        deepEqual(report.c4Profile.missingRequiredColumns, ["passive_skills.efficacy_type"]);
-    });
-
-    it("keeps encrypted or packaged bytes unknown until local decryption", () => {
-        const report = evaluateGameDbSqliteCompatibility({ baseline, acquiredArtifactState: "encrypted_or_packaged" });
-        equal(report.status, "unknown");
-        equal(report.c4Profile.sourceDatabase.actualSha256, null);
-    });
-
-    it("is deterministic and fails closed on malformed inputs", () => {
-        const input: any = { baseline, acquiredArtifactState: "readable_sqlite", sourceDatabase: { sha256: databaseSha256, sizeBytes: 100, inspection } };
-        equal(JSON.stringify(evaluateGameDbSqliteCompatibility(input)), JSON.stringify(evaluateGameDbSqliteCompatibility(input)));
-        throws(() => evaluateGameDbSqliteCompatibility({ ...input, sourceDatabase: { ...input.sourceDatabase, sha256: "bad" } }), /identity/);
-        throws(() => evaluateGameDbSqliteCompatibility({ baseline, acquiredArtifactState: "readable_sqlite" }), /requires/);
-        throws(() => evaluateGameDbSqliteCompatibility({ ...input, acquiredArtifactState: "forged" } as any), /artifact state/);
-    });
+describe("game DB SQLite compatibility", function () {
+    this.timeout(10_000);
 
     it("parses only the bounded manual compatibility CLI", () => {
-        deepEqual(parseGameDbSqliteCompatibilityArgs(["--sqlite-path", "database.db", "--output-file=report.json"]), { sqlitePath: "database.db", baselineFile: undefined, outputFile: "report.json" });
+        deepEqual(parseGameDbSqliteCompatibilityArgs(["--sqlite-path", "database.db", "--output-file=report.json"]), { sqlitePath: "database.db", outputFile: "report.json" });
+        deepEqual(parseGameDbSqliteCompatibilityArgs(["--sqlite-path=database.db"]), { sqlitePath: "database.db" });
+        throws(() => parseGameDbSqliteCompatibilityArgs(["--baseline-file", "forged.json", "--sqlite-path", "database.db"]), /Unexpected/);
+        throws(() => parseGameDbSqliteCompatibilityArgs(["--python-command", "forged", "--sqlite-path", "database.db"]), /Unexpected/);
         throws(() => parseGameDbSqliteCompatibilityArgs(["--url", "https://example.test"]), /Unexpected/);
         throws(() => parseGameDbSqliteCompatibilityArgs([]), /sqlite-path/);
     });
 
-    it("builds a report only from one stable canonical SQLite identity", async () => {
-        const root = temp(), bytes = sqliteBytes(1), sqlitePath = join(root, "database.db");
+    it("exposes no evaluator or test seam from the compiled production module", () => {
+        const compiledApi: any = require("./game-db-sqlite-compatibility");
+        equal(compiledApi.evaluateGameDbSqliteCompatibility, undefined);
+        equal(compiledApi.GameDbSqliteCompatibilityDependencies, undefined);
+        deepEqual(Object.keys(compiledApi).sort(), ["buildGameDbSqliteCompatibility", "parseGameDbSqliteCompatibilityArgs"]);
+    });
+
+    it("rejects forged JavaScript option objects and positional dependencies", async () => {
+        const root = temp(), sqlitePath = join(root, "database.db");
+        createSqlite(sqlitePath);
+        const compiledApi: any = require("./game-db-sqlite-compatibility");
+        const inspection = { tableCount: 0, tables: [] };
         try {
-            writeFileSync(sqlitePath, bytes);
-            const report = await buildGameDbSqliteCompatibility({ sqlitePath, baselineFile: runtimeBaseline(root, bytes) }, { inspectSqlite: async canonicalPath => {
-                equal(canonicalPath, sqlitePath);
-                return inspection;
-            } });
-            equal(report.status, "exact_profile_match");
-            equal(report.c4Profile.sourceDatabase.actualSha256, createHash("sha256").update(bytes).digest("hex"));
+            for (const forged of [
+                { sqlitePath, baselineFile: join(root, "baseline.json") },
+                { sqlitePath, inspectSqlite: async () => inspection },
+                { sqlitePath, hooks: { afterInspection() {} } },
+                { sqlitePath, pythonCommand: "forged" },
+                { sqlitePath, outputFile: join(root, "report.json") },
+            ]) await rejects(compiledApi.buildGameDbSqliteCompatibility(forged), /only sqlitePath/);
+            await rejects(compiledApi.buildGameDbSqliteCompatibility({ sqlitePath }, { inspectSqlite: async () => inspection }), /only sqlitePath/);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("rejects a pathname whose target is replaced after canonical resolution", async () => {
-        const root = temp(), original = sqliteBytes(1), replacement = sqliteBytes(2), sqlitePath = join(root, "database.db"), displaced = join(root, "displaced.db");
-        let inspectionCalls = 0;
+    it("uses the production read-only adapter and canonical C4 baseline", async () => {
+        const root = temp(), sqlitePath = join(root, "database.db");
+        createSqlite(sqlitePath);
         try {
-            writeFileSync(sqlitePath, original);
-            await rejects(buildGameDbSqliteCompatibility({ sqlitePath, baselineFile: runtimeBaseline(root, original) }, {
-                inspectSqlite: async () => { inspectionCalls += 1; return inspection; },
-                hooks: { afterCanonicalResolution: () => { renameSync(sqlitePath, displaced); writeFileSync(sqlitePath, replacement); } },
-            }), /target changed during canonical resolution/);
-            equal(inspectionCalls, 0);
+            const report = await buildGameDbSqliteCompatibility({ sqlitePath });
+            equal(report.status, "incompatible");
+            equal(report.c4Profile.snapshotVersion, "global-6.4.0-v338-2026-08-05");
+            equal(report.c4Profile.sourceDatabase.actualTableCount, 1);
+            equal(report.pinnedNativeEvidence.evaluatedInThisStep, false);
+            equal(report.pinnedNativeEvidence.automaticReuseAuthorized, false);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("rejects deterministic mutation performed during SQLite inspection", async () => {
-        const root = temp(), original = sqliteBytes(3), sqlitePath = join(root, "database.db");
+    it("never reports exact_profile_match for a SQLite header alone", async () => {
+        const root = temp(), sqlitePath = join(root, "header-only.db");
+        writeFileSync(sqlitePath, Buffer.from("SQLite format 3\0"));
         try {
-            writeFileSync(sqlitePath, original);
-            await rejects(buildGameDbSqliteCompatibility({ sqlitePath, baselineFile: runtimeBaseline(root, original) }, {
-                inspectSqlite: async canonicalPath => { writeFileSync(canonicalPath, sqliteBytes(4)); return inspection; },
-            }), /changed after inspection|changed during inspection/);
+            let status: string | undefined;
+            try { status = (await buildGameDbSqliteCompatibility({ sqlitePath })).status; }
+            catch (error) { notEqual(String(error), ""); }
+            notEqual(status, "exact_profile_match");
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("rejects file replacement between fingerprint and inspection", async () => {
-        const root = temp(), original = sqliteBytes(5), replacement = sqliteBytes(6), sqlitePath = join(root, "database.db"), displaced = join(root, "old.db");
-        let inspectionCalls = 0;
+    it("keeps encrypted or packaged bytes unknown", async () => {
+        const root = temp(), artifactPath = join(root, "database.db");
+        writeFileSync(artifactPath, Buffer.from("encrypted-or-packaged"));
         try {
-            writeFileSync(sqlitePath, original);
-            await rejects(buildGameDbSqliteCompatibility({ sqlitePath, baselineFile: runtimeBaseline(root, original) }, {
-                inspectSqlite: async () => { inspectionCalls += 1; return inspection; },
-                hooks: { afterPreInspectionFingerprint: () => { renameSync(sqlitePath, displaced); writeFileSync(sqlitePath, replacement); } },
-            }), /target changed after inspection/);
-            equal(inspectionCalls, 1);
+            const report = await buildGameDbSqliteCompatibility({ sqlitePath: artifactPath });
+            equal(report.status, "unknown");
+            equal(report.c4Profile.sourceDatabase.actualSha256, null);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("rejects symlinked SQLite inputs", async function () {
+        const root = temp(), sqlitePath = join(root, "database.db"), linkedPath = join(root, "linked.db");
+        createSqlite(sqlitePath);
+        try {
+            try { symlinkSync(sqlitePath, linkedPath, "file"); }
+            catch (error: any) { if (error?.code === "EPERM") { this.skip(); return; } throw error; }
+            await rejects(buildGameDbSqliteCompatibility({ sqlitePath: linkedPath }), /regular file/);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 });
