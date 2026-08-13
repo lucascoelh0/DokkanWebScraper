@@ -72,17 +72,19 @@ patch fails closed and is never persisted as a usable patch instruction.
 
 ## AQ2 — inputs and filesystem policy
 
-The normal CLI accepts exactly one of:
+The normal CLI accepts one of these two explicit shapes:
 
 ```text
 --descriptor-json <external-json-file>
---artifact-path <already-downloaded-file>
+--artifact-path <already-downloaded-file> --descriptor-json <external-json-file>
 ```
 
-Offline artifact validation also requires descriptor lineage, so the manual
-operator supplies the descriptor file in the same command when the CLI contract
-requires it. `--database-url`, arbitrary output names and free-form metadata are
-not normal inputs. Legacy URL-only use is NO-GO.
+The descriptor-only shape validates lineage offline by default and is the only
+shape eligible for a separately authorized download. Offline artifact validation
+always requires its descriptor in the same command and reports both the
+sanitized descriptor lineage and local byte inspection; an artifact without a
+descriptor fails closed. `--database-url`, arbitrary output names and free-form
+metadata are not normal inputs. Legacy URL-only use is NO-GO.
 
 The acquisition root is a local operator choice or the ignored default under
 `game-db/data/`. Descriptor paths are logical POSIX paths only. Absolute,
@@ -94,10 +96,13 @@ user-controlled output names.
 
 ## AQ3 — transport and validation
 
-The production transport is injected behind the acquisition function and is
-not called by module import, argument parsing, descriptor validation or dry-run.
-It performs one GET over HTTPS with redirects disabled. The response must be a
-successful non-redirect response with a bounded, valid `Content-Length`.
+The production transport is private to the module and is not called by module
+import, argument parsing, descriptor validation or dry-run. The exported
+acquisition test seam accepts a raw `unknown` descriptor and repeats the complete
+runtime validator before any store mutation or transport call; a forged
+TypeScript-shaped/JavaScript object cannot supply a trusted URL. The production
+transport performs one GET over HTTPS with redirects disabled. The response must
+be a successful non-redirect response with a bounded, valid `Content-Length`.
 
 Bytes stream into an exclusive temporary file in the target store directory.
 The stream counts bytes and calculates local SHA-256. The declared `version`

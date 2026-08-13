@@ -81,7 +81,7 @@ export interface DatabaseArtifactTransport {
 }
 
 export interface AcquireDatabaseArtifactOptions {
-    descriptor: ValidatedDatabaseDescriptor,
+    descriptor: unknown,
     storeRoot: string,
     transport: DatabaseArtifactTransport,
     maxBytes?: number,
@@ -131,11 +131,10 @@ export function parseDownloadDatabaseArtifactArgs(argv: string[]): GameDbDownloa
         }
         throw new Error(`Unexpected argument: ${token}`);
     }
-    if (Boolean(descriptorJson) === Boolean(artifactPath)) {
-        throw new Error("Pass exactly one of --descriptor-json or --artifact-path");
-    }
-    if (authorizeDownload && !descriptorJson) throw new Error("--authorize-download requires --descriptor-json");
+    if (!descriptorJson) throw new Error("--descriptor-json is required for descriptor lineage");
+    if (authorizeDownload && artifactPath) throw new Error("--authorize-download cannot be combined with --artifact-path");
     if (authorizeDownload && dryRun) throw new Error("--authorize-download and --dry-run are mutually exclusive");
+    if (artifactPath && dryRun) throw new Error("--artifact-path already performs offline validation and cannot be combined with --dry-run");
     return { descriptorJson, artifactPath, storeRoot, authorizeDownload, dryRun };
 }
 
@@ -285,7 +284,7 @@ async function inspectRegularArtifact(filePath: string, maxBytes: number): Promi
     return { observedSizeBytes, localSha256: hash.digest("hex"), artifactState: header.equals(SQLITE_HEADER) ? "readable_sqlite" : "encrypted_or_packaged" };
 }
 
-export async function inspectDownloadedDatabaseArtifact(filePath: string, maxBytes = DEFAULT_DATABASE_ARTIFACT_MAX_BYTES): Promise<GameDbArtifactInspection> {
+async function inspectDownloadedDatabaseArtifact(filePath: string, maxBytes = DEFAULT_DATABASE_ARTIFACT_MAX_BYTES): Promise<GameDbArtifactInspection> {
     if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error("Invalid artifact byte limit");
     return inspectRegularArtifact(filePath, maxBytes);
 }
@@ -377,7 +376,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, controller
     finally { if (timer) clearTimeout(timer); }
 }
 
-export const httpsDatabaseArtifactTransport: DatabaseArtifactTransport = {
+const httpsDatabaseArtifactTransport: DatabaseArtifactTransport = {
     get(url, options) {
         return new Promise((resolvePromise, rejectPromise) => {
             const req = request(url, { method: "GET", headers: { Accept: "application/octet-stream" } }, response => {
@@ -395,6 +394,10 @@ export const httpsDatabaseArtifactTransport: DatabaseArtifactTransport = {
 };
 
 export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOptions): Promise<AcquiredDatabaseArtifactResult> {
+    // This is a runtime trust boundary. Callers of the compiled JavaScript can
+    // fabricate TypeScript-shaped objects, so no field (especially URL) is used
+    // until the complete raw descriptor has passed the same strict validator.
+    const descriptor = validateClientAssetsDatabaseDescriptor(options.descriptor);
     const maxBytes = options.maxBytes ?? DEFAULT_DATABASE_ARTIFACT_MAX_BYTES;
     const timeoutMs = options.timeoutMs ?? DEFAULT_DATABASE_ARTIFACT_TIMEOUT_MS;
     if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error("Invalid acquisition limits");
@@ -409,7 +412,7 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
     let pendingDirectory: string | undefined;
     try {
         if (options.signal?.aborted) throw new Error("Database artifact acquisition cancelled");
-        const response = await withTimeout(options.transport.get(new URL(options.descriptor.url), { signal: controller.signal }), timeoutMs, controller);
+        const response = await withTimeout(options.transport.get(new URL(descriptor.url), { signal: controller.signal }), timeoutMs, controller);
         if (response.statusCode < 200 || response.statusCode > 299) {
             response.body.destroy();
             if (response.statusCode >= 300 && response.statusCode <= 399) throw new Error("Database artifact redirects are blocked");
@@ -425,7 +428,7 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
         let inspection: GameDbArtifactInspection;
         try { inspection = await inspectStreamToFile({ body: response.body, temporaryPath, expectedSizeBytes, maxBytes, signal: controller.signal }); }
         finally { clearTimeout(timer); controller.signal.removeEventListener("abort", abortBody); }
-        const metadata = metadataFor(options.descriptor, inspection);
+        const metadata = metadataFor(descriptor, inspection);
         const identity = artifactIdentity(metadata);
         const artifactsRoot = resolve(root, "artifacts");
         await mkdir(artifactsRoot, { recursive: true });
@@ -473,17 +476,26 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
 
 export async function runDownloadDatabaseArtifact(options: GameDbDownloadDatabaseArtifactOptions, dependencies: { transport?: DatabaseArtifactTransport } = {}): Promise<
     | { mode: "descriptor_validation", descriptor: Omit<ValidatedDatabaseDescriptor, "url"> }
-    | { mode: "artifact_validation", inspection: GameDbArtifactInspection }
+    | { mode: "artifact_validation", descriptor: Omit<ValidatedDatabaseDescriptor, "url">, inspection: GameDbArtifactInspection }
     | { mode: "authorized_download", result: AcquiredDatabaseArtifactResult }
 > {
-    if (options.artifactPath) return { mode: "artifact_validation", inspection: await inspectDownloadedDatabaseArtifact(options.artifactPath) };
     if (!options.descriptorJson) throw new Error("Descriptor input is required");
     const descriptor = await readAndValidateDatabaseDescriptor(options.descriptorJson);
+    const { url: _url, ...sanitized } = descriptor;
+    if (options.artifactPath) return { mode: "artifact_validation", descriptor: sanitized, inspection: await inspectDownloadedDatabaseArtifact(options.artifactPath) };
     if (!options.authorizeDownload || options.dryRun) {
-        const { url: _url, ...sanitized } = descriptor;
         return { mode: "descriptor_validation", descriptor: sanitized };
     }
-    const result = await acquireDatabaseArtifact({ descriptor, storeRoot: options.storeRoot, transport: dependencies.transport ?? httpsDatabaseArtifactTransport });
+    const rawDescriptor: ClientAssetsDatabasePayload = {
+        url: descriptor.url,
+        file_path: descriptor.logicalFilePath,
+        algorithm: descriptor.algorithm,
+        hash: descriptor.declaredHash,
+        version: descriptor.databaseVersion,
+        patch: null,
+        patch_hash: null,
+    };
+    const result = await acquireDatabaseArtifact({ descriptor: rawDescriptor, storeRoot: options.storeRoot, transport: dependencies.transport ?? httpsDatabaseArtifactTransport });
     return { mode: "authorized_download", result };
 }
 

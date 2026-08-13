@@ -7,7 +7,6 @@ import { Readable } from "stream";
 import {
     acquireDatabaseArtifact,
     DatabaseArtifactTransport,
-    inspectDownloadedDatabaseArtifact,
     parseDownloadDatabaseArtifactArgs,
     readAndValidateDatabaseDescriptor,
     runDownloadDatabaseArtifact,
@@ -104,11 +103,12 @@ describe("game DB manual database artifact acquisition", function () {
     it("parses only descriptor or artifact modes and disables the legacy URL", () => {
         const parsed = parseDownloadDatabaseArtifactArgs(["--descriptor-json", "descriptor.json", "--dry-run"]);
         equal(parsed.descriptorJson, resolve("descriptor.json")); equal(parsed.dryRun, true);
-        equal(parseDownloadDatabaseArtifactArgs(["--artifact-path=database.db"]).artifactPath, resolve("database.db"));
-        throws(() => parseDownloadDatabaseArtifactArgs([]), /exactly one/);
-        throws(() => parseDownloadDatabaseArtifactArgs(["--descriptor-json", "a", "--artifact-path", "b"]), /exactly one/);
+        const artifact = parseDownloadDatabaseArtifactArgs(["--artifact-path=database.db", "--descriptor-json=descriptor.json"]);
+        equal(artifact.artifactPath, resolve("database.db")); equal(artifact.descriptorJson, resolve("descriptor.json"));
+        throws(() => parseDownloadDatabaseArtifactArgs([]), /descriptor lineage/);
+        throws(() => parseDownloadDatabaseArtifactArgs(["--artifact-path", "a"]), /descriptor lineage/);
         throws(() => parseDownloadDatabaseArtifactArgs(["--database-url", "https://example.test"]), /disabled/);
-        throws(() => parseDownloadDatabaseArtifactArgs(["--artifact-path", "a", "--authorize-download"]), /requires/);
+        throws(() => parseDownloadDatabaseArtifactArgs(["--artifact-path", "a", "--descriptor-json", "b", "--authorize-download"]), /cannot be combined/);
     });
 
     it("proves import-style validation and dry-run make no transport request", async () => {
@@ -120,21 +120,62 @@ describe("game DB manual database artifact acquisition", function () {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
+    it("revalidates untrusted compiled-JavaScript payloads before any transport call", async () => {
+        const root = temp(); const calls = { count: 0 };
+        const transport = fakeTransport(Buffer.from("must-not-run"), {}, calls);
+        const compiledApi: any = acquireDatabaseArtifact;
+        const malicious = [
+            descriptor({ url: descriptor().url.replace("cf.ishin-global.aktsk.com", "arbitrary.invalid") }),
+            descriptor({ url: descriptor().url.replace("cf.ishin-global.aktsk.com", "cf.ishin-global.aktsk.com.evil.invalid") }),
+            descriptor({ url: descriptor().url.replace("https:", "http:") }),
+            descriptor({ url: descriptor().url.replace("/en/", "/jp/") }),
+            descriptor({ hash: String(version + 1) }),
+            descriptor({ version: version + 1 }),
+        ];
+        try {
+            for (const payload of malicious) {
+                await rejects(compiledApi({ descriptor: payload, storeRoot: join(root, "store"), transport }), /host|HTTPS|path|hash/);
+            }
+            equal(calls.count, 0);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("validates an offline artifact only with validated descriptor lineage", async () => {
+        const root = temp();
+        try {
+            const descriptorPath = join(root, "descriptor.json"), artifactPath = join(root, "database.db");
+            writeFileSync(descriptorPath, JSON.stringify(descriptor()));
+            writeFileSync(artifactPath, Buffer.from("encrypted-or-packaged"));
+            const result = await runDownloadDatabaseArtifact({ descriptorJson: descriptorPath, artifactPath, storeRoot: join(root, "store"), authorizeDownload: false, dryRun: false });
+            equal(result.mode, "artifact_validation");
+            if (result.mode !== "artifact_validation") throw new Error("unexpected mode");
+            equal(result.descriptor.databaseVersion, version);
+            equal(result.descriptor.logicalFilePath, "sqlite/current/en/database.db");
+            equal(result.inspection.artifactState, "encrypted_or_packaged");
+            writeFileSync(descriptorPath, JSON.stringify(descriptor({ url: "https://evil.invalid/database.db" })));
+            await rejects(runDownloadDatabaseArtifact({ descriptorJson: descriptorPath, artifactPath, storeRoot: join(root, "store"), authorizeDownload: false, dryRun: false }), /host/);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
     it("classifies readable SQLite and encrypted or packaged bytes offline", async () => {
         const root = temp();
         try {
-            const sqlite = join(root, "readable.bin"), encrypted = join(root, "encrypted.bin");
+            const descriptorPath = join(root, "descriptor.json"), sqlite = join(root, "readable.bin"), encrypted = join(root, "encrypted.bin");
+            writeFileSync(descriptorPath, JSON.stringify(descriptor()));
             writeFileSync(sqlite, Buffer.concat([Buffer.from("SQLite format 3\0"), Buffer.alloc(8)]));
             writeFileSync(encrypted, Buffer.from("encrypted-or-packaged"));
-            equal((await inspectDownloadedDatabaseArtifact(sqlite)).artifactState, "readable_sqlite");
-            equal((await inspectDownloadedDatabaseArtifact(encrypted)).artifactState, "encrypted_or_packaged");
+            const readable = await runDownloadDatabaseArtifact({ descriptorJson: descriptorPath, artifactPath: sqlite, storeRoot: join(root, "store"), authorizeDownload: false, dryRun: false });
+            const packaged = await runDownloadDatabaseArtifact({ descriptorJson: descriptorPath, artifactPath: encrypted, storeRoot: join(root, "store"), authorizeDownload: false, dryRun: false });
+            if (readable.mode !== "artifact_validation" || packaged.mode !== "artifact_validation") throw new Error("unexpected mode");
+            equal(readable.inspection.artifactState, "readable_sqlite");
+            equal(packaged.inspection.artifactState, "encrypted_or_packaged");
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
     it("blocks redirects and non-success responses", async () => {
         for (const statusCode of [301, 404]) {
             const root = temp();
-            try { await rejects(acquireDatabaseArtifact({ descriptor: validateClientAssetsDatabaseDescriptor(descriptor()), storeRoot: root, transport: fakeTransport(Buffer.from("x"), { statusCode }) }), /redirect|successful/); }
+            try { await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("x"), { statusCode }) }), /redirect|successful/); }
             finally { rmSync(root, { recursive: true, force: true }); }
         }
     });
@@ -142,29 +183,29 @@ describe("game DB manual database artifact acquisition", function () {
     it("rejects excessive Content-Length and streams above the hard limit", async () => {
         const root = temp();
         try {
-            const validated = validateClientAssetsDatabaseDescriptor(descriptor());
-            await rejects(acquireDatabaseArtifact({ descriptor: validated, storeRoot: root, transport: fakeTransport(Buffer.from("x"), { contentLength: "11" }), maxBytes: 10 }), /Content-Length/);
-            await rejects(acquireDatabaseArtifact({ descriptor: validated, storeRoot: root, transport: fakeTransport(Buffer.from("123456"), { contentLength: "5" }), maxBytes: 5 }), /exceeds/);
+            const raw = descriptor();
+            await rejects(acquireDatabaseArtifact({ descriptor: raw, storeRoot: root, transport: fakeTransport(Buffer.from("x"), { contentLength: "11" }), maxBytes: 10 }), /Content-Length/);
+            await rejects(acquireDatabaseArtifact({ descriptor: raw, storeRoot: root, transport: fakeTransport(Buffer.from("123456"), { contentLength: "5" }), maxBytes: 5 }), /exceeds/);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
     it("rejects truncation and size divergence", async () => {
         const root = temp();
-        try { await rejects(acquireDatabaseArtifact({ descriptor: validateClientAssetsDatabaseDescriptor(descriptor()), storeRoot: root, transport: fakeTransport(Buffer.from("123"), { contentLength: "4" }) }), /truncated|size-divergent/); }
+        try { await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("123"), { contentLength: "4" }) }), /truncated|size-divergent/); }
         finally { rmSync(root, { recursive: true, force: true }); }
     });
 
     it("times out a transport that never resolves", async () => {
         const root = temp();
         const transport: DatabaseArtifactTransport = { get: async () => new Promise(() => undefined) };
-        try { await rejects(acquireDatabaseArtifact({ descriptor: validateClientAssetsDatabaseDescriptor(descriptor()), storeRoot: root, transport, timeoutMs: 20 }), /timed out/); }
+        try { await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport, timeoutMs: 20 }), /timed out/); }
         finally { rmSync(root, { recursive: true, force: true }); }
     });
 
     it("honors cancellation and removes temporary state", async () => {
         const root = temp(); const controller = new AbortController(); controller.abort();
         try {
-            await rejects(acquireDatabaseArtifact({ descriptor: validateClientAssetsDatabaseDescriptor(descriptor()), storeRoot: root, transport: fakeTransport(Buffer.from("x")), signal: controller.signal }), /cancelled/);
+            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("x")), signal: controller.signal }), /cancelled/);
             equal(readdirSync(root).some(name => name.startsWith(".download-") || name.startsWith(".pending-")), false);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
@@ -174,7 +215,7 @@ describe("game DB manual database artifact acquisition", function () {
         const stalled = new Readable({ read() { /* intentionally stalled */ } });
         setTimeout(() => controller.abort(), 10);
         try {
-            await rejects(acquireDatabaseArtifact({ descriptor: validateClientAssetsDatabaseDescriptor(descriptor()), storeRoot: root, transport: fakeTransport(Buffer.alloc(0), { contentLength: "1", body: stalled }), signal: controller.signal }), /cancelled/);
+            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.alloc(0), { contentLength: "1", body: stalled }), signal: controller.signal }), /cancelled/);
             equal(readdirSync(root).some(name => name.startsWith(".download-") || name.startsWith(".pending-")), false);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
@@ -182,7 +223,7 @@ describe("game DB manual database artifact acquisition", function () {
     it("commits immutable content marker-last and emits portable deterministic metadata", async () => {
         const root = temp(); const bytes = Buffer.concat([Buffer.from("SQLite format 3\0"), Buffer.alloc(64, 7)]);
         try {
-            const input = { descriptor: validateClientAssetsDatabaseDescriptor(descriptor()), storeRoot: root, transport: fakeTransport(bytes) };
+            const input = { descriptor: descriptor(), storeRoot: root, transport: fakeTransport(bytes) };
             const first = await acquireDatabaseArtifact(input);
             const firstMetadata = readFileSync(first.metadataPath, "utf8");
             const second = await acquireDatabaseArtifact(input);
@@ -208,7 +249,7 @@ describe("game DB manual database artifact acquisition", function () {
         }
         const transport: DatabaseArtifactTransport = { async get() { return { statusCode: 200, headers: { "content-length": String(size) }, body: Readable.from(chunks()) }; } };
         try {
-            const result = await acquireDatabaseArtifact({ descriptor: validateClientAssetsDatabaseDescriptor(descriptor()), storeRoot: root, transport });
+            const result = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport });
             equal(result.metadata.observedSizeBytes, size);
             equal(result.metadata.artifactState, "encrypted_or_packaged");
         } finally { rmSync(root, { recursive: true, force: true }); }
@@ -217,10 +258,10 @@ describe("game DB manual database artifact acquisition", function () {
     it("preserves the previous artifact and latest pointer when a later acquisition fails", async () => {
         const root = temp();
         try {
-            const validated = validateClientAssetsDatabaseDescriptor(descriptor());
-            const first = await acquireDatabaseArtifact({ descriptor: validated, storeRoot: root, transport: fakeTransport(Buffer.from("first-valid-bytes")) });
+            const raw = descriptor();
+            const first = await acquireDatabaseArtifact({ descriptor: raw, storeRoot: root, transport: fakeTransport(Buffer.from("first-valid-bytes")) });
             const latestBefore = await readFile(first.latestPointerPath, "utf8");
-            await rejects(acquireDatabaseArtifact({ descriptor: validated, storeRoot: root, transport: fakeTransport(Buffer.from("bad"), { contentLength: "4" }) }), /truncated/);
+            await rejects(acquireDatabaseArtifact({ descriptor: raw, storeRoot: root, transport: fakeTransport(Buffer.from("bad"), { contentLength: "4" }) }), /truncated/);
             equal(await readFile(first.latestPointerPath, "utf8"), latestBefore);
             equal(readFileSync(first.artifactPath).toString(), "first-valid-bytes");
             equal(readdirSync(root).some(name => name.startsWith(".download-") || name.startsWith(".pending-")), false);
@@ -231,7 +272,7 @@ describe("game DB manual database artifact acquisition", function () {
         const root = temp();
         try {
             await mkdir(join(root, ".acquisition.lock"));
-            await rejects(acquireDatabaseArtifact({ descriptor: validateClientAssetsDatabaseDescriptor(descriptor()), storeRoot: root, transport: fakeTransport(Buffer.from("x")) }), /active writer/);
+            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("x")) }), /active writer/);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
@@ -246,7 +287,7 @@ describe("game DB manual database artifact acquisition", function () {
             const outside = join(root, "outside"), linkedRoot = join(root, "linked-root"); await mkdir(outside);
             try { symlinkSync(outside, linkedRoot, "junction"); }
             catch { this.skip(); return; }
-            await rejects(acquireDatabaseArtifact({ descriptor: validateClientAssetsDatabaseDescriptor(descriptor()), storeRoot: linkedRoot, transport: fakeTransport(Buffer.from("x")) }), /symlink|junction/);
+            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: linkedRoot, transport: fakeTransport(Buffer.from("x")) }), /symlink|junction/);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 });

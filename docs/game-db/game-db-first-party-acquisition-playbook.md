@@ -228,12 +228,13 @@ body. `--database-url` and the former `--client-assets-json` path are disabled.
 ### 3. Validate an already downloaded artifact offline
 
 ```powershell
-npm run run:game-db-download-database-artifact -- --artifact-path "C:\external\database.db"
+npm run run:game-db-download-database-artifact -- --artifact-path "C:\external\database.db" --descriptor-json "C:\external\client-assets-database.json"
 ```
 
 This streams the local file, enforces the hard size ceiling, calculates local
-SHA-256 and reports `readable_sqlite` or `encrypted_or_packaged`. Because this
-mode has no descriptor lineage, it does not promote the file into the immutable
+SHA-256 and reports `readable_sqlite` or `encrypted_or_packaged` together with
+sanitized descriptor lineage. An artifact without `--descriptor-json` fails
+closed. This offline validation does not promote the file into the immutable
 store.
 
 ### 4. Future separately authorized official GET

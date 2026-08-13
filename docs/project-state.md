@@ -43,7 +43,8 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 - AQ0–AQ6 is implemented as an offline-by-default, manual and fail-closed
   acquisition boundary. It validates an externally supplied Global EN
   `/client_assets/database` descriptor or inspects an already downloaded local
-  artifact; import, parsing and dry-run issue no requests.
+  artifact bound to that descriptor; import, parsing and dry-run issue no
+  requests.
 - A future separately authorized download is restricted to one exact official
   HTTPS CDN URL, redirects disabled, streamed under a hard byte/timeout limit,
   SHA-256 validated locally and committed marker-last into ignored immutable
