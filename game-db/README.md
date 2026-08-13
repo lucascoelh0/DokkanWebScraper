@@ -140,6 +140,12 @@ marker-last `commit-marker.json`. Sanitized operational receipts live under
 previous commits. No delivery URL, query, credential or operational timestamp
 participates in the artifact identity.
 
+Promotion is create-only on Windows and POSIX: the final identity is reserved by
+exclusive directory creation, and the already-open, identity-pinned members are
+installed into that reservation with hard links, marker last. A raced destination
+is never replaced and an owned reservation that fails final validation is moved
+to a pinned quarantine instead of remaining under the content-addressed name.
+
 Readable artifacts are checked against the tracked canonical C4 profile only
 through the production read-only SQLite adapter:
 

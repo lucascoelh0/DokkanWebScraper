@@ -252,9 +252,21 @@ The implementation issues one redirect-disabled HTTPS GET to the exact validated
 URL and accepts only an HTTP 200 response with no `Content-Range`, no transformed
 `Content-Encoding` and one canonical, bounded `Content-Length`. It streams into
 a same-filesystem temporary, validates byte count and local SHA-256, then commits
-an immutable content-addressed artifact. Artifacts and receipts are installed
-through create-only hard links, so a concurrently introduced destination is never
-overwritten. Before replacing `latest.json`, the implementation atomically moves
+an immutable content-addressed artifact. Immediately after writing the marker it
+opens all three allowlisted members, binds relative path, regular-file type,
+containment, realpath, device/inode, size, birth/modify/change times and SHA-256,
+and keeps those handles open across promotion where the platform permits it.
+Because Node has no portable directory rename-no-replace, promotion first reserves
+the final identity with exclusive `mkdir` in the pinned `artifacts/` parent, then
+installs the same inodes with create-only hard links in database/metadata/marker
+order. The pending names are removed only after all links validate; final names
+are then revalidated against the pre-promotion snapshot. A destination that wins
+the reservation race is never replaced or removed and is reused only if it is an
+independently valid complete commit of the exact identity. An invalid owned
+reservation is moved under an exclusive quarantine container only while its
+directory identity remains pinned, leaving the legitimate content-addressed name
+unoccupied. Receipts use the same create-only hard-link rule.
+Before replacing `latest.json`, the implementation atomically moves
 the pathname into a new controlled history directory and validates the identity
 actually moved; it then creates the complete new pointer exclusively. Rollback
 uses the same move-and-validate operation and restores the validated prior history
@@ -330,7 +342,11 @@ change Android.
 | R2 publication or productive promotion | NO-GO |
 | Android | NO-GO |
 
-The immediate next gate is independent review. Full acquisition automation,
-authenticated refresh, publication, production promotion and Android remain
-outside this playbook slice.
+AQ0–AQ6 is implemented and validated in the lineage containing this playbook.
+Whether that lineage has reached `main` is an independent integration gate and
+is not asserted here. Before integration, that review is the next gate; after
+integration, the next separate gate is one explicitly authorized real manual
+acquisition. No real acquisition was authorized or executed by AQ0–AQ6. Full
+acquisition automation, authenticated refresh, publication, production promotion
+and Android remain outside this playbook slice.
 

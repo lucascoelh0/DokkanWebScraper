@@ -40,10 +40,12 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ### AQ0–AQ6 — manual official SQLite acquisition infrastructure
 
-- AQ0–AQ6 is present on its dedicated correction/review branch as an
-  offline-by-default, manual and fail-closed acquisition boundary. This state
-  record does not certify the branch as ready to merge; presence after any
-  future fast-forward likewise does not authorize acquisition or production.
+- AQ0–AQ6 is implemented and validated in the history lineage containing this
+  checkpoint as an offline-by-default, manual and fail-closed acquisition
+  boundary. Integration into `main` remains subject to its independent review
+  gate; this state record does not assert the current branch pointer. Presence
+  after a future fast-forward likewise does not authorize acquisition or
+  production.
   It validates an externally supplied Global EN
   `/client_assets/database` descriptor or inspects an already downloaded local
   artifact bound to that descriptor; import, parsing and dry-run issue no
@@ -67,13 +69,22 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   inspection, hook or Python-command injection and uses only the tracked C4
   baseline plus the production read-only adapter.
 - The artifact store pins the canonical root and controlled-directory
-  identities, rejects symlink/junction substitutions, revalidates durable
-  boundaries, validates complete current/previous commits and fails closed on
-  late cancellation without promoting `latest`.
+  identities, rejects symlink/junction substitutions and revalidates durable
+  boundaries. Before promotion it holds open and binds `database.db`,
+  `metadata.json` and `commit-marker.json` to one material snapshot. Promotion
+  reserves the final identity exclusively and installs those same members with
+  create-only links, marker last; a raced destination is never overwritten and
+  can win only if it validates as the exact complete commit. A failed owned
+  reservation is quarantined by its pinned directory identity, so invalid
+  promoted content cannot retain the legitimate content-addressed name.
+- Complete current/previous commits remain mandatory, and late cancellation
+  cannot promote `latest`; the prior valid artifact and pointer are preserved.
 - Offline descriptor/artifact validation remains the only reviewable AQ path.
-  Merge is not asserted by this checkpoint. Official download, decryption,
-  refresh, publication, production promotion and Android remain NO-GO pending
-  independent and separately authorized gates.
+  Before integration, the next gate is the independent integration decision;
+  after integration, the next separate gate is one explicitly authorized real
+  manual acquisition. No real acquisition was authorized or executed in this
+  lineage. Official download, decryption, refresh, publication, production
+  promotion and Android otherwise remain NO-GO pending independent gates.
 
 ### E0–E9 — events, stages, enemies and bosses
 

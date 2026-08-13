@@ -1,5 +1,5 @@
 import { deepEqual, equal, match, rejects, throws } from "assert";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, writeFileSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, writeFileSync } from "fs";
 import { mkdir, readFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
@@ -321,7 +321,7 @@ describe("game DB manual database artifact acquisition", function () {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("fails closed after artifact promotion and permits the validated orphan to remain", async () => {
+    it("fails closed during post-promotion validation and quarantines the reserved destination", async () => {
         const root = temp(), firstBytes = Buffer.from("first-valid-bytes"), nextBytes = Buffer.from("second-valid-artifact");
         try {
             const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(firstBytes) });
@@ -333,8 +333,10 @@ describe("game DB manual database artifact acquisition", function () {
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal }), /cancelled/);
             equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
             const orphans = readdirSync(join(root, "artifacts")).filter(name => /^[a-f0-9]{64}$/.test(name) && name !== first.identity);
-            equal(orphans.length, 1);
-            equal(existsSync(join(root, "artifacts", orphans[0], "commit-marker.json")), true);
+            equal(orphans.length, 0);
+            const quarantines = readdirSync(join(root, "artifacts")).filter(name => name.startsWith(".quarantine-"));
+            equal(quarantines.length, 1);
+            equal(existsSync(join(root, "artifacts", quarantines[0], "artifact", "commit-marker.json")), true);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
@@ -474,6 +476,112 @@ describe("game DB manual database artifact acquisition", function () {
             equal(receiptText.includes(OFFICIAL_SECRET), false); equal(receiptText.includes(root), false); equal(receiptText.includes("https://"), false);
             equal(/query|headers|token|account|descriptorJson|artifactPath/i.test(receiptText), false);
             equal(first.metadata.artifactState, "readable_sqlite");
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("binds database, metadata and marker replacements to the marker-last material snapshot", async () => {
+        for (const member of ["database.db", "metadata.json", "commit-marker.json"]) {
+            const root = temp(); let mutated = false;
+            try {
+                const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from(`prior-${member}`)) });
+                const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+                const signal = boundarySignal(() => {
+                    const artifacts = join(root, "artifacts");
+                    const pending = existsSync(artifacts) ? readdirSync(artifacts).find(name => name.startsWith(".pending-") && existsSync(join(artifacts, name, "commit-marker.json"))) : undefined;
+                    if (!pending || mutated) return false;
+                    const target = join(artifacts, pending, member);
+                    unlinkSync(target);
+                    writeFileSync(target, `replacement-${member}`);
+                    mutated = true;
+                    return false;
+                });
+                await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from(`next-${member}`)), signal }), /snapshot|pathname|identity|metadata|marker|database/i, member);
+                equal(mutated, true, member);
+                equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore, member);
+                deepEqual(readdirSync(join(root, "artifacts")).filter(name => /^[a-f0-9]{64}$/.test(name)), [first.identity], member);
+            } finally { rmSync(root, { recursive: true, force: true }); }
+        }
+    });
+
+    it("uses an exclusive final-name reservation and never replaces a raced destination", async () => {
+        const seedRoot = temp();
+        const nextBytes = Buffer.from("create-only-race-candidate");
+        try {
+            const seed = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: seedRoot, transport: fakeTransport(nextBytes) });
+            const variants: Array<{ name: string, valid: boolean, introduce(target: string, outside: string): void }> = [
+                { name: "empty directory", valid: false, introduce(target) { mkdirSync(target); } },
+                { name: "regular file", valid: false, introduce(target) { writeFileSync(target, "external-file"); } },
+                { name: "valid same-identity commit", valid: true, introduce(target) {
+                    mkdirSync(target);
+                    for (const name of ["database.db", "metadata.json", "commit-marker.json"]) copyFileSync(join(seedRoot, "artifacts", seed.identity, name), join(target, name));
+                } },
+                { name: "invalid commit", valid: false, introduce(target) {
+                    mkdirSync(target);
+                    writeFileSync(join(target, "database.db"), "invalid");
+                    writeFileSync(join(target, "metadata.json"), "{}\n");
+                    writeFileSync(join(target, "commit-marker.json"), "{}\n");
+                } },
+                { name: "junction or directory symlink", valid: false, introduce(target, outside) { symlinkSync(outside, target, "junction"); } },
+            ];
+            for (const variant of variants) {
+                const root = temp(); let introduced = false; let targetIdentity = "";
+                try {
+                    const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from(`prior-${variant.name}`)) });
+                    const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+                    const target = join(root, "artifacts", seed.identity);
+                    const outside = join(root, "outside");
+                    mkdirSync(outside);
+                    writeFileSync(join(outside, "sentinel.txt"), "keep");
+                    const signal = boundarySignal(() => {
+                        const artifacts = join(root, "artifacts");
+                        const markerReady = existsSync(artifacts) && readdirSync(artifacts).some(name => name.startsWith(".pending-") && existsSync(join(artifacts, name, "commit-marker.json")));
+                        if (!markerReady || introduced) return false;
+                        variant.introduce(target, outside);
+                        const stat: any = statSync(target, { bigint: true });
+                        targetIdentity = `${stat.dev}:${stat.ino}:${stat.size}`;
+                        introduced = true;
+                        return false;
+                    });
+                    if (variant.valid) {
+                        const result = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal });
+                        equal(result.reused, true, variant.name);
+                        equal(result.identity, seed.identity, variant.name);
+                        const stat: any = statSync(target, { bigint: true });
+                        equal(`${stat.dev}:${stat.ino}:${stat.size}`, targetIdentity, variant.name);
+                        deepEqual(latest(root), { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: seed.identity, previousIdentity: first.identity });
+                    } else {
+                        await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal }), /destination|directory|members|metadata|regular|symlink|junction|reparse/i, variant.name);
+                        equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore, variant.name);
+                        equal(existsSync(target), true, variant.name);
+                        equal(readFileSync(join(outside, "sentinel.txt"), "utf8"), "keep", variant.name);
+                    }
+                    equal(introduced, true, variant.name);
+                } finally { rmSync(root, { recursive: true, force: true }); }
+            }
+        } finally { rmSync(seedRoot, { recursive: true, force: true }); }
+    });
+
+    it("quarantines only its reserved directory when a member is replaced after installation", async () => {
+        const root = temp(); let mutated = false;
+        try {
+            const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("prior-post-promotion")) });
+            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+            const signal = boundarySignal(() => {
+                const artifacts = join(root, "artifacts");
+                if (!existsSync(artifacts) || mutated) return false;
+                const promoted = readdirSync(artifacts).find(name => /^[a-f0-9]{64}$/.test(name) && name !== first.identity && existsSync(join(artifacts, name, "commit-marker.json")));
+                if (!promoted) return false;
+                const target = join(artifacts, promoted, "metadata.json");
+                unlinkSync(target);
+                writeFileSync(target, "{}\n");
+                mutated = true;
+                return false;
+            });
+            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("next-post-promotion")), signal }), /snapshot|identity|metadata|changed/i);
+            equal(mutated, true);
+            equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
+            deepEqual(readdirSync(join(root, "artifacts")).filter(name => /^[a-f0-9]{64}$/.test(name)), [first.identity]);
+            equal(readdirSync(join(root, "artifacts")).filter(name => name.startsWith(".quarantine-")).length, 1);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 

@@ -133,9 +133,18 @@ No real transport was executed in AQ0–AQ6. Tests use injected streams only.
 ## AQ4 — immutable store, deterministic metadata and operational receipts
 
 Validated bytes are promoted into a content-addressed directory in the ignored
-acquisition root. Directory promotion is same-filesystem and atomic; a commit
-marker is written last. Artifact and receipt installation is create-only through
-a hard link, so a destination introduced after validation is never overwritten.
+acquisition root and a commit marker is written last. Node exposes no portable
+directory rename-no-replace. The implementation therefore snapshots and opens
+the three exact pending members, reserves the final directory name with exclusive
+`mkdir` in the pinned parent, then installs the same member inodes with create-only
+hard links in database/metadata/marker order. It removes pending names only after
+all links validate and revalidates the final members against the pre-promotion
+snapshot. A destination introduced after initial inspection is never overwritten
+or removed; it is reusable only if it independently validates as the same complete
+commit. A failed reservation owned by this operation is quarantined only while
+its pinned directory identity still matches, so invalid promoted content does not
+occupy the legitimate content-addressed name. Receipt installation is likewise
+create-only through a hard link.
 Replacing `latest.json` atomically moves whichever pathname identity is present
 into a new controlled history directory and validates the identity actually
 moved before creating the complete new pointer exclusively. Rollback uses the
@@ -153,8 +162,13 @@ reusable only after its marker and byte identity validate again.
 Artifact, metadata, marker, receipt and latest members are opened once for each
 validation boundary. Type, containment and pathname identity are compared with
 the opened `FileHandle`; hashing or reading uses that same handle, with `fstat`
-before and after and a final pathname-to-handle identity check. A member replaced
-between validation and use therefore fails closed instead of being followed.
+before and after and a final pathname-to-handle identity check. The marker-last
+promotion snapshot additionally records the fixed relative path, realpath,
+device/inode, size, mode, birth/modify/change timestamps and SHA-256 for all three
+members and keeps their handles open through final revalidation. Hard-link count
+changes may advance `ctime`; device/inode, mode, size, birth time, `mtime` and
+SHA-256 must remain invariant. A member replaced between validation and use
+therefore fails closed instead of being followed.
 
 Immutable portable metadata contains only contract/schema versions, Global/en
 identity, database version, logical path, declared algorithm/hash, observed byte
@@ -189,10 +203,10 @@ One cancellation helper is checked before transport, after streaming, around
 artifact promotion, metadata, marker and receipt commits, immediately before and
 after `latest`, and before success returns. Cancellation never returns success or
 leaves a new latest pointer. Temporary and pending state is removed only while
-its pinned containment still validates. A marker-complete content-addressed
-artifact may remain orphaned after cancellation observed just after promotion;
-it is safe immutable content, while deleting it would create a race with reuse.
-AQ0–AQ6 performs no pruning.
+its pinned containment still validates. Failure or cancellation before final
+snapshot validation quarantines the owned reserved directory by its proven
+identity; it never leaves that candidate under the legitimate content-addressed
+name. AQ0–AQ6 performs no pruning of valid immutable commits or quarantines.
 
 ## AQ5 — decryption, export and C4 boundary
 

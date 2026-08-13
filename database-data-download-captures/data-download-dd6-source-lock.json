@@ -6,8 +6,8 @@
     {
       "key": "project_state",
       "fileName": "docs/project-state.md",
-      "sizeBytes": 19842,
-      "sha256": "f59cdaf4a1eb82e650a2182abb15ca98491504cf3e2cc5ddfb744f55ef9ab1c4"
+      "sizeBytes": 20669,
+      "sha256": "39abc8855eea806b2cc91fef50ab7ecc40014c98fe4e0ff9c1fef5f0a1cc8cfc"
     },
     {
       "key": "s0_s7",
@@ -66,8 +66,8 @@
     {
       "key": "acquisition_playbook",
       "fileName": "docs/game-db/game-db-first-party-acquisition-playbook.md",
-      "sizeBytes": 16531,
-      "sha256": "3fc97a1ae90f2d6be1e4761caa0a7aa023660a913ba0edde93caa1220e9f3a9e"
+      "sizeBytes": 17796,
+      "sha256": "c3bab223a7cb760821811f6de320f3d38e0de7448499b75768afcf83cf95e8e4"
     },
     {
       "key": "r2_adr",
@@ -78,8 +78,8 @@
     {
       "key": "current_downloader",
       "fileName": "game-db/game-db-download-database-artifact.ts",
-      "sizeBytes": 66556,
-      "sha256": "bbb2447b11470774bac1c6e243279f33a81fe617fdc0ada7d8732a40f732e1f2"
+      "sizeBytes": 81950,
+      "sha256": "9bcb06fe34276b56731917fd473e32d5d6f4459f487af3f8562d6adbb9b1fac8"
     },
     {
       "key": "current_update_runner",
