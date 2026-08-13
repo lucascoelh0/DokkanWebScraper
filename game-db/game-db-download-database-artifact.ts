@@ -1,6 +1,5 @@
 import { createHash, randomBytes } from "crypto";
-import { createReadStream } from "fs";
-import { lstat, mkdir, open, readFile, readdir, realpath, rename, rm, rmdir, stat, writeFile } from "fs/promises";
+import { FileHandle, link, lstat, mkdir, open, readdir, realpath, rename, rm, rmdir } from "fs/promises";
 import { request } from "https";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "path";
 import { Readable } from "stream";
@@ -11,6 +10,7 @@ const SQLITE_HEADER = Buffer.from("SQLite format 3\u0000", "utf8");
 const DEFAULT_STORE_ROOT = resolve(process.cwd(), "game-db", "data", "game-db-acquisition", "database-artifacts");
 export const DEFAULT_DATABASE_ARTIFACT_MAX_BYTES = 128 * 1024 * 1024;
 export const DEFAULT_DATABASE_ARTIFACT_TIMEOUT_MS = 120_000;
+const LOCAL_ARTIFACT_HISTORY_MAX_BYTES = 256 * 1024 * 1024;
 
 export interface ClientAssetsDatabasePayload {
     url: string,
@@ -226,28 +226,16 @@ export function validateClientAssetsDatabaseDescriptor(value: unknown): Validate
     });
 }
 
-async function assertRegularRealFile(filePath: string, label: string): Promise<string> {
-    const resolved = resolve(filePath);
-    try {
-        const link = await lstat(resolved);
-        if (!link.isFile() || link.isSymbolicLink()) throw new Error("rejected");
-        const real = await realpath(resolved);
-        if (resolve(real).toLowerCase() !== resolved.toLowerCase()) throw new Error("rejected");
-        return real;
-    } catch {
-        throw new Error(`${label} must be a regular real file, not a symlink or junction`);
-    }
-}
-
 export async function readAndValidateDatabaseDescriptor(filePath: string): Promise<ValidatedDatabaseDescriptor> {
-    const realFile = await assertRegularRealFile(filePath, "Descriptor input");
+    const text = await readStableOpenFile(undefined, filePath, undefined, "Descriptor input", handle => handle.readFile("utf8"));
     let parsed: unknown;
-    try { parsed = JSON.parse(await readFile(realFile, "utf8")); }
+    try { parsed = JSON.parse(text); }
     catch { throw new Error("Database descriptor JSON is malformed"); }
     return validateClientAssetsDatabaseDescriptor(parsed);
 }
 
-interface DirectoryIdentity { path: string, dev: string, ino: string }
+interface DirectoryIdentity { path: string, realPath: string, dev: string, ino: string, mode: number }
+interface FileIdentity { path: string, dev: string, ino: string, size: string, mode: number, mtimeNs: string, ctimeNs: string }
 
 function samePath(left: string, right: string): boolean {
     return process.platform === "win32" ? resolve(left).toLowerCase() === resolve(right).toLowerCase() : resolve(left) === resolve(right);
@@ -263,13 +251,13 @@ async function captureDirectoryIdentity(path: string, label: string): Promise<Di
     if (!metadata.isDirectory() || metadata.isSymbolicLink() || !samePath(canonical, resolved)) {
         throw new Error(`${label} must be a regular real directory, not a symlink, junction or reparse point`);
     }
-    return { path: resolved, dev: BigInt(metadata.dev).toString(), ino: BigInt(metadata.ino).toString() };
+    return { path: resolved, realPath: resolve(canonical), dev: BigInt(metadata.dev).toString(), ino: BigInt(metadata.ino).toString(), mode: metadata.mode };
 }
 
 async function sameDirectoryIdentity(expected: DirectoryIdentity): Promise<boolean> {
     try {
         const actual = await captureDirectoryIdentity(expected.path, "Controlled directory");
-        return actual.dev === expected.dev && actual.ino === expected.ino;
+        return samePath(actual.realPath, expected.realPath) && actual.dev === expected.dev && actual.ino === expected.ino && actual.mode === expected.mode;
     } catch { return false; }
 }
 
@@ -284,27 +272,143 @@ function directoryChain(path: string): string[] {
     }
 }
 
+function fileIdentityFromStats(path: string, metadata: any): FileIdentity {
+    if (!metadata.isFile()) throw new Error("not a regular file");
+    return {
+        path: resolve(path),
+        dev: BigInt(metadata.dev).toString(),
+        ino: BigInt(metadata.ino).toString(),
+        size: BigInt(metadata.size).toString(),
+        mode: metadata.mode,
+        mtimeNs: BigInt(metadata.mtimeNs).toString(),
+        ctimeNs: BigInt(metadata.ctimeNs).toString(),
+    };
+}
+
+function sameFileIdentity(left: FileIdentity, right: FileIdentity, includeMutableAttributes = true): boolean {
+    return left.dev === right.dev && left.ino === right.ino && left.mode === right.mode
+        && (!includeMutableAttributes || (left.size === right.size && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs));
+}
+
+async function captureHandleFileIdentity(handle: FileHandle, path: string, label: string): Promise<FileIdentity> {
+    try { return fileIdentityFromStats(path, await handle.stat({ bigint: true })); }
+    catch { throw new Error(`${label} must be a regular real file`); }
+}
+
+async function capturePathFileIdentity(path: string, label: string): Promise<FileIdentity> {
+    const target = resolve(path);
+    try {
+        const metadata: any = await lstat(target, { bigint: true });
+        const canonical = await realpath(target);
+        if (metadata.isSymbolicLink() || !samePath(canonical, target)) throw new Error("rejected");
+        return fileIdentityFromStats(target, metadata);
+    } catch {
+        throw new Error(`${label} pathname no longer points to the validated regular-file identity`);
+    }
+}
+
+async function assertPathMatchesFileIdentity(path: string, expected: FileIdentity, label: string): Promise<void> {
+    const target = resolve(path);
+    const actual = await capturePathFileIdentity(target, label);
+    if (!samePath(target, expected.path) || !sameFileIdentity(actual, expected)) throw new Error(`${label} pathname no longer points to the validated regular-file identity`);
+}
+
+async function readStableOpenFile<T>(guard: ArtifactStoreGuard | undefined, filePath: string, parent: string | undefined, label: string, reader: (handle: FileHandle, identity: FileIdentity) => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const target = guard && parent ? await guard.assertParent(filePath, parent) : resolve(filePath);
+    let handle: FileHandle;
+    try { handle = await open(target, "r"); }
+    catch { throw new Error(`${label} must be a regular real file, not a symlink or junction`); }
+    try {
+        const before = await captureHandleFileIdentity(handle, target, label);
+        await assertPathMatchesFileIdentity(target, before, label);
+        if (signal) throwIfCancelled(signal);
+        await assertPathMatchesFileIdentity(target, before, label);
+        const value = await reader(handle, before);
+        const after = await captureHandleFileIdentity(handle, target, label);
+        if (!sameFileIdentity(before, after)) throw new Error(`${label} changed during validation`);
+        await assertPathMatchesFileIdentity(target, after, label);
+        if (guard) {
+            guard.trackRegularFile(target, after);
+            await guard.assertStable();
+        }
+        return value;
+    } finally { await handle.close(); }
+}
+
+async function writeHandleFully(handle: FileHandle, bytes: Buffer): Promise<void> {
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+        const { bytesWritten } = await handle.write(bytes, offset, bytes.byteLength - offset, null);
+        if (bytesWritten <= 0) throw new Error("Artifact store file write made no progress");
+        offset += bytesWritten;
+    }
+}
+
+async function writeExclusiveStableFile(guard: ArtifactStoreGuard, filePath: string, parent: string, contents: string | Buffer, label: string): Promise<FileIdentity> {
+    const target = await guard.assertParent(filePath, parent);
+    let handle: FileHandle;
+    try { handle = await open(target, "wx"); }
+    catch (error) { throw error; }
+    let identity: FileIdentity | undefined;
+    try {
+        identity = await captureHandleFileIdentity(handle, target, label);
+        await assertPathMatchesFileIdentity(target, identity, label);
+        guard.trackRegularFile(target, identity);
+        await guard.assertStable();
+        await writeHandleFully(handle, Buffer.isBuffer(contents) ? contents : Buffer.from(contents, "utf8"));
+        await handle.sync();
+        const written = await captureHandleFileIdentity(handle, target, label);
+        if (!sameFileIdentity(identity, written, false)) throw new Error(`${label} identity changed during creation`);
+        await assertPathMatchesFileIdentity(target, written, label);
+        guard.trackRegularFile(target, written);
+        await guard.assertStable();
+        return written;
+    } finally { await handle.close(); }
+}
+
 class ArtifactStoreGuard {
     private readonly directories = new Map<string, DirectoryIdentity>();
+    private readonly files = new Map<string, FileIdentity>();
 
     private constructor(readonly root: string) {}
 
-    static async open(storeRoot: string): Promise<ArtifactStoreGuard> {
+    static async open(storeRoot: string, signal?: AbortSignal): Promise<ArtifactStoreGuard> {
         const resolved = resolve(storeRoot);
         if (!isAbsolute(resolved) || resolved.includes("\0")) throw new Error("Artifact store root is invalid");
         const chain = directoryChain(resolved);
+        const guard = new ArtifactStoreGuard(resolved);
         let existing = chain.length - 1;
         while (existing >= 0) {
             try { await lstat(chain[existing]); break; }
-            catch { existing -= 1; }
+            catch (error: any) { if (error?.code !== "ENOENT") throw error; existing -= 1; }
         }
         if (existing < 0) throw new Error("Artifact store root has no existing filesystem ancestor");
-        for (let index = 0; index <= existing; index += 1) await captureDirectoryIdentity(chain[index], "Artifact store parent");
-        await mkdir(resolved, { recursive: true });
-        const guard = new ArtifactStoreGuard(resolved);
-        for (const path of chain) guard.directories.set(path, await captureDirectoryIdentity(path, path === resolved ? "Artifact store root" : "Artifact store parent"));
-        await guard.assertStable();
-        return guard;
+        for (let index = 0; index <= existing; index += 1) {
+            const path = chain[index];
+            guard.directories.set(path, await captureDirectoryIdentity(path, "Artifact store parent"));
+        }
+        const created: DirectoryIdentity[] = [];
+        try {
+            await guard.assertStable();
+            for (let index = existing + 1; index < chain.length; index += 1) {
+                const path = chain[index];
+                await guard.assertStable();
+                if (signal) throwIfCancelled(signal);
+                await guard.assertStable();
+                await mkdir(path);
+                const identity = await captureDirectoryIdentity(path, path === resolved ? "Artifact store root" : "Artifact store parent");
+                guard.directories.set(path, identity);
+                created.push(identity);
+                await guard.assertStable();
+            }
+            await guard.assertStable();
+            return guard;
+        } catch (error) {
+            for (const identity of created.reverse()) {
+                await guard.removeDirectory(identity.path, identity, []).catch(() => undefined);
+            }
+            throw error;
+        }
     }
 
     ensureContained(candidate: string, allowRoot = false): string {
@@ -369,14 +473,115 @@ class ArtifactStoreGuard {
         return target;
     }
 
-    async removeRegularFile(path: string, parent: string): Promise<void> {
+    trackRegularFile(path: string, identity: FileIdentity): void {
+        const target = this.ensureContained(path);
+        if (!samePath(target, identity.path)) throw new Error("Artifact store file identity path is invalid");
+        this.files.set(target, identity);
+    }
+
+    trackedRegularFile(path: string): FileIdentity | undefined {
+        return this.files.get(resolve(path));
+    }
+
+    private async retainedHistoryBytes(): Promise<number> {
+        await this.assertStable();
+        let total = 0;
+        for (const entry of await readdir(this.root, { withFileTypes: true })) {
+            if (!entry.name.startsWith(".file-history-") && !entry.name.startsWith(".latest-history-")) continue;
+            if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error("Artifact store retained history must be a real directory");
+            const directory = resolve(this.root, entry.name);
+            const identity = await captureDirectoryIdentity(directory, "Artifact store retained history");
+            this.directories.set(directory, identity);
+            const members = await readdir(directory, { withFileTypes: true });
+            if (members.length !== 1 || members[0].name !== "latest.json" || !members[0].isFile() || members[0].isSymbolicLink()) throw new Error("Artifact store retained history has unexpected content");
+            const member = resolve(directory, "latest.json");
+            const fileIdentity = await capturePathFileIdentity(member, "Artifact store retained history file");
+            this.files.set(member, fileIdentity);
+            const size = Number(fileIdentity.size);
+            if (!Number.isSafeInteger(size) || size < 0 || total > LOCAL_ARTIFACT_HISTORY_MAX_BYTES - size) throw new Error("Artifact store retained history exceeds the local storage budget");
+            total += size;
+        }
+        await this.assertStable();
+        return total;
+    }
+
+    async assertHistoryBudget(reservedBytes: number): Promise<void> {
+        if (!Number.isSafeInteger(reservedBytes) || reservedBytes < 0 || reservedBytes > LOCAL_ARTIFACT_HISTORY_MAX_BYTES) throw new Error("Artifact store history reservation is invalid");
+        const retained = await this.retainedHistoryBytes();
+        if (retained > LOCAL_ARTIFACT_HISTORY_MAX_BYTES - reservedBytes) throw new Error("Artifact store retained history would exceed the 256 MiB local storage budget");
+    }
+
+    async cloneTrackedRegularFileCreateOnly(from: string, fromParent: string, to: string, toParent: string, signal?: AbortSignal): Promise<FileIdentity> {
+        const source = await this.assertParent(from, fromParent);
+        const target = await this.assertParent(to, toParent);
+        const identity = this.files.get(source);
+        if (!identity) throw new Error("Artifact store source file identity is not controlled");
+        await assertPathMatchesFileIdentity(source, identity, "Artifact store source file");
+        if (signal) throwIfCancelled(signal);
+        await assertPathMatchesFileIdentity(source, identity, "Artifact store source file");
+        await this.assertStable();
+        // link(2) is create-only: unlike rename(), it cannot overwrite a target
+        // that appears after validation.  The source is retained until the new
+        // pathname has independently proved the same inode and attributes.
+        await link(source, target);
+        const linkedSource = await capturePathFileIdentity(source, "Artifact store source file after link");
+        const installed = await capturePathFileIdentity(target, "Installed artifact store file");
+        if (!sameFileIdentity(linkedSource, installed) || !sameFileIdentity(identity, linkedSource, false)) {
+            throw new Error("Installed artifact store file identity changed during create-only promotion");
+        }
+        this.files.set(source, linkedSource);
+        this.files.set(target, installed);
+        await this.assertStable();
+        return installed;
+    }
+
+    async moveTrackedRegularFileToHistory(from: string, fromParent: string, historyLabel: string, signal?: AbortSignal, enforceCancellation = true, historyPrefix = ".file-history"): Promise<{ path: string, identity: FileIdentity }> {
+        const source = await this.assertParent(from, fromParent);
+        const expected = this.files.get(source);
+        if (!expected) throw new Error("Artifact store source file identity is not controlled");
+        if (historyPrefix !== ".discard") await this.assertHistoryBudget(Number(expected.size));
+        const history = await this.createExclusiveDirectory(resolve(this.root, `${historyPrefix}-${process.pid}-${randomBytes(12).toString("hex")}`), historyLabel);
+        const target = resolve(history.path, "latest.json");
+        await this.assertParent(target, history.path);
+        // This read is also the deterministic concurrency boundary used by the
+        // productive AbortSignal.  Rollback observes it without allowing an
+        // already-aborted signal to suppress recovery.
+        if (signal) {
+            if (enforceCancellation) throwIfCancelled(signal);
+            else void signal.aborted;
+        }
+        await this.assertStable();
+        // Rename moves whichever pathname identity exists at the atomic call;
+        // it never deletes that identity.  The exclusive history directory
+        // makes the target a controlled, previously unreachable pathname.
+        await rename(source, target);
+        const moved = await capturePathFileIdentity(target, historyLabel);
+        this.files.delete(source);
+        this.files.set(target, moved);
+        if (!sameFileIdentity(expected, moved, false)) {
+            throw new Error(`${historyLabel} moved a replacement identity; the moved file was retained for recovery`);
+        }
+        await this.assertStable();
+        return { path: target, identity: moved };
+    }
+
+    async discardTrackedRegularFile(from: string, fromParent: string, label: string, signal?: AbortSignal): Promise<void> {
+        const moved = await this.moveTrackedRegularFileToHistory(from, fromParent, label, signal, true, ".discard");
+        const directory = dirname(moved.path);
+        const directoryIdentity = this.directories.get(directory);
+        if (!directoryIdentity) throw new Error("Artifact store discard directory identity is unavailable");
+        await this.removeDirectory(directory, directoryIdentity, ["latest.json"]);
+    }
+
+    async removeRegularFile(path: string, parent: string, signal?: AbortSignal): Promise<void> {
         const target = await this.assertParent(path, parent);
-        let metadata: any;
-        try { metadata = await lstat(target); }
-        catch (error: any) { if (error?.code === "ENOENT") return; throw error; }
-        const canonical = await realpath(target);
-        if (!metadata.isFile() || metadata.isSymbolicLink() || !samePath(canonical, target)) throw new Error("Refusing to clean a replaced temporary file");
+        const identity = this.files.get(target);
+        if (!identity) return;
+        await assertPathMatchesFileIdentity(target, identity, "Temporary artifact store file");
+        if (signal) throwIfCancelled(signal);
+        await assertPathMatchesFileIdentity(target, identity, "Temporary artifact store file");
         await rm(target, { force: true });
+        this.files.delete(target);
         await this.assertStable();
     }
 
@@ -387,18 +592,27 @@ class ArtifactStoreGuard {
         const entries = await readdir(target, { withFileTypes: true });
         for (const entry of entries) {
             if (!allowedFiles.includes(entry.name) || !entry.isFile() || entry.isSymbolicLink()) throw new Error("Refusing to clean unexpected pending-directory content");
-            await assertRegularRealFile(resolve(target, entry.name), "Pending artifact member");
+            const member = resolve(target, entry.name);
+            const identity = this.files.get(member);
+            if (!identity) throw new Error("Refusing to clean an untracked pending-directory member");
+            await assertPathMatchesFileIdentity(member, identity, "Pending artifact member");
         }
+        for (const entry of entries) await this.removeRegularFile(resolve(target, entry.name), target);
+        if (!await sameDirectoryIdentity(identity)) throw new Error("Refusing to clean a replaced controlled directory");
         this.directories.delete(target);
-        if (entries.length === 0) await rmdir(target); else await rm(target, { recursive: true });
+        await rmdir(target);
         await this.assertStable();
     }
 }
 
-function normalizedHeader(headers: DatabaseArtifactTransportResponse["headers"], name: string): string | undefined {
-    const found = Object.entries(headers).find(([key]) => key.toLowerCase() === name)?.[1];
-    if (Array.isArray(found)) return found.length === 1 ? found[0] : undefined;
-    return found;
+function headerValues(headers: DatabaseArtifactTransportResponse["headers"], name: string): string[] {
+    const values: string[] = [];
+    for (const [key, value] of Object.entries(headers)) {
+        if (key.toLowerCase() !== name || value === undefined) continue;
+        if (Array.isArray(value)) values.push(...value);
+        else values.push(value);
+    }
+    return values;
 }
 
 async function inspectStreamToFile(input: {
@@ -407,12 +621,20 @@ async function inspectStreamToFile(input: {
     expectedSizeBytes: number,
     maxBytes: number,
     signal: AbortSignal,
-}): Promise<GameDbArtifactInspection> {
-    const handle = await open(input.temporaryPath, "wx");
+    guard: ArtifactStoreGuard,
+}): Promise<{ inspection: GameDbArtifactInspection, identity: FileIdentity }> {
+    const target = await input.guard.assertParent(input.temporaryPath, input.guard.root);
+    const handle = await open(target, "wx");
     const hash = createHash("sha256");
     let observedSizeBytes = 0;
     let header = Buffer.alloc(0);
+    let initialIdentity: FileIdentity | undefined;
+    let finalIdentity: FileIdentity | undefined;
     try {
+        initialIdentity = await captureHandleFileIdentity(handle, target, "Downloaded artifact temporary");
+        await assertPathMatchesFileIdentity(target, initialIdentity, "Downloaded artifact temporary");
+        input.guard.trackRegularFile(target, initialIdentity);
+        await input.guard.assertStable();
         for await (const value of input.body) {
             if (input.signal.aborted) throw new Error("Database artifact acquisition cancelled");
             const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
@@ -420,42 +642,59 @@ async function inspectStreamToFile(input: {
             if (observedSizeBytes > input.maxBytes || observedSizeBytes > input.expectedSizeBytes) throw new Error("Database artifact stream exceeds the allowed size");
             hash.update(chunk);
             if (header.byteLength < SQLITE_HEADER.byteLength) header = Buffer.concat([header, chunk.subarray(0, SQLITE_HEADER.byteLength - header.byteLength)]);
-            await handle.write(chunk);
+            await writeHandleFully(handle, chunk);
         }
         if (input.signal.aborted) throw new Error("Database artifact acquisition cancelled");
         if (observedSizeBytes !== input.expectedSizeBytes) throw new Error("Database artifact stream is truncated or size-divergent");
         await handle.sync();
+        finalIdentity = await captureHandleFileIdentity(handle, target, "Downloaded artifact temporary");
+        if (!sameFileIdentity(initialIdentity, finalIdentity, false)) throw new Error("Downloaded artifact temporary identity changed during creation");
+        await assertPathMatchesFileIdentity(target, finalIdentity, "Downloaded artifact temporary");
+        input.guard.trackRegularFile(target, finalIdentity);
+        await input.guard.assertStable();
     } finally {
+        if (initialIdentity && !finalIdentity) {
+            try {
+                const current = await captureHandleFileIdentity(handle, target, "Downloaded artifact temporary");
+                if (sameFileIdentity(initialIdentity, current, false)) {
+                    await assertPathMatchesFileIdentity(target, current, "Downloaded artifact temporary");
+                    input.guard.trackRegularFile(target, current);
+                }
+            } catch { /* leave an unproved path untouched during outer cleanup */ }
+        }
         await handle.close();
     }
+    if (!finalIdentity) throw new Error("Downloaded artifact temporary identity was not validated");
     return {
-        observedSizeBytes,
-        localSha256: hash.digest("hex"),
-        artifactState: header.equals(SQLITE_HEADER) ? "readable_sqlite" : "encrypted_or_packaged",
+        inspection: {
+            observedSizeBytes,
+            localSha256: hash.digest("hex"),
+            artifactState: header.equals(SQLITE_HEADER) ? "readable_sqlite" : "encrypted_or_packaged",
+        },
+        identity: finalIdentity,
     };
 }
 
-async function inspectRegularArtifact(filePath: string, maxBytes: number, guard?: ArtifactStoreGuard, parent?: string): Promise<GameDbArtifactInspection> {
-    if (guard && parent) await guard.assertParent(filePath, parent);
-    const realFile = await assertRegularRealFile(filePath, "Artifact input");
-    const before = await stat(realFile);
-    if (before.size <= 0 || before.size > maxBytes) throw new Error("Artifact input size is outside the allowed range");
-    const hash = createHash("sha256");
-    let observedSizeBytes = 0;
-    let header = Buffer.alloc(0);
-    for await (const value of createReadStream(realFile)) {
-        const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
-        observedSizeBytes += chunk.byteLength;
-        if (observedSizeBytes > maxBytes) throw new Error("Artifact input exceeds the allowed size");
-        hash.update(chunk);
-        if (header.byteLength < SQLITE_HEADER.byteLength) header = Buffer.concat([header, chunk.subarray(0, SQLITE_HEADER.byteLength - header.byteLength)]);
-    }
-    const after = await stat(realFile);
-    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || observedSizeBytes !== after.size) {
-        throw new Error("Artifact input changed during validation");
-    }
-    if (guard) await guard.assertStable();
-    return { observedSizeBytes, localSha256: hash.digest("hex"), artifactState: header.equals(SQLITE_HEADER) ? "readable_sqlite" : "encrypted_or_packaged" };
+async function inspectRegularArtifact(filePath: string, maxBytes: number, guard?: ArtifactStoreGuard, parent?: string, signal?: AbortSignal): Promise<GameDbArtifactInspection> {
+    return readStableOpenFile(guard, filePath, parent, "Artifact input", async (handle, identity) => {
+        const expectedSize = Number(identity.size);
+        if (!Number.isSafeInteger(expectedSize) || expectedSize <= 0 || expectedSize > maxBytes) throw new Error("Artifact input size is outside the allowed range");
+        const hash = createHash("sha256");
+        let observedSizeBytes = 0;
+        let header = Buffer.alloc(0);
+        const buffer = Buffer.allocUnsafe(64 * 1024);
+        while (observedSizeBytes < expectedSize) {
+            const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.byteLength, expectedSize - observedSizeBytes), observedSizeBytes);
+            if (bytesRead <= 0) break;
+            const chunk = buffer.subarray(0, bytesRead);
+            observedSizeBytes += bytesRead;
+            if (observedSizeBytes > maxBytes) throw new Error("Artifact input exceeds the allowed size");
+            hash.update(chunk);
+            if (header.byteLength < SQLITE_HEADER.byteLength) header = Buffer.concat([header, chunk.subarray(0, SQLITE_HEADER.byteLength - header.byteLength)]);
+        }
+        if (observedSizeBytes !== expectedSize) throw new Error("Artifact input changed during validation");
+        return { observedSizeBytes, localSha256: hash.digest("hex"), artifactState: header.equals(SQLITE_HEADER) ? "readable_sqlite" : "encrypted_or_packaged" };
+    }, signal);
 }
 
 async function inspectDownloadedDatabaseArtifact(filePath: string, maxBytes = DEFAULT_DATABASE_ARTIFACT_MAX_BYTES): Promise<GameDbArtifactInspection> {
@@ -545,18 +784,11 @@ function parseCommittedMetadata(value: unknown): GameDbAcquiredArtifactMetadata 
     return value as unknown as GameDbAcquiredArtifactMetadata;
 }
 
-async function readStableTextFile(guard: ArtifactStoreGuard, filePath: string, parent: string, label: string): Promise<string> {
-    await guard.assertParent(filePath, parent);
-    const canonical = await assertRegularRealFile(filePath, label);
-    const before: any = await stat(canonical, { bigint: true });
-    const text = await readFile(canonical, "utf8");
-    const after: any = await stat(canonical, { bigint: true });
-    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw new Error(`${label} changed during validation`);
-    await guard.assertStable();
-    return text;
+async function readStableTextFile(guard: ArtifactStoreGuard, filePath: string, parent: string, label: string, signal?: AbortSignal): Promise<string> {
+    return readStableOpenFile(guard, filePath, parent, label, handle => handle.readFile("utf8"), signal);
 }
 
-async function validateCommittedArtifact(guard: ArtifactStoreGuard, artifactsRoot: string, identity: string, expectedMetadata?: GameDbAcquiredArtifactMetadata): Promise<GameDbAcquiredArtifactMetadata> {
+async function validateCommittedArtifact(guard: ArtifactStoreGuard, artifactsRoot: string, identity: string, expectedMetadata?: GameDbAcquiredArtifactMetadata, signal?: AbortSignal): Promise<GameDbAcquiredArtifactMetadata> {
     if (!/^[a-f0-9]{64}$/.test(identity)) throw new Error("Committed artifact identity syntax is invalid");
     const directory = await guard.trackExistingDirectory(resolve(artifactsRoot, identity), "Committed artifact directory");
     const entries = (await readdir(directory, { withFileTypes: true })).map(value => value.name).sort();
@@ -564,17 +796,16 @@ async function validateCommittedArtifact(guard: ArtifactStoreGuard, artifactsRoo
     const artifactPath = resolve(directory, "database.db");
     const metadataPath = resolve(directory, "metadata.json");
     const markerPath = resolve(directory, "commit-marker.json");
-    for (const path of [artifactPath, metadataPath, markerPath]) await assertRegularRealFile(path, "Committed artifact member");
-    const storedMetadataText = await readStableTextFile(guard, metadataPath, directory, "Committed artifact metadata");
+    const storedMetadataText = await readStableTextFile(guard, metadataPath, directory, "Committed artifact metadata", signal);
     let storedMetadataValue: unknown;
     try { storedMetadataValue = JSON.parse(storedMetadataText); } catch { throw new Error("Committed artifact metadata JSON is malformed"); }
     const metadata = parseCommittedMetadata(storedMetadataValue);
     if (storedMetadataText !== canonicalJson(metadata) || artifactIdentity(metadata) !== identity || (expectedMetadata && canonicalJson(metadata) !== canonicalJson(expectedMetadata))) {
         throw new Error("Existing immutable artifact identity does not validate");
     }
-    const inspection = await inspectRegularArtifact(artifactPath, DEFAULT_DATABASE_ARTIFACT_MAX_BYTES, guard, directory);
+    const inspection = await inspectRegularArtifact(artifactPath, DEFAULT_DATABASE_ARTIFACT_MAX_BYTES, guard, directory, signal);
     if (JSON.stringify(inspection) !== JSON.stringify({ observedSizeBytes: metadata.observedSizeBytes, localSha256: metadata.localSha256, artifactState: metadata.artifactState })) throw new Error("Existing immutable artifact identity does not validate");
-    const markerText = await readStableTextFile(guard, markerPath, directory, "Committed artifact marker");
+    const markerText = await readStableTextFile(guard, markerPath, directory, "Committed artifact marker", signal);
     const expectedMarker = canonicalJson({ schemaVersion: 1, contract: "dokkan-game-db-artifact-commit", contractVersion: "1.0.0", identity, metadataSha256: createHash("sha256").update(storedMetadataText).digest("hex") });
     if (markerText !== expectedMarker) throw new Error("Existing immutable artifact commit marker does not validate");
     await guard.assertStable();
@@ -600,48 +831,52 @@ function throwIfCancelled(signal: AbortSignal): void {
 
 async function promoteLatest(guard: ArtifactStoreGuard, artifactsRoot: string, identity: string, signal: AbortSignal): Promise<{ path: string, rollback: () => Promise<void> }> {
     const latestPath = resolve(guard.root, "latest.json");
-    await validateCommittedArtifact(guard, artifactsRoot, identity);
+    await validateCommittedArtifact(guard, artifactsRoot, identity, undefined, signal);
     let originalText: string | null = null;
+    let originalIdentity: FileIdentity | undefined;
     let previousIdentity: string | null = null;
     let latestExists = false;
     try { await lstat(latestPath); latestExists = true; }
     catch (error: any) { if (error?.code !== "ENOENT") throw error; }
     if (latestExists) {
-        originalText = await readStableTextFile(guard, latestPath, guard.root, "Existing latest pointer");
+        originalText = await readStableTextFile(guard, latestPath, guard.root, "Existing latest pointer", signal);
+        originalIdentity = guard.trackedRegularFile(latestPath);
+        if (!originalIdentity) throw new Error("Existing latest pointer identity was not retained");
         const current = parseLatestPointer(originalText);
-        await validateCommittedArtifact(guard, artifactsRoot, current.currentIdentity);
-        if (current.previousIdentity) await validateCommittedArtifact(guard, artifactsRoot, current.previousIdentity);
+        await validateCommittedArtifact(guard, artifactsRoot, current.currentIdentity, undefined, signal);
+        if (current.previousIdentity) await validateCommittedArtifact(guard, artifactsRoot, current.previousIdentity, undefined, signal);
         previousIdentity = current.currentIdentity === identity
             ? current.previousIdentity
             : current.currentIdentity;
     }
     if (previousIdentity === identity) throw new Error("Latest pointer would create an identity cycle");
     const pointer = { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: identity, previousIdentity };
-    const temporary = resolve(guard.root, `.latest-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
+    let priorHistory: { path: string, identity: FileIdentity } | undefined;
+    let promotedIdentity: FileIdentity | undefined;
     throwIfCancelled(signal);
-    await guard.assertParent(temporary, guard.root);
     try {
-        await writeFile(temporary, canonicalJson(pointer), { flag: "wx" });
-        await assertRegularRealFile(temporary, "Latest temporary");
-        await guard.assertStable();
-        throwIfCancelled(signal);
-        await rename(temporary, latestPath);
-        await guard.assertStable();
+        if (originalIdentity) {
+            priorHistory = await guard.moveTrackedRegularFileToHistory(latestPath, guard.root, "Prior latest pointer history", signal, true, ".latest-history");
+            if (!sameFileIdentity(originalIdentity, priorHistory.identity, false)) throw new Error("Prior latest pointer history did not retain the validated identity");
+        }
+        promotedIdentity = await writeExclusiveStableFile(guard, latestPath, guard.root, canonicalJson(pointer), "Latest pointer");
         const rollback = async () => {
             await guard.assertStable();
-            if (originalText === null) await guard.removeRegularFile(latestPath, guard.root);
-            else {
-                const rollbackTemporary = resolve(guard.root, `.latest-rollback-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
-                await writeFile(rollbackTemporary, originalText, { flag: "wx" });
-                await assertRegularRealFile(rollbackTemporary, "Latest rollback temporary");
-                await rename(rollbackTemporary, latestPath);
-                await guard.assertStable();
+            if (!promotedIdentity) throw new Error("Promoted latest pointer identity is unavailable for rollback");
+            const movedCurrent = await guard.moveTrackedRegularFileToHistory(latestPath, guard.root, "Rolled-back latest pointer history", signal, false, ".latest-history");
+            if (!sameFileIdentity(promotedIdentity, movedCurrent.identity, false)) throw new Error("Rollback moved a replacement latest pointer; it was retained for recovery");
+            if (originalText !== null) {
+                if (!priorHistory || !guard.trackedRegularFile(priorHistory.path)) throw new Error("Validated prior latest pointer history is unavailable for rollback");
+                await guard.cloneTrackedRegularFileCreateOnly(priorHistory.path, dirname(priorHistory.path), latestPath, guard.root);
             }
         };
         try { throwIfCancelled(signal); } catch (error) { await rollback(); throw error; }
         return { path: latestPath, rollback };
     } catch (error) {
-        await guard.removeRegularFile(temporary, guard.root).catch(() => undefined);
+        if (!promotedIdentity && priorHistory && guard.trackedRegularFile(priorHistory.path)) {
+            try { await guard.cloneTrackedRegularFileCreateOnly(priorHistory.path, dirname(priorHistory.path), latestPath, guard.root); }
+            catch { /* retain validated history; never overwrite an occupied latest pathname */ }
+        }
         throw error;
     }
 }
@@ -656,17 +891,19 @@ async function writeOperationalReceipt(guard: ArtifactStoreGuard, receipt: GameD
     if (signal) throwIfCancelled(signal);
     await guard.assertParent(temporary, receiptsRoot);
     try {
-        await writeFile(temporary, canonicalJson(receipt), { flag: "wx" });
-        await assertRegularRealFile(temporary, "Operational receipt temporary");
-        await guard.assertStable();
+        await writeExclusiveStableFile(guard, temporary, receiptsRoot, canonicalJson(receipt), "Operational receipt temporary");
         if (signal) throwIfCancelled(signal);
-        await rename(temporary, target);
-        await assertRegularRealFile(target, "Operational receipt");
-        await guard.assertStable();
+        await guard.cloneTrackedRegularFileCreateOnly(temporary, receiptsRoot, target, receiptsRoot, signal);
+        await guard.discardTrackedRegularFile(temporary, receiptsRoot, "Receipt staging discard", signal);
         if (signal) throwIfCancelled(signal);
         return target;
     } catch (error) {
-        await guard.removeRegularFile(temporary, receiptsRoot).catch(() => undefined);
+        if (guard.trackedRegularFile(temporary)) {
+            try { await guard.moveTrackedRegularFileToHistory(temporary, receiptsRoot, "Failed receipt staging history"); }
+            catch {
+                if (guard.trackedRegularFile(temporary)) await guard.discardTrackedRegularFile(temporary, receiptsRoot, "Failed receipt staging discard").catch(() => undefined);
+            }
+        }
         throw error;
     }
 }
@@ -705,7 +942,7 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
     const maxBytes = options.maxBytes ?? DEFAULT_DATABASE_ARTIFACT_MAX_BYTES;
     const timeoutMs = options.timeoutMs ?? DEFAULT_DATABASE_ARTIFACT_TIMEOUT_MS;
     if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error("Invalid acquisition limits");
-    const guard = await ArtifactStoreGuard.open(options.storeRoot);
+    const guard = await ArtifactStoreGuard.open(options.storeRoot, options.signal);
     const lockPath = resolve(guard.root, ".acquisition.lock");
     let lock: { path: string, identity: DirectoryIdentity };
     try { lock = await guard.createExclusiveDirectory(lockPath, "Artifact store writer lock"); }
@@ -715,7 +952,10 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
     options.signal?.addEventListener("abort", onAbort, { once: true });
     if (options.signal?.aborted) controller.abort();
     const cancellationSignal = {
-        get aborted() { return controller.signal.aborted || Boolean(options.signal?.aborted); },
+        get aborted() {
+            const externallyAborted = Boolean(options.signal?.aborted);
+            return controller.signal.aborted || externallyAborted;
+        },
     } as AbortSignal;
     const temporaryPath = resolve(guard.root, `.download-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
     let pending: { path: string, identity: DirectoryIdentity } | undefined;
@@ -723,17 +963,25 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
     try {
         throwIfCancelled(cancellationSignal);
         await guard.assertStable();
+        await guard.assertHistoryBudget(maxBytes);
         // The transport is the first external side effect and is never called
         // until descriptor, limits, root identity and cancellation validate.
         throwIfCancelled(cancellationSignal);
         const response = await withTimeout(options.transport.get(new URL(descriptor.url), { signal: controller.signal }), timeoutMs, controller);
-        if (response.statusCode < 200 || response.statusCode > 299) {
+        if (response.statusCode !== 200) {
             response.body.destroy();
             if (response.statusCode >= 300 && response.statusCode <= 399) throw new Error("Database artifact redirects are blocked");
-            throw new Error(`Database artifact response was not successful: ${response.statusCode}`);
+            throw new Error(`Database artifact response was not successful: status must be exactly 200, received ${response.statusCode}`);
         }
-        const contentLength = normalizedHeader(response.headers, "content-length");
-        if (!contentLength || !/^[1-9][0-9]*$/.test(contentLength)) { response.body.destroy(); throw new Error("Database artifact Content-Length is required and invalid"); }
+        if (headerValues(response.headers, "content-range").length > 0) { response.body.destroy(); throw new Error("Database artifact Content-Range is forbidden"); }
+        const contentEncodings = headerValues(response.headers, "content-encoding");
+        if (contentEncodings.length > 1 || (contentEncodings.length === 1 && contentEncodings[0].trim().toLowerCase() !== "identity")) {
+            response.body.destroy();
+            throw new Error("Database artifact Content-Encoding must be absent or identity");
+        }
+        const contentLengths = headerValues(response.headers, "content-length");
+        if (contentLengths.length !== 1 || !/^[1-9][0-9]*$/.test(contentLengths[0])) { response.body.destroy(); throw new Error("Database artifact Content-Length must be one valid canonical value"); }
+        const contentLength = contentLengths[0];
         const expectedSizeBytes = Number(contentLength);
         if (!Number.isSafeInteger(expectedSizeBytes) || expectedSizeBytes > maxBytes) { response.body.destroy(); throw new Error("Database artifact Content-Length exceeds the allowed size"); }
         const destroyBody = (error: Error) => {
@@ -746,10 +994,8 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
         let inspection: GameDbArtifactInspection;
         await guard.assertParent(temporaryPath, guard.root);
         throwIfCancelled(cancellationSignal);
-        try { inspection = await inspectStreamToFile({ body: response.body, temporaryPath, expectedSizeBytes, maxBytes, signal: controller.signal }); }
+        try { ({ inspection } = await inspectStreamToFile({ body: response.body, temporaryPath, expectedSizeBytes, maxBytes, signal: controller.signal, guard })); }
         finally { clearTimeout(timer); controller.signal.removeEventListener("abort", abortBody); }
-        await guard.assertParent(temporaryPath, guard.root);
-        await assertRegularRealFile(temporaryPath, "Downloaded artifact temporary");
         await guard.assertStable();
         throwIfCancelled(cancellationSignal);
         const metadata = metadataFor(descriptor, inspection);
@@ -761,41 +1007,32 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
         try { await lstat(finalDirectory); finalExists = true; }
         catch (error: any) { if (error?.code !== "ENOENT") throw error; }
         if (finalExists) {
-            await validateCommittedArtifact(guard, artifactsRoot, identity, metadata);
+            await validateCommittedArtifact(guard, artifactsRoot, identity, metadata, cancellationSignal);
             throwIfCancelled(cancellationSignal);
-            await guard.removeRegularFile(temporaryPath, guard.root);
+            await guard.discardTrackedRegularFile(temporaryPath, guard.root, "Reused download staging discard");
             reused = true;
         } else {
             pending = await guard.createExclusiveDirectory(resolve(artifactsRoot, `.pending-${process.pid}-${randomBytes(6).toString("hex")}`), "Pending artifact directory");
             const artifactPath = resolve(pending.path, "database.db");
             throwIfCancelled(cancellationSignal);
-            await guard.assertParent(temporaryPath, guard.root);
-            await guard.assertParent(artifactPath, pending.path);
-            await rename(temporaryPath, artifactPath);
-            await assertRegularRealFile(artifactPath, "Pending database artifact");
-            await guard.assertStable();
+            await guard.cloneTrackedRegularFileCreateOnly(temporaryPath, guard.root, artifactPath, pending.path, cancellationSignal);
+            await guard.discardTrackedRegularFile(temporaryPath, guard.root, "Downloaded artifact staging discard", cancellationSignal);
             throwIfCancelled(cancellationSignal);
             const metadataText = canonicalJson(metadata);
             const metadataPath = resolve(pending.path, "metadata.json");
             throwIfCancelled(cancellationSignal);
-            await guard.assertParent(metadataPath, pending.path);
-            await writeFile(metadataPath, metadataText, { flag: "wx" });
-            await assertRegularRealFile(metadataPath, "Pending artifact metadata");
-            await guard.assertStable();
+            await writeExclusiveStableFile(guard, metadataPath, pending.path, metadataText, "Pending artifact metadata");
             throwIfCancelled(cancellationSignal);
             const marker = { schemaVersion: 1, contract: "dokkan-game-db-artifact-commit", contractVersion: "1.0.0", identity, metadataSha256: createHash("sha256").update(metadataText).digest("hex") };
             const markerPath = resolve(pending.path, "commit-marker.json");
             throwIfCancelled(cancellationSignal);
-            await guard.assertParent(markerPath, pending.path);
-            await writeFile(markerPath, canonicalJson(marker), { flag: "wx" });
-            await assertRegularRealFile(markerPath, "Pending artifact commit marker");
-            await guard.assertStable();
+            await writeExclusiveStableFile(guard, markerPath, pending.path, canonicalJson(marker), "Pending artifact commit marker");
             throwIfCancelled(cancellationSignal);
             await guard.promoteDirectory(pending.path, finalDirectory);
             pending = undefined;
             throwIfCancelled(cancellationSignal);
         }
-        await validateCommittedArtifact(guard, artifactsRoot, identity, metadata);
+        await validateCommittedArtifact(guard, artifactsRoot, identity, metadata, cancellationSignal);
         throwIfCancelled(cancellationSignal);
         const receipt: GameDbOperationalReceipt = {
             ...receiptBase(descriptor, metadata, identity),
@@ -822,7 +1059,12 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
     } catch (error) {
         controller.abort();
         if (latestCommit) await latestCommit.rollback().catch(() => undefined);
-        await guard.removeRegularFile(temporaryPath, guard.root).catch(() => undefined);
+        if (guard.trackedRegularFile(temporaryPath)) {
+            try { await guard.moveTrackedRegularFileToHistory(temporaryPath, guard.root, "Failed download staging history"); }
+            catch {
+                if (guard.trackedRegularFile(temporaryPath)) await guard.discardTrackedRegularFile(temporaryPath, guard.root, "Failed download staging discard").catch(() => undefined);
+            }
+        }
         if (pending) await guard.removeDirectory(pending.path, pending.identity, ["database.db", "metadata.json", "commit-marker.json"]).catch(() => undefined);
         throw error;
     } finally {

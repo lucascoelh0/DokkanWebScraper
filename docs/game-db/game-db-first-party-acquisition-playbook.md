@@ -249,14 +249,31 @@ npm run run:game-db-download-database-artifact -- --descriptor-json "C:\external
 ```
 
 The implementation issues one redirect-disabled HTTPS GET to the exact validated
-URL, streams into a same-filesystem temporary, validates `Content-Length`, byte
-count and local SHA-256, then commits an immutable content-addressed artifact and
-promotes `latest.json` atomically. The previous identity remains in the pointer
-and all prior artifact directories are retained. It also writes a separate
-operational receipt with mode `official_descriptor_download`, `acquiredAt` and
-result `acquired` or `reused`. Receipt time never affects immutable metadata,
-identity, marker or reuse. No descriptor endpoint, login or refresh request is
-implemented.
+URL and accepts only an HTTP 200 response with no `Content-Range`, no transformed
+`Content-Encoding` and one canonical, bounded `Content-Length`. It streams into
+a same-filesystem temporary, validates byte count and local SHA-256, then commits
+an immutable content-addressed artifact. Artifacts and receipts are installed
+through create-only hard links, so a concurrently introduced destination is never
+overwritten. Before replacing `latest.json`, the implementation atomically moves
+the pathname into a new controlled history directory and validates the identity
+actually moved; it then creates the complete new pointer exclusively. Rollback
+uses the same move-and-validate operation and restores the validated prior history
+create-only. Successful receipt/download staging is moved into an exclusive
+discard directory, identity-validated there and removed without touching a
+replacement at the original pathname. Retained failure and latest histories are
+limited by a fixed, non-configurable 256 MiB aggregate budget, checked before
+transport and before each retention. Reaching the ceiling stops acquisition
+before another request; safe garbage collection remains a separate reviewed
+operation.
+Existing ancestors are identity-pinned across store creation and every created
+segment must be a real directory. Artifact, metadata, marker, receipt and latest
+validation reads through one identity-checked `FileHandle`, with before/after
+`fstat` and pathname revalidation, so a swapped member is never followed. The
+previous identity remains in the pointer and all prior artifact directories are
+retained. It also writes a separate operational receipt with mode
+`official_descriptor_download`, `acquiredAt` and result `acquired` or `reused`.
+Receipt time never affects immutable metadata, identity, marker or reuse. No
+descriptor endpoint, login or refresh request is implemented.
 
 ### 5. Decrypt locally only when necessary
 

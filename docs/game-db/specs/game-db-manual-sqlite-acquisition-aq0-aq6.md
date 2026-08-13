@@ -89,13 +89,15 @@ metadata are not normal inputs. Legacy URL-only use is NO-GO.
 The acquisition root is a local operator choice or the ignored default under
 `game-db/data/`. Descriptor paths are logical POSIX paths only. Absolute,
 drive-relative, UNC, device, traversal, mixed-separator and NUL-containing paths
-are rejected. The store resolves and pins the canonical root plus every existing
-parent by device/inode. Root, `artifacts/`, pending and committed directories,
-`receipts/` and the writer lock must be real directories; symlinks, junctions,
-reparse substitutions and concurrent identity changes fail closed. Every file
-boundary revalidates its controlled parent before and after use. Store filenames
-come from a fixed allowlist and content identities, never from descriptor URL or
-user-controlled output names.
+are rejected. Before creating the store, the implementation retains the
+canonical path, device/inode and relevant attributes of every existing ancestor;
+it revalidates that snapshot after each created segment and before any write or
+durable boundary. Every created segment, the root, `artifacts/`, pending and
+committed directories, `receipts/` and the writer lock must be real directories;
+symlinks, junctions, reparse substitutions and concurrent identity changes fail
+closed. Every file boundary revalidates its controlled parent before and after
+use. Store filenames come from a fixed allowlist and content identities, never
+from descriptor URL or user-controlled output names.
 
 Node does not expose portable `openat`/directory-relative rename primitives.
 The implementation therefore keeps pinned directory identities and revalidates
@@ -113,7 +115,10 @@ acquisition test seam accepts a raw `unknown` descriptor and repeats the complet
 runtime validator before any store mutation or transport call; a forged
 TypeScript-shaped/JavaScript object cannot supply a trusted URL. The production
 transport performs one GET over HTTPS with redirects disabled. The response must
-be a successful non-redirect response with a bounded, valid `Content-Length`.
+be exactly HTTP 200, must not contain `Content-Range`, and may use only absent or
+`identity` `Content-Encoding`. `Content-Length` must be single, canonical,
+non-contradictory and bounded; partial, redirected or transformed responses fail
+closed before their bodies are consumed or promoted.
 
 Bytes stream into an exclusive temporary file in the target store directory.
 The stream counts bytes and calculates local SHA-256. The declared `version`
@@ -128,10 +133,28 @@ No real transport was executed in AQ0–AQ6. Tests use injected streams only.
 ## AQ4 — immutable store, deterministic metadata and operational receipts
 
 Validated bytes are promoted into a content-addressed directory in the ignored
-acquisition root. Promotion is same-filesystem and atomic; a commit marker is
-written last. A single-writer lock serializes acquisition. An existing committed
-identity is immutable and reusable only after its marker and byte identity
-validate again.
+acquisition root. Directory promotion is same-filesystem and atomic; a commit
+marker is written last. Artifact and receipt installation is create-only through
+a hard link, so a destination introduced after validation is never overwritten.
+Replacing `latest.json` atomically moves whichever pathname identity is present
+into a new controlled history directory and validates the identity actually
+moved before creating the complete new pointer exclusively. Rollback uses the
+same move-and-validate protocol and restores the validated prior history through
+a create-only link. Histories are intentionally retained because conditionally
+unlinking a pathname by identity is not portable in Node; a later bounded GC
+requires its own reviewed contract. Successful download/receipt staging is moved
+into an exclusive discard directory, identity-validated there and removed without
+touching any replacement at the original pathname. Retained failure and latest
+histories have a fixed, non-configurable 256 MiB aggregate ceiling, checked before
+transport and before each retention; reaching it fails closed. A single-writer
+lock serializes acquisition. An existing committed identity is immutable and
+reusable only after its marker and byte identity validate again.
+
+Artifact, metadata, marker, receipt and latest members are opened once for each
+validation boundary. Type, containment and pathname identity are compared with
+the opened `FileHandle`; hashing or reading uses that same handle, with `fstat`
+before and after and a final pathname-to-handle identity check. A member replaced
+between validation and use therefore fails closed instead of being followed.
 
 Immutable portable metadata contains only contract/schema versions, Global/en
 identity, database version, logical path, declared algorithm/hash, observed byte

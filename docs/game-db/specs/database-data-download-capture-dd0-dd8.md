@@ -99,7 +99,8 @@ As 14 linhas exclusivas usam unidades de evidência, não entidades somáveis: s
 - S0–S7 ganham os manifests obrigatórios repetidos e o inventário completo desta versão.
 - E0–E9 e K0–K28 continuam sem join entre referência estrutural e conteúdo interno de CPK.
 - Entrega oficial e R2 do projeto são representações diferentes.
-- O downloader atual diverge da política futura porque aceita URL arbitrária, segue redirects, persiste URL completa e escreve antes da validação integral.
+- A auditoria pré-AQ encontrou no downloader histórico URL arbitrária, redirects, persistência da URL completa e escrita antes da validação integral; esse comportamento foi removido e não descreve a implementação atual.
+- O downloader AQ atual concorda com a política DD7: aceita somente o descritor Global EN exato, bloqueia redirects, mantém transporte separadamente autorizado, valida bytes antes da promoção marker-last e não persiste URL no metadata ou receipt. Por isso `manual_database_downloader_safety` mudou de `representation_mismatch` para `agreement`; a mudança reflete a correção implementada, não uma reclassificação da evidência histórica.
 - O update runner atual pode publicar na mesma invocação; a arquitetura DD7 exige autorização separada.
 - H13 permanece `unknown` para esta dimensão; aquisição de assets não corrige semântica de gasha.
 

@@ -66,8 +66,8 @@
     {
       "key": "acquisition_playbook",
       "fileName": "docs/game-db/game-db-first-party-acquisition-playbook.md",
-      "sizeBytes": 15226,
-      "sha256": "17086bcf716caf045f862db4a9e318a3fdae6c354271c162f32b826d337116c7"
+      "sizeBytes": 16531,
+      "sha256": "3fc97a1ae90f2d6be1e4761caa0a7aa023660a913ba0edde93caa1220e9f3a9e"
     },
     {
       "key": "r2_adr",
@@ -78,8 +78,8 @@
     {
       "key": "current_downloader",
       "fileName": "game-db/game-db-download-database-artifact.ts",
-      "sizeBytes": 51000,
-      "sha256": "4dea197283f8419d262595e8938597b351c24aa3da367a2b0ec4829b9e7d40d0"
+      "sizeBytes": 66556,
+      "sha256": "bbb2447b11470774bac1c6e243279f33a81fe617fdc0ada7d8732a40f732e1f2"
     },
     {
       "key": "current_update_runner",

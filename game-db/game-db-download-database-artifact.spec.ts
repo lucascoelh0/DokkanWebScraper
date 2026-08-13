@@ -1,5 +1,5 @@
 import { deepEqual, equal, match, rejects, throws } from "assert";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, writeFileSync } from "fs";
 import { mkdir, readFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
@@ -26,8 +26,8 @@ function descriptor(overrides: Record<string, unknown> = {}): any {
         ...overrides,
     };
 }
-function fakeTransport(bytes: Buffer, overrides: Partial<{ statusCode: number, contentLength: string, body: Readable }> = {}, calls?: { count: number }): DatabaseArtifactTransport {
-    return { async get() { if (calls) calls.count += 1; return { statusCode: overrides.statusCode ?? 200, headers: { "content-length": overrides.contentLength ?? String(bytes.length) }, body: overrides.body ?? Readable.from([bytes]) }; } };
+function fakeTransport(bytes: Buffer, overrides: Partial<{ statusCode: number, contentLength: string, headers: Record<string, string | string[] | undefined>, body: Readable }> = {}, calls?: { count: number }): DatabaseArtifactTransport {
+    return { async get() { if (calls) calls.count += 1; return { statusCode: overrides.statusCode ?? 200, headers: overrides.headers ?? { "content-length": overrides.contentLength ?? String(bytes.length) }, body: overrides.body ?? Readable.from([bytes]) }; } };
 }
 function temp(): string { return mkdtempSync(join(tmpdir(), "dokkan-aq-")); }
 function latest(root: string): any { return JSON.parse(readFileSync(join(root, "latest.json"), "utf8")); }
@@ -40,6 +40,24 @@ function boundarySignal(predicate: () => boolean): AbortSignal {
             return typeof value === "function" ? value.bind(target) : value;
         },
     });
+}
+function mutationSignal(mutateAt: number, mutation: () => void): { signal: AbortSignal, count: () => number } {
+    const controller = new AbortController();
+    let reads = 0;
+    return {
+        signal: new Proxy(controller.signal, {
+            get(target, property) {
+                if (property === "aborted") {
+                    reads += 1;
+                    if (reads === mutateAt) mutation();
+                    return false;
+                }
+                const value = Reflect.get(target, property, target);
+                return typeof value === "function" ? value.bind(target) : value;
+            },
+        }),
+        count: () => reads,
+    };
 }
 
 describe("game DB manual database artifact acquisition", function () {
@@ -210,10 +228,44 @@ describe("game DB manual database artifact acquisition", function () {
     });
 
     it("blocks redirects and non-success responses", async () => {
-        for (const statusCode of [301, 404]) {
+        for (const statusCode of [206, 301, 404]) {
             const root = temp();
             try { await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("x"), { statusCode }) }), /redirect|successful/); }
             finally { rmSync(root, { recursive: true, force: true }); }
+        }
+    });
+
+    it("accepts only an unencoded complete 200 response with one canonical Content-Length", async () => {
+        const rejected: Array<{ name: string, statusCode?: number, headers: Record<string, string | string[] | undefined>, pattern: RegExp }> = [
+            { name: "206 without range", statusCode: 206, headers: { "content-length": "1" }, pattern: /exactly 200/ },
+            { name: "206 with range", statusCode: 206, headers: { "content-length": "1", "content-range": "bytes 0-0/1" }, pattern: /exactly 200/ },
+            { name: "200 with range", headers: { "content-length": "1", "content-range": "bytes 0-0/1" }, pattern: /Content-Range/ },
+            { name: "gzip", headers: { "content-length": "1", "content-encoding": "gzip" }, pattern: /Content-Encoding/ },
+            { name: "br", headers: { "content-length": "1", "content-encoding": "br" }, pattern: /Content-Encoding/ },
+            { name: "conflicting lengths", headers: { "content-length": "1", "Content-Length": "2" }, pattern: /Content-Length/ },
+            { name: "multiple equal lengths", headers: { "content-length": ["1", "1"] }, pattern: /Content-Length/ },
+            { name: "missing length", headers: {}, pattern: /Content-Length/ },
+            { name: "zero length", headers: { "content-length": "0" }, pattern: /Content-Length/ },
+            { name: "signed length", headers: { "content-length": "+1" }, pattern: /Content-Length/ },
+            { name: "decimal length", headers: { "content-length": "1.0" }, pattern: /Content-Length/ },
+            { name: "comma length", headers: { "content-length": "1, 1" }, pattern: /Content-Length/ },
+        ];
+        for (const variant of rejected) {
+            const root = temp();
+            const body = Readable.from([Buffer.from("x")]);
+            try {
+                await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("x"), { statusCode: variant.statusCode, headers: variant.headers, body }) }), variant.pattern, variant.name);
+                equal(body.destroyed, true, variant.name);
+                equal(existsSync(join(root, "latest.json")), false, variant.name);
+                equal(existsSync(join(root, "receipts")), false, variant.name);
+            } finally { rmSync(root, { recursive: true, force: true }); }
+        }
+        for (const headers of [{ "content-length": "1" }, { "content-length": "1", "content-encoding": "identity" }]) {
+            const root = temp();
+            try {
+                const result = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("x"), { headers }) });
+                equal(result.metadata.observedSizeBytes, 1);
+            } finally { rmSync(root, { recursive: true, force: true }); }
         }
     });
 
@@ -310,6 +362,94 @@ describe("game DB manual database artifact acquisition", function () {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
+    it("never clobbers a receipt destination created at the installation boundary", async () => {
+        const root = temp();
+        let racedTarget = "";
+        const signal = boundarySignal(() => {
+            const receipts = join(root, "receipts");
+            if (racedTarget || !existsSync(receipts)) return false;
+            const temporary = readdirSync(receipts).find(name => name.startsWith(".official_descriptor_download-") && name.endsWith(`.${process.pid}.tmp`));
+            if (!temporary) return false;
+            racedTarget = join(receipts, temporary.slice(1, -`.${process.pid}.tmp`.length));
+            writeFileSync(racedTarget, "raced-receipt-sentinel");
+            return false;
+        });
+        try {
+            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("receipt-race")), signal }), /EEXIST|exist/i);
+            equal(readFileSync(racedTarget, "utf8"), "raced-receipt-sentinel");
+            equal(existsSync(join(root, "latest.json")), false);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("moves and retains a replacement swapped exactly at latest withdrawal", async () => {
+        const root = temp(), latestPath = join(root, "latest.json"), displaced = join(root, "withdrawal-original.json");
+        let raced = false;
+        try {
+            const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("withdrawal-first")) });
+            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+            const signal = boundarySignal(() => {
+                if (!raced && readdirSync(root).some(name => name.startsWith(".latest-history-"))) {
+                    renameSync(latestPath, displaced);
+                    writeFileSync(latestPath, "withdrawal-race-sentinel");
+                    raced = true;
+                }
+                return false;
+            });
+            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("withdrawal-next")), signal }), /replacement identity|retained/i);
+            equal(raced, true);
+            equal(readFileSync(displaced, "utf8"), pointerBefore);
+            equal(existsSync(latestPath), false);
+            const histories = readdirSync(root).filter(name => name.startsWith(".latest-history-"));
+            equal(histories.some(name => readFileSync(join(root, name, "latest.json"), "utf8") === "withdrawal-race-sentinel"), true);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("does not overwrite a latest replacement introduced during rollback and retains the prior pointer", async () => {
+        const root = temp(), displaced = join(root, "displaced-promoted-latest.json");
+        let swapped = false;
+        try {
+            const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("rollback-original")) });
+            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+            const controller = new AbortController();
+            const signal = new Proxy(controller.signal, {
+                get(target, property) {
+                    if (property === "aborted") {
+                        const histories = readdirSync(root).filter(name => name.startsWith(".latest-history-"));
+                        if (!target.aborted && existsSync(first.latestPointerPath) && readFileSync(first.latestPointerPath, "utf8") !== pointerBefore) controller.abort();
+                        else if (target.aborted && !swapped && histories.length >= 2) {
+                            renameSync(first.latestPointerPath, displaced);
+                            writeFileSync(first.latestPointerPath, "rollback-race-sentinel");
+                            swapped = true;
+                        }
+                        return target.aborted;
+                    }
+                    const value = Reflect.get(target, property, target);
+                    return typeof value === "function" ? value.bind(target) : value;
+                }
+            });
+            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("rollback-next")), signal }), /replacement latest pointer|retained/i);
+            equal(swapped, true);
+            equal(existsSync(first.latestPointerPath), false);
+            const historyTexts = readdirSync(root).filter(name => name.startsWith(".latest-history-")).map(name => readFileSync(join(root, name, "latest.json"), "utf8"));
+            equal(historyTexts.includes(pointerBefore), true);
+            equal(historyTexts.includes("rollback-race-sentinel"), true);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("restores the prior pointer from retained history on late cancellation", async () => {
+        const root = temp();
+        try {
+            const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("finalize-first")) });
+            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+            const signal = boundarySignal(() => {
+                const latestChanged = existsSync(first.latestPointerPath) && readFileSync(first.latestPointerPath, "utf8") !== pointerBefore;
+                return latestChanged;
+            });
+            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("finalize-second")), signal }), /cancelled/);
+            equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
     it("commits immutable content marker-last and emits portable deterministic metadata", async () => {
         const root = temp(); const bytes = Buffer.concat([Buffer.from("SQLite format 3\0"), Buffer.alloc(64, 7)]);
         try {
@@ -335,6 +475,82 @@ describe("game DB manual database artifact acquisition", function () {
             equal(/query|headers|token|account|descriptorJson|artifactPath/i.test(receiptText), false);
             equal(first.metadata.artifactState, "readable_sqlite");
         } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("discards successful and reused staging without retaining a physical staging link", async () => {
+        const root = temp(), bytes = Buffer.from("bounded-success-staging");
+        try {
+            await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(bytes) });
+            await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(bytes) });
+            equal(readdirSync(root).some(name => name.startsWith(".discard-") || name.startsWith(".file-history-") || name.startsWith(".download-")), false);
+            equal(readdirSync(join(root, "receipts")).some(name => name.startsWith(".")), false);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("rejects a full failed-staging history budget before transport while allowing small latest histories", async () => {
+        const root = temp(), calls = { count: 0 };
+        try {
+            const history = join(root, ".file-history-seeded-failure");
+            mkdirSync(history);
+            const retained = join(history, "latest.json");
+            writeFileSync(retained, "x");
+            truncateSync(retained, 128 * 1024 * 1024 + 1);
+            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("never"), {}, calls) }), /256 MiB local storage budget/);
+            equal(calls.count, 0);
+            equal(statSync(retained).size, 128 * 1024 * 1024 + 1);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+
+        const smallRoot = temp();
+        try {
+            await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: smallRoot, transport: fakeTransport(Buffer.from("small-history-one")), maxBytes: 1024 });
+            const second = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: smallRoot, transport: fakeTransport(Buffer.from("small-history-two")), maxBytes: 1024 });
+            equal(latest(smallRoot).currentIdentity, second.identity);
+            equal(readdirSync(smallRoot).some(name => name.startsWith(".latest-history-")), true);
+        } finally { rmSync(smallRoot, { recursive: true, force: true }); }
+    });
+
+    it("fails closed when committed artifact members or latest are swapped after their handles open", async function () {
+        const variants: Array<{ name: string, abortedRead: number, target(first: any): string }> = [
+            { name: "metadata", abortedRead: 6, target: first => first.metadataPath },
+            { name: "artifact", abortedRead: 7, target: first => first.artifactPath },
+            { name: "marker", abortedRead: 8, target: first => first.commitMarkerPath },
+            { name: "latest", abortedRead: 24, target: first => first.latestPointerPath },
+        ];
+        for (const variant of variants) {
+            const root = temp(), bytes = Buffer.from(`stable-${variant.name}`);
+            let displaced = "", target = "", swapped = false;
+            try {
+                const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(bytes) });
+                const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+                target = variant.target(first);
+                displaced = join(root, `.displaced-${variant.name}`);
+                const mutation = mutationSignal(variant.abortedRead, () => {
+                    try {
+                        renameSync(target, displaced);
+                        writeFileSync(target, Buffer.from(`replacement-${variant.name}`));
+                        swapped = true;
+                    } catch (error) {
+                        if (existsSync(displaced) && !existsSync(target)) renameSync(displaced, target);
+                        throw error;
+                    }
+                });
+                let failure: unknown;
+                try { await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(bytes), signal: mutation.signal }); }
+                catch (error) { failure = error; }
+                equal(swapped, true, `${variant.name} hook count ${mutation.count()}`);
+                match(String(failure), /pathname|identity|replaced|changed/i, `${variant.name}: ${String(failure)} at ${mutation.count()}`);
+                if (swapped) {
+                    unlinkSync(target);
+                    renameSync(displaced, target);
+                    swapped = false;
+                }
+                equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore, variant.name);
+            } finally {
+                if (swapped && existsSync(target)) unlinkSync(target);
+                if (existsSync(displaced)) renameSync(displaced, target);
+                rmSync(root, { recursive: true, force: true });
+            }
+        }
     });
 
     it("streams the observed-scale artifact without constructing a whole-file buffer", async () => {
@@ -440,10 +656,39 @@ describe("game DB manual database artifact acquisition", function () {
         const root = temp();
         try {
             const outside = join(root, "outside"), linkedRoot = join(root, "linked-root"); await mkdir(outside);
-            try { symlinkSync(outside, linkedRoot, "junction"); }
-            catch (error: any) { if (error?.code === "EPERM") { this.skip(); return; } throw error; }
+            symlinkSync(outside, linkedRoot, "junction");
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: linkedRoot, transport: fakeTransport(Buffer.from("x")) }), /symlink|junction/);
         } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("rejects an existing-parent swap between its snapshot and store creation", async function () {
+        const base = temp(), parent = join(base, "parent"), displaced = join(base, "parent-displaced"), outside = join(base, "outside"), store = join(parent, "new", "store");
+        await mkdir(parent); await mkdir(outside);
+        let swapped = false;
+        const mutation = mutationSignal(1, () => {
+            renameSync(parent, displaced);
+            try { symlinkSync(outside, parent, "junction"); }
+            catch (error) {
+                renameSync(displaced, parent);
+                throw error;
+            }
+            swapped = true;
+        });
+        const calls = { count: 0 };
+        try {
+            let failure: unknown;
+            try { await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: store, transport: fakeTransport(Buffer.from("never"), {}, calls), signal: mutation.signal }); }
+            catch (error) { failure = error; }
+            equal(swapped, true);
+            match(String(failure), /identity changed|controlled directory/i);
+            equal(calls.count, 0);
+            deepEqual(readdirSync(outside), []);
+            equal(existsSync(join(outside, "new")), false);
+        } finally {
+            if (swapped && existsSync(parent)) unlinkSync(parent);
+            if (swapped && existsSync(displaced)) renameSync(displaced, parent);
+            rmSync(base, { recursive: true, force: true });
+        }
     });
 
     it("rejects a junction substituted for artifacts and never writes outside the validated root", async function () {
@@ -451,8 +696,7 @@ describe("game DB manual database artifact acquisition", function () {
         await mkdir(store); await mkdir(outside);
         try {
             const artifacts = join(store, "artifacts");
-            try { symlinkSync(outside, artifacts, "junction"); }
-            catch (error: any) { if (error?.code === "EPERM") { this.skip(); return; } throw error; }
+            symlinkSync(outside, artifacts, "junction");
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: store, transport: fakeTransport(Buffer.from("x")) }), /symlink|junction|reparse/);
             deepEqual(readdirSync(outside), []);
         } finally { rmSync(base, { recursive: true, force: true }); }
@@ -466,14 +710,14 @@ describe("game DB manual database artifact acquisition", function () {
             if (!swapped && existsSync(store) && readdirSync(store).some(name => name.startsWith(".download-"))) {
                 renameSync(store, displaced);
                 try { symlinkSync(outside, store, "junction"); }
-                catch (error: any) { if (error?.code === "EPERM") return false; throw error; }
+                catch (error) { throw error; }
                 swapped = true;
             }
             return false;
         });
         try {
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: store, transport: fakeTransport(Buffer.from("root-swap")), signal }), /identity changed|controlled directory/i);
-            if (!swapped) { this.skip(); return; }
+            equal(swapped, true);
             equal(readFileSync(join(outside, "sentinel.txt"), "utf8"), "keep");
             deepEqual(readdirSync(outside), ["sentinel.txt"]);
         } finally {
@@ -492,14 +736,14 @@ describe("game DB manual database artifact acquisition", function () {
             if (!swapped && existsSync(artifacts) && readdirSync(artifacts).some(name => name.startsWith(".pending-"))) {
                 renameSync(artifacts, displaced);
                 try { symlinkSync(outside, artifacts, "junction"); }
-                catch (error: any) { if (error?.code === "EPERM") return false; throw error; }
+                catch (error) { throw error; }
                 swapped = true;
             }
             return false;
         });
         try {
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: store, transport: fakeTransport(Buffer.from("artifacts-swap")), signal }), /identity changed|controlled directory/i);
-            if (!swapped) { this.skip(); return; }
+            equal(swapped, true);
             deepEqual(readdirSync(outside), ["sentinel.txt"]);
         } finally {
             const artifacts = join(store, "artifacts");
