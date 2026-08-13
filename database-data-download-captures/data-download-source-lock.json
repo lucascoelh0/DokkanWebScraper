@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-data-download-offline-source-lock",
+  "contractVersion": "0.1.0",
+  "captureRoot": "dokkan-har-2026-08-13",
+  "captures": [
+    { "captureId": "incremental", "mode": "incremental", "fileName": "data_download.har", "sizeBytes": 2119371, "sha256": "c5f73661b82e3c0a2f7f47588ff986f9f02b489867681717fa09c491905c8d0c", "entryCount": 50, "modifiedAt": "2026-08-13T14:08:44.9196264Z" },
+    { "captureId": "clean_install", "mode": "clean_install", "fileName": "data_download_clean_install.har", "sizeBytes": 34618000, "sha256": "6867c80fbff36a1162d2835fe378205b8216c9af9cbd10439652058c22769c4d", "entryCount": 183, "modifiedAt": "2026-08-13T14:44:38.7152087Z" },
+    { "captureId": "download_all", "mode": "download_all", "fileName": "data_download_all.har", "sizeBytes": 1789781, "sha256": "47f6b8a5d5004299194f1685c450cd8bd8257d4642ffb1d56c84ab898d2b7d0b", "entryCount": 152, "modifiedAt": "2026-08-13T14:55:43.7022130Z" }
+  ],
+  "externalConfidentialSources": [
+    { "sourceId": "clean_install_ondemand_manifest", "fileName": "ondeman_assets_clean_install.json", "locator": "exact_file_name", "sizeBytes": 3063770, "sha256": "b81a95437ee511dc60ff434349635f8f374dacbb6232233e1c46d83af53b78e6", "modifiedAt": "2026-08-13T15:16:16.8422816Z", "classification": "allowlisted_manifest_body_in_memory_only", "captureId": "clean_install", "endpoint": "/ondemand_assets", "uiFileCount": 4868 },
+    { "sourceId": "download_all_ondemand_manifest", "fileName": "client_assets_download_all.json", "locator": "exact_file_name", "sizeBytes": 3063770, "sha256": "b504f15ad0075233164b78c26af09036fe134e355f99264841d68124d9ee386e", "modifiedAt": "2026-08-13T15:27:33.4721914Z", "classification": "allowlisted_manifest_body_in_memory_only", "captureId": "download_all", "endpoint": "/ondemand_assets", "uiFileCount": 4868 },
+    { "sourceId": "download_all_client_assets_manifest", "fileName": null, "locator": "single_client_assets_device_size_pattern", "sizeBytes": 16150270, "sha256": "455f5850efd8d7bc135759d59dc8272629dd2378b8e61bb5e615c5eac536827b", "modifiedAt": "2026-08-13T15:28:01.1295732Z", "classification": "allowlisted_manifest_body_in_memory_only", "captureId": "download_all", "endpoint": "/client_assets", "uiFileCount": 25233 },
+    { "sourceId": "clean_install_cards_account_body", "fileName": "cards_clean_install.json", "locator": "exact_file_name", "sizeBytes": 41897, "sha256": "10b5985e3d9611b9a9712e8d50adae600eea22dbb270dca9fb6954bdfbd9894f", "modifiedAt": "2026-08-13T15:16:54.7488920Z", "classification": "opaque_account_scoped_sensitive_body", "captureId": "clean_install", "endpoint": "/cards", "uiFileCount": null }
+  ],
+  "externalScreenshots": [
+    { "role": "clean_install_ui", "uiFileCount": 4868, "sizeBytes": 1995175, "sha256": "eeb0c684fdb7e1576b2f6a84323ce640fc6eca32de0c1031c656dacc334281fd", "modifiedAt": "2026-08-13T14:44:48.4503542Z" },
+    { "role": "download_all_ui", "uiFileCount": 25233, "sizeBytes": 2089190, "sha256": "ba2c7a59496c4e7d8381060291626ec7dd48ffad71cd93973d42eb51251fd784", "modifiedAt": "2026-08-13T14:55:22.5041547Z" }
+  ],
+  "preTransformClassification": {
+    "allowedVersionableTargets": ["TypeScript contracts", "synthetic minimal fixtures", "sanitized metadata JSON", "external manifest bodies in memory only"],
+    "forbiddenVersionableTargets": ["HAR captures", "raw bodies", "account-scoped response bodies", "SQLite or database bytes", "CPK or asset bytes", "screenshots", "data directories", "logs", "attachments"]
+  }
+}
