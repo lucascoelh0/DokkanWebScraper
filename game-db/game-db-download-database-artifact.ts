@@ -1,260 +1,503 @@
-import axios from "axios";
-import { mkdir, readFile, writeFile } from "fs/promises";
-import { basename, resolve } from "path";
-import { readSourceSettings } from "./game-db-experiment";
-import { writeFormattedJson } from "../format-json";
+import { createHash, randomBytes } from "crypto";
+import { createReadStream, existsSync } from "fs";
+import { lstat, mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from "fs/promises";
+import { request } from "https";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "path";
+import { Readable } from "stream";
 
-const DEFAULT_OUTPUT_DIR = resolve(__dirname, "data", "game-db-acquisition", "downloads", "latest");
+const OFFICIAL_CDN_HOST = "cf.ishin-global.aktsk.com";
+const LOGICAL_FILE_PATH = "sqlite/current/en/database.db";
 const SQLITE_HEADER = Buffer.from("SQLite format 3\u0000", "utf8");
+const DEFAULT_STORE_ROOT = resolve(process.cwd(), "game-db", "data", "game-db-acquisition", "database-artifacts");
+export const DEFAULT_DATABASE_ARTIFACT_MAX_BYTES = 128 * 1024 * 1024;
+export const DEFAULT_DATABASE_ARTIFACT_TIMEOUT_MS = 120_000;
 
 export interface ClientAssetsDatabasePayload {
-    url?: string,
-    version?: string | number,
+    url: string,
+    file_path: string,
+    algorithm: "version",
+    hash: string,
+    version: number,
+    patch: null,
+    patch_hash: null,
+}
+
+export interface ValidatedDatabaseDescriptor {
+    readonly region: "global",
+    readonly locale: "en",
+    readonly url: string,
+    readonly logicalFilePath: typeof LOGICAL_FILE_PATH,
+    readonly algorithm: "version",
+    readonly declaredHash: string,
+    readonly databaseVersion: number,
+    readonly deliveryTimestamp: string,
+    readonly patchState: "observed_null",
+    readonly patchHashState: "observed_null",
 }
 
 export interface GameDbDownloadDatabaseArtifactOptions {
-    databaseUrl?: string,
-    clientAssetsJson?: string,
-    outputDir: string,
-    outputFileName: string,
-    settingsJson?: string,
-    dbVersion?: string,
-    assetVersion?: string,
-    apkVersion?: string,
-    region: "global" | "jp" | "unknown",
-    note: string,
+    descriptorJson?: string,
+    artifactPath?: string,
+    storeRoot: string,
+    authorizeDownload: boolean,
+    dryRun: boolean,
 }
 
-export interface GameDbDownloadedDatabaseArtifactMetadata {
-    source: "client-assets-database-download",
-    region: "global" | "jp" | "unknown",
-    downloadedAt: string,
-    databaseUrl: string,
-    clientAssetsPayloadPath?: string,
+export interface GameDbAcquiredArtifactMetadata {
+    schemaVersion: 1,
+    contract: "dokkan-game-db-acquired-artifact",
+    contractVersion: "1.0.0",
+    region: "global",
+    locale: "en",
+    databaseVersion: number,
+    logicalFilePath: typeof LOGICAL_FILE_PATH,
+    declaredIntegrity: { algorithm: "version", hash: string },
+    observedSizeBytes: number,
+    localSha256: string,
+    artifactState: "readable_sqlite" | "encrypted_or_packaged",
+    descriptorLineage: {
+        source: "externally_supplied_client_assets_database",
+        deliveryFamily: "official_global_en_versioned_sqlite",
+        patchState: "observed_null",
+        patchHashState: "observed_null",
+    },
+    nextPermittedStep: "run_read_only_sqlite_compatibility" | "decrypt_locally_then_validate_read_only_sqlite",
+}
+
+export interface GameDbArtifactInspection {
+    observedSizeBytes: number,
+    localSha256: string,
+    artifactState: "readable_sqlite" | "encrypted_or_packaged",
+}
+
+export interface DatabaseArtifactTransportResponse {
+    statusCode: number,
+    headers: Record<string, string | string[] | undefined>,
+    body: Readable,
+}
+
+export interface DatabaseArtifactTransport {
+    get(url: URL, options: { signal: AbortSignal }): Promise<DatabaseArtifactTransportResponse>,
+}
+
+export interface AcquireDatabaseArtifactOptions {
+    descriptor: ValidatedDatabaseDescriptor,
+    storeRoot: string,
+    transport: DatabaseArtifactTransport,
+    maxBytes?: number,
+    timeoutMs?: number,
+    signal?: AbortSignal,
+}
+
+export interface AcquiredDatabaseArtifactResult {
+    identity: string,
     artifactPath: string,
-    artifactFileName: string,
-    artifactByteLength: number,
-    appearsReadableSqlite: boolean,
-    dbVersion?: string,
-    assetVersion?: string,
-    apkVersion?: string,
-    note: string,
-    nextSuggestedCommand: string,
+    metadataPath: string,
+    commitMarkerPath: string,
+    latestPointerPath: string,
+    metadata: GameDbAcquiredArtifactMetadata,
+    reused: boolean,
+}
+
+function requiredValue(argv: string[], index: number, inline: string | undefined, token: string): string {
+    const value = inline ?? argv[index + 1];
+    if (!value || value.includes("\0")) throw new Error(`Missing or invalid value for ${token}`);
+    return value;
 }
 
 export function parseDownloadDatabaseArtifactArgs(argv: string[]): GameDbDownloadDatabaseArtifactOptions {
-    let databaseUrl: string | undefined;
-    let clientAssetsJson: string | undefined;
-    let outputDir = DEFAULT_OUTPUT_DIR;
-    let outputFileName = "database.db";
-    let settingsJson: string | undefined;
-    let dbVersion: string | undefined;
-    let assetVersion: string | undefined;
-    let apkVersion: string | undefined;
-    let region: "global" | "jp" | "unknown" = "global";
-    let note = "Downloaded from a captured /client_assets/database response.";
-
+    let descriptorJson: string | undefined;
+    let artifactPath: string | undefined;
+    let storeRoot = DEFAULT_STORE_ROOT;
+    let authorizeDownload = false;
+    let dryRun = false;
     for (let index = 0; index < argv.length; index += 1) {
         const token = argv[index];
-
-        if (token === "--database-url" || token.startsWith("--database-url=")) {
-            databaseUrl = token.includes("=") ? token.split("=", 2)[1] : argv[++index];
+        const equals = token.indexOf("=");
+        const name = equals >= 0 ? token.slice(0, equals) : token;
+        const inline = equals >= 0 ? token.slice(equals + 1) : undefined;
+        if (name === "--descriptor-json" || name === "--artifact-path" || name === "--store-root") {
+            const value = requiredValue(argv, index, inline, name);
+            if (inline === undefined) index += 1;
+            if (name === "--descriptor-json") descriptorJson = resolve(value);
+            else if (name === "--artifact-path") artifactPath = resolve(value);
+            else storeRoot = resolve(value);
             continue;
         }
-
-        if (token === "--client-assets-json" || token.startsWith("--client-assets-json=")) {
-            clientAssetsJson = resolve(token.includes("=") ? token.split("=", 2)[1] : argv[++index]);
-            continue;
+        if (name === "--authorize-download" && inline === undefined) { authorizeDownload = true; continue; }
+        if (name === "--dry-run" && inline === undefined) { dryRun = true; continue; }
+        if (name === "--database-url" || name === "--client-assets-json" || name === "--output-dir" || name === "--output-file-name") {
+            throw new Error(`${name} is disabled; use --descriptor-json or --artifact-path`);
         }
-
-        if (token === "--output-dir" || token.startsWith("--output-dir=")) {
-            outputDir = resolve(token.includes("=") ? token.split("=", 2)[1] : argv[++index]);
-            continue;
-        }
-
-        if (token === "--output-file-name" || token.startsWith("--output-file-name=")) {
-            outputFileName = token.includes("=") ? token.split("=", 2)[1] : argv[++index];
-            continue;
-        }
-
-        if (token === "--settings-json" || token.startsWith("--settings-json=")) {
-            settingsJson = resolve(token.includes("=") ? token.split("=", 2)[1] : argv[++index]);
-            continue;
-        }
-
-        if (token === "--db-version" || token.startsWith("--db-version=")) {
-            dbVersion = token.includes("=") ? token.split("=", 2)[1] : argv[++index];
-            continue;
-        }
-
-        if (token === "--asset-version" || token.startsWith("--asset-version=")) {
-            assetVersion = token.includes("=") ? token.split("=", 2)[1] : argv[++index];
-            continue;
-        }
-
-        if (token === "--apk-version" || token.startsWith("--apk-version=")) {
-            apkVersion = token.includes("=") ? token.split("=", 2)[1] : argv[++index];
-            continue;
-        }
-
-        if (token === "--region" || token.startsWith("--region=")) {
-            const value = token.includes("=") ? token.split("=", 2)[1] : argv[++index];
-            if (value === "global" || value === "jp" || value === "unknown") {
-                region = value;
-                continue;
-            }
-
-            throw new Error(`Unsupported region: ${value}`);
-        }
-
-        if (token === "--note" || token.startsWith("--note=")) {
-            note = token.includes("=") ? token.split("=", 2)[1] : argv[++index];
-            continue;
-        }
-
         throw new Error(`Unexpected argument: ${token}`);
     }
-
-    if (!databaseUrl && !clientAssetsJson) {
-        throw new Error("Pass either --database-url or --client-assets-json");
+    if (Boolean(descriptorJson) === Boolean(artifactPath)) {
+        throw new Error("Pass exactly one of --descriptor-json or --artifact-path");
     }
-
-    return {
-        databaseUrl,
-        clientAssetsJson,
-        outputDir,
-        outputFileName,
-        settingsJson,
-        dbVersion,
-        assetVersion,
-        apkVersion,
-        region,
-        note,
-    };
+    if (authorizeDownload && !descriptorJson) throw new Error("--authorize-download requires --descriptor-json");
+    if (authorizeDownload && dryRun) throw new Error("--authorize-download and --dry-run are mutually exclusive");
+    return { descriptorJson, artifactPath, storeRoot, authorizeDownload, dryRun };
 }
 
-export function resolveClientAssetsDatabaseInput(input: {
-    explicitDatabaseUrl?: string,
-    explicitDbVersion?: string,
-    payload?: ClientAssetsDatabasePayload,
-}): {
-    databaseUrl: string,
-    dbVersion?: string,
-} {
-    const databaseUrl = input.explicitDatabaseUrl ?? input.payload?.url;
-    if (!databaseUrl) {
-        throw new Error("Could not resolve database URL from arguments or client-assets payload");
-    }
-
-    const dbVersion = input.explicitDbVersion
-        ?? (input.payload?.version === undefined ? undefined : String(input.payload.version));
-
-    return {
-        databaseUrl,
-        dbVersion,
-    };
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-async function readClientAssetsDatabasePayload(filePath?: string): Promise<ClientAssetsDatabasePayload | undefined> {
-    if (!filePath) {
-        return undefined;
-    }
-
-    const rawPayload = await readFile(filePath, "utf8");
-    const parsedPayload = JSON.parse(rawPayload) as ClientAssetsDatabasePayload;
-    return parsedPayload;
+function deliveryTimestampForVersion(version: number): string {
+    const date = new Date(version * 1000);
+    if (!Number.isFinite(date.getTime())) throw new Error("Descriptor version is outside the supported timestamp range");
+    const digits = [date.getUTCFullYear().toString().padStart(4, "0"), (date.getUTCMonth() + 1).toString().padStart(2, "0"), date.getUTCDate().toString().padStart(2, "0")].join("");
+    const time = [date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()].map(value => value.toString().padStart(2, "0")).join("");
+    return `${digits}-${time}`;
 }
 
-function buildNextSuggestedCommand(args: {
-    appearsReadableSqlite: boolean,
-    artifactPath: string,
-    settingsJson?: string,
-}): string {
-    if (args.appearsReadableSqlite) {
-        const settingsPart = args.settingsJson
-            ? ` --settings-json "${args.settingsJson}"`
-            : "";
-
-        return `npm run run:game-db-build-first-party-export -- --sqlite-path "${args.artifactPath}"${settingsPart}`;
+export function validateClientAssetsDatabaseDescriptor(value: unknown): ValidatedDatabaseDescriptor {
+    if (!isJsonObject(value)) throw new Error("Database descriptor must be a JSON object");
+    const expectedKeys = ["algorithm", "file_path", "hash", "patch", "patch_hash", "url", "version"];
+    const actualKeys = Object.keys(value).sort();
+    if (JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) throw new Error("Database descriptor fields do not match the strict contract");
+    if (!Number.isSafeInteger(value.version) || (value.version as number) <= 0) throw new Error("Database descriptor version must be a positive safe integer");
+    const version = value.version as number;
+    if (value.file_path !== LOGICAL_FILE_PATH) throw new Error("Database descriptor file_path is not the Global EN logical path");
+    if (value.algorithm !== "version") throw new Error("Database descriptor algorithm is not allowlisted");
+    if (typeof value.hash !== "string" || !/^[1-9][0-9]*$/.test(value.hash) || value.hash !== String(version)) throw new Error("Database descriptor version hash is invalid");
+    if (value.patch !== null || value.patch_hash !== null) throw new Error("Non-null database patch fields are not supported");
+    if (typeof value.url !== "string" || value.url.length === 0 || value.url.length > 2048 || value.url.includes("\0")) throw new Error("Database descriptor URL is invalid");
+    let parsed: URL;
+    try { parsed = new URL(value.url); }
+    catch { throw new Error("Database descriptor URL is invalid"); }
+    if (parsed.protocol !== "https:") throw new Error("Database descriptor URL must use HTTPS");
+    if (parsed.hostname !== OFFICIAL_CDN_HOST) throw new Error("Database descriptor URL host is not the exact official CDN host");
+    if (parsed.port !== "") throw new Error("Database descriptor URL must use the default HTTPS port");
+    if (parsed.username || parsed.password) throw new Error("Database descriptor URL must not contain credentials");
+    if (parsed.search) throw new Error("Database descriptor URL query is not allowlisted");
+    if (parsed.hash) throw new Error("Database descriptor URL fragment is not allowed");
+    const deliveryTimestamp = deliveryTimestampForVersion(version);
+    const expectedUrl = `https://${OFFICIAL_CDN_HOST}/sqlite/current/en/${deliveryTimestamp}/database.db`;
+    if (value.url !== expectedUrl || parsed.pathname !== `/sqlite/current/en/${deliveryTimestamp}/database.db`) {
+        throw new Error("Database descriptor CDN path does not match Global EN version lineage");
     }
-
-    return [
-        "Decrypt this artifact first, then build the export with:",
-        `npm run run:game-db-build-first-party-export -- --sqlite-path "<decrypted-sqlite-path>"${args.settingsJson ? ` --settings-json "${args.settingsJson}"` : ""}`,
-    ].join(" ");
-}
-
-export async function downloadDatabaseArtifact(options: GameDbDownloadDatabaseArtifactOptions): Promise<{
-    artifactPath: string,
-    metadataPath: string,
-    metadata: GameDbDownloadedDatabaseArtifactMetadata,
-}> {
-    const payload = await readClientAssetsDatabasePayload(options.clientAssetsJson);
-    const resolvedInput = resolveClientAssetsDatabaseInput({
-        explicitDatabaseUrl: options.databaseUrl,
-        explicitDbVersion: options.dbVersion,
-        payload,
+    return Object.freeze({
+        region: "global",
+        locale: "en",
+        url: expectedUrl,
+        logicalFilePath: LOGICAL_FILE_PATH,
+        algorithm: "version",
+        declaredHash: value.hash,
+        databaseVersion: version,
+        deliveryTimestamp,
+        patchState: "observed_null",
+        patchHashState: "observed_null",
     });
+}
 
-    const sourceSettings = options.settingsJson ? await readSourceSettings(options.settingsJson) : undefined;
-    const artifactPath = resolve(options.outputDir, options.outputFileName);
-    const metadataPath = resolve(options.outputDir, "download-metadata.json");
+async function assertRegularRealFile(filePath: string, label: string): Promise<string> {
+    const resolved = resolve(filePath);
+    try {
+        const link = await lstat(resolved);
+        if (!link.isFile() || link.isSymbolicLink()) throw new Error("rejected");
+        const real = await realpath(resolved);
+        if (resolve(real).toLowerCase() !== resolved.toLowerCase()) throw new Error("rejected");
+        return real;
+    } catch {
+        throw new Error(`${label} must be a regular real file, not a symlink or junction`);
+    }
+}
 
-    await mkdir(options.outputDir, { recursive: true });
+export async function readAndValidateDatabaseDescriptor(filePath: string): Promise<ValidatedDatabaseDescriptor> {
+    const realFile = await assertRegularRealFile(filePath, "Descriptor input");
+    let parsed: unknown;
+    try { parsed = JSON.parse(await readFile(realFile, "utf8")); }
+    catch { throw new Error("Database descriptor JSON is malformed"); }
+    return validateClientAssetsDatabaseDescriptor(parsed);
+}
 
-    const response = await axios.get<ArrayBuffer>(resolvedInput.databaseUrl, {
-        responseType: "arraybuffer",
-        maxRedirects: 5,
-    });
-    const buffer = Buffer.from(response.data);
+async function assertStoreRoot(storeRoot: string): Promise<string> {
+    const resolved = resolve(storeRoot);
+    if (!isAbsolute(resolved) || resolved.includes("\0")) throw new Error("Artifact store root is invalid");
+    await mkdir(resolved, { recursive: true });
+    const link = await lstat(resolved);
+    const real = await realpath(resolved);
+    if (!link.isDirectory() || link.isSymbolicLink() || resolve(real).toLowerCase() !== resolved.toLowerCase()) {
+        throw new Error("Artifact store root must be a regular real directory, not a symlink or junction");
+    }
+    return real;
+}
 
-    await writeFile(artifactPath, buffer);
+function normalizedHeader(headers: DatabaseArtifactTransportResponse["headers"], name: string): string | undefined {
+    const found = Object.entries(headers).find(([key]) => key.toLowerCase() === name)?.[1];
+    if (Array.isArray(found)) return found.length === 1 ? found[0] : undefined;
+    return found;
+}
 
-    const appearsReadableSqlite = buffer.subarray(0, SQLITE_HEADER.length).equals(SQLITE_HEADER);
-    const metadata: GameDbDownloadedDatabaseArtifactMetadata = {
-        source: "client-assets-database-download",
-        region: options.region,
-        downloadedAt: new Date().toISOString(),
-        databaseUrl: resolvedInput.databaseUrl,
-        clientAssetsPayloadPath: options.clientAssetsJson,
-        artifactPath,
-        artifactFileName: basename(artifactPath),
-        artifactByteLength: buffer.length,
-        appearsReadableSqlite,
-        dbVersion: resolvedInput.dbVersion,
-        assetVersion: options.assetVersion ?? sourceSettings?.glbAssetVersion?.toString(),
-        apkVersion: options.apkVersion ?? sourceSettings?.glbApkVersion,
-        note: options.note,
-        nextSuggestedCommand: buildNextSuggestedCommand({
-            appearsReadableSqlite,
-            artifactPath,
-            settingsJson: options.settingsJson,
-        }),
-    };
-
-    await writeFormattedJson(metadataPath, metadata);
-
+async function inspectStreamToFile(input: {
+    body: Readable,
+    temporaryPath: string,
+    expectedSizeBytes: number,
+    maxBytes: number,
+    signal: AbortSignal,
+}): Promise<GameDbArtifactInspection> {
+    const handle = await open(input.temporaryPath, "wx");
+    const hash = createHash("sha256");
+    let observedSizeBytes = 0;
+    let header = Buffer.alloc(0);
+    try {
+        for await (const value of input.body) {
+            if (input.signal.aborted) throw new Error("Database artifact acquisition cancelled");
+            const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+            observedSizeBytes += chunk.byteLength;
+            if (observedSizeBytes > input.maxBytes || observedSizeBytes > input.expectedSizeBytes) throw new Error("Database artifact stream exceeds the allowed size");
+            hash.update(chunk);
+            if (header.byteLength < SQLITE_HEADER.byteLength) header = Buffer.concat([header, chunk.subarray(0, SQLITE_HEADER.byteLength - header.byteLength)]);
+            await handle.write(chunk);
+        }
+        if (input.signal.aborted) throw new Error("Database artifact acquisition cancelled");
+        if (observedSizeBytes !== input.expectedSizeBytes) throw new Error("Database artifact stream is truncated or size-divergent");
+        await handle.sync();
+    } finally {
+        await handle.close();
+    }
     return {
-        artifactPath,
-        metadataPath,
-        metadata,
+        observedSizeBytes,
+        localSha256: hash.digest("hex"),
+        artifactState: header.equals(SQLITE_HEADER) ? "readable_sqlite" : "encrypted_or_packaged",
     };
 }
 
-async function main() {
+async function inspectRegularArtifact(filePath: string, maxBytes: number): Promise<GameDbArtifactInspection> {
+    const realFile = await assertRegularRealFile(filePath, "Artifact input");
+    const before = await stat(realFile);
+    if (before.size <= 0 || before.size > maxBytes) throw new Error("Artifact input size is outside the allowed range");
+    const hash = createHash("sha256");
+    let observedSizeBytes = 0;
+    let header = Buffer.alloc(0);
+    for await (const value of createReadStream(realFile)) {
+        const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+        observedSizeBytes += chunk.byteLength;
+        if (observedSizeBytes > maxBytes) throw new Error("Artifact input exceeds the allowed size");
+        hash.update(chunk);
+        if (header.byteLength < SQLITE_HEADER.byteLength) header = Buffer.concat([header, chunk.subarray(0, SQLITE_HEADER.byteLength - header.byteLength)]);
+    }
+    const after = await stat(realFile);
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || observedSizeBytes !== after.size) {
+        throw new Error("Artifact input changed during validation");
+    }
+    return { observedSizeBytes, localSha256: hash.digest("hex"), artifactState: header.equals(SQLITE_HEADER) ? "readable_sqlite" : "encrypted_or_packaged" };
+}
+
+export async function inspectDownloadedDatabaseArtifact(filePath: string, maxBytes = DEFAULT_DATABASE_ARTIFACT_MAX_BYTES): Promise<GameDbArtifactInspection> {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error("Invalid artifact byte limit");
+    return inspectRegularArtifact(filePath, maxBytes);
+}
+
+function metadataFor(descriptor: ValidatedDatabaseDescriptor, inspection: GameDbArtifactInspection): GameDbAcquiredArtifactMetadata {
+    return {
+        schemaVersion: 1,
+        contract: "dokkan-game-db-acquired-artifact",
+        contractVersion: "1.0.0",
+        region: "global",
+        locale: "en",
+        databaseVersion: descriptor.databaseVersion,
+        logicalFilePath: descriptor.logicalFilePath,
+        declaredIntegrity: { algorithm: descriptor.algorithm, hash: descriptor.declaredHash },
+        observedSizeBytes: inspection.observedSizeBytes,
+        localSha256: inspection.localSha256,
+        artifactState: inspection.artifactState,
+        descriptorLineage: {
+            source: "externally_supplied_client_assets_database",
+            deliveryFamily: "official_global_en_versioned_sqlite",
+            patchState: descriptor.patchState,
+            patchHashState: descriptor.patchHashState,
+        },
+        nextPermittedStep: inspection.artifactState === "readable_sqlite"
+            ? "run_read_only_sqlite_compatibility"
+            : "decrypt_locally_then_validate_read_only_sqlite",
+    };
+}
+
+function canonicalJson(value: unknown): string { return `${JSON.stringify(value, null, 2)}\n`; }
+
+function artifactIdentity(metadata: GameDbAcquiredArtifactMetadata): string {
+    return createHash("sha256").update(JSON.stringify({
+        region: metadata.region,
+        locale: metadata.locale,
+        logicalFilePath: metadata.logicalFilePath,
+        databaseVersion: metadata.databaseVersion,
+        declaredIntegrity: metadata.declaredIntegrity,
+        observedSizeBytes: metadata.observedSizeBytes,
+        localSha256: metadata.localSha256,
+    })).digest("hex");
+}
+
+function ensureContained(root: string, candidate: string): void {
+    const relation = relative(root, candidate);
+    if (!relation || relation === ".." || relation.startsWith(`..${sep}`) || isAbsolute(relation)) throw new Error("Artifact store path escaped containment");
+}
+
+async function validateCommittedArtifact(directory: string, identity: string, metadata: GameDbAcquiredArtifactMetadata): Promise<void> {
+    const artifactPath = resolve(directory, "database.db");
+    const metadataPath = resolve(directory, "metadata.json");
+    const markerPath = resolve(directory, "commit-marker.json");
+    for (const path of [artifactPath, metadataPath, markerPath]) await assertRegularRealFile(path, "Committed artifact member");
+    const [storedMetadataText, markerText, inspection] = await Promise.all([
+        readFile(metadataPath, "utf8"),
+        readFile(markerPath, "utf8"),
+        inspectRegularArtifact(artifactPath, DEFAULT_DATABASE_ARTIFACT_MAX_BYTES),
+    ]);
+    if (storedMetadataText !== canonicalJson(metadata) || JSON.stringify(inspection) !== JSON.stringify({ observedSizeBytes: metadata.observedSizeBytes, localSha256: metadata.localSha256, artifactState: metadata.artifactState })) {
+        throw new Error("Existing immutable artifact identity does not validate");
+    }
+    const expectedMarker = canonicalJson({ schemaVersion: 1, contract: "dokkan-game-db-artifact-commit", contractVersion: "1.0.0", identity, metadataSha256: createHash("sha256").update(storedMetadataText).digest("hex") });
+    if (markerText !== expectedMarker) throw new Error("Existing immutable artifact commit marker does not validate");
+}
+
+async function promoteLatest(root: string, identity: string): Promise<string> {
+    const latestPath = resolve(root, "latest.json");
+    let previousIdentity: string | null = null;
+    if (existsSync(latestPath)) {
+        const current = JSON.parse(await readFile(latestPath, "utf8")) as Record<string, unknown>;
+        if (current.schemaVersion !== 1 || typeof current.currentIdentity !== "string" || !/^[a-f0-9]{64}$/.test(current.currentIdentity)) throw new Error("Existing latest pointer is invalid");
+        previousIdentity = current.currentIdentity === identity
+            ? (typeof current.previousIdentity === "string" ? current.previousIdentity : null)
+            : current.currentIdentity;
+    }
+    const pointer = { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: identity, previousIdentity };
+    const temporary = resolve(root, `.latest-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
+    await writeFile(temporary, canonicalJson(pointer), { flag: "wx" });
+    await rename(temporary, latestPath);
+    return latestPath;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, controller: AbortController): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => { controller.abort(); reject(new Error("Database artifact transport timed out")); }, timeoutMs);
+    });
+    try { return await Promise.race([promise, timeout]); }
+    finally { if (timer) clearTimeout(timer); }
+}
+
+export const httpsDatabaseArtifactTransport: DatabaseArtifactTransport = {
+    get(url, options) {
+        return new Promise((resolvePromise, rejectPromise) => {
+            const req = request(url, { method: "GET", headers: { Accept: "application/octet-stream" } }, response => {
+                const headers: Record<string, string | string[] | undefined> = {};
+                for (const [key, value] of Object.entries(response.headers)) headers[key] = value;
+                resolvePromise({ statusCode: response.statusCode ?? 0, headers, body: response });
+            });
+            const abort = () => req.destroy(new Error("Database artifact acquisition cancelled"));
+            if (options.signal.aborted) abort();
+            else options.signal.addEventListener("abort", abort, { once: true });
+            req.on("error", rejectPromise);
+            req.end();
+        });
+    },
+};
+
+export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOptions): Promise<AcquiredDatabaseArtifactResult> {
+    const maxBytes = options.maxBytes ?? DEFAULT_DATABASE_ARTIFACT_MAX_BYTES;
+    const timeoutMs = options.timeoutMs ?? DEFAULT_DATABASE_ARTIFACT_TIMEOUT_MS;
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error("Invalid acquisition limits");
+    const root = await assertStoreRoot(options.storeRoot);
+    const lockPath = resolve(root, ".acquisition.lock");
+    try { await mkdir(lockPath); }
+    catch { throw new Error("Database artifact acquisition already has an active writer"); }
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    const temporaryPath = resolve(root, `.download-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
+    let pendingDirectory: string | undefined;
+    try {
+        if (options.signal?.aborted) throw new Error("Database artifact acquisition cancelled");
+        const response = await withTimeout(options.transport.get(new URL(options.descriptor.url), { signal: controller.signal }), timeoutMs, controller);
+        if (response.statusCode < 200 || response.statusCode > 299) {
+            response.body.destroy();
+            if (response.statusCode >= 300 && response.statusCode <= 399) throw new Error("Database artifact redirects are blocked");
+            throw new Error(`Database artifact response was not successful: ${response.statusCode}`);
+        }
+        const contentLength = normalizedHeader(response.headers, "content-length");
+        if (!contentLength || !/^[1-9][0-9]*$/.test(contentLength)) { response.body.destroy(); throw new Error("Database artifact Content-Length is required and invalid"); }
+        const expectedSizeBytes = Number(contentLength);
+        if (!Number.isSafeInteger(expectedSizeBytes) || expectedSizeBytes > maxBytes) { response.body.destroy(); throw new Error("Database artifact Content-Length exceeds the allowed size"); }
+        const abortBody = () => response.body.destroy(new Error("Database artifact acquisition cancelled"));
+        controller.signal.addEventListener("abort", abortBody, { once: true });
+        const timer = setTimeout(() => { controller.abort(); response.body.destroy(new Error("Database artifact stream timed out")); }, timeoutMs);
+        let inspection: GameDbArtifactInspection;
+        try { inspection = await inspectStreamToFile({ body: response.body, temporaryPath, expectedSizeBytes, maxBytes, signal: controller.signal }); }
+        finally { clearTimeout(timer); controller.signal.removeEventListener("abort", abortBody); }
+        const metadata = metadataFor(options.descriptor, inspection);
+        const identity = artifactIdentity(metadata);
+        const artifactsRoot = resolve(root, "artifacts");
+        await mkdir(artifactsRoot, { recursive: true });
+        const finalDirectory = resolve(artifactsRoot, identity);
+        ensureContained(artifactsRoot, finalDirectory);
+        let reused = false;
+        if (existsSync(finalDirectory)) {
+            await validateCommittedArtifact(finalDirectory, identity, metadata);
+            await rm(temporaryPath, { force: true });
+            reused = true;
+        } else {
+            pendingDirectory = resolve(artifactsRoot, `.pending-${process.pid}-${randomBytes(6).toString("hex")}`);
+            ensureContained(artifactsRoot, pendingDirectory);
+            await mkdir(pendingDirectory);
+            const artifactPath = resolve(pendingDirectory, "database.db");
+            await rename(temporaryPath, artifactPath);
+            const metadataText = canonicalJson(metadata);
+            await writeFile(resolve(pendingDirectory, "metadata.json"), metadataText, { flag: "wx" });
+            const marker = { schemaVersion: 1, contract: "dokkan-game-db-artifact-commit", contractVersion: "1.0.0", identity, metadataSha256: createHash("sha256").update(metadataText).digest("hex") };
+            await writeFile(resolve(pendingDirectory, "commit-marker.json"), canonicalJson(marker), { flag: "wx" });
+            await rename(pendingDirectory, finalDirectory);
+            pendingDirectory = undefined;
+        }
+        await validateCommittedArtifact(finalDirectory, identity, metadata);
+        const latestPointerPath = await promoteLatest(root, identity);
+        return {
+            identity,
+            artifactPath: resolve(finalDirectory, "database.db"),
+            metadataPath: resolve(finalDirectory, "metadata.json"),
+            commitMarkerPath: resolve(finalDirectory, "commit-marker.json"),
+            latestPointerPath,
+            metadata,
+            reused,
+        };
+    } catch (error) {
+        controller.abort();
+        await rm(temporaryPath, { force: true }).catch(() => undefined);
+        if (pendingDirectory) await rm(pendingDirectory, { recursive: true, force: true }).catch(() => undefined);
+        throw error;
+    } finally {
+        options.signal?.removeEventListener("abort", onAbort);
+        await rm(lockPath, { recursive: true, force: true });
+    }
+}
+
+export async function runDownloadDatabaseArtifact(options: GameDbDownloadDatabaseArtifactOptions, dependencies: { transport?: DatabaseArtifactTransport } = {}): Promise<
+    | { mode: "descriptor_validation", descriptor: Omit<ValidatedDatabaseDescriptor, "url"> }
+    | { mode: "artifact_validation", inspection: GameDbArtifactInspection }
+    | { mode: "authorized_download", result: AcquiredDatabaseArtifactResult }
+> {
+    if (options.artifactPath) return { mode: "artifact_validation", inspection: await inspectDownloadedDatabaseArtifact(options.artifactPath) };
+    if (!options.descriptorJson) throw new Error("Descriptor input is required");
+    const descriptor = await readAndValidateDatabaseDescriptor(options.descriptorJson);
+    if (!options.authorizeDownload || options.dryRun) {
+        const { url: _url, ...sanitized } = descriptor;
+        return { mode: "descriptor_validation", descriptor: sanitized };
+    }
+    const result = await acquireDatabaseArtifact({ descriptor, storeRoot: options.storeRoot, transport: dependencies.transport ?? httpsDatabaseArtifactTransport });
+    return { mode: "authorized_download", result };
+}
+
+async function main(): Promise<void> {
     const options = parseDownloadDatabaseArtifactArgs(process.argv.slice(2));
-    const result = await downloadDatabaseArtifact(options);
-
-    console.log(`Downloaded database artifact to ${result.artifactPath}`);
-    console.log(`Wrote metadata to ${result.metadataPath}`);
-    console.log(`Readable SQLite: ${result.metadata.appearsReadableSqlite ? "yes" : "no"}`);
-    console.log(result.metadata.nextSuggestedCommand);
+    const result = await runDownloadDatabaseArtifact(options);
+    if (result.mode === "authorized_download") {
+        console.log(`Acquired immutable database artifact ${result.result.identity}`);
+        console.log(`Artifact state: ${result.result.metadata.artifactState}`);
+    } else {
+        console.log(JSON.stringify(result, null, 2));
+    }
 }
 
 if (require.main === module) {
-    main().catch(error => {
-        console.error(error);
-        process.exitCode = 1;
-    });
+    main().catch(error => { console.error(error); process.exitCode = 1; });
 }
-
