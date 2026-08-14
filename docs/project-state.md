@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K39 — field-scoped shadow, candidate delivery and publisher dry-run infrastructure
+### K10–K40 — field-scoped shadow, candidate delivery and conditional publisher infrastructure
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -563,6 +563,36 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   fixtures pending, and final contract review found no remaining P0-P2.
   K39 dry-run is GO; publisher writes, publication, R2 mutation, Android,
   consumers, authority and production remain NO-GO.
+- K40 adds a conditional publisher behind exact dry-run/publish CLI modes and a
+  deterministic publication ID. The ID binds the fixed bucket, exact K37/K36
+  lineage, four ordered immutable objects and bytes, content types, cache
+  metadata, mutable candidate, conditional policies, verification order,
+  budgets and no-delete/no-authority rules. It excludes operational timestamps
+  and current remote observations so idempotent reruns retain one ID.
+- K40 productively reruns K39/K38, revalidates K37/K36, binds and rereads the
+  exact four regular single-link K36 members, and persists a bounded create-only
+  dry-run report. Dry-run returns before reading credential environment or
+  constructing S3. The internal, unexecuted publish path uses direct bounded
+  S3 reads, exact byte/content-type/cache-control checks, `If-None-Match: *`
+  immutable creates in K37 order, post-create verification, complete immutable
+  reread, complete local source revalidation and a final fresh manifest reread.
+  The manifest is always last and uses create-only or fresh-ETag `If-Match`
+  compare-and-swap. Conditional races are accepted only after exact direct
+  reread; no delete, copy, multipart or rollback path exists.
+- The authorized real K40 dry-run at `2026-08-14T20:52:37.491Z` again found all
+  four immutable objects and the mutable manifest missing, with the same
+  365,260,894-byte conservative projection. Its deterministic publication ID
+  is `ae0b1626a7ec8de4f42c1d48524bb19966274504644021fc66c681ecebe36804`.
+  The 13,599-byte report has SHA-256
+  `987ab02c256a577fe1d2194d445295ad852b23be8283a673f4295ecc79838bc4`;
+  the current nested K39 and K38 report hashes are respectively
+  `de48aac21751fa7bf8a8be992e7ce490a869a2a4cdb4189b1a1ff115905da29a`
+  and `56e9f18d317110baa32b396737c053b4cdf689b29c0dfb369215474dc8678f3e`.
+  The 13 focused tests and the final 178-test domain suite passed, with eight
+  Windows symlink fixtures pending; final read-only contract review found no
+  P0-P2. K40 dry-run is GO and publication is `NOT_EXECUTED`; authenticated
+  reads, immutable writes and manifest promotion remain pending explicit user
+  authorization. Android, consumers, authority and production remain NO-GO.
 
 ## Operating Constraints
 
