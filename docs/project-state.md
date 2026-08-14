@@ -10,7 +10,8 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 - `D:\Dokkan\DokkanWebScraper` owns the TypeScript data pipeline.
   Its integrated history includes E0–E9, H0–H13, F0–F6 and M0–M6, together
-  with the DB0–DB50/C1–C5 database-first foundation.
+  with the DB0–DB50/C1–C5 database-first foundation and the AQ0–AQ6/DQ0–DQ6
+  offline acquisition/derived-lineage infrastructure.
 - This history line also contains the reviewed K0–K9 character-productization
   checkpoint, reapplied in order from the historical campaign and followed by
   artifact-path hardening. Exact branch pointers remain operational Git state,
@@ -40,11 +41,9 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ### AQ0–AQ6 — manual official SQLite acquisition infrastructure
 
-- AQ0–AQ6 is implemented and validated in the history lineage containing this
-  checkpoint as an offline-by-default, manual and fail-closed acquisition
-  boundary. Integration into `main` remains subject to its independent review
-  gate; this state record does not assert the current branch pointer. Presence
-  after a future fast-forward likewise does not authorize acquisition or
+- AQ0–AQ6 is implemented, validated and integrated in the history lineage
+  containing this checkpoint as an offline-by-default, manual and fail-closed
+  acquisition boundary. Integration does not authorize acquisition or
   production.
   It validates an externally supplied Global EN
   `/client_assets/database` descriptor or inspects an already downloaded local
@@ -99,17 +98,18 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   test-only synthetic process harness. Productive process execution, key supply
   and real decryption remain separate future gates.
 - Offline descriptor/artifact validation remains the only reviewable AQ path.
-  Before integration, the next gate is the independent integration decision;
-  after integration, the next separate gate is one explicitly authorized real
-  manual acquisition. No real acquisition was authorized or executed in this
-  lineage. Official download, decryption, refresh, publication, production
-  promotion and Android otherwise remain NO-GO pending independent gates.
+  With integration complete, the next separate gate is one explicitly
+  authorized real manual acquisition. No real acquisition was authorized or
+  executed in this lineage. Official download, decryption, refresh,
+  publication, production promotion and Android otherwise remain NO-GO pending
+  independent gates.
 
 ### DQ0–DQ6 — derived SQLite lineage, fail-closed runtime boundary and local inspection
 
-- DQ0-DQ4 establishes an offline, production-shaped derived commit boundary
-  from a fully revalidated AQ identity into a separate content-addressed store.
-  It has no arbitrary input path mode and does not mutate AQ commits.
+- DQ0-DQ6 is integrated in this history as an offline, production-shaped
+  derived commit boundary from a fully revalidated AQ identity into a separate
+  content-addressed store. It has no arbitrary input path mode and does not
+  mutate AQ commits.
 - Deterministic metadata binds the parent AQ identity/source SHA/size/state,
   transform kind, pinned implementation identity/version/hash, canonical
   non-secret parameters and plain-SQLite output SHA/size/state. Timestamps and
@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K20 — field-scoped compact shadow and FYI candidate implementation
+### K10–K31 — field-scoped shadow, candidate delivery and structural authority audit
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -372,6 +372,28 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   SHA-256, that sidecar is incompatible with the current Characters release
   until a separately generated and authorized Team Analysis publication
   follows the new lineage.
+- K29-K31 adds an explicit opt-in, offline structural-field authority audit for
+  exactly `characterClass`, `categories` and `links`. It validates the pinned
+  K11/K2/current productive lineage before parsing payloads. K11/K2 evidence
+  binds `cardId`/`stateId`/`stateKey`; productive `Character[]` exposes only
+  `cardId`, so productive comparisons are explicitly card-ID-only and
+  productive state binding is unavailable. Ordered IDs, raw values and
+  productive property-presence bits are preserved, and no apply, writer,
+  consumer or publisher exists.
+- The real audit contains 17,277 facts over 5,759 database cards and 1,623
+  card-ID comparisons per field. It found zero confirmed conflicts. Categories
+  have 1,406 same-set/different-order mismatches; links have 1,516; class has
+  373 preserved `unawakened` representation mismatches. The four productive
+  card IDs outside the pinned database snapshot are reported without inferred
+  joins. Every supported audit candidate is authority-ineligible and
+  Character-unpatchable until productive state lineage is proved.
+- The canonical K29-K31 report is 87,339,470 bytes with SHA-256
+  `ffeec955522b415e787b560d1a156c3ea80352aad1535efc9279da930ac39a9e`.
+  Two independent runs each generated twice byte-identically; serialization
+  was RSS-sampled while live, with peaks of 774,496,256 and 775,049,216 bytes.
+  Controlled-root validation has a documented local namespace TOCTOU residual.
+  Audit execution is GO; authority promotion, production mutation, consumer,
+  publisher, R2 and Android remain NO-GO for all three fields.
 
 ## Operating Constraints
 
