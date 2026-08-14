@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K31 — field-scoped shadow, candidate delivery and structural authority audit
+### K10–K32 — field-scoped shadow, candidate delivery and structural identity evidence
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -394,6 +394,33 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Controlled-root validation has a documented local namespace TOCTOU residual.
   Audit execution is GO; authority promotion, production mutation, consumer,
   publisher, R2 and Android remain NO-GO for all three fields.
+- K32 adds a separate compact structural identity sidecar over the exact pinned
+  K2 taxonomy. It preserves class raw/value/status, ordered category assignment
+  identities and ordered link slots/columns for all 5,759 database cards.
+  Current productive Characters contributes card-ID coverage only; labels are
+  optional presentation evidence and never identity. The sidecar has no
+  consumer, apply, publisher, R2 or Android path.
+- K32 requires explicit opt-in and caller-supplied K2, productive and output
+  roots. It writes only a fixed manifest-last four-file inventory below the
+  validated output root. Authoritative validation requires all three roots,
+  reloads the pinned source bytes and rebuilds and compares the exact payload,
+  coverage, validation and manifest bytes. The integrity-only helper cannot
+  produce GO: embedded metadata marks it `NON_AUTHORITATIVE`, and only the
+  source-bound validator result reports GO after exact reconstruction. Offline
+  generation/source-bound validation are GO; publication,
+  R2, Android, authority, gameplay semantics and Character apply remain NO-GO.
+- Two real K32 invocations produced identical four-file outputs. The payload is
+  706,128 gzip bytes / 24,686,675 canonical bytes with SHA-256
+  `241b135ac88aad2a242a6abb81ab22b099ff25257cb0c8f0f5f7e82f888cb718`;
+  peak RSS was 521,138,176 and 520,015,872 bytes. Productive card-ID coverage is
+  1,623 covered and 4,136 uncovered database cards, plus the four known current
+  IDs outside K2. The 30 empty category and 139 empty link containers remain
+  unknown absence claims rather than supported empty assignments.
+- K32's output namespace threat model is caller-controlled and stable throughout
+  the operation. Portable Node provides no `openat`-style binding for all
+  create/link/unlink steps, so K32 does not claim confinement against concurrent
+  same-user namespace replacement or same-user hardlink attacks. Create-only
+  final targets and manifest-last promotion remain enforced inside that model.
 
 ## Operating Constraints
 
