@@ -1,121 +1,122 @@
 {
   "schemaVersion": 1,
   "contract": "dokkan-data-download-shadow-source-lock",
-  "contractVersion": "0.7.0",
+  "contractVersion": "0.8.0",
+  "identityPolicy": "git_blob_bytes_v1",
   "artifacts": [
     {
       "key": "project_state",
       "fileName": "docs/project-state.md",
-      "sizeBytes": 20919,
-      "sha256": "51e8bb9cdb02417ecd47a77714ffd05597abd31b3db8672dd61d6e5c6ade03f0"
+      "sizeBytes": 21403,
+      "sha256": "b169e7076f964ad6be1139324355efd6bf854eaf5d7d16d920382b263292ca45"
     },
     {
       "key": "s0_s7",
       "fileName": "docs/game-db/database-server-catalog-report.md",
-      "sizeBytes": 31105,
-      "sha256": "37adc5bd6f88c84a777b53ba85fab965d31c6ef33feeb9a4fd3b7388f03f4e6b"
+      "sizeBytes": 30827,
+      "sha256": "73dd3335343b5be23f6cf5b59d1cdecf126cf16f9c397ef773fb98ec107949af"
     },
     {
       "key": "e0_e9",
       "fileName": "docs/game-db/database-events-frontier-report.md",
-      "sizeBytes": 40702,
-      "sha256": "81e8c2fefe9f9889d6fd20783e4acb2aae14c55dbfa89f83e4e0c15d6734cb66"
+      "sizeBytes": 40477,
+      "sha256": "486c847258a71e42dfc893dff5029e0f9396add0e003cdd0c77a43543fc99e9e"
     },
     {
       "key": "k0_k28",
       "fileName": "docs/game-db/database-characters-frontier-report.md",
-      "sizeBytes": 11741,
-      "sha256": "06f9221bcf16220c266562b7b4674721a99f5e620cf1c9f10fafd14412929a41"
+      "sizeBytes": 11571,
+      "sha256": "e6851f25a9be67dbf4f30c792854fec77eb8df31597cd86458ed5ef25e7ebdbc"
     },
     {
       "key": "f0_f6",
       "fileName": "docs/game-db/specs/database-frontier-capture-f0-f6.md",
-      "sizeBytes": 9007,
-      "sha256": "209169a2d962bb1560dd8a84112a05994157b88c9623f431d385c2721f433677"
+      "sizeBytes": 8911,
+      "sha256": "58df750a20cb23d042c0c4003a9ee6b629d8e57db0ab3a10b30340d01a98ecbe"
     },
     {
       "key": "m0_m6",
       "fileName": "docs/game-db/specs/database-special-modes-capture-m0-m6.md",
-      "sizeBytes": 12884,
-      "sha256": "78128a513bc2fb7c7d15541ada9b0426089b3e7d0decfe50f73765b59cb7e3bd"
+      "sizeBytes": 12769,
+      "sha256": "0681d86fa8b3125668dbec9d4d46a98c32f6f8f8b1ea14e79ca6805f14f9d1bc"
     },
     {
       "key": "h6",
       "fileName": "docs/game-db/specs/database-server-capture-h6.md",
-      "sizeBytes": 2456,
-      "sha256": "a40f2c18351fe9b1c95b5f3a9d96ee1c1a15220a3e936afd4bfdd9e743990cbc"
+      "sizeBytes": 2420,
+      "sha256": "5c1d781693d31d1418f3efcd9054848a99cdadf03c613843c2e0f86516057bb1"
     },
     {
       "key": "h12",
       "fileName": "docs/game-db/specs/database-server-capture-h12.md",
-      "sizeBytes": 1550,
-      "sha256": "a2a2ce0ffdb58a1278ab2927178929aca866be1d37965efd333af566f3850861"
+      "sizeBytes": 1539,
+      "sha256": "4bed11fa45a583b2157f8f97c68fb05a00f117a9645388677d586932aec1f12e"
     },
     {
       "key": "h13",
       "fileName": "docs/game-db/specs/database-server-capture-h13.md",
-      "sizeBytes": 3263,
-      "sha256": "38b2b706c0b6f7b19d938b0a3425330319d0e3ca5367127ebd080e9cda75618f"
+      "sizeBytes": 3225,
+      "sha256": "bcbc66c3d5220e919c1963fc9149aeaf79b50f5dfa3364b6890463358b57910c"
     },
     {
       "key": "acquisition_contract",
       "fileName": "docs/game-db/specs/game-db-first-party-acquisition-contract.md",
-      "sizeBytes": 6070,
-      "sha256": "604d757fe678732fcc65896f8714ea6125e62880a3bc8a5aed70296df11c3b44"
+      "sizeBytes": 6827,
+      "sha256": "ad7cfa8f6230facddbb3a25edc72bc728cf05de7fdb4a113b091cb1c4504c5e4"
     },
     {
       "key": "manual_sqlite_acquisition_contract",
       "fileName": "docs/game-db/specs/game-db-manual-sqlite-acquisition-aq0-aq6.md",
-      "sizeBytes": 17252,
-      "sha256": "e52a3321603b5a8a12612e0a4fe5258b2a55aafc1e1af316d7a729e99d253744"
+      "sizeBytes": 18638,
+      "sha256": "4319a0c7cef7382b41ba24b3f54de8d041548a974b4346fba671d25181cf20d3"
     },
     {
       "key": "acquisition_playbook",
       "fileName": "docs/game-db/game-db-first-party-acquisition-playbook.md",
-      "sizeBytes": 19906,
-      "sha256": "e71e4a03e84b89d8f1bd18426c5916c47913756fe169cc28eead1a327ab84f95"
+      "sizeBytes": 21176,
+      "sha256": "a7618a212b42fc0d2c592522b7ce04a4f743b8a77716d74b92073ea721d6a99b"
     },
     {
       "key": "c4_contract",
       "fileName": "docs/game-db/specs/database-first-integration-c4.md",
-      "sizeBytes": 2259,
-      "sha256": "8ab59fe3e352b45d1529ea87606eb637aa3d61002e1a5a41fa79d977d0e26351"
+      "sizeBytes": 3803,
+      "sha256": "d99d7d1c27b1165f9bdb456e1237e51bc1f6edd10ae39dcb22e51b8b52057cfe"
     },
     {
       "key": "game_db_readme",
       "fileName": "game-db/README.md",
-      "sizeBytes": 7718,
-      "sha256": "2bb46dbd37e7a56996ccd3f319a07e1dc35f7a6b267b151de3e9602065a6ac95"
+      "sizeBytes": 9226,
+      "sha256": "b24d1ec0850f82202aa6c870db95dcad9816d66bce84e9e9e329c18a14619dce"
     },
     {
       "key": "r2_adr",
       "fileName": "docs/adr/0003-distribute-datasets-through-versioned-r2-manifests.md",
-      "sizeBytes": 3015,
-      "sha256": "f21ddcc35c66cb4a5f630b54b8b05ff5b77607900fb9d0db0f3e30dbdd41e417"
+      "sizeBytes": 2941,
+      "sha256": "0a3e9a6fc23b24a7345853b3f0be785c86155425d4ec7ec0cf51bf9045d28743"
     },
     {
       "key": "current_downloader",
       "fileName": "game-db/game-db-download-database-artifact.ts",
-      "sizeBytes": 96923,
-      "sha256": "4589c8bf401e36913c73a7d5c86e5f791c0fe980546c0812d5328c8aa7a4e1ad"
+      "sizeBytes": 99010,
+      "sha256": "9a4b674b204c0bb6c69501c528424cb4fe7775302d4bab2ccb543c0ff2543890"
     },
     {
       "key": "sqlite_compatibility",
       "fileName": "game-db/game-db-sqlite-compatibility.ts",
-      "sizeBytes": 20646,
-      "sha256": "18c9dc7da9aadfb4e1f556a6e3e55dfe92bc1a8f8f2ac9432fcee47635b3413b"
+      "sizeBytes": 31721,
+      "sha256": "7cb9072afe694c8e088825e422cc4b4cf1a37a9911c935b33ec2124c2dd44f9a"
     },
     {
       "key": "current_update_runner",
       "fileName": "game-db/game-db-update-runner.ts",
-      "sizeBytes": 10343,
-      "sha256": "a13cfc98c37b43234f04508d9c06dff6989cf4b439ed190fdc45b1df29c7b588"
+      "sizeBytes": 10043,
+      "sha256": "9b5f1737cbaffe79b7c155ee7fa9ce468af192b20c20ec87ed9627b671861edf"
     },
     {
       "key": "artifact_path",
       "fileName": "artifact-path.ts",
-      "sizeBytes": 4506,
-      "sha256": "8c44c5052d8247eedecf64de5381bd664724f4dabd17092a666459154fb837c0"
+      "sizeBytes": 4423,
+      "sha256": "70eca9f372c0751a65204b72c373e206bdb1b6702c9b582c51a68749238d9730"
     }
   ]
 }
