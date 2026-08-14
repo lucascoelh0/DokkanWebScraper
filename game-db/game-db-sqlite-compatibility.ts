@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { FileHandle, lstat, mkdir, open, readFile, realpath, rename, unlink, writeFile } from "fs/promises";
 import { dirname, relative, resolve, sep } from "path";
-import { ReadOnlySqliteAdapter, SqliteInspection } from "../database-experiment/sqlite-readonly-adapter";
+import { ReadOnlySqliteAdapter, SqliteBridgeTerminationUnconfirmedError, SqliteInspection } from "../database-experiment/sqlite-readonly-adapter";
 import { integrationC4SchemaSha256 } from "../database-integration/integration-c4-builder";
 import { IntegrationC4Baseline } from "../database-integration/integration-c4-contract";
 import { validateAcquiredDatabaseArtifact } from "./game-db-download-database-artifact";
@@ -9,6 +9,11 @@ import { validateAcquiredDatabaseArtifact } from "./game-db-download-database-ar
 const SQLITE_HEADER = Buffer.from("SQLite format 3\u0000", "utf8");
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const CANONICAL_C4_BASELINE_SHA256 = "c46ccbfe6581e2c1f681c3527420cc432fa7f0b91ca32d52a24b4df6e79999a1";
+const C4_MAX_SQLITE_BYTES = 112 * 1024 * 1024;
+const C4_BRIDGE_TIMEOUT_MS = 120_000;
+const C4_BRIDGE_KILL_GRACE_MS = 1_000;
+const C4_BRIDGE_STDOUT_LIMIT_BYTES = 8 * 1024 * 1024;
+const C4_BRIDGE_STDERR_LIMIT_BYTES = 1 * 1024 * 1024;
 
 export type GameDbSqliteCompatibilityStatus =
     | "exact_profile_match"
@@ -63,8 +68,8 @@ export interface GameDbSqliteCompatibilityReport {
 }
 
 export type GameDbSqliteCompatibilityOptions =
-    | { storeRoot: string, artifactIdentity: string }
-    | { storeRoot: string, useLatest: true };
+    | { storeRoot: string, artifactIdentity: string, signal?: AbortSignal }
+    | { storeRoot: string, useLatest: true, signal?: AbortSignal };
 
 export type GameDbSqliteCompatibilityCliOptions = GameDbSqliteCompatibilityOptions & { outputFile?: string };
 
@@ -265,22 +270,6 @@ async function hashHandle(handle: FileHandle, expectedSize: number): Promise<{ s
     return { sha256: hash.digest("hex"), readableSqliteHeader: prefix.equals(SQLITE_HEADER) };
 }
 
-async function readDescriptorBoundSnapshotBytes(handle: FileHandle, expectedSize: number, expectedSha256: string): Promise<Buffer> {
-    let bytes: Buffer;
-    try { bytes = Buffer.allocUnsafe(expectedSize); }
-    catch { throw new Error("C4 snapshot is too large for descriptor-bound inspection"); }
-    let offset = 0;
-    while (offset < expectedSize) {
-        const result = await handle.read(bytes, offset, expectedSize - offset, offset);
-        if (result.bytesRead <= 0) throw new Error("C4 snapshot ended during descriptor-bound inspection read");
-        offset += result.bytesRead;
-    }
-    const extra = Buffer.alloc(1);
-    if ((await handle.read(extra, 0, 1, expectedSize)).bytesRead !== 0) throw new Error("C4 snapshot grew during descriptor-bound inspection read");
-    if (createHash("sha256").update(bytes).digest("hex") !== expectedSha256) throw new Error("C4 descriptor-bound inspection bytes do not match the AQ commit");
-    return bytes;
-}
-
 async function copyHandle(source: FileHandle, destination: FileHandle, expectedSize: number): Promise<string> {
     const hash = createHash("sha256");
     const buffer = Buffer.allocUnsafe(64 * 1024);
@@ -389,6 +378,7 @@ async function createPrivateInspectionSnapshot(storeRoot: string, artifactPath: 
         const sourcePathIdentity = await pathIdentity(artifactPath, "AQ source database");
         if (!sameIdentity(sourceIdentity, sourcePathIdentity)) throw new Error("AQ source pathname does not match its opened descriptor");
         assertSnapshotFileIdentity(sourceIdentity, "AQ source database");
+        if (sourceIdentity.sizeBytes !== expectedSize) throw new Error("AQ source observed size does not match deterministic metadata");
         assertContained(artifactPath, root, "AQ source database");
         directory = resolve(root, `.c4-snapshot-${process.pid}-${randomBytes(12).toString("hex")}`);
         assertContained(directory, root, "C4 snapshot directory");
@@ -470,6 +460,35 @@ async function removePrivateInspectionSnapshot(snapshot: PrivateInspectionSnapsh
     });
 }
 
+async function quarantineSnapshotAfterUnconfirmedBridgeTermination(snapshot: PrivateInspectionSnapshot): Promise<void> {
+    await verifyPrivateInspectionSnapshot(snapshot, snapshot.identity.sizeBytes, snapshot.sha256);
+    await snapshot.handle.close();
+    const parent = dirname(snapshot.directory);
+    const container = resolve(parent, `.c4-bridge-quarantine-${process.pid}-${randomBytes(12).toString("hex")}`);
+    await mkdir(container, { recursive: false, mode: 0o700 });
+    const containerStat: any = await lstat(container, { bigint: true });
+    if (!containerStat.isDirectory() || containerStat.isSymbolicLink() || !sameCanonicalPath(await realpath(container), container)) {
+        throw new Error("C4 unconfirmed-bridge quarantine container identity is invalid");
+    }
+    const containerBeforeMove: any = await lstat(container, { bigint: true });
+    if (BigInt(containerBeforeMove.dev).toString() !== BigInt(containerStat.dev).toString()
+        || BigInt(containerBeforeMove.ino).toString() !== BigInt(containerStat.ino).toString()
+        || !sameCanonicalPath(await realpath(container), container)) {
+        throw new Error("C4 unconfirmed-bridge quarantine container changed before preservation");
+    }
+    const movedDirectory = resolve(container, "snapshot");
+    await rename(snapshot.directory, movedDirectory);
+    const movedDirectoryStat: any = await lstat(movedDirectory, { bigint: true });
+    if (!movedDirectoryStat.isDirectory() || movedDirectoryStat.isSymbolicLink()
+        || BigInt(movedDirectoryStat.dev).toString() !== snapshot.directoryDev
+        || BigInt(movedDirectoryStat.ino).toString() !== snapshot.directoryIno
+        || !sameCanonicalPath(await realpath(movedDirectory), movedDirectory)) {
+        throw new Error("C4 unconfirmed-bridge quarantine moved a replacement directory");
+    }
+    const movedIdentity = await pathIdentity(resolve(movedDirectory, "database.db"), "Quarantined unconfirmed-bridge C4 snapshot");
+    if (!sameIdentity(snapshot.identity, movedIdentity)) throw new Error("C4 unconfirmed-bridge quarantine moved a replacement file");
+}
+
 function sameIdentity(left: GameDbSqliteFileIdentity, right: GameDbSqliteFileIdentity): boolean {
     return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -485,12 +504,18 @@ function sameCanonicalPath(left: string, right: string): boolean {
 export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompatibilityOptions): Promise<GameDbSqliteCompatibilityReport> {
     if (arguments.length !== 1 || !options || typeof options !== "object" || Array.isArray(options)) throw new Error("SQLite compatibility options are invalid");
     const keys = Object.keys(options).sort();
-    const explicitIdentity = JSON.stringify(keys) === JSON.stringify(["artifactIdentity", "storeRoot"]);
-    const explicitLatest = JSON.stringify(keys) === JSON.stringify(["storeRoot", "useLatest"]);
+    const explicitIdentity = JSON.stringify(keys) === JSON.stringify(["artifactIdentity", "storeRoot"])
+        || JSON.stringify(keys) === JSON.stringify(["artifactIdentity", "signal", "storeRoot"]);
+    const explicitLatest = JSON.stringify(keys) === JSON.stringify(["storeRoot", "useLatest"])
+        || JSON.stringify(keys) === JSON.stringify(["signal", "storeRoot", "useLatest"]);
     if (!explicitIdentity && !explicitLatest) throw new Error("SQLite compatibility requires storeRoot and exactly one AQ artifact selector");
     if (typeof options.storeRoot !== "string" || !options.storeRoot || options.storeRoot.includes("\0")) throw new Error("SQLite compatibility storeRoot is invalid");
     if (explicitIdentity && (typeof (options as any).artifactIdentity !== "string" || !SHA256_PATTERN.test((options as any).artifactIdentity))) throw new Error("SQLite compatibility artifactIdentity is invalid");
     if (explicitLatest && (options as any).useLatest !== true) throw new Error("SQLite compatibility useLatest selector must be true");
+    if ("signal" in options && (typeof options.signal !== "object" || options.signal === null
+        || typeof options.signal.aborted !== "boolean" || typeof options.signal.addEventListener !== "function"
+        || typeof options.signal.removeEventListener !== "function")) throw new Error("SQLite compatibility AbortSignal is invalid");
+    if (options.signal?.aborted) throw new Error("SQLite compatibility was cancelled");
     const baselineText = await readFile(await canonicalBaselinePath(), "utf8");
     if (createHash("sha256").update(baselineText.replace(/\r\n/g, "\n")).digest("hex") !== CANONICAL_C4_BASELINE_SHA256) throw new Error("Canonical C4 baseline identity is invalid");
     const baseline = JSON.parse(baselineText) as unknown;
@@ -505,15 +530,28 @@ export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompat
         sizeBytes: acquired.metadata.observedSizeBytes,
         resolvedFromLatest: acquired.resolvedFromLatest,
     };
-    const snapshot = await createPrivateInspectionSnapshot(options.storeRoot, acquired.artifactPath, acquired.metadata.observedSizeBytes, acquired.metadata.localSha256);
+    const inspectionSize = acquired.metadata.observedSizeBytes;
+    if (!Number.isSafeInteger(inspectionSize) || inspectionSize <= 0) throw new Error("C4 SQLite size must be a positive safe integer");
+    if (inspectionSize > C4_MAX_SQLITE_BYTES) throw new Error("C4 SQLite exceeds the pinned 112 MiB inspection limit");
+    if (options.signal?.aborted) throw new Error("SQLite compatibility was cancelled");
+    const snapshot = await createPrivateInspectionSnapshot(options.storeRoot, acquired.artifactPath, inspectionSize, acquired.metadata.localSha256);
     let report: GameDbSqliteCompatibilityReport;
+    let bridgeTerminationUnconfirmed = false;
     try {
         await verifyPrivateInspectionSnapshot(snapshot, acquired.metadata.observedSizeBytes, acquired.metadata.localSha256);
+        if (options.signal?.aborted) throw new Error("SQLite compatibility was cancelled");
         let inspection: SqliteInspection | undefined;
         if (snapshot.readableSqliteHeader) {
-            const inspectionBytes = await readDescriptorBoundSnapshotBytes(snapshot.handle, acquired.metadata.observedSizeBytes, acquired.metadata.localSha256);
-            inspection = await ReadOnlySqliteAdapter.fromDescriptorBoundBytes(snapshot.path, inspectionBytes).inspect();
+            inspection = await ReadOnlySqliteAdapter.fromDescriptorBoundHandle(snapshot.path, snapshot.handle, inspectionSize, acquired.metadata.localSha256, {
+                signal: options.signal,
+                timeoutMs: C4_BRIDGE_TIMEOUT_MS,
+                killGraceMs: C4_BRIDGE_KILL_GRACE_MS,
+                inputLimitBytes: C4_MAX_SQLITE_BYTES,
+                stdoutLimitBytes: C4_BRIDGE_STDOUT_LIMIT_BYTES,
+                stderrLimitBytes: C4_BRIDGE_STDERR_LIMIT_BYTES,
+            }).inspect();
         }
+        if (options.signal?.aborted) throw new Error("SQLite compatibility was cancelled");
         await verifyPrivateInspectionSnapshot(snapshot, acquired.metadata.observedSizeBytes, acquired.metadata.localSha256);
         const revalidated = await validateAcquiredDatabaseArtifact(explicitLatest
             ? { storeRoot: options.storeRoot, useLatest: true }
@@ -538,8 +576,12 @@ export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompat
                 sourceDatabase: { sha256: snapshot.sha256, sizeBytes: snapshot.identity.sizeBytes, inspection },
             });
         }
+    } catch (error) {
+        bridgeTerminationUnconfirmed = error instanceof SqliteBridgeTerminationUnconfirmedError;
+        throw error;
     } finally {
-        await removePrivateInspectionSnapshot(snapshot);
+        if (bridgeTerminationUnconfirmed) await quarantineSnapshotAfterUnconfirmedBridgeTermination(snapshot);
+        else await removePrivateInspectionSnapshot(snapshot);
     }
     return report;
 }

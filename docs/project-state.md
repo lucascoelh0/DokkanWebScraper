@@ -66,7 +66,10 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   match. Its source boundary opens the validated AQ database once, copies that
   exact descriptor into an exclusive private read-only snapshot, reads the
   inspection bytes from that still-open handle so the bridge never reopens its
-  pathname, verifies the
+  pathname. The productive wrapper pins a 112 MiB SQLite ceiling, streams 64 KiB
+  chunks with backpressure, limits stdout/stderr to 8/1 MiB, enforces a 120-second
+  timeout plus bounded forced termination, and accepts only `AbortSignal` for
+  cancellation. It verifies the
   snapshot SHA-256/size before and after SQLite inspection, and revalidates the
   source AQ commit before reporting. Its productive TypeScript/JavaScript API accepts only an AQ store plus
   committed identity, or an explicit fully revalidated `latest`; it accepts no

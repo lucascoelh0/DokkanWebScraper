@@ -168,6 +168,18 @@ opens that member once, copies the bytes from the same `FileHandle` into an
 exclusive private read-only snapshot, reads inspection bytes from its still-open
 descriptor, and has the bridge deserialize that private byte copy without
 reopening the snapshot pathname.
+The productive C4 wrapper accepts only positive safe-integer SQLite sizes up to
+112 MiB, below AQ's 128 MiB ceiling. It streams the open snapshot in 64 KiB
+chunks with backpressure instead of allocating a whole-file Node `Buffer`.
+The stream is counted and hashed incrementally against the AQ SHA.
+The bridge is bounded to 120 seconds, a 1-second graceful/forced shutdown,
+8 MiB stdout and 1 MiB stderr. An optional `AbortSignal` cancels work without
+injecting inspection data; every failure waits for child termination before
+the owned snapshot cleanup runs. Windows escalates to tree-forced termination
+and confirms `close` or absence of the child PID.
+If termination remains unconfirmed, no report is emitted and the intact,
+revalidated snapshot is moved to a named ownership-bound bridge quarantine
+instead of being truncated or silently orphaned.
 Snapshot size/SHA are checked before and after inspection and the AQ source commit
 is revalidated before reporting. The report binds the AQ identity to the inspected
 snapshot hash and requires equality. Journal records, receipts and `latest.json`

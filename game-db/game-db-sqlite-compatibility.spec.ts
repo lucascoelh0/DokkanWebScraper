@@ -4,7 +4,7 @@ import { chmodSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, 
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { Readable } from "stream";
-import { ReadOnlySqliteAdapter } from "../database-experiment/sqlite-readonly-adapter";
+import { ReadOnlySqliteAdapter, SqliteBridgeTerminationUnconfirmedError } from "../database-experiment/sqlite-readonly-adapter";
 import { acquireDatabaseArtifact, AcquiredDatabaseArtifactResult, DatabaseArtifactTransport } from "./game-db-download-database-artifact";
 import { buildGameDbSqliteCompatibility, parseGameDbSqliteCompatibilityArgs } from "./game-db-sqlite-compatibility";
 
@@ -20,10 +20,21 @@ function descriptor(): any {
 function transport(bytes: Buffer): DatabaseArtifactTransport {
     return { async get() { return { statusCode: 200, headers: { "content-length": String(bytes.length) }, body: Readable.from([bytes]) }; } };
 }
+function sizedTransport(sizeBytes: number): DatabaseArtifactTransport {
+    return { async get() {
+        const chunk = Buffer.alloc(1024 * 1024, 0x45);
+        async function* body() { let sent = 0; while (sent < sizeBytes) { const size = Math.min(chunk.length, sizeBytes - sent); sent += size; yield chunk.subarray(0, size); } }
+        return { statusCode: 200, headers: { "content-length": String(sizeBytes) }, body: Readable.from(body()) };
+    } };
+}
 async function commit(root: string, bytes: Buffer): Promise<AcquiredDatabaseArtifactResult> {
     return acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: transport(bytes) });
 }
+async function commitSize(root: string, sizeBytes: number): Promise<AcquiredDatabaseArtifactResult> {
+    return acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: sizedTransport(sizeBytes) });
+}
 function makeWritable(path: string): void { chmodSync(path, 0o644); }
+function activeSnapshots(root: string): string[] { return readdirSync(root).filter(name => name.startsWith(".c4-snapshot-") && !name.startsWith(".c4-snapshot-tombstone-")); }
 
 describe("game DB SQLite compatibility", function () {
     this.timeout(10_000);
@@ -54,6 +65,9 @@ describe("game DB SQLite compatibility", function () {
                 await rejects(api({ storeRoot: root, artifactIdentity: "a".repeat(64), sqlitePath }), /AQ artifact selector/);
                 await rejects(api({ storeRoot: root, useLatest: true, receiptPath: "forged.json" }), /AQ artifact selector/);
                 await rejects(api({ storeRoot: root, artifactIdentity: "a".repeat(64) }, { sqlitePath }), /options/);
+                await rejects(api({ storeRoot: root, artifactIdentity: "a".repeat(64), signal: { aborted: false, addEventListener() {} } }), /AbortSignal/);
+                const controller = new AbortController(); controller.abort();
+                await rejects(api({ storeRoot: root, artifactIdentity: "a".repeat(64), signal: controller.signal }), /cancelled/);
             }
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
@@ -178,7 +192,88 @@ describe("game DB SQLite compatibility", function () {
             try { status = (await buildGameDbSqliteCompatibility({ storeRoot: root, artifactIdentity: acquired.identity })).status; }
             catch (error) { notEqual(String(error), ""); }
             notEqual(status, "exact_profile_match");
+            equal(activeSnapshots(root).length, 0);
         } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("cleans the private snapshot when C4 cancellation reaches the adapter", async () => {
+        const root = temp(), sqlitePath = join(root, "source.db"), controller = new AbortController();
+        createSqlite(sqlitePath);
+        const originalInspect = ReadOnlySqliteAdapter.prototype.inspect;
+        try {
+            const acquired = await commit(root, readFileSync(sqlitePath));
+            ReadOnlySqliteAdapter.prototype.inspect = function () { controller.abort(); return originalInspect.call(this); };
+            await rejects(buildGameDbSqliteCompatibility({ storeRoot: root, artifactIdentity: acquired.identity, signal: controller.signal }), /cancelled/);
+            equal(activeSnapshots(root).length, 0);
+            const tombstones = readdirSync(root).filter(name => name.startsWith(".c4-snapshot-tombstone-"));
+            equal(tombstones.length, 1);
+            equal(statSync(join(root, tombstones[0], "snapshot", "database.db")).size, 0);
+        } finally {
+            ReadOnlySqliteAdapter.prototype.inspect = originalInspect;
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it("cleans the private snapshot for every bounded bridge failure class", async function () {
+        this.timeout(30_000);
+        const failures = ["timed out", "stdout limit exceeded", "stderr limit exceeded", "closed stdin", "exit code 7", "invalid JSON", "unexpected trailing output"];
+        const originalInspect = ReadOnlySqliteAdapter.prototype.inspect;
+        try {
+            for (const message of failures) {
+                const root = temp(), sqlitePath = join(root, "source.db");
+                createSqlite(sqlitePath);
+                try {
+                    const acquired = await commit(root, readFileSync(sqlitePath));
+                    ReadOnlySqliteAdapter.prototype.inspect = async function () { throw new Error(message); };
+                    await rejects(buildGameDbSqliteCompatibility({ storeRoot: root, artifactIdentity: acquired.identity }), new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+                    equal(activeSnapshots(root).length, 0);
+                    const tombstones = readdirSync(root).filter(name => name.startsWith(".c4-snapshot-tombstone-"));
+                    equal(tombstones.length, 1);
+                    equal(statSync(join(root, tombstones[0], "snapshot", "database.db")).size, 0);
+                } finally { rmSync(root, { recursive: true, force: true }); }
+            }
+        } finally { ReadOnlySqliteAdapter.prototype.inspect = originalInspect; }
+    });
+
+    it("preserves an owned snapshot quarantine when bridge termination is unconfirmed", async () => {
+        const root = temp(), sqlitePath = join(root, "source.db");
+        createSqlite(sqlitePath);
+        const originalInspect = ReadOnlySqliteAdapter.prototype.inspect;
+        try {
+            const acquired = await commit(root, readFileSync(sqlitePath));
+            ReadOnlySqliteAdapter.prototype.inspect = async function () { throw new SqliteBridgeTerminationUnconfirmedError(); };
+            await rejects(buildGameDbSqliteCompatibility({ storeRoot: root, artifactIdentity: acquired.identity }), /termination could not be confirmed/);
+            equal(activeSnapshots(root).length, 0);
+            const quarantines = readdirSync(root).filter(name => name.startsWith(".c4-bridge-quarantine-"));
+            equal(quarantines.length, 1);
+            const preserved = join(root, quarantines[0], "snapshot", "database.db");
+            equal(statSync(preserved).size, acquired.metadata.observedSizeBytes);
+            equal((statSync(preserved).mode & 0o222), 0);
+        } finally {
+            ReadOnlySqliteAdapter.prototype.inspect = originalInspect;
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it("accepts exactly 112 MiB and rejects the next byte before snapshot creation", async function () {
+        this.timeout(120_000);
+        const limit = 112 * 1024 * 1024;
+        const exactRoot = temp(), overflowRoot = temp();
+        try {
+            const exact = await commitSize(exactRoot, limit);
+            const report = await buildGameDbSqliteCompatibility({ storeRoot: exactRoot, artifactIdentity: exact.identity });
+            equal(report.acquiredArtifact.sizeBytes, limit);
+            equal(report.status, "unknown");
+            equal(activeSnapshots(exactRoot).length, 0);
+
+            const overflow = await commitSize(overflowRoot, limit + 1);
+            await rejects(buildGameDbSqliteCompatibility({ storeRoot: overflowRoot, artifactIdentity: overflow.identity }), /112 MiB inspection limit/);
+            equal(activeSnapshots(overflowRoot).length, 0);
+            equal(readdirSync(overflowRoot).some(name => name.startsWith(".c4-snapshot-tombstone-")), false);
+        } finally {
+            rmSync(exactRoot, { recursive: true, force: true });
+            rmSync(overflowRoot, { recursive: true, force: true });
+        }
     });
 
     it("keeps descriptor-bound encrypted or packaged bytes unknown", async () => {

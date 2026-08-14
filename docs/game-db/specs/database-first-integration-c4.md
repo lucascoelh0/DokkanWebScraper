@@ -20,6 +20,33 @@ it never reopens the snapshot pathname. The report records AQ identity and
 inspected snapshot hash/size and requires equality. A source or snapshot A→B→A
 pathname swap can therefore inspect only descriptor-bound A bytes or fail closed;
 it can never report lineage A for inspection B.
+
+The productive bridge resource profile is pinned: SQLite input must be a positive
+safe-integer size no greater than 112 MiB (117,440,512 bytes), which admits the
+97,738,752-byte reviewed snapshot while remaining below AQ's 128 MiB ceiling.
+C4 validates that bound and the observed AQ member size before it creates a
+snapshot or subprocess. Node streams the still-open snapshot handle in 64 KiB
+chunks with write-callback backpressure, exact byte counting and an in-stream
+limit. The incremental SHA-256 of the bytes actually written to stdin must equal
+the AQ SHA before any bridge result can be accepted. Node never allocates or
+retains a second whole-SQLite `Buffer`. Python may
+hold the bounded input required by `sqlite3.deserialize`.
+
+The subprocess timeout is 120 seconds with a 1-second graceful termination
+period followed by forced termination and bounded close confirmation. A caller
+may provide only an `AbortSignal`, never an inspection result or executable
+override. Timeout, cancellation, EPIPE, early stdin close, output overflow,
+non-zero exit or parse failure close stdin, terminate and await the child before
+snapshot cleanup. Stdout is capped at 8 MiB and stderr at 1 MiB; counts are
+checked before buffering, stderr errors are sanitized/truncated, and JSON is
+accepted only after exit zero plus complete stream closure with no leading,
+trailing, truncated or multiple documents.
+On Windows, failure to observe normal close escalates to `taskkill /T /F`; C4
+permits snapshot cleanup only after `close` or explicit confirmation that the
+child PID no longer exists. If the OS still reports the PID alive after both
+forced paths, C4 emits no report and does not truncate/remove the snapshot: it
+closes its own handle and moves the fully revalidated directory into an
+ownership-bound `.c4-bridge-quarantine-*` container for explicit diagnosis.
 Node has no portable descriptor-bound unlink. Cleanup therefore truncates and
 fsyncs the exact owned snapshot handle, moves the directory into an exclusive
 quarantine container, and validates the moved zero-byte identity. The tombstone
@@ -30,7 +57,7 @@ The CLI has no `--sqlite-path`, and no productive export can inspect an arbitrar
 SQLite file or publish `acquiredArtifactState` from one. `latest` and sanitized
 operational receipts are evidence/navigation only, never authority over bytes.
 
-Acceptance requires streaming SHA-256/size checks, a canonical SQLite table/column schema fingerprint, required-column checks, ELF format checks, exact semantic-artifact identities, source-artifact binding, read-only before/after fingerprints, deterministic downstream artifacts, a sanitized receipt when operational proof is required, and a working-set ceiling of 1 GiB. A receipt is never authority over bytes.
+Acceptance requires streaming SHA-256/size checks, the pinned bridge limits above, a canonical SQLite table/column schema fingerprint, required-column checks, ELF format checks, exact semantic-artifact identities, source-artifact binding, read-only before/after fingerprints, deterministic downstream artifacts, a sanitized receipt when operational proof is required, and a working-set ceiling of 1 GiB. A receipt is never authority over bytes.
 
 ## Compatibility policy
 
