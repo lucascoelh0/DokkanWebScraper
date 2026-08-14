@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K41 — field-scoped shadow, candidate delivery and public shadow consumption
+### K10–K42 — field-scoped shadow, public delivery and supported state/form scope
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -636,6 +636,29 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   The final domain suite passed 183 tests with eight Windows symlink fixtures
   pending. A conditional-fixture coverage P2 was corrected with the portable
   4+1 test split, and contract re-review found no remaining P0-P2.
+- K42 adds an explicit-opt-in, offline, stdout-only supported state/form product
+  scope audit over exact K0/K1/K2/K7, productive and FYI pins. It reloads all
+  sources after evaluation, requires unchanged identities and a complete
+  structural fingerprint, and cross-checks every K1 state against the matching
+  K0 state/evidence. It reads no presentation text for scope, writes no
+  artifact, returns no `Character[]` and has no apply, authority, production,
+  network, publisher, R2 or Android path.
+- The first real K42 attempt rejected the drifted current FYI `latest`. The
+  successful exact-pin runs used the preserved 1,211,389-byte FYI payload with
+  SHA-256 `56681e7327c56bce7becbda72ee507b77d964f449fd1862012d4e751b801b499`.
+  K42 included 10,651 supported known-release states, 4,892 supported release
+  transitions, 6,905 supported awakenings and 374 supported passive-bound form
+  transitions. It excluded three unknown states/transitions, two partial
+  awakenings and 184 partial form bindings. K7's 4,296 agreements and 1,463
+  unjoinables remain coverage only. Two complete executions produced identical
+  5,660-byte reports with SHA-256
+  `e56a39cdc4b420a8eb58f6a075021e75b7b45eb5d3b4c9e9b658d6f3bc6d929e`.
+  Scope audit and the next supported-only projection gate are GO; product
+  projection is not executed and every consumer/authority/production boundary
+  remains NO-GO. The final domain suite passed 188 tests with eight Windows
+  symlink fixtures pending. A documentation P2 about the legacy loader's
+  presentation-field parsing was corrected; contract re-review found no
+  remaining P0-P2.
 
 ## Operating Constraints
 
