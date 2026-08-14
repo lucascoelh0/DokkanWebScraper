@@ -1,7 +1,7 @@
 # Database Characters K38 - remote read-only taxonomy projection preflight
 
-Status: default-off implementation and synthetic transport validation GO.
-Real remote execution remains pending separate explicit authorization. K38
+Status: default-off implementation, synthetic transport validation and the
+authorized real remote read-only execution are GO. K38
 cannot publish, mutate R2, authorize publication, promote authority, feed a
 consumer, alter Android, or activate production. Contract version `1.0.0`.
 
@@ -151,17 +151,33 @@ and file symlinks when the platform permits them. Static checks reject remote
 mutation clients, publisher imports, credential/authorization headers and
 `Character[]` APIs.
 
-No real request, Wrangler process, bucket inspection, publication, R2
-mutation, Android action, consumer read, authority promotion or production
-action was executed while implementing K38.
+The first authorized real attempt on 2026-08-14 completed all five fixed GETs
+but stopped fail-closed because the local Wrangler entrypoint was unavailable.
+It wrote a non-authoritative NO-GO report with SHA-256
+`7927dbc433f67167679fa8f7b5942ee0f7eb71c72ed6693fc0fa9e655ea44659`.
+The repository dependencies were then restored from the local npm cache without
+network access or lockfile changes, and the 11 focused tests passed again with
+the file-symlink fixture pending on Windows.
+
+The separately authorized retry at `2026-08-14T20:15:26.471Z` completed the
+five fixed GETs and the one fixed Wrangler bucket-info query. All four
+immutable objects and the mutable manifest were missing, with zero conflicts
+or read failures. Wrangler reported `364 MB`; K38 conservatively bounded that
+at 365,000,000 bytes and projected 365,260,894 bytes after the 253,735 missing
+immutable bytes plus the complete 7,159-byte manifest candidate. The source
+bound K37 plan was GO before and after the reads. The 5,205-byte operational
+report has SHA-256
+`03c22dfc42006eeb6f0dc6d88af859fb898d7abded4046a97df4e4a714f63046`.
+No publication, R2 mutation, Android action, consumer read, authority promotion
+or production action was executed.
 
 ## Readiness
 
 | Scope | Decision |
 | --- | --- |
 | default-off K38 implementation and synthetic validation | **GO** |
-| separately authorized real read-only remote preflight | **PENDING** |
-| `readOnlyRemotePreflight` in a current real run | **GO or NO-GO from current observations** |
+| authorized real read-only remote preflight at `2026-08-14T20:15:26.471Z` | **GO** |
+| `readOnlyRemotePreflight` in that operational report | **GO** |
 | `publicationAuthorization` | **REQUIRED** |
 | publication or R2 mutation | **NO-GO** |
 | Android or consumer | **NO-GO** |

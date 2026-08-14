@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K38 — field-scoped shadow, candidate delivery and remote preflight infrastructure
+### K10–K39 — field-scoped shadow, candidate delivery and publisher dry-run infrastructure
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -530,6 +530,39 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   network or Wrangler execution; Windows denied the file-symlink fixture while
   the junction and hard-link cases passed. Real remote preflight, publication, R2 mutation,
   Android, consumers, authority and production remain unexecuted and NO-GO.
+- The first authorized real K38 attempt completed all five fixed GETs but
+  stopped fail-closed because the local Wrangler entrypoint was unavailable.
+  After dependencies were restored from the local npm cache without lockfile
+  changes, the authorized retry completed the same five GETs and the fixed
+  read-only bucket-info command. All four immutable taxonomy objects and the
+  mutable manifest were missing with zero conflicts or failures. Wrangler
+  reported 364 MB; K38 conservatively bounded current usage at 365,000,000
+  bytes and projected 365,260,894 bytes. The source-bound K37 plan was GO
+  before and after the reads. The 5,205-byte operational report has SHA-256
+  `03c22dfc42006eeb6f0dc6d88af859fb898d7abded4046a97df4e4a714f63046`.
+- K39 adds a closed, explicitly opt-in publisher dry-run boundary. It
+  productively reruns K38 with every explicit root and ID, rejects any K38
+  NO-GO, and source-bound revalidates K37 around plan construction. Its
+  productive API exposes no transport injection, saved-report authority,
+  credentials, AWS/S3 writer, upload, delete or manifest-promotion path.
+- K39 maps each K38-missing immutable object to a prospective
+  `If-None-Match: *` create, preserves exact hashes, sizes, order, content types
+  and immutable cache policy, requires direct post-create byte/metadata
+  verification, and places the `no-store` mutable manifest last. A future
+  replacement requires a fresh direct ETag and `If-Match`; no overwrite or
+  delete is planned. These are non-authoritative future semantics only.
+- The real K39 dry-run at `2026-08-14T20:28:40.470Z` planned four missing
+  immutable creates plus one missing mutable-manifest create, with zero
+  overwrite/delete and the same 365,260,894-byte conservative bucket
+  projection. Its 8,591-byte content-addressed report has SHA-256
+  `1193690e3b9aa7ecccd48e2e6d869e84fd40971515835a8cc880a1b003fd7ef8`;
+  the nested current K38 report has SHA-256
+  `6923d7027da97ecbd39476c1396870da36e2ca3c1d1d3bc8842474bdab010274`.
+  The nine focused K39 tests passed and the file-symlink fixture was pending on
+  Windows. The final domain suite passed 165 tests with eight Windows symlink
+  fixtures pending, and final contract review found no remaining P0-P2.
+  K39 dry-run is GO; publisher writes, publication, R2 mutation, Android,
+  consumers, authority and production remain NO-GO.
 
 ## Operating Constraints
 

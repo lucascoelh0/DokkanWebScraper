@@ -86,6 +86,7 @@
     "run:database-characters-taxonomy-projection-delivery": "node --expose-gc --max-old-space-size=768 lib/database-characters/taxonomy-projection-delivery-run.js --opt-in-k36",
     "run:database-characters-taxonomy-projection-object-plan": "node --expose-gc --max-old-space-size=768 lib/database-characters/taxonomy-projection-object-plan-run.js --opt-in-k37",
     "run:database-characters-taxonomy-projection-remote-preflight": "node --max-old-space-size=768 lib/database-characters/taxonomy-projection-remote-preflight-run.js",
+    "run:database-characters-taxonomy-projection-publisher-dry-run": "node --max-old-space-size=768 lib/database-characters/taxonomy-projection-publisher-dry-run-run.js",
     "run:game-db-init-first-party-export": "npx ts-node game-db/game-db-init-first-party-export.ts",
     "run:game-db-pull-emulator-database-artifact": "npx ts-node game-db/game-db-pull-emulator-database-artifact.ts",
     "run:game-db-promote-first-party-export": "npx ts-node game-db/game-db-promote-to-first-party-export.ts",
