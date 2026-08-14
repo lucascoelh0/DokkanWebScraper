@@ -4,6 +4,8 @@ import { dirname, relative, resolve, sep } from "path";
 import { ReadOnlySqliteAdapter, SqliteBridgeTerminationUnconfirmedError, SqliteInspection } from "../database-experiment/sqlite-readonly-adapter";
 import { integrationC4SchemaSha256 } from "../database-integration/integration-c4-builder";
 import { IntegrationC4Baseline } from "../database-integration/integration-c4-contract";
+import { GameDbDerivedSqliteArtifactMetadata } from "./game-db-derived-sqlite-artifact-contract";
+import { validateDerivedSqliteArtifact } from "./game-db-derived-sqlite-artifact-validator";
 import { validateAcquiredDatabaseArtifact } from "./game-db-download-database-artifact";
 
 const SQLITE_HEADER = Buffer.from("SQLite format 3\u0000", "utf8");
@@ -21,7 +23,36 @@ export type GameDbSqliteCompatibilityStatus =
     | "incompatible"
     | "unknown";
 
-export interface GameDbSqliteCompatibilityReport {
+interface GameDbSqliteCompatibilityProfile {
+    snapshotVersion: string,
+    sourceDatabase: {
+        expectedSha256: string,
+        expectedSizeBytes: number,
+        expectedTableCount: number,
+        expectedSchemaSha256: string,
+        actualSha256: string | null,
+        actualSizeBytes: number | null,
+        actualTableCount: number | null,
+        actualSchemaSha256: string | null,
+    },
+    missingRequiredColumns: string[],
+}
+
+interface GameDbSqliteCompatibilityNativeEvidence {
+    nativeRuntimeSha256: string,
+    nativeRuntimeSizeBytes: number,
+    semanticInputs: IntegrationC4Baseline["semanticInputs"],
+    evaluatedInThisStep: false,
+    automaticReuseAuthorized: false,
+}
+
+type GameDbSqliteCompatibilityNextStep =
+    | "decrypt_locally_then_repeat_read_only_compatibility"
+    | "run_c4_with_exact_pinned_elf_and_semantic_artifacts"
+    | "refresh_bounded_native_evidence_then_review_c4_baseline"
+    | "stop_incompatible_sqlite";
+
+export interface GameDbSqliteCompatibilityAqReport {
     schemaVersion: 1,
     contract: "dokkan-game-db-sqlite-compatibility",
     contractVersion: "1.2.0",
@@ -39,39 +70,56 @@ export interface GameDbSqliteCompatibilityReport {
         sha256: string,
         sizeBytes: number,
     },
-    c4Profile: {
-        snapshotVersion: string,
-        sourceDatabase: {
-            expectedSha256: string,
-            expectedSizeBytes: number,
-            expectedTableCount: number,
-            expectedSchemaSha256: string,
-            actualSha256: string | null,
-            actualSizeBytes: number | null,
-            actualTableCount: number | null,
-            actualSchemaSha256: string | null,
-        },
-        missingRequiredColumns: string[],
-    },
-    pinnedNativeEvidence: {
-        nativeRuntimeSha256: string,
-        nativeRuntimeSizeBytes: number,
-        semanticInputs: IntegrationC4Baseline["semanticInputs"],
-        evaluatedInThisStep: false,
-        automaticReuseAuthorized: false,
-    },
-    nextPermittedStep:
-        | "decrypt_locally_then_repeat_read_only_compatibility"
-        | "run_c4_with_exact_pinned_elf_and_semantic_artifacts"
-        | "refresh_bounded_native_evidence_then_review_c4_baseline"
-        | "stop_incompatible_sqlite",
+    c4Profile: GameDbSqliteCompatibilityProfile,
+    pinnedNativeEvidence: GameDbSqliteCompatibilityNativeEvidence,
+    nextPermittedStep: GameDbSqliteCompatibilityNextStep,
 }
 
-export type GameDbSqliteCompatibilityOptions =
+export interface GameDbSqliteCompatibilityDqReport {
+    schemaVersion: 1,
+    contract: "dokkan-game-db-sqlite-compatibility",
+    contractVersion: "1.3.0",
+    sourceKind: "dq_derived",
+    status: GameDbSqliteCompatibilityStatus,
+    derivedArtifact: {
+        identity: string,
+        outputSha256: string,
+        outputSizeBytes: number,
+        outputState: "readable_sqlite",
+        parentAcquiredArtifact: {
+            identity: string,
+            sha256: string,
+            sizeBytes: number,
+            state: "readable_sqlite" | "encrypted_or_packaged",
+        },
+    },
+    inspectionSnapshot: {
+        source: "dq_derived_output",
+        derivedArtifactIdentity: string,
+        sha256: string,
+        sizeBytes: number,
+    },
+    c4Profile: GameDbSqliteCompatibilityProfile,
+    pinnedNativeEvidence: GameDbSqliteCompatibilityNativeEvidence,
+    nextPermittedStep: Exclude<GameDbSqliteCompatibilityNextStep, "decrypt_locally_then_repeat_read_only_compatibility">,
+}
+
+export type GameDbSqliteCompatibilityReport = GameDbSqliteCompatibilityAqReport | GameDbSqliteCompatibilityDqReport;
+
+export type GameDbSqliteCompatibilityAqOptions =
     | { storeRoot: string, artifactIdentity: string, signal?: AbortSignal }
     | { storeRoot: string, useLatest: true, signal?: AbortSignal };
 
-export type GameDbSqliteCompatibilityCliOptions = GameDbSqliteCompatibilityOptions & { outputFile?: string };
+export type GameDbSqliteCompatibilityDqOptions = {
+    derivedStoreRoot: string,
+    sourceStoreRoot: string,
+    derivedArtifactIdentity: string,
+    signal?: AbortSignal,
+};
+
+export type GameDbSqliteCompatibilityOptions = GameDbSqliteCompatibilityAqOptions | GameDbSqliteCompatibilityDqOptions;
+
+export type GameDbSqliteCompatibilityCliOptions = (GameDbSqliteCompatibilityAqOptions | GameDbSqliteCompatibilityDqOptions) & { outputFile?: string };
 
 interface GameDbSqliteFileIdentity {
     dev: string,
@@ -133,30 +181,27 @@ function missingRequiredColumns(baseline: IntegrationC4Baseline, inspection: Sql
     return missing;
 }
 
-function evaluateGameDbSqliteCompatibility(input: {
+function evaluateSqliteProfile(input: {
     baseline: IntegrationC4Baseline,
-    acquiredArtifactState: "readable_sqlite" | "encrypted_or_packaged",
-    acquiredArtifact: GameDbSqliteCompatibilityReport["acquiredArtifact"],
-    inspectionSnapshot: GameDbSqliteCompatibilityReport["inspectionSnapshot"],
+    artifactState: "readable_sqlite" | "encrypted_or_packaged",
     sourceDatabase?: { sha256: string, sizeBytes: number, inspection: SqliteInspection },
-}): GameDbSqliteCompatibilityReport {
+}): {
+    status: GameDbSqliteCompatibilityStatus,
+    c4Profile: GameDbSqliteCompatibilityProfile,
+    pinnedNativeEvidence: GameDbSqliteCompatibilityNativeEvidence,
+    nextPermittedStep: GameDbSqliteCompatibilityNextStep,
+} {
     assertBaseline(input.baseline);
-    if (input.acquiredArtifactState !== "readable_sqlite" && input.acquiredArtifactState !== "encrypted_or_packaged") {
+    if (input.artifactState !== "readable_sqlite" && input.artifactState !== "encrypted_or_packaged") {
         throw new Error("Invalid acquired artifact state");
     }
     const source = input.sourceDatabase;
-    if (input.acquiredArtifactState === "readable_sqlite" && !source) {
+    if (input.artifactState === "readable_sqlite" && !source) {
         throw new Error("Readable SQLite compatibility requires a source inspection");
     }
     if (source && (!SHA256_PATTERN.test(source.sha256) || !Number.isSafeInteger(source.sizeBytes) || source.sizeBytes <= 0)) {
         throw new Error("Invalid observed SQLite identity");
     }
-    if (input.inspectionSnapshot.acquiredArtifactIdentity !== input.acquiredArtifact.identity
-        || input.inspectionSnapshot.sha256 !== input.acquiredArtifact.sha256
-        || input.inspectionSnapshot.sizeBytes !== input.acquiredArtifact.sizeBytes) {
-        throw new Error("C4 inspection snapshot identity diverges from the acquired AQ artifact");
-    }
-
     const schemaSha256 = source ? integrationC4SchemaSha256(source.inspection) : null;
     const missing = source ? missingRequiredColumns(input.baseline, source.inspection) : [];
     const exact = Boolean(source
@@ -164,14 +209,14 @@ function evaluateGameDbSqliteCompatibility(input: {
         && source.sizeBytes === input.baseline.sourceDatabase.sizeBytes
         && source.inspection.tableCount === input.baseline.sourceDatabase.tableCount
         && schemaSha256 === input.baseline.sourceDatabase.schemaSha256);
-    const status: GameDbSqliteCompatibilityStatus = input.acquiredArtifactState === "encrypted_or_packaged"
+    const status: GameDbSqliteCompatibilityStatus = input.artifactState === "encrypted_or_packaged"
         ? "unknown"
         : missing.length > 0
             ? "incompatible"
             : exact
                 ? "exact_profile_match"
                 : "schema_compatible_but_evidence_refresh_required";
-    const nextPermittedStep: GameDbSqliteCompatibilityReport["nextPermittedStep"] = status === "unknown"
+    const nextPermittedStep: GameDbSqliteCompatibilityNextStep = status === "unknown"
         ? "decrypt_locally_then_repeat_read_only_compatibility"
         : status === "exact_profile_match"
             ? "run_c4_with_exact_pinned_elf_and_semantic_artifacts"
@@ -180,13 +225,7 @@ function evaluateGameDbSqliteCompatibility(input: {
                 : "stop_incompatible_sqlite";
 
     return {
-        schemaVersion: 1,
-        contract: "dokkan-game-db-sqlite-compatibility",
-        contractVersion: "1.2.0",
         status,
-        acquiredArtifactState: input.acquiredArtifactState,
-        acquiredArtifact: input.acquiredArtifact,
-        inspectionSnapshot: input.inspectionSnapshot,
         c4Profile: {
             snapshotVersion: input.baseline.snapshotVersion,
             sourceDatabase: {
@@ -208,6 +247,73 @@ function evaluateGameDbSqliteCompatibility(input: {
             evaluatedInThisStep: false,
             automaticReuseAuthorized: false,
         },
+        nextPermittedStep,
+    };
+}
+
+function evaluateGameDbSqliteCompatibility(input: {
+    baseline: IntegrationC4Baseline,
+    acquiredArtifactState: "readable_sqlite" | "encrypted_or_packaged",
+    acquiredArtifact: GameDbSqliteCompatibilityAqReport["acquiredArtifact"],
+    inspectionSnapshot: GameDbSqliteCompatibilityAqReport["inspectionSnapshot"],
+    sourceDatabase?: { sha256: string, sizeBytes: number, inspection: SqliteInspection },
+}): GameDbSqliteCompatibilityAqReport {
+    if (input.inspectionSnapshot.acquiredArtifactIdentity !== input.acquiredArtifact.identity
+        || input.inspectionSnapshot.sha256 !== input.acquiredArtifact.sha256
+        || input.inspectionSnapshot.sizeBytes !== input.acquiredArtifact.sizeBytes) {
+        throw new Error("C4 inspection snapshot identity diverges from the acquired AQ artifact");
+    }
+    const evaluation = evaluateSqliteProfile({ baseline: input.baseline, artifactState: input.acquiredArtifactState, sourceDatabase: input.sourceDatabase });
+    return {
+        schemaVersion: 1,
+        contract: "dokkan-game-db-sqlite-compatibility",
+        contractVersion: "1.2.0",
+        acquiredArtifactState: input.acquiredArtifactState,
+        acquiredArtifact: input.acquiredArtifact,
+        inspectionSnapshot: input.inspectionSnapshot,
+        ...evaluation,
+    };
+}
+
+function evaluateDerivedGameDbSqliteCompatibility(input: {
+    baseline: IntegrationC4Baseline,
+    identity: string,
+    metadata: GameDbDerivedSqliteArtifactMetadata,
+    inspectionSnapshot: GameDbSqliteCompatibilityDqReport["inspectionSnapshot"],
+    sourceDatabase: { sha256: string, sizeBytes: number, inspection: SqliteInspection },
+}): GameDbSqliteCompatibilityDqReport {
+    if (input.inspectionSnapshot.source !== "dq_derived_output"
+        || input.inspectionSnapshot.derivedArtifactIdentity !== input.identity
+        || input.inspectionSnapshot.sha256 !== input.metadata.output.sha256
+        || input.inspectionSnapshot.sizeBytes !== input.metadata.output.sizeBytes) {
+        throw new Error("C4 inspection snapshot identity diverges from the derived DQ output");
+    }
+    const evaluation = evaluateSqliteProfile({ baseline: input.baseline, artifactState: "readable_sqlite", sourceDatabase: input.sourceDatabase });
+    const { nextPermittedStep } = evaluation;
+    if (nextPermittedStep === "decrypt_locally_then_repeat_read_only_compatibility") {
+        throw new Error("Derived readable SQLite produced an invalid C4 next step");
+    }
+    return {
+        schemaVersion: 1,
+        contract: "dokkan-game-db-sqlite-compatibility",
+        contractVersion: "1.3.0",
+        sourceKind: "dq_derived",
+        derivedArtifact: {
+            identity: input.identity,
+            outputSha256: input.metadata.output.sha256,
+            outputSizeBytes: input.metadata.output.sizeBytes,
+            outputState: "readable_sqlite",
+            parentAcquiredArtifact: {
+                identity: input.metadata.parent.artifactIdentity,
+                sha256: input.metadata.parent.sourceSha256,
+                sizeBytes: input.metadata.parent.sourceSizeBytes,
+                state: input.metadata.parent.sourceState,
+            },
+        },
+        inspectionSnapshot: input.inspectionSnapshot,
+        status: evaluation.status,
+        c4Profile: evaluation.c4Profile,
+        pinnedNativeEvidence: evaluation.pinnedNativeEvidence,
         nextPermittedStep,
     };
 }
@@ -259,14 +365,14 @@ async function hashHandle(handle: FileHandle, expectedSize: number): Promise<{ s
     let prefix = Buffer.alloc(0);
     while (offset < expectedSize) {
         const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, expectedSize - offset), offset);
-        if (bytesRead <= 0) throw new Error("C4 snapshot ended before the committed AQ size");
+        if (bytesRead <= 0) throw new Error("C4 snapshot ended before the committed source size");
         const chunk = buffer.subarray(0, bytesRead);
         if (prefix.length < SQLITE_HEADER.length) prefix = Buffer.concat([prefix, chunk.subarray(0, SQLITE_HEADER.length - prefix.length)]);
         hash.update(chunk);
         offset += bytesRead;
     }
     const extra = Buffer.alloc(1);
-    if ((await handle.read(extra, 0, 1, expectedSize)).bytesRead !== 0) throw new Error("C4 snapshot exceeds the committed AQ size");
+    if ((await handle.read(extra, 0, 1, expectedSize)).bytesRead !== 0) throw new Error("C4 snapshot exceeds the committed source size");
     return { sha256: hash.digest("hex"), readableSqliteHeader: prefix.equals(SQLITE_HEADER) };
 }
 
@@ -276,7 +382,7 @@ async function copyHandle(source: FileHandle, destination: FileHandle, expectedS
     let offset = 0;
     while (offset < expectedSize) {
         const { bytesRead } = await source.read(buffer, 0, Math.min(buffer.length, expectedSize - offset), offset);
-        if (bytesRead <= 0) throw new Error("AQ source ended during C4 snapshot creation");
+        if (bytesRead <= 0) throw new Error("Committed source ended during C4 snapshot creation");
         const chunk = buffer.subarray(0, bytesRead);
         hash.update(chunk);
         let written = 0;
@@ -288,7 +394,7 @@ async function copyHandle(source: FileHandle, destination: FileHandle, expectedS
         offset += bytesRead;
     }
     const extra = Buffer.alloc(1);
-    if ((await source.read(extra, 0, 1, expectedSize)).bytesRead !== 0) throw new Error("AQ source exceeds committed size during C4 snapshot creation");
+    if ((await source.read(extra, 0, 1, expectedSize)).bytesRead !== 0) throw new Error("Committed source exceeds its size during C4 snapshot creation");
     return hash.digest("hex");
 }
 
@@ -374,12 +480,12 @@ async function createPrivateInspectionSnapshot(storeRoot: string, artifactPath: 
     let ownedDirectory: { dev: string, ino: string } | undefined;
     let ownedFile: GameDbSqliteFileIdentity | undefined;
     try {
-        const sourceIdentity = await handleIdentity(source, "AQ source database");
-        const sourcePathIdentity = await pathIdentity(artifactPath, "AQ source database");
-        if (!sameIdentity(sourceIdentity, sourcePathIdentity)) throw new Error("AQ source pathname does not match its opened descriptor");
-        assertSnapshotFileIdentity(sourceIdentity, "AQ source database");
-        if (sourceIdentity.sizeBytes !== expectedSize) throw new Error("AQ source observed size does not match deterministic metadata");
-        assertContained(artifactPath, root, "AQ source database");
+        const sourceIdentity = await handleIdentity(source, "C4 authority source database");
+        const sourcePathIdentity = await pathIdentity(artifactPath, "C4 authority source database");
+        if (!sameIdentity(sourceIdentity, sourcePathIdentity)) throw new Error("C4 authority source pathname does not match its opened descriptor");
+        assertSnapshotFileIdentity(sourceIdentity, "C4 authority source database");
+        if (sourceIdentity.sizeBytes !== expectedSize) throw new Error("C4 authority source observed size does not match deterministic metadata");
+        assertContained(artifactPath, root, "C4 authority source database");
         directory = resolve(root, `.c4-snapshot-${process.pid}-${randomBytes(12).toString("hex")}`);
         assertContained(directory, root, "C4 snapshot directory");
         await mkdir(directory, { recursive: false, mode: 0o700 });
@@ -401,12 +507,12 @@ async function createPrivateInspectionSnapshot(storeRoot: string, artifactPath: 
         const completedIdentity = await handleIdentity(destination, "C4 snapshot");
         assertSnapshotFileIdentity(completedIdentity, "C4 snapshot");
         if (!sameIdentity(completedIdentity, await pathIdentity(snapshotPath, "C4 snapshot"))) throw new Error("C4 snapshot pathname changed during creation");
-        const sourceAfter = await handleIdentity(source, "AQ source database");
+        const sourceAfter = await handleIdentity(source, "C4 authority source database");
         if (!sameIdentity(sourceIdentity, sourceAfter) || copiedSha256 !== expectedSha256 || completedIdentity.sizeBytes !== expectedSize) {
-            throw new Error("C4 snapshot does not match the committed AQ bytes");
+            throw new Error("C4 snapshot does not match the committed source bytes");
         }
         const verified = await hashHandle(destination, expectedSize);
-        if (verified.sha256 !== expectedSha256) throw new Error("C4 snapshot hash does not match AQ metadata");
+        if (verified.sha256 !== expectedSha256) throw new Error("C4 snapshot hash does not match committed metadata");
         await source.close();
         return {
             directory,
@@ -501,29 +607,122 @@ function sameCanonicalPath(left: string, right: string): boolean {
     return process.platform === "win32" ? resolve(left).toLowerCase() === resolve(right).toLowerCase() : resolve(left) === resolve(right);
 }
 
+function isPlainRuntimeOptions(value: unknown): value is Record<string, unknown> {
+    if (!value || typeof value !== "object" || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype || Object.getOwnPropertySymbols(value).length !== 0) return false;
+    return Object.values(Object.getOwnPropertyDescriptors(value)).every(descriptor => "value" in descriptor && descriptor.enumerable === true);
+}
+
+function assertInspectionSize(size: number): void {
+    if (!Number.isSafeInteger(size) || size <= 0) throw new Error("C4 SQLite size must be a positive safe integer");
+    if (size > C4_MAX_SQLITE_BYTES) throw new Error("C4 SQLite exceeds the pinned 112 MiB inspection limit");
+}
+
+export function buildGameDbSqliteCompatibility(options: GameDbSqliteCompatibilityAqOptions): Promise<GameDbSqliteCompatibilityAqReport>;
+export function buildGameDbSqliteCompatibility(options: GameDbSqliteCompatibilityDqOptions): Promise<GameDbSqliteCompatibilityDqReport>;
+export function buildGameDbSqliteCompatibility(options: GameDbSqliteCompatibilityOptions): Promise<GameDbSqliteCompatibilityReport>;
 export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompatibilityOptions): Promise<GameDbSqliteCompatibilityReport> {
-    if (arguments.length !== 1 || !options || typeof options !== "object" || Array.isArray(options)) throw new Error("SQLite compatibility options are invalid");
+    if (arguments.length !== 1 || !isPlainRuntimeOptions(options)) throw new Error("SQLite compatibility options are invalid");
     const keys = Object.keys(options).sort();
     const explicitIdentity = JSON.stringify(keys) === JSON.stringify(["artifactIdentity", "storeRoot"])
         || JSON.stringify(keys) === JSON.stringify(["artifactIdentity", "signal", "storeRoot"]);
     const explicitLatest = JSON.stringify(keys) === JSON.stringify(["storeRoot", "useLatest"])
         || JSON.stringify(keys) === JSON.stringify(["signal", "storeRoot", "useLatest"]);
-    if (!explicitIdentity && !explicitLatest) throw new Error("SQLite compatibility requires storeRoot and exactly one AQ artifact selector");
-    if (typeof options.storeRoot !== "string" || !options.storeRoot || options.storeRoot.includes("\0")) throw new Error("SQLite compatibility storeRoot is invalid");
+    const explicitDerived = JSON.stringify(keys) === JSON.stringify(["derivedArtifactIdentity", "derivedStoreRoot", "sourceStoreRoot"])
+        || JSON.stringify(keys) === JSON.stringify(["derivedArtifactIdentity", "derivedStoreRoot", "signal", "sourceStoreRoot"]);
+    if ([explicitIdentity, explicitLatest, explicitDerived].filter(Boolean).length !== 1) {
+        throw new Error("SQLite compatibility requires exactly one supported selector: AQ artifact selector or DQ artifact selector");
+    }
+    if (!explicitDerived && (typeof (options as any).storeRoot !== "string" || !(options as any).storeRoot || (options as any).storeRoot.includes("\0"))) {
+        throw new Error("SQLite compatibility storeRoot is invalid");
+    }
     if (explicitIdentity && (typeof (options as any).artifactIdentity !== "string" || !SHA256_PATTERN.test((options as any).artifactIdentity))) throw new Error("SQLite compatibility artifactIdentity is invalid");
     if (explicitLatest && (options as any).useLatest !== true) throw new Error("SQLite compatibility useLatest selector must be true");
-    if ("signal" in options && (typeof options.signal !== "object" || options.signal === null
-        || typeof options.signal.aborted !== "boolean" || typeof options.signal.addEventListener !== "function"
-        || typeof options.signal.removeEventListener !== "function")) throw new Error("SQLite compatibility AbortSignal is invalid");
+    if (explicitDerived) {
+        const derivedOptions = options as GameDbSqliteCompatibilityDqOptions;
+        if (typeof derivedOptions.derivedStoreRoot !== "string" || !derivedOptions.derivedStoreRoot || derivedOptions.derivedStoreRoot.includes("\0")) throw new Error("SQLite compatibility derivedStoreRoot is invalid");
+        if (typeof derivedOptions.sourceStoreRoot !== "string" || !derivedOptions.sourceStoreRoot || derivedOptions.sourceStoreRoot.includes("\0")) throw new Error("SQLite compatibility sourceStoreRoot is invalid");
+        if (typeof derivedOptions.derivedArtifactIdentity !== "string" || !SHA256_PATTERN.test(derivedOptions.derivedArtifactIdentity)) throw new Error("SQLite compatibility derivedArtifactIdentity is invalid");
+    }
+    if ("signal" in options && !(options.signal instanceof AbortSignal)) throw new Error("SQLite compatibility AbortSignal is invalid");
     if (options.signal?.aborted) throw new Error("SQLite compatibility was cancelled");
     const baselineText = await readFile(await canonicalBaselinePath(), "utf8");
     if (createHash("sha256").update(baselineText.replace(/\r\n/g, "\n")).digest("hex") !== CANONICAL_C4_BASELINE_SHA256) throw new Error("Canonical C4 baseline identity is invalid");
     const baseline = JSON.parse(baselineText) as unknown;
     assertBaseline(baseline);
+
+    if (explicitDerived) {
+        const derivedOptions = options as GameDbSqliteCompatibilityDqOptions;
+        const derived = await validateDerivedSqliteArtifact({
+            storeRoot: derivedOptions.derivedStoreRoot,
+            sourceStoreRoot: derivedOptions.sourceStoreRoot,
+            artifactIdentity: derivedOptions.derivedArtifactIdentity,
+        });
+        const inspectionSize = derived.metadata.output.sizeBytes;
+        assertInspectionSize(inspectionSize);
+        if (options.signal?.aborted) throw new Error("SQLite compatibility was cancelled");
+        const snapshot = await createPrivateInspectionSnapshot(derivedOptions.derivedStoreRoot, derived.artifactPath, inspectionSize, derived.metadata.output.sha256);
+        let report!: GameDbSqliteCompatibilityDqReport;
+        let bridgeTerminationUnconfirmed = false;
+        try {
+            const boundDerived = await validateDerivedSqliteArtifact({
+                storeRoot: derivedOptions.derivedStoreRoot,
+                sourceStoreRoot: derivedOptions.sourceStoreRoot,
+                artifactIdentity: derived.identity,
+            });
+            if (boundDerived.identity !== derived.identity || JSON.stringify(boundDerived.metadata) !== JSON.stringify(derived.metadata)
+                || boundDerived.materialBinding !== derived.materialBinding) {
+                throw new Error("DQ artifact or its AQ parent changed while C4 bound its private snapshot");
+            }
+            await verifyPrivateInspectionSnapshot(snapshot, inspectionSize, derived.metadata.output.sha256);
+            if (!snapshot.readableSqliteHeader) throw new Error("Validated DQ output is no longer readable SQLite");
+            if (options.signal?.aborted) throw new Error("SQLite compatibility was cancelled");
+            const inspection = await ReadOnlySqliteAdapter.fromDescriptorBoundHandle(snapshot.path, snapshot.handle, inspectionSize, derived.metadata.output.sha256, {
+                signal: options.signal,
+                timeoutMs: C4_BRIDGE_TIMEOUT_MS,
+                killGraceMs: C4_BRIDGE_KILL_GRACE_MS,
+                inputLimitBytes: C4_MAX_SQLITE_BYTES,
+                stdoutLimitBytes: C4_BRIDGE_STDOUT_LIMIT_BYTES,
+                stderrLimitBytes: C4_BRIDGE_STDERR_LIMIT_BYTES,
+            }).inspect();
+            if (options.signal?.aborted) throw new Error("SQLite compatibility was cancelled");
+            await verifyPrivateInspectionSnapshot(snapshot, inspectionSize, derived.metadata.output.sha256);
+            const revalidated = await validateDerivedSqliteArtifact({
+                storeRoot: derivedOptions.derivedStoreRoot,
+                sourceStoreRoot: derivedOptions.sourceStoreRoot,
+                artifactIdentity: derived.identity,
+            });
+            if (revalidated.identity !== derived.identity || JSON.stringify(revalidated.metadata) !== JSON.stringify(derived.metadata)
+                || revalidated.operationBinding !== boundDerived.operationBinding) {
+                throw new Error("DQ artifact or its AQ parent changed during C4 compatibility inspection");
+            }
+            const inspectionSnapshot: GameDbSqliteCompatibilityDqReport["inspectionSnapshot"] = {
+                source: "dq_derived_output",
+                derivedArtifactIdentity: derived.identity,
+                sha256: snapshot.sha256,
+                sizeBytes: snapshot.identity.sizeBytes,
+            };
+            report = evaluateDerivedGameDbSqliteCompatibility({
+                baseline,
+                identity: derived.identity,
+                metadata: derived.metadata,
+                inspectionSnapshot,
+                sourceDatabase: { sha256: snapshot.sha256, sizeBytes: snapshot.identity.sizeBytes, inspection },
+            });
+        } catch (error) {
+            bridgeTerminationUnconfirmed = error instanceof SqliteBridgeTerminationUnconfirmedError;
+            throw error;
+        } finally {
+            if (bridgeTerminationUnconfirmed) await quarantineSnapshotAfterUnconfirmedBridgeTermination(snapshot);
+            else await removePrivateInspectionSnapshot(snapshot);
+        }
+        return report;
+    }
+
+    const aqOptions = options as GameDbSqliteCompatibilityAqOptions;
     const acquired = await validateAcquiredDatabaseArtifact(explicitLatest
-        ? { storeRoot: options.storeRoot, useLatest: true }
-        : { storeRoot: options.storeRoot, artifactIdentity: (options as any).artifactIdentity });
-    const acquiredArtifact: GameDbSqliteCompatibilityReport["acquiredArtifact"] = {
+        ? { storeRoot: aqOptions.storeRoot, useLatest: true }
+        : { storeRoot: aqOptions.storeRoot, artifactIdentity: (aqOptions as any).artifactIdentity });
+    const acquiredArtifact: GameDbSqliteCompatibilityAqReport["acquiredArtifact"] = {
         identity: acquired.identity,
         databaseVersion: acquired.metadata.databaseVersion,
         sha256: acquired.metadata.localSha256,
@@ -531,11 +730,10 @@ export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompat
         resolvedFromLatest: acquired.resolvedFromLatest,
     };
     const inspectionSize = acquired.metadata.observedSizeBytes;
-    if (!Number.isSafeInteger(inspectionSize) || inspectionSize <= 0) throw new Error("C4 SQLite size must be a positive safe integer");
-    if (inspectionSize > C4_MAX_SQLITE_BYTES) throw new Error("C4 SQLite exceeds the pinned 112 MiB inspection limit");
+    assertInspectionSize(inspectionSize);
     if (options.signal?.aborted) throw new Error("SQLite compatibility was cancelled");
-    const snapshot = await createPrivateInspectionSnapshot(options.storeRoot, acquired.artifactPath, inspectionSize, acquired.metadata.localSha256);
-    let report: GameDbSqliteCompatibilityReport;
+    const snapshot = await createPrivateInspectionSnapshot(aqOptions.storeRoot, acquired.artifactPath, inspectionSize, acquired.metadata.localSha256);
+    let report!: GameDbSqliteCompatibilityAqReport;
     let bridgeTerminationUnconfirmed = false;
     try {
         await verifyPrivateInspectionSnapshot(snapshot, acquired.metadata.observedSizeBytes, acquired.metadata.localSha256);
@@ -554,12 +752,12 @@ export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompat
         if (options.signal?.aborted) throw new Error("SQLite compatibility was cancelled");
         await verifyPrivateInspectionSnapshot(snapshot, acquired.metadata.observedSizeBytes, acquired.metadata.localSha256);
         const revalidated = await validateAcquiredDatabaseArtifact(explicitLatest
-            ? { storeRoot: options.storeRoot, useLatest: true }
-            : { storeRoot: options.storeRoot, artifactIdentity: acquired.identity });
+            ? { storeRoot: aqOptions.storeRoot, useLatest: true }
+            : { storeRoot: aqOptions.storeRoot, artifactIdentity: acquired.identity });
         if (revalidated.identity !== acquired.identity || JSON.stringify(revalidated.metadata) !== JSON.stringify(acquired.metadata)) {
             throw new Error("AQ artifact identity changed during C4 compatibility inspection");
         }
-        const inspectionSnapshot: GameDbSqliteCompatibilityReport["inspectionSnapshot"] = {
+        const inspectionSnapshot: GameDbSqliteCompatibilityAqReport["inspectionSnapshot"] = {
             acquiredArtifactIdentity: acquired.identity,
             sha256: snapshot.sha256,
             sizeBytes: snapshot.identity.sizeBytes,
@@ -590,21 +788,49 @@ export function parseGameDbSqliteCompatibilityArgs(argv: string[]): GameDbSqlite
     let storeRoot: string | undefined;
     let artifactIdentity: string | undefined;
     let useLatest = false;
+    let derivedStoreRoot: string | undefined;
+    let sourceStoreRoot: string | undefined;
+    let derivedArtifactIdentity: string | undefined;
     let outputFile: string | undefined;
+    const seen = new Set<string>();
     for (let index = 0; index < argv.length; index += 1) {
         const token = argv[index];
-        if (token === "--latest") { if (useLatest) throw new Error("Duplicate --latest"); useLatest = true; continue; }
+        if (token === "--latest") {
+            if (seen.has(token)) throw new Error("Duplicate --latest");
+            seen.add(token);
+            useLatest = true;
+            continue;
+        }
         const name = token.includes("=") ? token.slice(0, token.indexOf("=")) : token;
+        if (seen.has(name)) throw new Error(`Duplicate ${name}`);
+        seen.add(name);
         const value = token.includes("=") ? token.slice(token.indexOf("=") + 1) : argv[++index];
         if (!value) throw new Error(`Missing value for ${name}`);
         if (name === "--store-root") storeRoot = value;
         else if (name === "--artifact-identity") artifactIdentity = value;
+        else if (name === "--derived-store-root") derivedStoreRoot = value;
+        else if (name === "--source-store-root") sourceStoreRoot = value;
+        else if (name === "--derived-artifact-identity") derivedArtifactIdentity = value;
         else if (name === "--output-file") outputFile = value;
         else throw new Error(`Unexpected argument: ${name}`);
     }
-    if (!storeRoot) throw new Error("Missing --store-root");
-    if (Boolean(artifactIdentity) === useLatest) throw new Error("Choose exactly one of --artifact-identity or --latest");
-    const selector = useLatest ? { storeRoot, useLatest: true as const } : { storeRoot, artifactIdentity: artifactIdentity! };
+    const hasAqSelector = Boolean(storeRoot || artifactIdentity || useLatest);
+    const hasDqSelector = Boolean(derivedStoreRoot || sourceStoreRoot || derivedArtifactIdentity);
+    if (!hasAqSelector && !hasDqSelector) throw new Error("Missing --store-root or complete DQ selector");
+    if (hasAqSelector === hasDqSelector) throw new Error("Choose exactly one AQ or DQ selector");
+    let selector: GameDbSqliteCompatibilityAqOptions | GameDbSqliteCompatibilityDqOptions;
+    if (hasDqSelector) {
+        if (!derivedStoreRoot || !sourceStoreRoot || !derivedArtifactIdentity) {
+            throw new Error("DQ compatibility requires --derived-store-root, --source-store-root and --derived-artifact-identity");
+        }
+        if (!SHA256_PATTERN.test(derivedArtifactIdentity)) throw new Error("DQ derived artifact identity is invalid");
+        selector = { derivedStoreRoot, sourceStoreRoot, derivedArtifactIdentity };
+    } else {
+        if (!storeRoot) throw new Error("Missing --store-root");
+        if (Boolean(artifactIdentity) === useLatest) throw new Error("Choose exactly one of --artifact-identity or --latest");
+        if (artifactIdentity && !SHA256_PATTERN.test(artifactIdentity)) throw new Error("AQ artifact identity is invalid");
+        selector = useLatest ? { storeRoot, useLatest: true as const } : { storeRoot, artifactIdentity: artifactIdentity! };
+    }
     return outputFile ? { ...selector, outputFile } : selector;
 }
 
@@ -623,9 +849,15 @@ async function writeReportAtomic(outputFile: string, report: GameDbSqliteCompati
 
 async function main(): Promise<void> {
     const options = parseGameDbSqliteCompatibilityArgs(process.argv.slice(2));
-    const report = await buildGameDbSqliteCompatibility("useLatest" in options
-        ? { storeRoot: options.storeRoot, useLatest: true }
-        : { storeRoot: options.storeRoot, artifactIdentity: options.artifactIdentity });
+    const report = await buildGameDbSqliteCompatibility("derivedArtifactIdentity" in options
+        ? {
+            derivedStoreRoot: options.derivedStoreRoot,
+            sourceStoreRoot: options.sourceStoreRoot,
+            derivedArtifactIdentity: options.derivedArtifactIdentity,
+        }
+        : "useLatest" in options
+            ? { storeRoot: options.storeRoot, useLatest: true }
+            : { storeRoot: options.storeRoot, artifactIdentity: options.artifactIdentity });
     if (options.outputFile) await writeReportAtomic(options.outputFile, report);
     console.log(JSON.stringify(report, null, 2));
 }

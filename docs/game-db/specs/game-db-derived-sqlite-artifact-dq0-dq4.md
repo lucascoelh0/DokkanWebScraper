@@ -1,4 +1,4 @@
-# Game DB derived decrypted SQLite artifact DQ0-DQ4
+# Game DB derived decrypted SQLite artifact DQ0-DQ5
 
 ## Boundary
 
@@ -7,6 +7,8 @@ between a fully revalidated AQ commit and a derived plain-SQLite commit. It is
 offline and has no productive transformer. Tests inject both the secret provider
 and transformer; production code supplies no SQLCipher subprocess, Python
 adapter, command-line interface, key source or environment-variable contract.
+DQ5 adds only productive C4 compatibility consumption of a fully validated DQ
+commit; it adds no transformer, key path, export or refresh path.
 
 The only source authority is the existing AQ validator with exactly one of:
 
@@ -14,8 +16,8 @@ The only source authority is the existing AQ validator with exactly one of:
 - `storeRoot + useLatest: true`.
 
 There is no arbitrary input path or loose SQLite mode. The derived store must be
-a separate, non-overlapping root. DQ does not mutate AQ, change C4, export CSV,
-refresh evidence, publish, access R2 or change Android.
+a separate, non-overlapping root. DQ does not mutate AQ, export CSV, refresh
+evidence, publish, access R2 or change Android.
 
 ## DQ0 - authority and NO-GOs
 
@@ -28,8 +30,9 @@ identity, even when the initial selector was `useLatest`.
 The only implemented transform kind is `sqlcipher_decrypt`, and it requires an
 AQ parent in state `encrypted_or_packaged`. The implementation is intentionally
 injected for tests. Real SQLCipher execution, subprocess argv/environment,
-productive secret lookup, the historical Python helper and C4 consumption are
-NO-GO in this slice.
+productive secret lookup and the historical Python helper remain NO-GO. DQ5
+authorizes only local read-only C4 compatibility inspection after a DQ commit
+already exists.
 
 ## DQ1 - deterministic contract and lineage
 
@@ -132,10 +135,40 @@ containment and stable opened identities. It then materially revalidates the AQ
 commit named by metadata and requires exact parent identity, source SHA-256,
 size and state matches.
 
-A derived root alone cannot prove AQ lineage. Any future separately reviewed C4
-integration must receive and validate both trust roots. C4 is not modified by
-DQ0-DQ4, so the current API does not yet authorize compatibility inspection,
-evidence refresh, export, production promotion, publication or Android use.
+A derived root alone cannot prove AQ lineage. DQ5 therefore requires C4 to
+receive and validate both trust roots. DQ0-DQ4 alone does not authorize
+compatibility inspection, evidence refresh, export, production promotion,
+publication or Android use.
+
+## DQ5 - local C4 compatibility consumption
+
+C4 accepts a mutually exclusive DQ selector containing exactly
+`derivedStoreRoot`, `sourceStoreRoot` and `derivedArtifactIdentity`, plus an
+optional real `AbortSignal`. DQ has no `useLatest` mode and accepts no loose
+SQLite, receipt, metadata or marker path. Mixed selectors, extra keys,
+accessor-bearing objects, forged signals and invalid identities fail before
+artifact reads. The existing exact AQ selectors remain supported unchanged.
+
+C4 calls `validateDerivedSqliteArtifact`, creates its own exclusive private
+read-only snapshot from the opened DQ output descriptor, and binds inspection to
+the DQ output SHA-256, size and `readable_sqlite` state. The bridge keeps the C4
+112 MiB input limit, streaming backpressure, timeout, output limits,
+termination confirmation, quarantine cleanup and no-partial-report behavior.
+C4 imports neither the DQ runner nor a transformer or secret provider.
+
+Validation occurs before snapshot creation, immediately after the snapshot is
+bound, and after inspection. Opaque internal bindings cover the DQ output,
+metadata, marker, commit directories, trust-root boundaries and the material AQ
+parent. The first comparison excludes only the derived-root timestamps changed
+by C4's own snapshot creation; the inspection-period comparison includes them.
+Output, metadata, marker, parent or namespace replacement, including A→B→A
+restoration, therefore fails closed before a report is returned.
+
+AQ-direct reports retain contract version `1.2.0`. DQ-derived reports use
+version `1.3.0`, identify `sourceKind: dq_derived`, bind the inspection snapshot
+to `dq_derived_output`, and list the AQ parent only as lineage. They never claim
+that the encrypted or packaged AQ parent was inspected and contain no paths,
+receipts, secret material or transform parameters.
 
 ## Threat model
 
@@ -148,12 +181,12 @@ permanent physical immutability on writable storage.
 
 ## Decision
 
-| Capability | DQ0-DQ4 status |
+| Capability | DQ0-DQ5 status |
 | --- | --- |
 | deterministic derived contract and validator | GO |
 | injected secret provider/transformer in focused tests | GO |
 | separate local content-addressed derived store | GO |
 | real key or real decryption | NO-GO |
 | SQLCipher subprocess or productive Python adapter | NO-GO |
-| C4 derived-commit consumption | NO-GO |
+| local read-only C4 compatibility inspection of a validated DQ commit | GO |
 | export, refresh, publication, R2 or Android | NO-GO |

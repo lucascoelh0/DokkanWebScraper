@@ -159,11 +159,16 @@ through the production read-only SQLite adapter:
 npm run run:game-db-sqlite-compatibility -- --store-root ".\game-db\data\game-db-acquisition\database-artifacts" --artifact-identity "<64-char-sha256-identity>"
 # Or explicitly resolve and revalidate the current commit:
 npm run run:game-db-sqlite-compatibility -- --store-root ".\game-db\data\game-db-acquisition\database-artifacts" --latest
+# Or inspect an exact DQ commit with its AQ trust root:
+npm run run:game-db-sqlite-compatibility -- --derived-store-root ".\game-db\data\game-db-derived" --source-store-root ".\game-db\data\game-db-acquisition\database-artifacts" --derived-artifact-identity "<64-char-sha256-identity>"
 ```
 
 The productive C4 API has no arbitrary SQLite-path mode. It derives `database.db`
-only from a fully validated AQ commit, checks deterministic metadata, marker,
-content identity, descriptor lineage, size/SHA/state, containment and members,
+only from a fully validated AQ commit, or `database.sqlite` from a fully
+validated DQ commit supplied with both trust roots. AQ identity/latest and DQ
+identity selectors are mutually exclusive; DQ has no latest, loose path or
+receipt mode. C4 checks deterministic metadata, marker, content identity,
+lineage, size/SHA/state, containment and members,
 opens that member once, copies the bytes from the same `FileHandle` into an
 exclusive private read-only snapshot, reads inspection bytes from its still-open
 descriptor, and has the bridge deserialize that private byte copy without
@@ -171,7 +176,8 @@ reopening the snapshot pathname.
 The productive C4 wrapper accepts only positive safe-integer SQLite sizes up to
 112 MiB, below AQ's 128 MiB ceiling. It streams the open snapshot in 64 KiB
 chunks with backpressure instead of allocating a whole-file Node `Buffer`.
-The stream is counted and hashed incrementally against the AQ SHA.
+The stream is counted and hashed incrementally against the selected AQ or DQ
+output SHA.
 The bridge is bounded to 120 seconds, a 1-second graceful/forced shutdown,
 8 MiB stdout and 1 MiB stderr. An optional `AbortSignal` cancels work without
 injecting inspection data; every failure waits for child termination before
@@ -180,9 +186,12 @@ and confirms `close` or absence of the child PID.
 If termination remains unconfirmed, no report is emitted and the intact,
 revalidated snapshot is moved to a named ownership-bound bridge quarantine
 instead of being truncated or silently orphaned.
-Snapshot size/SHA are checked before and after inspection and the AQ source commit
-is revalidated before reporting. The report binds the AQ identity to the inspected
-snapshot hash and requires equality. Journal records, receipts and `latest.json`
+Snapshot size/SHA are checked before and after inspection. AQ-direct revalidates
+the AQ source commit before reporting. DQ revalidates the exact DQ commit and
+its material AQ parent after the snapshot is bound and again after inspection.
+AQ reports retain contract `1.2.0`; DQ reports use `1.3.0`, identify the
+inspected derived output and list AQ only as parent lineage. Journal records,
+receipts and `latest.json`
 are not authority over bytes; `latest.json` is at most a dispensable legacy cache
 and may be missing or divergent. This compatibility report does not decrypt, export,
 refresh evidence, publish, promote production data or authorize reuse of pinned
@@ -206,15 +215,18 @@ Public runner results return only a receipt filename, not an absolute path.
 
 Derived validation requires both the derived `storeRoot` and AQ
 `sourceStoreRoot`, then revalidates the parent AQ identity, SHA, size and state.
-A derived root by itself is not sufficient lineage authority, and any future C4
-consumer must be given both trust roots. Operational clock/receipt failure after
-a fully validated marker-last commit does not remove that material commit.
+A derived root by itself is not sufficient lineage authority. DQ5 C4 must be
+given both trust roots and one exact derived identity. Operational clock/receipt
+failure after a fully validated marker-last commit does not remove that material
+commit.
 
-DQ0-DQ4 still has no real SQLCipher adapter or productive secret provider, and
-C4 does not consume derived commits yet. The historical Python helper is
-nonproductive; passing keys in command-line arguments is prohibited because
-process arguments are not an approved secret boundary. Real decryption and C4
-integration remain separate NO-GO gates.
+DQ0-DQ4 still has no real SQLCipher adapter or productive secret provider. DQ5
+allows only local read-only C4 compatibility inspection of an already validated
+derived commit and does not invoke the runner, transformer or provider. The
+historical Python helper is nonproductive; passing keys in command-line
+arguments is prohibited because process arguments are not an approved secret
+boundary. Real decryption, export, refresh, production, publication, R2 and
+Android remain NO-GO.
 
 ### Acquisition threat model
 

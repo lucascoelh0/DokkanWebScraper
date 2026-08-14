@@ -94,8 +94,9 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   if present from an older checkout, is a dispensable cache and has no authority.
 - AQ0–AQ6 ends at the official acquired artifact, which may remain encrypted.
   A decrypted loose SQLite has no authority. DQ0-DQ4 now supplies the bounded
-  derived lineage/store contract described below, while productive decryption
-  and C4 consumption remain separate future gates.
+  derived lineage/store contract described below. DQ5 adds only local
+  read-only C4 compatibility consumption of a validated DQ commit; productive
+  decryption remains a separate future gate.
 - Offline descriptor/artifact validation remains the only reviewable AQ path.
   Before integration, the next gate is the independent integration decision;
   after integration, the next separate gate is one explicitly authorized real
@@ -103,7 +104,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   lineage. Official download, decryption, refresh, publication, production
   promotion and Android otherwise remain NO-GO pending independent gates.
 
-### DQ0–DQ4 — derived decrypted SQLite lineage/storage foundation
+### DQ0–DQ5 — derived SQLite lineage and local compatibility inspection
 
 - DQ0-DQ4 establishes an offline, production-shaped derived commit boundary
   from a fully revalidated AQ identity into a separate content-addressed store.
@@ -124,9 +125,14 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   valid commits remain intact.
 - The strict derived validator requires both the derived and AQ trust roots and
   materially revalidates parent identity/SHA/size/state. A derived root alone is
-  insufficient; any future C4 integration must provide both. C4 was not modified.
-  Real SQLCipher execution, real secrets, decryption, C4 consumption, export,
-  refresh, publication, R2 and Android remain NO-GO.
+  insufficient. DQ5 C4 accepts exactly one derived identity with both roots,
+  binds its own private snapshot to the DQ output and revalidates the exact DQ
+  material and AQ parent after inspection. AQ-direct reports remain `1.2.0`;
+  DQ-derived reports use `1.3.0` and distinguish the inspected derived output
+  from parent AQ lineage.
+- Only local read-only C4 compatibility inspection of a fully validated DQ
+  commit is GO. Real SQLCipher execution, real keys or secrets, decryption,
+  export, refresh, production, publication, R2 and Android remain NO-GO.
 
 ### E0–E9 — events, stages, enemies and bosses
 

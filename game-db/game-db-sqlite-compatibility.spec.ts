@@ -1,12 +1,15 @@
 import { deepEqual, equal, notEqual, rejects, throws } from "assert";
 import { execFileSync } from "child_process";
-import { chmodSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "fs";
+import { createHash } from "crypto";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { join, resolve } from "path";
+import { dirname, join, resolve } from "path";
 import { Readable } from "stream";
 import { ReadOnlySqliteAdapter, SqliteBridgeTerminationUnconfirmedError } from "../database-experiment/sqlite-readonly-adapter";
+import { deriveSqliteArtifact, DerivedSqliteTransformer } from "./game-db-derived-sqlite-artifact-runner";
+import { validateDerivedSqliteArtifact, ValidatedDerivedSqliteArtifact } from "./game-db-derived-sqlite-artifact-validator";
 import { acquireDatabaseArtifact, AcquiredDatabaseArtifactResult, DatabaseArtifactTransport } from "./game-db-download-database-artifact";
-import { buildGameDbSqliteCompatibility, parseGameDbSqliteCompatibilityArgs } from "./game-db-sqlite-compatibility";
+import { buildGameDbSqliteCompatibility, GameDbSqliteCompatibilityAqReport, parseGameDbSqliteCompatibilityArgs } from "./game-db-sqlite-compatibility";
 
 function temp(): string { return mkdtempSync(join(tmpdir(), "dokkan-c4-closed-api-")); }
 function python(): string { return process.platform === "win32" ? "python" : "python3"; }
@@ -36,15 +39,86 @@ async function commitSize(root: string, sizeBytes: number): Promise<AcquiredData
 function makeWritable(path: string): void { chmodSync(path, 0o644); }
 function activeSnapshots(root: string): string[] { return readdirSync(root).filter(name => name.startsWith(".c4-snapshot-") && !name.startsWith(".c4-snapshot-tombstone-")); }
 
+const dqSecretSentinel = "DQ5-SECRET-SENTINEL-9f39a1";
+const dqImplementationSha256 = createHash("sha256").update("dq5-synthetic-transformer").digest("hex");
+
+interface DqFixture {
+    sourceStoreRoot: string,
+    derivedStoreRoot: string,
+    parent: AcquiredDatabaseArtifactResult,
+    identity: string,
+    validated: ValidatedDerivedSqliteArtifact,
+    providerCalls: { value: number },
+    transformerCalls: { value: number },
+}
+
+async function createDqFixture(base: string, sqliteBytes: Buffer): Promise<DqFixture> {
+    const sourceStoreRoot = join(base, "aq-store");
+    const derivedStoreRoot = join(base, "derived-store");
+    const parent = await commit(sourceStoreRoot, Buffer.from("synthetic-encrypted-parent"));
+    const providerCalls = { value: 0 };
+    const transformerCalls = { value: 0 };
+    const transformer: DerivedSqliteTransformer = {
+        kind: "sqlcipher_decrypt",
+        implementation: { identity: "dq5-synthetic-transformer", version: "1.0.0-test", sha256: dqImplementationSha256 },
+        nonSecretParameters: { cipherCompatibility: 4 },
+        async transform({ output, secret }) {
+            transformerCalls.value += 1;
+            equal(Buffer.from(secret).toString("utf8"), dqSecretSentinel);
+            await output.write(sqliteBytes);
+            return {
+                declaredSizeBytes: sqliteBytes.length,
+                declaredSha256: createHash("sha256").update(sqliteBytes).digest("hex"),
+            };
+        },
+    };
+    const derived = await deriveSqliteArtifact({
+        source: { storeRoot: sourceStoreRoot, artifactIdentity: parent.identity },
+        derivedStoreRoot,
+        transformer,
+        secretProvider: { async provideSecret() { providerCalls.value += 1; return Buffer.from(dqSecretSentinel, "utf8"); } },
+    });
+    const validated = await validateDerivedSqliteArtifact({ storeRoot: derivedStoreRoot, sourceStoreRoot, artifactIdentity: derived.identity });
+    return { sourceStoreRoot, derivedStoreRoot, parent, identity: derived.identity, validated, providerCalls, transformerCalls };
+}
+
+function replaceAndRestoreRoot(root: string, label: string): void {
+    const displaced = `${root}.displaced-${label}`;
+    renameSync(root, displaced);
+    try {
+        mkdirSync(root);
+        writeFileSync(join(root, "replacement-root-sentinel"), label);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+        renameSync(displaced, root);
+    }
+}
+
+function assertRetiredC4Snapshot(root: string): void {
+    equal(activeSnapshots(root).length, 0);
+    const tombstones = readdirSync(root).filter(name => name.startsWith(".c4-snapshot-tombstone-"));
+    equal(tombstones.length, 1);
+    equal(statSync(join(root, tombstones[0], "snapshot", "database.db")).size, 0);
+}
+
 describe("game DB SQLite compatibility", function () {
     this.timeout(10_000);
 
     it("parses only the descriptor-bound compatibility CLI", () => {
         deepEqual(parseGameDbSqliteCompatibilityArgs(["--store-root", "store", "--artifact-identity=" + "a".repeat(64), "--output-file=report.json"]), { storeRoot: "store", artifactIdentity: "a".repeat(64), outputFile: "report.json" });
         deepEqual(parseGameDbSqliteCompatibilityArgs(["--store-root=store", "--latest"]), { storeRoot: "store", useLatest: true });
+        deepEqual(parseGameDbSqliteCompatibilityArgs([
+            "--derived-store-root", "derived",
+            "--source-store-root=source",
+            "--derived-artifact-identity", "b".repeat(64),
+        ]), { derivedStoreRoot: "derived", sourceStoreRoot: "source", derivedArtifactIdentity: "b".repeat(64) });
         throws(() => parseGameDbSqliteCompatibilityArgs(["--sqlite-path", "database.db"]), /Unexpected/);
         throws(() => parseGameDbSqliteCompatibilityArgs(["--store-root", "store"]), /exactly one/);
         throws(() => parseGameDbSqliteCompatibilityArgs(["--store-root", "store", "--latest", "--artifact-identity", "a".repeat(64)]), /exactly one/);
+        throws(() => parseGameDbSqliteCompatibilityArgs(["--store-root", "store", "--latest", "--derived-store-root", "derived", "--source-store-root", "source", "--derived-artifact-identity", "b".repeat(64)]), /exactly one/);
+        throws(() => parseGameDbSqliteCompatibilityArgs(["--derived-store-root", "derived", "--source-store-root", "source", "--latest"]), /exactly one/);
+        throws(() => parseGameDbSqliteCompatibilityArgs(["--derived-store-root", "derived", "--source-store-root", "source", "--derived-artifact-identity", "b".repeat(64), "--receipt", "receipt.json"]), /Unexpected/);
+        throws(() => parseGameDbSqliteCompatibilityArgs(["--derived-store-root", "derived", "--source-store-root", "source", "--derived-artifact-identity", "not-an-identity"]), /identity/);
         throws(() => parseGameDbSqliteCompatibilityArgs([]), /store-root/);
     });
 
@@ -69,7 +143,268 @@ describe("game DB SQLite compatibility", function () {
                 const controller = new AbortController(); controller.abort();
                 await rejects(api({ storeRoot: root, artifactIdentity: "a".repeat(64), signal: controller.signal }), /cancelled/);
             }
+
+            await rejects((buildGameDbSqliteCompatibility as any)({
+                storeRoot: root,
+                artifactIdentity: "a".repeat(64),
+                derivedStoreRoot: root,
+                sourceStoreRoot: root,
+                derivedArtifactIdentity: "b".repeat(64),
+            }), /AQ artifact selector|DQ artifact selector/);
+            await rejects((buildGameDbSqliteCompatibility as any)({
+                derivedStoreRoot: root,
+                sourceStoreRoot: root,
+                derivedArtifactIdentity: "b".repeat(64),
+                receiptPath: "forged.json",
+            }), /DQ artifact selector/);
+            await rejects((buildGameDbSqliteCompatibility as any)({
+                derivedStoreRoot: root,
+                sourceStoreRoot: root,
+                derivedArtifactIdentity: "b".repeat(64),
+                useLatest: true,
+            }), /DQ artifact selector/);
+            await rejects((buildGameDbSqliteCompatibility as any)({
+                derivedStoreRoot: root,
+                sourceStoreRoot: root,
+                derivedArtifactIdentity: "../forged",
+            }), /derivedArtifactIdentity/);
+            let getterReads = 0;
+            const forged = Object.defineProperties({}, {
+                derivedStoreRoot: { enumerable: true, get() { getterReads += 1; return root; } },
+                sourceStoreRoot: { enumerable: true, get() { getterReads += 1; return root; } },
+                derivedArtifactIdentity: { enumerable: true, get() { getterReads += 1; return "b".repeat(64); } },
+            });
+            await rejects((buildGameDbSqliteCompatibility as any)(forged), /options/);
+            equal(getterReads, 0);
         } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("consumes a validated synthetic DQ commit without invoking its transformer or secret provider", async () => {
+        const base = temp(), sqlitePath = join(base, "derived-source.sqlite");
+        createSqlite(sqlitePath);
+        try {
+            const fixture = await createDqFixture(base, readFileSync(sqlitePath));
+            equal(fixture.providerCalls.value, 1);
+            equal(fixture.transformerCalls.value, 1);
+            const report = await buildGameDbSqliteCompatibility({
+                derivedStoreRoot: fixture.derivedStoreRoot,
+                sourceStoreRoot: fixture.sourceStoreRoot,
+                derivedArtifactIdentity: fixture.identity,
+            });
+            equal(fixture.providerCalls.value, 1);
+            equal(fixture.transformerCalls.value, 1);
+            equal(report.contractVersion, "1.3.0");
+            equal(report.sourceKind, "dq_derived");
+            equal(report.derivedArtifact.identity, fixture.identity);
+            equal(report.derivedArtifact.outputSha256, fixture.validated.metadata.output.sha256);
+            equal(report.derivedArtifact.parentAcquiredArtifact.identity, fixture.parent.identity);
+            equal(report.inspectionSnapshot.source, "dq_derived_output");
+            equal(report.inspectionSnapshot.derivedArtifactIdentity, fixture.identity);
+            equal(report.inspectionSnapshot.sha256, fixture.validated.metadata.output.sha256);
+            equal(report.c4Profile.sourceDatabase.actualTableCount, 1);
+            const serialized = JSON.stringify(report);
+            equal(serialized.includes(dqSecretSentinel), false);
+            equal(serialized.includes(base), false);
+            equal(serialized.includes(fixture.sourceStoreRoot), false);
+            equal(serialized.includes(fixture.derivedStoreRoot), false);
+            equal(/receipt|sqlcipher|transform/i.test(serialized), false);
+            equal(activeSnapshots(fixture.derivedStoreRoot).length, 0);
+        } finally { rmSync(base, { recursive: true, force: true }); }
+    });
+
+    it("fails closed when the DQ commit's material AQ parent is missing or corrupt", async () => {
+        for (const variant of ["missing", "corrupt"] as const) {
+            const base = temp(), sqlitePath = join(base, "derived-source.sqlite");
+            createSqlite(sqlitePath);
+            try {
+                const fixture = await createDqFixture(base, readFileSync(sqlitePath));
+                if (variant === "missing") {
+                    const parentDirectory = dirname(fixture.parent.artifactPath);
+                    renameSync(parentDirectory, `${parentDirectory}.missing`);
+                } else {
+                    makeWritable(fixture.parent.artifactPath);
+                    writeFileSync(fixture.parent.artifactPath, "corrupt-parent");
+                    chmodSync(fixture.parent.artifactPath, 0o444);
+                }
+                await rejects(buildGameDbSqliteCompatibility({
+                    derivedStoreRoot: fixture.derivedStoreRoot,
+                    sourceStoreRoot: fixture.sourceStoreRoot,
+                    derivedArtifactIdentity: fixture.identity,
+                }), /artifact|parent|commit|hash|size|directory/i, variant);
+                equal(activeSnapshots(fixture.derivedStoreRoot).length, 0);
+            } finally { rmSync(base, { recursive: true, force: true }); }
+        }
+    });
+
+    it("rejects corrupt DQ output, metadata and marker before snapshot inspection", async () => {
+        for (const variant of ["output", "metadata", "marker"] as const) {
+            const base = temp(), sqlitePath = join(base, "derived-source.sqlite");
+            createSqlite(sqlitePath);
+            try {
+                const fixture = await createDqFixture(base, readFileSync(sqlitePath));
+                const target = variant === "output" ? fixture.validated.artifactPath
+                    : variant === "metadata" ? fixture.validated.metadataPath : fixture.validated.commitMarkerPath;
+                makeWritable(target);
+                writeFileSync(target, variant === "output" ? "corrupt-output" : "{}\n");
+                chmodSync(target, 0o444);
+                await rejects(buildGameDbSqliteCompatibility({
+                    derivedStoreRoot: fixture.derivedStoreRoot,
+                    sourceStoreRoot: fixture.sourceStoreRoot,
+                    derivedArtifactIdentity: fixture.identity,
+                }), /derived|SQLite|metadata|marker|output|identity/i, variant);
+                equal(activeSnapshots(fixture.derivedStoreRoot).length, 0);
+            } finally { rmSync(base, { recursive: true, force: true }); }
+        }
+    });
+
+    it("fails closed on DQ output, metadata, marker, AQ parent and root A-to-B-to-A replacement during inspection", async function () {
+        this.timeout(30_000);
+        const originalInspect = ReadOnlySqliteAdapter.prototype.inspect;
+        try {
+            for (const variant of ["output", "metadata", "marker", "parent", "root"] as const) {
+                const base = temp(), sqlitePath = join(base, "derived-source.sqlite");
+                createSqlite(sqlitePath);
+                try {
+                    const fixture = await createDqFixture(base, readFileSync(sqlitePath));
+                    const target = variant === "output" ? fixture.validated.artifactPath
+                        : variant === "metadata" ? fixture.validated.metadataPath
+                            : variant === "marker" ? fixture.validated.commitMarkerPath
+                                : variant === "parent" ? fixture.parent.artifactPath
+                                    : join(fixture.derivedStoreRoot, "artifacts");
+                    const displaced = `${target}.displaced-a`;
+                    let swapped = false;
+                    ReadOnlySqliteAdapter.prototype.inspect = async function () {
+                        renameSync(target, displaced);
+                        if (variant === "root") mkdirSync(target);
+                        else {
+                            writeFileSync(target, variant === "output" ? readFileSync(sqlitePath) : `replacement-${variant}`);
+                            chmodSync(target, 0o444);
+                        }
+                        swapped = true;
+                        try { return await originalInspect.call(this); }
+                        finally {
+                            if (variant === "root") rmSync(target, { recursive: true, force: true });
+                            else { makeWritable(target); unlinkSync(target); }
+                            renameSync(displaced, target);
+                        }
+                    };
+                    await rejects(buildGameDbSqliteCompatibility({
+                        derivedStoreRoot: fixture.derivedStoreRoot,
+                        sourceStoreRoot: fixture.sourceStoreRoot,
+                        derivedArtifactIdentity: fixture.identity,
+                    }), /changed during C4 compatibility inspection/i, variant);
+                    equal(swapped, true, variant);
+                    equal(activeSnapshots(fixture.derivedStoreRoot).length, 0);
+                } finally { rmSync(base, { recursive: true, force: true }); }
+            }
+        } finally { ReadOnlySqliteAdapter.prototype.inspect = originalInspect; }
+    });
+
+    it("fails closed when derivedStoreRoot is replaced A-to-B-to-A during private snapshot creation and bind", async () => {
+        const base = temp(), sqlitePath = join(base, "derived-source.sqlite");
+        createSqlite(sqlitePath);
+        const fsPromises: any = require("fs/promises");
+        const originalOpen = fsPromises.open;
+        let derivedArtifactOpenCalls = 0;
+        let swapped = false;
+        try {
+            const fixture = await createDqFixture(base, readFileSync(sqlitePath));
+            fsPromises.open = async function (path: unknown, ...args: unknown[]) {
+                if (typeof path === "string" && resolve(path).toLowerCase() === resolve(fixture.validated.artifactPath).toLowerCase()) {
+                    derivedArtifactOpenCalls += 1;
+                }
+                if (!swapped && derivedArtifactOpenCalls === 2) {
+                    replaceAndRestoreRoot(fixture.derivedStoreRoot, "snapshot-bind-derived");
+                    swapped = true;
+                }
+                return originalOpen.call(this, path, ...args);
+            };
+            let report: unknown;
+            await rejects(async () => {
+                report = await buildGameDbSqliteCompatibility({
+                    derivedStoreRoot: fixture.derivedStoreRoot,
+                    sourceStoreRoot: fixture.sourceStoreRoot,
+                    derivedArtifactIdentity: fixture.identity,
+                });
+            }, /changed while C4 bound its private snapshot/i);
+            equal(report, undefined);
+            equal(swapped, true);
+            equal(derivedArtifactOpenCalls, 3);
+            equal(fixture.providerCalls.value, 1);
+            equal(fixture.transformerCalls.value, 1);
+            assertRetiredC4Snapshot(fixture.derivedStoreRoot);
+        } finally {
+            fsPromises.open = originalOpen;
+            rmSync(base, { recursive: true, force: true });
+        }
+    });
+
+    it("fails closed when sourceStoreRoot is replaced A-to-B-to-A during private snapshot bind", async () => {
+        const base = temp(), sqlitePath = join(base, "derived-source.sqlite");
+        createSqlite(sqlitePath);
+        const validatorModule: any = require("./game-db-derived-sqlite-artifact-validator");
+        const originalValidate = validatorModule.validateDerivedSqliteArtifact;
+        let validationCalls = 0;
+        let swapped = false;
+        try {
+            const fixture = await createDqFixture(base, readFileSync(sqlitePath));
+            validatorModule.validateDerivedSqliteArtifact = async function (...args: unknown[]) {
+                validationCalls += 1;
+                if (validationCalls === 2) {
+                    replaceAndRestoreRoot(fixture.sourceStoreRoot, "snapshot-bind-source");
+                    swapped = true;
+                }
+                return originalValidate.apply(this, args);
+            };
+            let report: unknown;
+            await rejects(async () => {
+                report = await buildGameDbSqliteCompatibility({
+                    derivedStoreRoot: fixture.derivedStoreRoot,
+                    sourceStoreRoot: fixture.sourceStoreRoot,
+                    derivedArtifactIdentity: fixture.identity,
+                });
+            }, /changed while C4 bound its private snapshot/i);
+            equal(report, undefined);
+            equal(swapped, true);
+            equal(validationCalls, 2);
+            equal(fixture.providerCalls.value, 1);
+            equal(fixture.transformerCalls.value, 1);
+            assertRetiredC4Snapshot(fixture.derivedStoreRoot);
+        } finally {
+            validatorModule.validateDerivedSqliteArtifact = originalValidate;
+            rmSync(base, { recursive: true, force: true });
+        }
+    });
+
+    it("fails closed when sourceStoreRoot is replaced A-to-B-to-A during the bridge", async () => {
+        const base = temp(), sqlitePath = join(base, "derived-source.sqlite");
+        createSqlite(sqlitePath);
+        const originalInspect = ReadOnlySqliteAdapter.prototype.inspect;
+        let swapped = false;
+        try {
+            const fixture = await createDqFixture(base, readFileSync(sqlitePath));
+            ReadOnlySqliteAdapter.prototype.inspect = async function () {
+                replaceAndRestoreRoot(fixture.sourceStoreRoot, "bridge-source");
+                swapped = true;
+                return originalInspect.call(this);
+            };
+            let report: unknown;
+            await rejects(async () => {
+                report = await buildGameDbSqliteCompatibility({
+                    derivedStoreRoot: fixture.derivedStoreRoot,
+                    sourceStoreRoot: fixture.sourceStoreRoot,
+                    derivedArtifactIdentity: fixture.identity,
+                });
+            }, /changed during C4 compatibility inspection/i);
+            equal(report, undefined);
+            equal(swapped, true);
+            equal(fixture.providerCalls.value, 1);
+            equal(fixture.transformerCalls.value, 1);
+            assertRetiredC4Snapshot(fixture.derivedStoreRoot);
+        } finally {
+            ReadOnlySqliteAdapter.prototype.inspect = originalInspect;
+            rmSync(base, { recursive: true, force: true });
+        }
     });
 
     it("uses only a validated AQ identity with the production adapter and canonical C4 baseline", async () => {
@@ -168,7 +503,7 @@ describe("game DB SQLite compatibility", function () {
                     renameSync(displaced, this.databasePath);
                 }
             };
-            let report: Awaited<ReturnType<typeof buildGameDbSqliteCompatibility>> | undefined;
+            let report: GameDbSqliteCompatibilityAqReport | undefined;
             try { report = await buildGameDbSqliteCompatibility({ storeRoot: root, artifactIdentity: acquired.identity }); }
             catch (error) { equal(/snapshot identity changed during inspection/i.test(String(error)), true); }
             equal(swapped, true);

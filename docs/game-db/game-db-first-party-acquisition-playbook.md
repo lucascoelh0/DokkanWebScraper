@@ -24,7 +24,7 @@ Today, the remaining gap is specifically:
 - how to obtain the latest DB artifact ourselves
 - how to add a separately reviewed productive decrypt adapter when the downloaded
   artifact is not plain SQLite; DQ0-DQ4 currently provides lineage/storage and
-  injected tests only
+  injected tests only, while DQ5 adds local read-only C4 compatibility
 
 ## Historical interception clues
 
@@ -319,13 +319,17 @@ sequential sink and an `AbortSignal`; it never receives a raw output handle.
 Timeout defaults to and is capped at 120 seconds. Derived validation requires
 both the derived store root and the AQ source-store root so the declared parent
 identity/SHA/size/state can be materially revalidated. A derived store alone is
-not C4 authority.
+not C4 authority. DQ5 permits C4 to inspect only a committed DQ identity when
+both trust roots are supplied.
 
 No real SQLCipher adapter or productive secret provider exists in DQ0-DQ4. The
 existing Python helper is historical/nonproductive and must not be invoked as a
 pipeline gate. In particular, passing a key through `--key` or any other command
 line argument is prohibited; argv is outside the approved secret boundary. A
 loose helper output is not an AQ, DQ or C4 artifact.
+DQ5 does not invoke a transformer or secret provider and authorizes no real
+decryption, export, refresh, production promotion, publication, R2 or Android
+work.
 
 ### 6. Validate the SQLite read-only and compare C4
 
@@ -333,6 +337,8 @@ loose helper output is not an AQ, DQ or C4 artifact.
 npm run run:game-db-sqlite-compatibility -- --store-root ".\game-db\data\game-db-acquisition\database-artifacts" --artifact-identity "<64-char-sha256-identity>" --output-file ".\game-db\data\game-db-acquisition\compatibility.json"
 # Or explicitly ask C4 to revalidate and resolve latest:
 npm run run:game-db-sqlite-compatibility -- --store-root ".\game-db\data\game-db-acquisition\database-artifacts" --latest --output-file ".\game-db\data\game-db-acquisition\compatibility.json"
+# Or inspect one exact validated DQ commit with both trust roots:
+npm run run:game-db-sqlite-compatibility -- --derived-store-root ".\game-db\data\game-db-derived" --source-store-root ".\game-db\data\game-db-acquisition\database-artifacts" --derived-artifact-identity "<64-char-sha256-identity>" --output-file ".\game-db\data\game-db-acquisition\compatibility.json"
 ```
 
 The result is `exact_profile_match`,
@@ -349,11 +355,14 @@ Snapshot SHA/size are checked before and after inspection, the AQ source commit 
 revalidated before reporting, and the report requires AQ identity/hash to equal
 the inspected snapshot identity/hash. `latest` is accepted only through the
 explicit flag; its journal winner and materialized commit are revalidated.
-The productive API and CLI accept no arbitrary SQLite path. DQ0-DQ4 can now
-establish a deterministic derived-artifact commit, but C4 does not consume that
-contract in this slice; the loose decrypted pathname and the DQ receipt are not
-C4 authority. Any replacement or mutation fails closed without emitting a
-compatibility report.
+The productive API and CLI accept no arbitrary SQLite path. DQ5 accepts exactly
+`derivedStoreRoot + sourceStoreRoot + derivedArtifactIdentity`; it accepts no
+DQ `latest`, receipt, metadata or marker path. It validates the DQ commit and
+material AQ parent, binds a private snapshot to the DQ output SHA/size/state,
+then revalidates both after inspection. DQ reports use contract `1.3.0` and name
+the AQ parent as lineage only; AQ-direct reports remain `1.2.0`. A loose
+decrypted pathname and DQ receipt are not C4 authority. Any replacement or
+mutation fails closed without emitting a compatibility report.
 Never run DB0–DB50 cumulatively for this refresh.
 
 ## Threat model
@@ -397,6 +406,7 @@ gate described above.
 | merge manual/default-off infrastructure | GO after independent review |
 | offline descriptor validation | GO |
 | offline artifact validation | GO |
+| local read-only C4 inspection of a validated DQ commit | GO |
 | official database GET | NO-GO pending review and separate authorization |
 | local SQLCipher decryption | NO-GO in this campaign |
 | focused shadow refresh | NO-GO in this campaign |

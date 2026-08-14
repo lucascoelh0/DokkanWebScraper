@@ -21,6 +21,9 @@ interface DirectoryIdentity {
     dev: string,
     ino: string,
     mode: number,
+    birthtimeNs: string,
+    mtimeNs: string,
+    ctimeNs: string,
 }
 
 interface FileIdentity {
@@ -48,6 +51,8 @@ export interface ValidatedDerivedSqliteArtifact {
     metadataPath: string,
     commitMarkerPath: string,
     metadata: GameDbDerivedSqliteArtifactMetadata,
+    materialBinding: string,
+    operationBinding: string,
 }
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {
@@ -102,7 +107,16 @@ async function captureDirectory(path: string, label: string): Promise<DirectoryI
     if (!metadata.isDirectory() || metadata.isSymbolicLink() || !samePath(canonical, target)) {
         throw new Error(`${label} must not be a symlink, junction or reparse escape`);
     }
-    return { path: target, realPath: canonical, dev: BigInt(metadata.dev).toString(), ino: BigInt(metadata.ino).toString(), mode: Number(metadata.mode) };
+    return {
+        path: target,
+        realPath: canonical,
+        dev: BigInt(metadata.dev).toString(),
+        ino: BigInt(metadata.ino).toString(),
+        mode: Number(metadata.mode),
+        birthtimeNs: BigInt(metadata.birthtimeNs).toString(),
+        mtimeNs: BigInt(metadata.mtimeNs).toString(),
+        ctimeNs: BigInt(metadata.ctimeNs).toString(),
+    };
 }
 
 async function assertSameDirectory(expected: DirectoryIdentity, label: string): Promise<void> {
@@ -110,6 +124,54 @@ async function assertSameDirectory(expected: DirectoryIdentity, label: string): 
     if (!samePath(actual.realPath, expected.realPath) || actual.dev !== expected.dev || actual.ino !== expected.ino || actual.mode !== expected.mode) {
         throw new Error(`${label} changed during validation`);
     }
+}
+
+function directoryBinding(identity: DirectoryIdentity, includeMutableTimes = true): Record<string, string | number> {
+    return {
+        dev: identity.dev,
+        ino: identity.ino,
+        mode: identity.mode,
+        ...(includeMutableTimes ? { birthtimeNs: identity.birthtimeNs, mtimeNs: identity.mtimeNs, ctimeNs: identity.ctimeNs } : {}),
+    };
+}
+
+function memberBinding(identity: FileIdentity): Record<string, string | number> {
+    return {
+        dev: identity.dev,
+        ino: identity.ino,
+        nlink: identity.nlink,
+        size: identity.size,
+        mode: identity.mode,
+        birthtimeNs: identity.birthtimeNs,
+        mtimeNs: identity.mtimeNs,
+        ctimeNs: identity.ctimeNs,
+    };
+}
+
+async function captureAqParentBinding(sourceStoreRoot: string, parent: Awaited<ReturnType<typeof validateAcquiredDatabaseArtifact>>): Promise<Record<string, unknown>> {
+    const sourceRoot = await captureDirectory(sourceStoreRoot, "Derived artifact AQ source store root");
+    const sourceRootParent = samePath(dirname(sourceRoot.path), sourceRoot.path)
+        ? sourceRoot
+        : await captureDirectory(dirname(sourceRoot.path), "Derived artifact AQ source store parent");
+    const artifactsRoot = await captureDirectory(dirname(parent.artifactDirectory), "Derived artifact AQ objects directory");
+    const artifactDirectory = await captureDirectory(parent.artifactDirectory, "Derived artifact AQ parent commit directory");
+    const members: Record<string, Record<string, string | number>> = {};
+    for (const [name, path] of Object.entries({
+        "database.db": parent.artifactPath,
+        "metadata.json": parent.metadataPath,
+        "commit-marker.json": parent.commitMarkerPath,
+    })) {
+        const identity = await capturePathFile(path, artifactDirectory.path, `Derived artifact AQ parent ${name}`);
+        assertImmutableMember(identity, `Derived artifact AQ parent ${name}`);
+        members[name] = memberBinding(identity);
+    }
+    return {
+        sourceRootParent: directoryBinding(sourceRootParent),
+        sourceRoot: directoryBinding(sourceRoot),
+        artifactsRoot: directoryBinding(artifactsRoot),
+        artifactDirectory: directoryBinding(artifactDirectory),
+        members,
+    };
 }
 
 function directoryChain(path: string): string[] {
@@ -203,6 +265,7 @@ export async function validateDerivedSqliteArtifact(options: ValidateDerivedSqli
     if (pathsOverlap(storeRoot, sourceStoreRoot)) throw new Error("AQ and derived validation roots must be separate and non-overlapping");
     const chain = await captureExistingDirectoryChain(storeRoot);
     const root = chain[chain.length - 1];
+    const rootParent = chain.length > 1 ? chain[chain.length - 2] : root;
     const artifactsRootPath = resolve(storeRoot, "artifacts");
     if (!isContained(storeRoot, artifactsRootPath)) throw new Error("Derived artifact namespace containment is invalid");
     const artifactsRoot = await captureDirectory(artifactsRootPath, "Derived artifact objects directory");
@@ -261,6 +324,7 @@ export async function validateDerivedSqliteArtifact(options: ValidateDerivedSqli
             || parent.metadata.observedSizeBytes !== metadata.parent.sourceSizeBytes || parent.metadata.artifactState !== metadata.parent.sourceState) {
             throw new Error("Derived artifact AQ parent lineage does not validate materially");
         }
+        const aqParentBinding = await captureAqParentBinding(sourceStoreRoot, parent);
 
         for (const member of opened.values()) {
             const after = await captureHandleFile(member.handle, member.path, "Derived artifact member");
@@ -272,6 +336,27 @@ export async function validateDerivedSqliteArtifact(options: ValidateDerivedSqli
         await assertSameDirectory(root, "Derived artifact store root");
         for (const identity of chain) await assertSameDirectory(identity, "Derived artifact store path");
 
+        const revalidatedParent = await validateAcquiredDatabaseArtifact({ storeRoot: sourceStoreRoot, artifactIdentity: metadata.parent.artifactIdentity });
+        if (revalidatedParent.identity !== parent.identity || JSON.stringify(revalidatedParent.metadata) !== JSON.stringify(parent.metadata)) {
+            throw new Error("Derived artifact AQ parent changed during validation");
+        }
+        const revalidatedAqParentBinding = await captureAqParentBinding(sourceStoreRoot, revalidatedParent);
+        if (JSON.stringify(revalidatedAqParentBinding) !== JSON.stringify(aqParentBinding)) {
+            throw new Error("Derived artifact AQ parent material changed during validation");
+        }
+
+        const derivedMembers: Record<string, Record<string, string | number>> = {};
+        for (const name of DERIVED_MEMBER_NAMES) derivedMembers[name] = memberBinding(opened.get(name)!.identity);
+        const binding = {
+            rootParent: directoryBinding(rootParent),
+            artifactsRoot: directoryBinding(artifactsRoot),
+            artifactDirectory: directoryBinding(artifactDirectory),
+            members: derivedMembers,
+            aqParent: aqParentBinding,
+        };
+        const materialBinding = createHash("sha256").update(JSON.stringify({ ...binding, root: directoryBinding(root, false) })).digest("hex");
+        const operationBinding = createHash("sha256").update(JSON.stringify({ ...binding, root: directoryBinding(root) })).digest("hex");
+
         return {
             identity: options.artifactIdentity,
             artifactDirectory: artifactDirectory.path,
@@ -279,6 +364,8 @@ export async function validateDerivedSqliteArtifact(options: ValidateDerivedSqli
             metadataPath: resolve(artifactDirectory.path, "metadata.json"),
             commitMarkerPath: resolve(artifactDirectory.path, "commit-marker.json"),
             metadata,
+            materialBinding,
+            operationBinding,
         };
     } finally {
         await Promise.all([...opened.values()].map(member => member.handle.close().catch(() => undefined)));
