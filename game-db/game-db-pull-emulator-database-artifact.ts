@@ -208,12 +208,12 @@ function buildNextSuggestedCommand(args: {
             ? ` --settings-json "${args.settingsJson}"`
             : "";
 
-        return `npm run run:game-db-build-first-party-export -- --sqlite-path "${args.artifactPath}"${settingsPart}`;
+        return `npm run experimental:game-db-build-first-party-export-from-sqlite -- --sqlite-path "${args.artifactPath}"${settingsPart}`;
     }
 
     return [
         "Decrypt this artifact first, then build the export with:",
-        `npm run run:game-db-build-first-party-export -- --sqlite-path "<decrypted-sqlite-path>"${args.settingsJson ? ` --settings-json "${args.settingsJson}"` : ""}`,
+        `npm run experimental:game-db-build-first-party-export-from-sqlite -- --sqlite-path "<decrypted-sqlite-path>"${args.settingsJson ? ` --settings-json "${args.settingsJson}"` : ""}`,
     ].join(" ");
 }
 

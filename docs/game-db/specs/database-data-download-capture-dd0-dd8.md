@@ -93,7 +93,7 @@ A identidade estável de asset é `file_path + algorithm + hash + size`; URL de 
 
 ## DD6 — shadow parity
 
-As 14 linhas exclusivas usam unidades de evidência, não entidades somáveis: sete agreements, três representation gains, dois representation mismatches, um unknown, dois unjoinable e zero confirmed conflicts. Zero conflito nunca implica completude. A atualização de hardening AQ/C4 alterou somente a source lineage pinada de DD6; nenhuma classificação ou total mudou.
+As 14 linhas exclusivas usam unidades de evidência, não entidades somáveis: sete agreements, três representation gains, dois representation mismatches, um unknown, dois unjoinable e zero confirmed conflicts. Zero conflito nunca implica completude. A identidade canônica de cada fonte rastreada usa os bytes exatos do Git blob `HEAD:<path>` (`git_blob_bytes_v1`), não bytes sujeitos a conversão CRLF/LF do worktree. O runner exige a raiz canônica do checkout, lê cada blob por argumento separado do Git e falha fechado para path, tamanho ou SHA divergente. Assim, o mesmo commit produz os mesmos pins em checkout limpo independentemente de `core.autocrlf`. A atualização de hardening AQ/C4 altera somente contrato/source lineage de DD6; nenhuma classificação ou total muda.
 
 - H6 concorda com o descritor da database e com a fronteira de path; H12 concorda que credenciais/autorização não estão prontas.
 - S0–S7 ganham os manifests obrigatórios repetidos e o inventário completo desta versão.

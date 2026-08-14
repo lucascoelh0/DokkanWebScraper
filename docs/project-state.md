@@ -53,7 +53,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 - A future separately authorized download is restricted to one exact official
   HTTPS CDN URL, redirects disabled, streamed under a hard byte/timeout limit,
   SHA-256 validated locally and committed marker-last into ignored immutable
-  content-addressed storage with an atomic local latest/rollback pointer.
+  content-addressed storage with an append-only, create-only pointer journal.
 - Immutable artifact metadata/identity remain deterministic and timestamp-free.
   Download and offline-validation times live only in separate sanitized local
   operational receipts and never affect content addressing, markers or reuse.
@@ -63,9 +63,10 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 - The SQLite compatibility gate reports exact profile match, schema-compatible
   evidence refresh required, incompatible or unknown. It never reuses pinned
   ELF/DB48/DB49/DB50 evidence automatically, including on an exact SQLite-only
-  match. Its source boundary fingerprints one canonical regular file before and
-  after sequential header/hash/inspection and fails closed on target or byte
-  drift. Its productive TypeScript/JavaScript API accepts only an AQ store plus
+  match. Its source boundary opens the validated AQ database once, copies that
+  exact descriptor into an exclusive private read-only snapshot, verifies the
+  snapshot SHA-256/size before and after SQLite inspection, and revalidates the
+  source AQ commit before reporting. Its productive TypeScript/JavaScript API accepts only an AQ store plus
   committed identity, or an explicit fully revalidated `latest`; it accepts no
   arbitrary SQLite path, baseline, inspection, hook or Python-command injection
   and uses only the tracked C4 baseline plus the production read-only adapter.
@@ -80,8 +81,17 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   validates as the exact complete commit. A failed owned
   reservation is quarantined by its pinned directory identity, so invalid
   promoted content cannot retain the legitimate content-addressed name.
-- Complete current/previous commits remain mandatory, and late cancellation
-  cannot promote `latest`; the prior valid artifact and pointer are preserved.
+- Each promotion creates its own immutable pointer record. Records name the
+  commit, its validated predecessor and an explicit `(databaseVersion,
+  artifactIdentity)` order. Consumers enumerate and validate the journal,
+  revalidate every materialized commit and select the deterministic maximum;
+  concurrent writers never replace one shared pointer pathname. `latest.json`,
+  if present from an older checkout, is a dispensable cache and has no authority.
+- AQ0–AQ6 ends at the official acquired artifact, which may remain encrypted.
+  A decrypted loose SQLite has no productive lineage contract yet. A future
+  separately reviewed derivation gate must bind its output commit to the parent
+  AQ identity, pinned tool/version, non-secret parameters and result SHA/size/state
+  before that derived commit can enter C4.
 - Offline descriptor/artifact validation remains the only reviewable AQ path.
   Before integration, the next gate is the independent integration decision;
   after integration, the next separate gate is one explicitly authorized real

@@ -11,6 +11,7 @@ const DEFAULT_STORE_ROOT = resolve(process.cwd(), "game-db", "data", "game-db-ac
 export const DEFAULT_DATABASE_ARTIFACT_MAX_BYTES = 128 * 1024 * 1024;
 export const DEFAULT_DATABASE_ARTIFACT_TIMEOUT_MS = 120_000;
 const LOCAL_ARTIFACT_HISTORY_MAX_BYTES = 256 * 1024 * 1024;
+const POINTER_RECORD_MAX_BYTES = 16 * 1024;
 
 export interface ClientAssetsDatabasePayload {
     url: string,
@@ -124,7 +125,10 @@ export interface AcquiredDatabaseArtifactResult {
     artifactPath: string,
     metadataPath: string,
     commitMarkerPath: string,
-    latestPointerPath: string,
+    pointerJournalDirectory: string,
+    pointerRecordPath: string,
+    journalCurrentIdentity: string,
+    journalPreviousIdentity: string | null,
     metadata: GameDbAcquiredArtifactMetadata,
     reused: boolean,
     receiptPath: string,
@@ -234,6 +238,33 @@ export async function readAndValidateDatabaseDescriptor(filePath: string): Promi
     return validateClientAssetsDatabaseDescriptor(parsed);
 }
 
+interface ArtifactPointerRecord {
+    schemaVersion: 1,
+    contract: "dokkan-game-db-pointer-record",
+    contractVersion: "1.0.0",
+    identity: string,
+    predecessorIdentity: string | null,
+    order: {
+        databaseVersion: number,
+        artifactIdentity: string,
+    },
+}
+
+interface ValidatedArtifactPointerRecord {
+    path: string,
+    fileName: string,
+    sha256: string,
+    record: ArtifactPointerRecord,
+    metadata: GameDbAcquiredArtifactMetadata,
+}
+
+interface ArtifactPointerJournalSelection {
+    directory: string,
+    validRecords: ValidatedArtifactPointerRecord[],
+    current: ValidatedArtifactPointerRecord,
+    previous: ValidatedArtifactPointerRecord | null,
+}
+
 export type ValidateAcquiredDatabaseArtifactOptions =
     | { storeRoot: string, artifactIdentity: string }
     | { storeRoot: string, useLatest: true };
@@ -246,6 +277,9 @@ export interface ValidatedAcquiredDatabaseArtifact {
     commitMarkerPath: string,
     metadata: GameDbAcquiredArtifactMetadata,
     resolvedFromLatest: boolean,
+    pointerJournalDirectory?: string,
+    pointerRecordPath?: string,
+    previousIdentity?: string | null,
 }
 
 interface DirectoryIdentity { path: string, realPath: string, dev: string, ino: string, mode: number }
@@ -438,6 +472,29 @@ async function writeExclusiveStableFile(guard: ArtifactStoreGuard, filePath: str
         guard.trackRegularFile(target, written);
         await guard.assertStable();
         return written;
+    } finally { await handle.close(); }
+}
+
+async function writeExclusiveReadOnlyStableFile(guard: ArtifactStoreGuard, filePath: string, parent: string, contents: string | Buffer, label: string): Promise<FileIdentity> {
+    const target = await guard.assertParent(filePath, parent);
+    const handle = await open(target, "wx", 0o600);
+    try {
+        const created = await captureHandleFileIdentity(handle, target, label);
+        assertSingleLink(created, label);
+        await assertPathMatchesFileIdentity(target, created, label);
+        await writeHandleFully(handle, Buffer.isBuffer(contents) ? contents : Buffer.from(contents, "utf8"));
+        await handle.sync();
+        await handle.chmod(0o444);
+        await handle.sync();
+        const completed = await captureHandleFileIdentity(handle, target, label);
+        if (created.dev !== completed.dev || created.ino !== completed.ino || created.nlink !== completed.nlink) throw new Error(`${label} identity changed during creation`);
+        assertSingleLink(completed, label);
+        assertReadOnlyMode(completed, label);
+        await assertPathMatchesFileIdentity(target, completed, label);
+        guard.trackRegularFile(target, completed);
+        await syncDirectoryIfSupported(parent);
+        await guard.assertStable();
+        return completed;
     } finally { await handle.close(); }
 }
 
@@ -741,28 +798,6 @@ class ArtifactStoreGuard {
         }
         await this.assertStable();
         return { path: target, identity: moved };
-    }
-
-    async installTrackedRegularFileAtomic(from: string, fromParent: string, to: string, toParent: string, label: string, signal?: AbortSignal): Promise<FileIdentity> {
-        const source = await this.assertParent(from, fromParent);
-        const target = await this.assertParent(to, toParent);
-        const expected = this.files.get(source);
-        if (!expected) throw new Error(`${label} source identity is not controlled`);
-        await assertPathMatchesFileIdentity(source, expected, `${label} source`);
-        try { await lstat(target); throw new Error(`${label} target was replaced before atomic installation`); }
-        catch (error: any) { if (error?.code !== "ENOENT") throw error; }
-        if (signal) throwIfCancelled(signal);
-        await assertPathMatchesFileIdentity(source, expected, `${label} source`);
-        try { await lstat(target); throw new Error(`${label} target was replaced before atomic installation`); }
-        catch (error: any) { if (error?.code !== "ENOENT") throw error; }
-        await rename(source, target);
-        const installed = await capturePathFileIdentity(target, label);
-        this.files.delete(source);
-        this.files.set(target, installed);
-        if (!sameFileIdentity(expected, installed, false)) throw new Error(`${label} atomic installation moved a replacement identity`);
-        await syncDirectoryIfSupported(toParent);
-        await this.assertStable();
-        return installed;
     }
 
     async discardTrackedRegularFile(from: string, fromParent: string, label: string, signal?: AbortSignal): Promise<void> {
@@ -1185,97 +1220,132 @@ async function validateCommittedArtifact(guard: ArtifactStoreGuard, artifactsRoo
     } finally { await Promise.all([...opened.values()].map(member => member.handle.close().catch(() => undefined))); }
 }
 
-interface LatestPointer { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: string, previousIdentity: string | null }
-
-function parseLatestPointer(text: string): LatestPointer {
-    let value: unknown;
-    try { value = JSON.parse(text); } catch { throw new Error("Existing latest pointer is invalid"); }
-    if (!isJsonObject(value) || !exactKeys(value, ["schemaVersion", "contract", "contractVersion", "currentIdentity", "previousIdentity"])
-        || value.schemaVersion !== 1 || value.contract !== "dokkan-game-db-local-latest" || value.contractVersion !== "1.0.0"
-        || typeof value.currentIdentity !== "string" || !/^[a-f0-9]{64}$/.test(value.currentIdentity)
-        || !(value.previousIdentity === null || (typeof value.previousIdentity === "string" && /^[a-f0-9]{64}$/.test(value.previousIdentity)))
-        || value.currentIdentity === value.previousIdentity) throw new Error("Existing latest pointer is invalid or cyclic");
-    return value as unknown as LatestPointer;
-}
-
 function throwIfCancelled(signal: AbortSignal): void {
     if (signal.aborted) throw new Error("Database artifact acquisition cancelled");
 }
 
-async function validateLatestPointerAndCommits(guard: ArtifactStoreGuard, artifactsRoot: string, expectedCurrentIdentity?: string, signal?: AbortSignal): Promise<{ pointer: LatestPointer, metadata: GameDbAcquiredArtifactMetadata }> {
-    const latestPath = resolve(guard.root, "latest.json");
-    const firstText = await readStableTextFile(guard, latestPath, guard.root, "Latest pointer", signal);
-    const firstIdentity = guard.trackedRegularFile(latestPath);
-    if (!firstIdentity) throw new Error("Latest pointer identity was not retained");
-    const pointer = parseLatestPointer(firstText);
-    if (expectedCurrentIdentity && pointer.currentIdentity !== expectedCurrentIdentity) throw new Error("Latest pointer does not reference the expected committed artifact");
-    const metadata = await validateCommittedArtifact(guard, artifactsRoot, pointer.currentIdentity, undefined, signal);
-    if (pointer.previousIdentity) await validateCommittedArtifact(guard, artifactsRoot, pointer.previousIdentity, undefined, signal);
-    const secondText = await readStableTextFile(guard, latestPath, guard.root, "Latest pointer", signal);
-    const secondIdentity = guard.trackedRegularFile(latestPath);
-    if (!secondIdentity || firstText !== secondText || !sameFileIdentity(firstIdentity, secondIdentity)) throw new Error("Latest pointer changed while its commits were validated");
-    return { pointer, metadata };
+function parseArtifactPointerRecord(text: string): ArtifactPointerRecord {
+    let value: unknown;
+    try { value = JSON.parse(text); } catch { throw new Error("Artifact pointer record JSON is malformed"); }
+    if (!isJsonObject(value) || !exactKeys(value, ["schemaVersion", "contract", "contractVersion", "identity", "predecessorIdentity", "order"])
+        || value.schemaVersion !== 1 || value.contract !== "dokkan-game-db-pointer-record" || value.contractVersion !== "1.0.0"
+        || typeof value.identity !== "string" || !/^[a-f0-9]{64}$/.test(value.identity)
+        || !(value.predecessorIdentity === null || (typeof value.predecessorIdentity === "string" && /^[a-f0-9]{64}$/.test(value.predecessorIdentity)))
+        || value.identity === value.predecessorIdentity || !isJsonObject(value.order) || !exactKeys(value.order, ["databaseVersion", "artifactIdentity"])
+        || !Number.isSafeInteger(value.order.databaseVersion) || (value.order.databaseVersion as number) <= 0 || value.order.artifactIdentity !== value.identity) {
+        throw new Error("Artifact pointer record contract is invalid");
+    }
+    const record = value as unknown as ArtifactPointerRecord;
+    if (text !== canonicalJson(record)) throw new Error("Artifact pointer record is not canonical JSON");
+    return record;
 }
 
-async function promoteLatest(guard: ArtifactStoreGuard, artifactsRoot: string, identity: string, signal: AbortSignal): Promise<{ path: string, rollback: () => Promise<void> }> {
-    const latestPath = resolve(guard.root, "latest.json");
-    await validateCommittedArtifact(guard, artifactsRoot, identity, undefined, signal);
-    let originalText: string | null = null;
-    let originalIdentity: FileIdentity | undefined;
-    let previousIdentity: string | null = null;
-    let latestExists = false;
-    try { await lstat(latestPath); latestExists = true; }
-    catch (error: any) { if (error?.code !== "ENOENT") throw error; }
-    if (latestExists) {
-        originalText = await readStableTextFile(guard, latestPath, guard.root, "Existing latest pointer", signal);
-        originalIdentity = guard.trackedRegularFile(latestPath);
-        if (!originalIdentity) throw new Error("Existing latest pointer identity was not retained");
-        const current = parseLatestPointer(originalText);
-        await validateCommittedArtifact(guard, artifactsRoot, current.currentIdentity, undefined, signal);
-        if (current.previousIdentity) await validateCommittedArtifact(guard, artifactsRoot, current.previousIdentity, undefined, signal);
-        previousIdentity = current.currentIdentity === identity
-            ? current.previousIdentity
-            : current.currentIdentity;
+function comparePointerRecords(left: ValidatedArtifactPointerRecord, right: ValidatedArtifactPointerRecord): number {
+    if (left.record.order.databaseVersion !== right.record.order.databaseVersion) return left.record.order.databaseVersion - right.record.order.databaseVersion;
+    const compareText = (a: string, b: string) => a === b ? 0 : a < b ? -1 : 1;
+    const identity = compareText(left.record.order.artifactIdentity, right.record.order.artifactIdentity);
+    if (identity !== 0) return identity;
+    const predecessor = compareText(left.record.predecessorIdentity ?? "", right.record.predecessorIdentity ?? "");
+    return predecessor !== 0 ? predecessor : compareText(left.sha256, right.sha256);
+}
+
+async function loadArtifactPointerJournal(guard: ArtifactStoreGuard, artifactsRoot: string, options: { create: boolean, allowEmpty: boolean, signal?: AbortSignal }): Promise<ArtifactPointerJournalSelection | { directory: string, validRecords: [] }> {
+    const requested = resolve(guard.root, "pointers");
+    const directory = options.create
+        ? await guard.ensureDirectory(requested, "Artifact pointer journal directory")
+        : await guard.trackExistingDirectory(requested, "Artifact pointer journal directory");
+    const entries = await readdir(directory, { withFileTypes: true });
+    if (entries.some(entry => !/^[a-f0-9]{64}\.json$/.test(entry.name) || !entry.isFile() || entry.isSymbolicLink())) {
+        throw new Error("Artifact pointer journal contains an unexpected or non-regular member");
     }
-    if (previousIdentity === identity) throw new Error("Latest pointer would create an identity cycle");
-    const pointer = { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: identity, previousIdentity };
-    const candidatePath = resolve(guard.root, `.latest-candidate-${process.pid}-${randomBytes(12).toString("hex")}.json`);
-    let priorHistory: { path: string, identity: FileIdentity } | undefined;
-    let promotedIdentity: FileIdentity | undefined;
-    throwIfCancelled(signal);
-    try {
-        if (originalIdentity) {
-            priorHistory = await guard.moveTrackedRegularFileToHistory(latestPath, guard.root, "Prior latest pointer history", signal, true, ".latest-history");
-            if (!sameFileIdentity(originalIdentity, priorHistory.identity, false)) throw new Error("Prior latest pointer history did not retain the validated identity");
-        }
-        await writeExclusiveStableFile(guard, candidatePath, guard.root, canonicalJson(pointer), "Latest pointer candidate");
-        await validateCommittedArtifact(guard, artifactsRoot, identity, undefined, signal);
-        throwIfCancelled(signal);
-        promotedIdentity = await guard.installTrackedRegularFileAtomic(candidatePath, guard.root, latestPath, guard.root, "Latest pointer", signal);
-        const rollback = async () => {
-            await guard.assertStable();
-            if (!promotedIdentity) throw new Error("Promoted latest pointer identity is unavailable for rollback");
-            const movedCurrent = await guard.moveTrackedRegularFileToHistory(latestPath, guard.root, "Rolled-back latest pointer history", signal, false, ".latest-history");
-            if (!sameFileIdentity(promotedIdentity, movedCurrent.identity, false)) throw new Error("Rollback moved a replacement latest pointer; it was retained for recovery");
-            if (originalText !== null) {
-                if (!priorHistory || !guard.trackedRegularFile(priorHistory.path)) throw new Error("Validated prior latest pointer history is unavailable for rollback");
-                await guard.installTrackedRegularFileAtomic(priorHistory.path, dirname(priorHistory.path), latestPath, guard.root, "Prior latest pointer restoration");
-            }
-        };
+    const candidates: ValidatedArtifactPointerRecord[] = [];
+    for (const entry of entries.sort((left, right) => left.name === right.name ? 0 : left.name < right.name ? -1 : 1)) {
         try {
-            throwIfCancelled(signal);
-            await validateLatestPointerAndCommits(guard, artifactsRoot, identity, signal);
-            throwIfCancelled(signal);
-        } catch (error) { await rollback(); throw error; }
-        return { path: latestPath, rollback };
-    } catch (error) {
-        if (guard.trackedRegularFile(candidatePath)) await guard.discardTrackedRegularFile(candidatePath, guard.root, "Failed latest pointer candidate discard").catch(() => undefined);
-        if (!promotedIdentity && priorHistory && guard.trackedRegularFile(priorHistory.path)) {
-            try { await guard.installTrackedRegularFileAtomic(priorHistory.path, dirname(priorHistory.path), latestPath, guard.root, "Prior latest pointer restoration"); }
-            catch { /* retain validated history; never overwrite an occupied latest pathname */ }
-        }
-        throw error;
+            const path = resolve(directory, entry.name);
+            const result = await readStableOpenFile(guard, path, directory, "Artifact pointer record", async (handle, fileIdentity) => {
+                assertSingleLink(fileIdentity, "Artifact pointer record");
+                assertReadOnlyMode(fileIdentity, "Artifact pointer record");
+                const size = Number(fileIdentity.size);
+                if (!Number.isSafeInteger(size) || size <= 0 || size > POINTER_RECORD_MAX_BYTES) throw new Error("Artifact pointer record size is invalid");
+                return handle.readFile("utf8");
+            }, options.signal);
+            const sha256 = createHash("sha256").update(result).digest("hex");
+            if (entry.name !== `${sha256}.json`) throw new Error("Artifact pointer record filename does not match its bytes");
+            const record = parseArtifactPointerRecord(result);
+            const metadata = await validateCommittedArtifact(guard, artifactsRoot, record.identity, undefined, options.signal);
+            if (metadata.databaseVersion !== record.order.databaseVersion || artifactIdentity(metadata) !== record.order.artifactIdentity) {
+                throw new Error("Artifact pointer record order does not match its commit");
+            }
+            candidates.push({ path, fileName: entry.name, sha256, record, metadata });
+        } catch { /* Invalid journal records are never authority and are ignored. */ }
     }
+    candidates.sort(comparePointerRecords);
+    const accepted: ValidatedArtifactPointerRecord[] = [];
+    for (const candidate of candidates) {
+        if (candidate.record.predecessorIdentity === null) {
+            accepted.push(candidate);
+            continue;
+        }
+        const predecessor = accepted.filter(record => record.record.identity === candidate.record.predecessorIdentity).sort(comparePointerRecords).pop();
+        if (predecessor && comparePointerRecords(predecessor, candidate) < 0) accepted.push(candidate);
+    }
+    const uniqueAccepted: ValidatedArtifactPointerRecord[] = [];
+    for (const candidate of accepted) {
+        const existingIndex = uniqueAccepted.findIndex(existing => existing.record.identity === candidate.record.identity);
+        if (existingIndex < 0) uniqueAccepted.push(candidate);
+        else if (comparePointerRecords(uniqueAccepted[existingIndex], candidate) < 0) uniqueAccepted[existingIndex] = candidate;
+    }
+    uniqueAccepted.sort(comparePointerRecords);
+    if (accepted.length === 0) {
+        if (options.allowEmpty && entries.length === 0) return { directory, validRecords: [] };
+        throw new Error("Artifact pointer journal has no valid materialized record");
+    }
+    const current = uniqueAccepted[uniqueAccepted.length - 1];
+    // Rollback is the deterministic next-lower materialized record, not arrival
+    // order. Concurrent roots may both have null predecessors because neither
+    // writer had observed the other when it created its own record.
+    const previous = uniqueAccepted.length > 1 ? uniqueAccepted[uniqueAccepted.length - 2] : null;
+    return { directory, validRecords: uniqueAccepted, current, previous };
+}
+
+async function appendArtifactPointerRecord(guard: ArtifactStoreGuard, artifactsRoot: string, identity: string, signal: AbortSignal): Promise<{ recordPath: string, selection: ArtifactPointerJournalSelection }> {
+    const metadata = await validateCommittedArtifact(guard, artifactsRoot, identity, undefined, signal);
+    const before = await loadArtifactPointerJournal(guard, artifactsRoot, { create: true, allowEmpty: true, signal });
+    const beforeRecords: ValidatedArtifactPointerRecord[] = [...before.validRecords];
+    const existing = beforeRecords.filter(candidate => candidate.record.identity === identity).sort(comparePointerRecords).pop();
+    if (existing) {
+        if (!("current" in before)) throw new Error("Artifact pointer journal selection is inconsistent");
+        return { recordPath: existing.path, selection: before };
+    }
+    const orderProbe: ValidatedArtifactPointerRecord = {
+        path: "", fileName: "", sha256: "",
+        record: { schemaVersion: 1, contract: "dokkan-game-db-pointer-record", contractVersion: "1.0.0", identity, predecessorIdentity: null, order: { databaseVersion: metadata.databaseVersion, artifactIdentity: identity } },
+        metadata,
+    };
+    const predecessor = before.validRecords.filter(candidate => comparePointerRecords(candidate, orderProbe) < 0).sort(comparePointerRecords).pop() ?? null;
+    const record: ArtifactPointerRecord = {
+        schemaVersion: 1,
+        contract: "dokkan-game-db-pointer-record",
+        contractVersion: "1.0.0",
+        identity,
+        predecessorIdentity: predecessor?.record.identity ?? null,
+        order: { databaseVersion: metadata.databaseVersion, artifactIdentity: identity },
+    };
+    const text = canonicalJson(record);
+    const sha256 = createHash("sha256").update(text).digest("hex");
+    const recordPath = resolve(before.directory, `${sha256}.json`);
+    throwIfCancelled(signal);
+    try { await writeExclusiveReadOnlyStableFile(guard, recordPath, before.directory, text, "Artifact pointer journal record"); }
+    catch (error: any) { if (error?.code !== "EEXIST") throw error; }
+    // The append is the commit boundary. Observe (but do not throw on)
+    // cancellation once more so deterministic race tests and callers can act
+    // before the mandatory post-append materialized-commit validation.
+    void signal.aborted;
+    const after = await loadArtifactPointerJournal(guard, artifactsRoot, { create: false, allowEmpty: false });
+    if (!("current" in after) || !after.validRecords.some(candidate => candidate.fileName === `${sha256}.json` && candidate.record.identity === identity)) {
+        throw new Error("Artifact pointer journal record was not installed as the exact valid create-only record");
+    }
+    return { recordPath, selection: after };
 }
 
 export async function validateAcquiredDatabaseArtifact(options: ValidateAcquiredDatabaseArtifactOptions): Promise<ValidatedAcquiredDatabaseArtifact> {
@@ -1293,9 +1363,23 @@ export async function validateAcquiredDatabaseArtifact(options: ValidateAcquired
     let identity: string;
     let metadata: GameDbAcquiredArtifactMetadata;
     if (explicitLatest) {
-        const validated = await validateLatestPointerAndCommits(guard, artifactsRoot);
-        identity = validated.pointer.currentIdentity;
-        metadata = validated.metadata;
+        const selection = await loadArtifactPointerJournal(guard, artifactsRoot, { create: false, allowEmpty: false });
+        if (!("current" in selection)) throw new Error("Artifact pointer journal has no current record");
+        identity = selection.current.record.identity;
+        metadata = await validateCommittedArtifact(guard, artifactsRoot, identity, selection.current.metadata);
+        const artifactDirectory = resolve(artifactsRoot, identity);
+        return {
+            identity,
+            artifactDirectory,
+            artifactPath: resolve(artifactDirectory, "database.db"),
+            metadataPath: resolve(artifactDirectory, "metadata.json"),
+            commitMarkerPath: resolve(artifactDirectory, "commit-marker.json"),
+            metadata,
+            resolvedFromLatest: true,
+            pointerJournalDirectory: selection.directory,
+            pointerRecordPath: selection.current.path,
+            previousIdentity: selection.previous?.record.identity ?? null,
+        };
     } else {
         identity = (options as { artifactIdentity: string }).artifactIdentity;
         metadata = await validateCommittedArtifact(guard, artifactsRoot, identity);
@@ -1374,10 +1458,6 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
     const timeoutMs = options.timeoutMs ?? DEFAULT_DATABASE_ARTIFACT_TIMEOUT_MS;
     if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error("Invalid acquisition limits");
     const guard = await ArtifactStoreGuard.open(options.storeRoot, options.signal);
-    const lockPath = resolve(guard.root, ".acquisition.lock");
-    let lock: { path: string, identity: DirectoryIdentity };
-    try { lock = await guard.createExclusiveDirectory(lockPath, "Artifact store writer lock"); }
-    catch { throw new Error("Database artifact acquisition already has an active writer or unsafe lock path"); }
     const controller = new AbortController();
     const onAbort = () => controller.abort();
     options.signal?.addEventListener("abort", onAbort, { once: true });
@@ -1390,7 +1470,6 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
     } as AbortSignal;
     const temporaryPath = resolve(guard.root, `.download-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
     let pending: { path: string, identity: DirectoryIdentity } | undefined;
-    let latestCommit: { path: string, rollback: () => Promise<void> } | undefined;
     try {
         throwIfCancelled(cancellationSignal);
         await guard.assertStable();
@@ -1488,16 +1567,16 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
         throwIfCancelled(cancellationSignal);
         const receiptPath = await writeOperationalReceipt(guard, receipt, cancellationSignal);
         throwIfCancelled(cancellationSignal);
-        latestCommit = await promoteLatest(guard, artifactsRoot, identity, cancellationSignal);
-        throwIfCancelled(cancellationSignal);
-        await validateLatestPointerAndCommits(guard, artifactsRoot, identity, cancellationSignal);
-        throwIfCancelled(cancellationSignal);
+        const journalCommit = await appendArtifactPointerRecord(guard, artifactsRoot, identity, cancellationSignal);
         return {
             identity,
             artifactPath: resolve(finalDirectory, "database.db"),
             metadataPath: resolve(finalDirectory, "metadata.json"),
             commitMarkerPath: resolve(finalDirectory, "commit-marker.json"),
-            latestPointerPath: latestCommit.path,
+            pointerJournalDirectory: journalCommit.selection.directory,
+            pointerRecordPath: journalCommit.recordPath,
+            journalCurrentIdentity: journalCommit.selection.current.record.identity,
+            journalPreviousIdentity: journalCommit.selection.previous?.record.identity ?? null,
             metadata,
             reused,
             receiptPath,
@@ -1505,7 +1584,6 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
         };
     } catch (error) {
         controller.abort();
-        if (latestCommit) await latestCommit.rollback().catch(() => undefined);
         if (guard.trackedRegularFile(temporaryPath)) {
             try { await guard.moveTrackedRegularFileToHistory(temporaryPath, guard.root, "Failed download staging history"); }
             catch {
@@ -1516,7 +1594,6 @@ export async function acquireDatabaseArtifact(options: AcquireDatabaseArtifactOp
         throw error;
     } finally {
         options.signal?.removeEventListener("abort", onAbort);
-        await guard.removeDirectory(lock.path, lock.identity, []);
     }
 }
 
@@ -1533,20 +1610,14 @@ export async function runDownloadDatabaseArtifact(options: GameDbDownloadDatabas
         const metadata = metadataFor(descriptor, inspection);
         const identity = artifactIdentity(metadata);
         const guard = await ArtifactStoreGuard.open(options.storeRoot);
-        const lockPath = resolve(guard.root, ".acquisition.lock");
-        let lock: { path: string, identity: DirectoryIdentity };
-        try { lock = await guard.createExclusiveDirectory(lockPath, "Artifact store writer lock"); }
-        catch { throw new Error("Database artifact acquisition already has an active writer or unsafe lock path"); }
         const receipt: GameDbOperationalReceipt = {
             ...receiptBase(descriptor, metadata, identity),
             mode: "offline_existing_artifact_validation",
             validatedAt: operationTimestamp(dependencies.now),
             result: "validated",
         };
-        try {
-            const receiptPath = await writeOperationalReceipt(guard, receipt);
-            return { mode: "artifact_validation", descriptor: sanitized, inspection, identity, receiptPath, receipt };
-        } finally { await guard.removeDirectory(lock.path, lock.identity, []); }
+        const receiptPath = await writeOperationalReceipt(guard, receipt);
+        return { mode: "artifact_validation", descriptor: sanitized, inspection, identity, receiptPath, receipt };
     }
     if (!options.authorizeDownload || options.dryRun) {
         return { mode: "descriptor_validation", descriptor: sanitized };

@@ -93,7 +93,7 @@ are rejected. Before creating the store, the implementation retains the
 canonical path, device/inode and relevant attributes of every existing ancestor;
 it revalidates that snapshot after each created segment and before any write or
 durable boundary. Every created segment, the root, `artifacts/`, pending and
-committed directories, `receipts/` and the writer lock must be real directories;
+committed directories, `receipts/` and `pointers/` must be real directories;
 symlinks, junctions, reparse substitutions and concurrent identity changes fail
 closed. Every file boundary revalidates its controlled parent before and after
 use. Store filenames come from a fixed allowlist and content identities, never
@@ -146,23 +146,36 @@ A destination introduced after initial inspection is never overwritten
 or removed; it is reusable only if it independently validates as the same complete
 commit. A failed reservation owned by this operation is quarantined only while
 its pinned directory identity still matches, so invalid promoted content does not
-occupy the legitimate content-addressed name. Receipt and rollback-pointer
-installation likewise use independent create-only copies.
-Replacing `latest.json` atomically moves whichever pathname identity is present
-into a new controlled history directory and validates the identity actually
-moved before creating the complete new pointer exclusively. Rollback uses the
-same move-and-validate protocol and restores the validated prior history through
-a create-only independent copy. Histories are intentionally retained because conditionally
-unlinking a pathname by identity is not portable in Node; a later bounded GC
-requires its own reviewed contract. Successful download/receipt staging is moved
+occupy the legitimate content-addressed name. Receipt installation likewise uses
+an independent create-only copy.
+
+Current selection uses an append-only pointer journal under `pointers/`. Every
+promotion creates one exclusive, immutable regular file named by the SHA-256 of
+its canonical record bytes. A record binds the commit identity, a predecessor
+that was materialized and fully validated when selected, and explicit ordering
+by `(databaseVersion, artifactIdentity)`. Records are never overwritten. A
+consumer enumerates only contained regular single-link read-only records,
+validates canonical bytes and filename hash, fully revalidates every referenced
+commit, materializes only records whose predecessor is a lower valid record, and
+selects the deterministic maximum. Malformed/truncated records and records for
+missing or corrupt commits have no authority and are ignored; an unexpected
+pointer-directory member or absence of any valid winner fails closed. Rollback
+is the deterministic next-lower materialized valid record, never a receipt,
+arrival order or cache. Concurrent
+writers may append independent records and cannot overwrite one another.
+`latest.json`, if retained by an older checkout, is only a dispensable cache; it
+may be absent or divergent and is never read as authority. Node provides no
+portable pathname CAS, and this contract does not claim one.
+
+Successful download/receipt staging is moved
 into an exclusive discard directory, identity-validated there and removed without
-touching any replacement at the original pathname. Retained failure and latest
-histories have a fixed, non-configurable 256 MiB aggregate ceiling, checked before
-transport and before each retention; reaching it fails closed. A single-writer
-lock serializes acquisition. An existing committed identity is immutable and
+touching any replacement at the original pathname. Retained failure histories
+have a fixed, non-configurable 256 MiB aggregate ceiling, checked before
+transport and before each retention; reaching it fails closed. Writers are not
+serialized by a shared pointer lock. An existing committed identity is immutable and
 reusable only after its marker and byte identity validate again.
 
-Artifact, metadata, marker, receipt and latest members are opened once for each
+Artifact, metadata, marker, receipt and journal members are opened once for each
 validation boundary. Type, containment and pathname identity are compared with
 the opened `FileHandle`; hashing or reading uses that same handle, with `fstat`
 before and after and a final pathname-to-handle identity check. The marker-last
@@ -189,24 +202,18 @@ mode `official_descriptor_download`, `acquiredAt` and result `acquired` or
 Both receipts bind the artifact identity/state and minimum region, locale,
 database-version, logical-path and declared-integrity lineage. A receipt and its
 timestamp never participate in the content address, immutable metadata, commit
-marker, latest pointer identity or deterministic comparison.
+marker, pointer-journal identity or deterministic comparison.
 
 Neither immutable metadata nor operational receipt contains URL, query,
 headers, token, raw descriptor, account data or an absolute filesystem path.
 The receipt filename/path is local operational state and is not embedded in its
 JSON body.
 
-The local `latest` pointer is promoted atomically only after artifact, metadata
-and commit marker validation. Both referenced identities must have canonical
-syntax and complete byte/metadata/marker-valid commits; missing, corrupt,
-arbitrary, equal or cyclic current/previous references fail without changing the
-existing pointer. Reacquiring the current identity preserves `previousIdentity`
-only after that rollback commit validates completely.
-
 One cancellation helper is checked before transport, after streaming, around
 artifact promotion, metadata, marker and receipt commits, immediately before and
-after `latest`, and before success returns. Cancellation never returns success or
-leaves a new latest pointer. Temporary and pending state is removed only while
+immediately before create-only journal append. Once a valid immutable record is
+appended it remains journal history; no later cancellation check misreports a
+successful append as rolled back. Temporary and pending state is removed only while
 its pinned containment still validates. Failure or cancellation before final
 snapshot validation quarantines the owned reserved directory by its proven
 identity; it never leaves that candidate under the legitimate content-addressed
@@ -214,11 +221,16 @@ name. AQ0–AQ6 performs no pruning of valid immutable commits or quarantines.
 
 ## AQ5 — decryption, export and C4 boundary
 
-`readable_sqlite` may proceed only to the read-only SQLite compatibility command
-and then the existing first-party exporter. `encrypted_or_packaged` may proceed
-only to the existing local `game-db-decrypt-sqlcipher.py` helper in a separately
-authorized execution against local bytes. Neither transition occurs inside the
-downloader.
+AQ0–AQ6 terminates at the official acquired artifact. `readable_sqlite` may
+proceed to the descriptor-bound read-only compatibility command.
+`encrypted_or_packaged` remains the terminal AQ state. A loose decrypted SQLite
+has no derived-artifact contract and cannot enter productive C4 or export as if
+it were an AQ identity. Decryption/import is a future, separate gate. That gate
+must consume the parent AQ commit and produce a new content-addressed derived
+commit containing the parent AQ identity, pinned tool/version, required
+non-secret parameters, result SHA/size/state, deterministic metadata and marker,
+and a sanitized operational receipt. The receipt may prove the operation but is
+not authority over the output bytes. Only this derived commit may enter C4.
 
 `run:game-db-sqlite-compatibility` compares a readable SQLite identity and
 canonical schema with the tracked canonical C4 baseline and returns exactly one
@@ -236,24 +248,31 @@ an exact SQLite profile must run C4 against the exact pinned ELF and semantic
 artifacts. A changed SQLite requires bounded evidence refresh and reviewed C4
 baseline changes before C1–C3. The cumulative DB0–DB50 runner is never invoked.
 
-The compatibility boundary resolves one canonical `realpath`, rejects a
-non-regular input or changing target, and records device/inode, size, nanosecond
-mtime/ctime, header and SHA-256 before SQLite inspection. Header, hash and
-inspection execute sequentially against that canonical path. After inspection,
-the requested path/realpath and complete fingerprint are revalidated and the
-bytes are hashed again. Any target replacement, in-place mutation or identity,
-timestamp, size, header or SHA-256 drift fails closed before a report is
-returned; observations from different identities can never produce a compatible
-report.
+The compatibility boundary opens the validated AQ `database.db` exactly once,
+binds pathname/containment to that `FileHandle`, and copies bytes from that same
+handle into a private contained file created exclusively. The snapshot is
+fsynced, checked against AQ size/SHA-256, made read-only and revalidated before
+and after the production SQLite adapter. The adapter receives only the private
+snapshot. The source AQ commit is revalidated before report emission. The report
+records both AQ identity and inspected snapshot SHA/size and requires exact
+equality. A source pathname sequence A→B→A therefore either inspects only A from
+the already-open descriptor or fails closed; it cannot report lineage A from an
+inspection of B. Snapshot removal occurs only after its owned directory/file
+identity and containment revalidate. Because Node has no portable descriptor-
+bound unlink, cleanup destroys the owned snapshot bytes through the still-open
+`FileHandle` (`truncate(0)` plus fsync), then moves the directory into an
+exclusive quarantine container and validates the identity actually moved. The
+zero-byte tombstone is retained for a future separately reviewed bounded GC;
+no cleanup `unlink` can delete a raced replacement.
 
 The productive TypeScript and compiled JavaScript API accepts only
 `storeRoot + artifactIdentity`, or `storeRoot + useLatest: true`. Before
 inspection it validates deterministic metadata, marker, content-addressed
 identity, artifact SHA/size/state, descriptor lineage, containment, exact members,
 single-link and read-only invariants. It derives the SQLite path from that commit,
-uses only the production `ReadOnlySqliteAdapter`, and repeats both file and commit
-validation after inspection. `latest` is never trusted alone: the pointer and its
-current/previous commits are validated together. The API exports no arbitrary
+uses only the production `ReadOnlySqliteAdapter`, and repeats both snapshot and commit
+validation after inspection. `latest` is never trusted alone: the pointer journal
+winner and its materialized commit are validated together. The API exports no arbitrary
 path evaluator and the productive CLI has no `--sqlite-path`. A sanitized receipt
 may prove an operation but is neither deterministic identity nor byte authority.
 Tests exercise the closed compiled export surface directly; a header-only file
@@ -266,9 +285,8 @@ Operations detect corruption, substitution and races within their handle/path
 boundaries. Promotion creates independent read-only members, complete commits are
 revalidated at every consumption, and corruption after commit causes a closed
 failure rather than silent use. The manual/default-off tool grants no authority
-to receipts or pointers. A failed validation immediately after atomic `latest`
-installation atomically restores the prior validated pointer and never returns
-success; only directories whose
+to receipts or pointers. Pointer records never overwrite one another, and
+selection/rollback is derived only from materialized valid commits; only directories whose
 owned identities remain proven may be quarantined or removed.
 
 Outside the model are a malicious process or administrator running as the same OS

@@ -15,6 +15,9 @@ export interface GameDbBuildFirstPartyExportOptions {
     note: string,
 }
 
+// Historical development utility only. This loose-path contract is not AQ/C4,
+// does not emit acquiredArtifactState, and cannot establish productive lineage.
+
 export function parseBuildFirstPartyExportArgs(argv: string[]): GameDbBuildFirstPartyExportOptions {
     let sqlitePath = "";
     let outputDir = DEFAULT_FIRST_PARTY_DIR;

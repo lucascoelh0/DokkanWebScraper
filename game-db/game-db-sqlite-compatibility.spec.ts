@@ -1,9 +1,10 @@
 import { deepEqual, equal, notEqual, rejects, throws } from "assert";
 import { execFileSync } from "child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { join, resolve } from "path";
 import { Readable } from "stream";
+import { ReadOnlySqliteAdapter } from "../database-experiment/sqlite-readonly-adapter";
 import { acquireDatabaseArtifact, AcquiredDatabaseArtifactResult, DatabaseArtifactTransport } from "./game-db-download-database-artifact";
 import { buildGameDbSqliteCompatibility, parseGameDbSqliteCompatibilityArgs } from "./game-db-sqlite-compatibility";
 
@@ -37,7 +38,7 @@ describe("game DB SQLite compatibility", function () {
     });
 
     it("exposes no arbitrary-path evaluator or test seam from the compiled production module", () => {
-        const compiledApi: any = require("./game-db-sqlite-compatibility");
+        const compiledApi: any = require(resolve(process.cwd(), "lib/game-db/game-db-sqlite-compatibility.js"));
         equal(compiledApi.evaluateGameDbSqliteCompatibility, undefined);
         equal(compiledApi.GameDbSqliteCompatibilityDependencies, undefined);
         deepEqual(Object.keys(compiledApi).sort(), ["buildGameDbSqliteCompatibility", "parseGameDbSqliteCompatibilityArgs"]);
@@ -46,7 +47,7 @@ describe("game DB SQLite compatibility", function () {
     it("rejects loose SQLite paths and forged JavaScript option objects through TypeScript and compiled APIs", async () => {
         const root = temp(), sqlitePath = join(root, "database.db");
         createSqlite(sqlitePath);
-        const compiledApi: any = require("./game-db-sqlite-compatibility");
+        const compiledApi: any = require(resolve(process.cwd(), "lib/game-db/game-db-sqlite-compatibility.js"));
         try {
             for (const api of [buildGameDbSqliteCompatibility as any, compiledApi.buildGameDbSqliteCompatibility]) {
                 await rejects(api({ sqlitePath }), /AQ artifact selector/);
@@ -64,14 +65,21 @@ describe("game DB SQLite compatibility", function () {
             const acquired = await commit(root, readFileSync(sqlitePath));
             const report = await buildGameDbSqliteCompatibility({ storeRoot: root, artifactIdentity: acquired.identity });
             equal(report.status, "incompatible");
-            equal(report.contractVersion, "1.1.0");
+            equal(report.contractVersion, "1.2.0");
             equal(report.acquiredArtifact.identity, acquired.identity);
             equal(report.acquiredArtifact.sha256, acquired.metadata.localSha256);
+            equal(report.inspectionSnapshot.acquiredArtifactIdentity, acquired.identity);
+            equal(report.inspectionSnapshot.sha256, acquired.metadata.localSha256);
+            equal(report.inspectionSnapshot.sizeBytes, acquired.metadata.observedSizeBytes);
             equal(report.acquiredArtifact.resolvedFromLatest, false);
             equal(report.c4Profile.snapshotVersion, "global-6.4.0-v338-2026-08-05");
             equal(report.c4Profile.sourceDatabase.actualTableCount, 1);
             equal(report.pinnedNativeEvidence.evaluatedInThisStep, false);
             equal(report.pinnedNativeEvidence.automaticReuseAuthorized, false);
+            const tombstones = readdirSync(root).filter(name => name.startsWith(".c4-snapshot-tombstone-"));
+            equal(readdirSync(root).some(name => name.startsWith(".c4-snapshot-") && !name.startsWith(".c4-snapshot-tombstone-")), false);
+            equal(tombstones.length, 1);
+            equal(statSync(join(root, tombstones[0], "snapshot", "database.db")).size, 0);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
@@ -84,6 +92,40 @@ describe("game DB SQLite compatibility", function () {
             equal(report.acquiredArtifact.identity, acquired.identity);
             equal(report.acquiredArtifact.resolvedFromLatest, true);
         } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("inspects only a private snapshot when the AQ source pathname changes A to B to A", async () => {
+        const root = temp(), aPath = join(root, "a.db"), bPath = join(root, "b.db"), displaced = join(root, "displaced-a.db");
+        createSqlite(aPath);
+        execFileSync(python(), ["-c", "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute('create table cards(id integer primary key, character_id integer)'); c.execute('create table forged_b(id integer)'); c.commit(); c.close()", bPath]);
+        const originalInspect = ReadOnlySqliteAdapter.prototype.inspect;
+        let swapped = false;
+        try {
+            const acquired = await commit(root, readFileSync(aPath));
+            ReadOnlySqliteAdapter.prototype.inspect = async function () {
+                equal(this.databasePath.includes(".c4-snapshot-"), true);
+                makeWritable(acquired.artifactPath);
+                renameSync(acquired.artifactPath, displaced);
+                writeFileSync(acquired.artifactPath, readFileSync(bPath));
+                chmodSync(acquired.artifactPath, 0o444);
+                swapped = true;
+                try { return await originalInspect.call(this); }
+                finally {
+                    makeWritable(acquired.artifactPath);
+                    unlinkSync(acquired.artifactPath);
+                    renameSync(displaced, acquired.artifactPath);
+                    chmodSync(acquired.artifactPath, 0o444);
+                }
+            };
+            const report = await buildGameDbSqliteCompatibility({ storeRoot: root, artifactIdentity: acquired.identity });
+            equal(swapped, true);
+            equal(report.c4Profile.sourceDatabase.actualTableCount, 1);
+            equal(report.inspectionSnapshot.sha256, acquired.metadata.localSha256);
+            equal(report.acquiredArtifact.sha256, report.inspectionSnapshot.sha256);
+        } finally {
+            ReadOnlySqliteAdapter.prototype.inspect = originalInspect;
+            rmSync(root, { recursive: true, force: true });
+        }
     });
 
     it("never reports exact_profile_match for a SQLite header alone", async () => {
@@ -109,7 +151,7 @@ describe("game DB SQLite compatibility", function () {
     });
 
     it("fails closed for forged metadata, marker, identity and latest pointer through the compiled API", async () => {
-        const compiledApi: any = require("./game-db-sqlite-compatibility");
+        const compiledApi: any = require(resolve(process.cwd(), "lib/game-db/game-db-sqlite-compatibility.js"));
         for (const variant of ["metadata", "marker", "identity", "latest"] as const) {
             const root = temp();
             try {
@@ -123,12 +165,13 @@ describe("game DB SQLite compatibility", function () {
                     makeWritable(acquired.commitMarkerPath);
                     writeFileSync(acquired.commitMarkerPath, "{}\n");
                 } else if (variant === "latest") {
-                    writeFileSync(acquired.latestPointerPath, "{}\n");
+                    makeWritable(acquired.pointerRecordPath);
+                    writeFileSync(acquired.pointerRecordPath, "{}\n");
                 }
                 const options = variant === "identity"
                     ? { storeRoot: root, artifactIdentity: "f".repeat(64) }
                     : variant === "latest" ? { storeRoot: root, useLatest: true } : { storeRoot: root, artifactIdentity: acquired.identity };
-                await rejects(compiledApi.buildGameDbSqliteCompatibility(options), /artifact|commit|identity|latest|pointer|read-only/i, variant);
+                await rejects(compiledApi.buildGameDbSqliteCompatibility(options), /artifact|commit|identity|latest|pointer|read-only|journal/i, variant);
             } finally { rmSync(root, { recursive: true, force: true }); }
         }
     });

@@ -136,8 +136,10 @@ npm run run:game-db-download-database-artifact -- --descriptor-json "C:\path\to\
 Authorized acquisition streams into an ignored content-addressed store. Each
 committed identity contains `database.db`, deterministic `metadata.json` and a
 marker-last `commit-marker.json`. Sanitized operational receipts live under
-`receipts/`; `latest.json` references only complete validated current and
-previous commits. No delivery URL, query, credential or operational timestamp
+`receipts/`. Current selection comes from immutable create-only records under
+`pointers/`, never from overwriting a shared pathname. Each record binds the
+commit identity, a validated predecessor and deterministic database-version /
+artifact-identity order. No delivery URL, query, credential or operational timestamp
 participates in the artifact identity.
 
 Promotion is create-only on Windows and POSIX: the final identity is reserved by
@@ -162,10 +164,27 @@ npm run run:game-db-sqlite-compatibility -- --store-root ".\game-db\data\game-db
 The productive C4 API has no arbitrary SQLite-path mode. It derives `database.db`
 only from a fully validated AQ commit, checks deterministic metadata, marker,
 content identity, descriptor lineage, size/SHA/state, containment and members,
-and repeats commit validation after inspection. Receipts and `latest.json` are
-not authority over bytes. This compatibility report does not decrypt, export,
+opens that member once, copies the bytes from the same `FileHandle` into an
+exclusive private read-only snapshot, and runs the adapter only on that snapshot.
+Snapshot size/SHA are checked before and after inspection and the AQ source commit
+is revalidated before reporting. The report binds the AQ identity to the inspected
+snapshot hash and requires equality. Journal records, receipts and `latest.json`
+are not authority over bytes; `latest.json` is at most a dispensable legacy cache
+and may be missing or divergent. This compatibility report does not decrypt, export,
 refresh evidence, publish, promote production data or authorize reuse of pinned
 native evidence. Those are separate reviewed workflows.
+Snapshot cleanup truncates/fsyncs the exact open descriptor, quarantines the
+whole private directory and validates the zero-byte identity actually moved. A
+raced replacement is retained rather than unlinked; zero-byte tombstones require
+a future separately reviewed bounded GC.
+
+AQ0–AQ6 terminates at the official acquired artifact, which may be
+`encrypted_or_packaged`. A loose decrypted SQLite does not belong to the
+productive chain and cannot be passed to C4. A future separate derivation gate
+must consume the parent AQ commit and create a new deterministic commit containing
+the parent identity, pinned tool/version, required non-secret parameters,
+result SHA/size/state, marker/metadata and a sanitized operational receipt. Only
+that derived commit may enter C4.
 
 ### Acquisition threat model
 
@@ -175,9 +194,12 @@ boundaries; committed members are independent read-only files, and every
 consumer revalidates the complete pointed commit. Later corruption fails closed
 instead of being consumed silently. The manual/default-off workflow grants no
 byte authority to an operational receipt or to `latest.json`.
-`latest.json` is installed from a complete fsynced candidate; if immediate
-post-install commit validation fails, the prior validated pointer is restored
-atomically and success is not returned.
+Pointer journal records are immutable and create-only. Consumers ignore malformed
+record candidates but fail closed when no valid materialized journal winner
+exists; unexpected pointer-directory members fail closed. Selection and rollback
+are derived solely from fully revalidated commits by the documented deterministic
+order: the winner is the maximum and rollback is the next-lower materialized
+record. Two writers may append records concurrently without replacing each other.
 
 This boundary does not promise protection from a malicious process or
 administrator running as the same OS identity after the operation returns, from

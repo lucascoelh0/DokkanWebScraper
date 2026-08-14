@@ -1,6 +1,7 @@
-import { deepEqual, equal, match, rejects, throws } from "assert";
+import { deepEqual, equal, match, notEqual, rejects, throws } from "assert";
+import { createHash } from "crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, writeFileSync } from "fs";
-import { mkdir, readFile } from "fs/promises";
+import { mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { Readable } from "stream";
@@ -31,7 +32,10 @@ function fakeTransport(bytes: Buffer, overrides: Partial<{ statusCode: number, c
     return { async get() { if (calls) calls.count += 1; return { statusCode: overrides.statusCode ?? 200, headers: overrides.headers ?? { "content-length": overrides.contentLength ?? String(bytes.length) }, body: overrides.body ?? Readable.from([bytes]) }; } };
 }
 function temp(): string { return mkdtempSync(join(tmpdir(), "dokkan-aq-")); }
-function latest(root: string): any { return JSON.parse(readFileSync(join(root, "latest.json"), "utf8")); }
+function journalFiles(root: string): string[] { const directory = join(root, "pointers"); return existsSync(directory) ? readdirSync(directory).filter(name => /^[a-f0-9]{64}\.json$/.test(name)).sort() : []; }
+function journalState(root: string): string { return JSON.stringify(journalFiles(root).map(name => [name, readFileSync(join(root, "pointers", name), "utf8")])); }
+function canonicalJson(value: unknown): string { return `${JSON.stringify(value, null, 2)}\n`; }
+function writePointerRecord(root: string, record: unknown): string { const text = canonicalJson(record), name = `${createHash("sha256").update(text).digest("hex")}.json`, path = join(root, "pointers", name); writeFileSync(path, text, { flag: "wx", mode: 0o600 }); chmodSync(path, 0o444); return path; }
 function boundarySignal(predicate: () => boolean): AbortSignal {
     const controller = new AbortController();
     return new Proxy(controller.signal, {
@@ -314,10 +318,10 @@ describe("game DB manual database artifact acquisition", function () {
         const root = temp(), firstBytes = Buffer.from("first-valid-bytes"), nextBytes = Buffer.from("second-valid-bytes");
         try {
             const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(firstBytes) });
-            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+            const pointerBefore = journalState(root);
             const signal = boundarySignal(() => readdirSync(root).some(name => name.startsWith(".download-") && readFileSync(join(root, name)).byteLength === nextBytes.byteLength));
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal }), /cancelled/);
-            equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
+            equal(journalState(root), pointerBefore);
             equal(readdirSync(root).some(name => name.startsWith(".download-") || name.startsWith(".pending-")), false);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
@@ -326,13 +330,13 @@ describe("game DB manual database artifact acquisition", function () {
         const root = temp(), firstBytes = Buffer.from("first-valid-bytes"), nextBytes = Buffer.from("second-valid-artifact");
         try {
             const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(firstBytes) });
-            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+            const pointerBefore = journalState(root);
             const signal = boundarySignal(() => {
                 const artifacts = join(root, "artifacts");
                 return existsSync(artifacts) && readdirSync(artifacts).some(name => /^[a-f0-9]{64}$/.test(name) && name !== first.identity && existsSync(join(artifacts, name, "commit-marker.json")));
             });
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal }), /cancelled/);
-            equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
+            equal(journalState(root), pointerBefore);
             const orphans = readdirSync(join(root, "artifacts")).filter(name => /^[a-f0-9]{64}$/.test(name) && name !== first.identity);
             equal(orphans.length, 0);
             const quarantines = readdirSync(join(root, "artifacts")).filter(name => name.startsWith(".quarantine-"));
@@ -341,28 +345,39 @@ describe("game DB manual database artifact acquisition", function () {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("fails closed after receipt without promoting latest", async () => {
+    it("fails closed after receipt without appending a pointer record", async () => {
         const root = temp(), firstBytes = Buffer.from("first-valid-bytes"), nextBytes = Buffer.from("third-valid-artifact");
         try {
             const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(firstBytes), now: () => new Date("2026-08-13T20:00:00.000Z") });
-            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+            const pointerBefore = journalState(root);
             const receiptsBefore = readdirSync(join(root, "receipts")).length;
             const signal = boundarySignal(() => existsSync(join(root, "receipts")) && readdirSync(join(root, "receipts")).filter(name => !name.startsWith(".")).length > receiptsBefore);
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal, now: () => new Date("2026-08-13T21:00:00.000Z") }), /cancelled/);
-            equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
+            equal(journalState(root), pointerBefore);
             equal(readdirSync(join(root, "receipts")).filter(name => !name.startsWith(".")).length, receiptsBefore + 1);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("rolls latest back if cancellation is observed immediately after promotion", async () => {
-        const root = temp(), firstBytes = Buffer.from("first-valid-bytes"), nextBytes = Buffer.from("fourth-valid-artifact");
+    it("never overwrites a pointer sentinel introduced at the create-only installation boundary", async () => {
+        const root = temp(), probeRoot = temp(), firstBytes = Buffer.from("first-valid-bytes"), nextBytes = Buffer.from("fourth-valid-artifact");
+        let sentinelPath = "";
         try {
             const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(firstBytes) });
-            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
-            const signal = boundarySignal(() => existsSync(join(root, "latest.json")) && readFileSync(join(root, "latest.json"), "utf8") !== pointerBefore);
-            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal }), /cancelled/);
-            equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
-        } finally { rmSync(root, { recursive: true, force: true }); }
+            const probe = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: probeRoot, transport: fakeTransport(nextBytes) });
+            const record = { schemaVersion: 1, contract: "dokkan-game-db-pointer-record", contractVersion: "1.0.0", identity: probe.identity, predecessorIdentity: first.identity < probe.identity ? first.identity : null, order: { databaseVersion: version, artifactIdentity: probe.identity } };
+            const text = canonicalJson(record), name = `${createHash("sha256").update(text).digest("hex")}.json`;
+            const receiptsBefore = readdirSync(join(root, "receipts")).length;
+            const signal = boundarySignal(() => {
+                if (!sentinelPath && readdirSync(join(root, "receipts")).length > receiptsBefore) {
+                    sentinelPath = join(root, "pointers", name);
+                    writeFileSync(sentinelPath, "pointer-install-sentinel", { flag: "wx" });
+                }
+                return false;
+            });
+            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal }), /exact valid create-only record|exist/i);
+            equal(readFileSync(sentinelPath, "utf8"), "pointer-install-sentinel");
+            equal((await validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true })).identity, first.identity);
+        } finally { rmSync(root, { recursive: true, force: true }); rmSync(probeRoot, { recursive: true, force: true }); }
     });
 
     it("never clobbers a receipt destination created at the installation boundary", async () => {
@@ -384,72 +399,28 @@ describe("game DB manual database artifact acquisition", function () {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("moves and retains a replacement swapped exactly at latest withdrawal", async () => {
-        const root = temp(), latestPath = join(root, "latest.json"), displaced = join(root, "withdrawal-original.json");
-        let raced = false;
-        try {
-            const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("withdrawal-first")) });
-            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
-            const signal = boundarySignal(() => {
-                if (!raced && readdirSync(root).some(name => name.startsWith(".latest-history-"))) {
-                    renameSync(latestPath, displaced);
-                    writeFileSync(latestPath, "withdrawal-race-sentinel");
-                    raced = true;
-                }
-                return false;
-            });
-            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("withdrawal-next")), signal }), /replacement identity|retained/i);
-            equal(raced, true);
-            equal(readFileSync(displaced, "utf8"), pointerBefore);
-            equal(existsSync(latestPath), false);
-            const histories = readdirSync(root).filter(name => name.startsWith(".latest-history-"));
-            equal(histories.some(name => readFileSync(join(root, name, "latest.json"), "utf8") === "withdrawal-race-sentinel"), true);
-        } finally { rmSync(root, { recursive: true, force: true }); }
-    });
-
-    it("does not overwrite a latest replacement introduced during rollback and retains the prior pointer", async () => {
-        const root = temp(), displaced = join(root, "displaced-promoted-latest.json");
-        let swapped = false;
-        try {
-            const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("rollback-original")) });
-            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
-            const controller = new AbortController();
-            const signal = new Proxy(controller.signal, {
-                get(target, property) {
-                    if (property === "aborted") {
-                        const histories = readdirSync(root).filter(name => name.startsWith(".latest-history-"));
-                        if (!target.aborted && existsSync(first.latestPointerPath) && readFileSync(first.latestPointerPath, "utf8") !== pointerBefore) controller.abort();
-                        else if (target.aborted && !swapped && histories.length >= 2) {
-                            renameSync(first.latestPointerPath, displaced);
-                            writeFileSync(first.latestPointerPath, "rollback-race-sentinel");
-                            swapped = true;
-                        }
-                        return target.aborted;
-                    }
-                    const value = Reflect.get(target, property, target);
-                    return typeof value === "function" ? value.bind(target) : value;
-                }
-            });
-            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("rollback-next")), signal }), /replacement latest pointer|retained/i);
-            equal(swapped, true);
-            equal(existsSync(first.latestPointerPath), false);
-            const historyTexts = readdirSync(root).filter(name => name.startsWith(".latest-history-")).map(name => readFileSync(join(root, name, "latest.json"), "utf8"));
-            equal(historyTexts.includes(pointerBefore), true);
-            equal(historyTexts.includes("rollback-race-sentinel"), true);
-        } finally { rmSync(root, { recursive: true, force: true }); }
-    });
-
-    it("restores the prior pointer from retained history on late cancellation", async () => {
+    it("allows two concurrent promotions to append without overwrite and selects deterministic current and rollback", async () => {
         const root = temp();
+        mkdirSync(join(root, "artifacts"));
+        mkdirSync(join(root, "receipts"));
+        mkdirSync(join(root, "pointers"));
+        let arrivals = 0;
+        let release!: () => void;
+        const barrier = new Promise<void>(done => { release = done; });
+        function transport(bytes: Buffer): DatabaseArtifactTransport {
+            return { async get() { arrivals += 1; if (arrivals === 2) release(); await barrier; return { statusCode: 200, headers: { "content-length": String(bytes.length) }, body: Readable.from([bytes]) }; } };
+        }
         try {
-            const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("finalize-first")) });
-            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
-            const signal = boundarySignal(() => {
-                const latestChanged = existsSync(first.latestPointerPath) && readFileSync(first.latestPointerPath, "utf8") !== pointerBefore;
-                return latestChanged;
-            });
-            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("finalize-second")), signal }), /cancelled/);
-            equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
+            const [left, right] = await Promise.all([
+                acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: transport(Buffer.from("concurrent-left")) }),
+                acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: transport(Buffer.from("concurrent-right")) }),
+            ]);
+            equal(journalFiles(root).length, 2);
+            const ordered = [left.identity, right.identity].sort();
+            const selected = await validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true });
+            equal(selected.identity, ordered[1]);
+            equal(selected.previousIdentity, ordered[0]);
+            equal((await validateAcquiredDatabaseArtifact({ storeRoot: root, artifactIdentity: ordered[0] })).identity, ordered[0]);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
@@ -485,7 +456,7 @@ describe("game DB manual database artifact acquisition", function () {
         let linked = false;
         try {
             const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("alias-prior")) });
-            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+            const pointerBefore = journalState(root);
             const signal = boundarySignal(() => {
                 const artifacts = join(root, "artifacts");
                 const pending = existsSync(artifacts) ? readdirSync(artifacts).find(name => name.startsWith(".pending-") && existsSync(join(artifacts, name, "commit-marker.json"))) : undefined;
@@ -496,7 +467,7 @@ describe("game DB manual database artifact acquisition", function () {
             });
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("alias-next")), signal }), /hard link|changed|identity/i);
             equal(linked, true);
-            equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
+            equal(journalState(root), pointerBefore);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
@@ -507,7 +478,7 @@ describe("game DB manual database artifact acquisition", function () {
             const nextBytes = Buffer.from("pending-mutated-after-copy");
             const seed = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: seedRoot, transport: fakeTransport(nextBytes) });
             const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("pending-copy-prior")) });
-            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+            const pointerBefore = journalState(root);
             const signal = boundarySignal(() => {
                 const artifacts = join(root, "artifacts"), finalDatabase = join(artifacts, seed.identity, "database.db");
                 const pending = existsSync(artifacts) ? readdirSync(artifacts).find(name => name.startsWith(".pending-")) : undefined;
@@ -518,11 +489,11 @@ describe("game DB manual database artifact acquisition", function () {
             });
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal }), /pending artifact database\.db changed/i);
             equal(mutated, true);
-            equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
+            equal(journalState(root), pointerBefore);
         } finally { rmSync(seedRoot, { recursive: true, force: true }); rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("rejects deterministic database, metadata and marker replacement before latest promotion", async () => {
+    it("rejects deterministic database, metadata and marker replacement before journal promotion", async () => {
         const seedRoot = temp();
         try {
             const nextBytes = Buffer.from("replace-final-before-latest");
@@ -531,7 +502,7 @@ describe("game DB manual database artifact acquisition", function () {
                 const root = temp(); let replaced = false;
                 try {
                     const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from(`prior-${member}`)) });
-                    const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+                    const pointerBefore = journalState(root);
                     const signal = boundarySignal(() => {
                         const artifacts = join(root, "artifacts"), directory = join(artifacts, seed.identity), target = join(directory, member);
                         const hasPending = existsSync(artifacts) && readdirSync(artifacts).some(name => name.startsWith(".pending-"));
@@ -543,25 +514,27 @@ describe("game DB manual database artifact acquisition", function () {
                     });
                     await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal }), /read-only|identity|metadata|marker|changed/i, member);
                     equal(replaced, true, member);
-                    equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore, member);
+                    equal(journalState(root), pointerBefore, member);
                 } finally { rmSync(root, { recursive: true, force: true }); }
             }
         } finally { rmSync(seedRoot, { recursive: true, force: true }); }
     });
 
-    it("rolls latest back when the pointed commit is corrupted immediately after pointer installation", async () => {
+    it("fails closed to the prior valid journal winner when the new pointed commit is corrupted immediately after append", async () => {
         const seedRoot = temp(), root = temp();
         let corrupted = false;
         try {
             const nextBytes = Buffer.from("corrupt-immediately-after-latest");
             const seed = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: seedRoot, transport: fakeTransport(nextBytes) });
             const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("latest-corruption-prior")) });
-            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+            const pointerBefore = journalState(root);
             const signal = boundarySignal(() => {
-                if (corrupted || !existsSync(first.latestPointerPath)) return false;
-                let pointer: any;
-                try { pointer = latest(root); } catch { return false; }
-                if (pointer.currentIdentity !== seed.identity) return false;
+                if (corrupted) return false;
+                const promoted = journalFiles(root).some(name => {
+                    try { return JSON.parse(readFileSync(join(root, "pointers", name), "utf8")).identity === seed.identity; }
+                    catch { return false; }
+                });
+                if (!promoted) return false;
                 const metadataPath = join(root, "artifacts", seed.identity, "metadata.json");
                 chmodSync(metadataPath, 0o644);
                 writeFileSync(metadataPath, "{}\n");
@@ -570,7 +543,7 @@ describe("game DB manual database artifact acquisition", function () {
             });
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal }), /artifact|metadata|read-only|identity/i);
             equal(corrupted, true);
-            equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
+            equal((await validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true })).identity, first.identity);
         } finally { rmSync(seedRoot, { recursive: true, force: true }); rmSync(root, { recursive: true, force: true }); }
     });
 
@@ -583,7 +556,7 @@ describe("game DB manual database artifact acquisition", function () {
                 if (variant === "writable") chmodSync(acquired.metadataPath, 0o644);
                 if (variant === "latest-corrupt") { chmodSync(acquired.commitMarkerPath, 0o644); writeFileSync(acquired.commitMarkerPath, "{}\n"); }
                 const options = variant === "latest-corrupt" ? { storeRoot: root, useLatest: true as const } : { storeRoot: root, artifactIdentity: acquired.identity };
-                await rejects(validateAcquiredDatabaseArtifact(options), /hard link|read-only|marker|commit|identity/i, variant);
+                await rejects(validateAcquiredDatabaseArtifact(options), /hard link|read-only|marker|commit|identity|journal/i, variant);
             } finally { rmSync(root, { recursive: true, force: true }); }
         }
     });
@@ -593,7 +566,7 @@ describe("game DB manual database artifact acquisition", function () {
             const root = temp(); let mutated = false;
             try {
                 const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from(`prior-${member}`)) });
-                const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+                const pointerBefore = journalState(root);
                 const signal = boundarySignal(() => {
                     const artifacts = join(root, "artifacts");
                     const pending = existsSync(artifacts) ? readdirSync(artifacts).find(name => name.startsWith(".pending-") && existsSync(join(artifacts, name, "commit-marker.json"))) : undefined;
@@ -606,7 +579,7 @@ describe("game DB manual database artifact acquisition", function () {
                 });
                 await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from(`next-${member}`)), signal }), /snapshot|pathname|identity|metadata|marker|database/i, member);
                 equal(mutated, true, member);
-                equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore, member);
+                equal(journalState(root), pointerBefore, member);
                 deepEqual(readdirSync(join(root, "artifacts")).filter(name => /^[a-f0-9]{64}$/.test(name)), [first.identity], member);
             } finally { rmSync(root, { recursive: true, force: true }); }
         }
@@ -640,7 +613,7 @@ describe("game DB manual database artifact acquisition", function () {
                 const root = temp(); let introduced = false; let targetIdentity = "";
                 try {
                     const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from(`prior-${variant.name}`)) });
-                    const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+                    const pointerBefore = journalState(root);
                     const target = join(root, "artifacts", seed.identity);
                     const outside = join(root, "outside");
                     mkdirSync(outside);
@@ -661,10 +634,11 @@ describe("game DB manual database artifact acquisition", function () {
                         equal(result.identity, seed.identity, variant.name);
                         const stat: any = statSync(target, { bigint: true });
                         equal(`${stat.dev}:${stat.ino}:${stat.size}`, targetIdentity, variant.name);
-                        deepEqual(latest(root), { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: seed.identity, previousIdentity: first.identity });
+                        const selected = await validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true });
+                        equal(selected.identity, [first.identity, seed.identity].sort()[1]);
                     } else {
                         await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(nextBytes), signal }), /destination|directory|members|metadata|regular|read-only|symlink|junction|reparse/i, variant.name);
-                        equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore, variant.name);
+                        equal(journalState(root), pointerBefore, variant.name);
                         equal(existsSync(target), true, variant.name);
                         equal(readFileSync(join(outside, "sentinel.txt"), "utf8"), "keep", variant.name);
                     }
@@ -678,7 +652,7 @@ describe("game DB manual database artifact acquisition", function () {
         const root = temp(); let mutated = false;
         try {
             const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("prior-post-promotion")) });
-            const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+            const pointerBefore = journalState(root);
             const signal = boundarySignal(() => {
                 const artifacts = join(root, "artifacts");
                 if (!existsSync(artifacts) || mutated) return false;
@@ -692,7 +666,7 @@ describe("game DB manual database artifact acquisition", function () {
             });
             await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("next-post-promotion")), signal }), /snapshot|identity|metadata|changed/i);
             equal(mutated, true);
-            equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore);
+            equal(journalState(root), pointerBefore);
             deepEqual(readdirSync(join(root, "artifacts")).filter(name => /^[a-f0-9]{64}$/.test(name)), [first.identity]);
             equal(readdirSync(join(root, "artifacts")).filter(name => name.startsWith(".quarantine-")).length, 1);
         } finally { rmSync(root, { recursive: true, force: true }); }
@@ -708,7 +682,7 @@ describe("game DB manual database artifact acquisition", function () {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("rejects a full failed-staging history budget before transport while allowing small latest histories", async () => {
+    it("rejects a full failed-staging history budget before transport while allowing pointer journal growth", async () => {
         const root = temp(), calls = { count: 0 };
         try {
             const history = join(root, ".file-history-seeded-failure");
@@ -723,26 +697,26 @@ describe("game DB manual database artifact acquisition", function () {
 
         const smallRoot = temp();
         try {
-            await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: smallRoot, transport: fakeTransport(Buffer.from("small-history-one")), maxBytes: 1024 });
+            const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: smallRoot, transport: fakeTransport(Buffer.from("small-history-one")), maxBytes: 1024 });
             const second = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: smallRoot, transport: fakeTransport(Buffer.from("small-history-two")), maxBytes: 1024 });
-            equal(latest(smallRoot).currentIdentity, second.identity);
-            equal(readdirSync(smallRoot).some(name => name.startsWith(".latest-history-")), true);
+            const selected = await validateAcquiredDatabaseArtifact({ storeRoot: smallRoot, useLatest: true });
+            equal(selected.identity, [first.identity, second.identity].sort().pop());
+            equal(journalFiles(smallRoot).length, 2);
         } finally { rmSync(smallRoot, { recursive: true, force: true }); }
     });
 
-    it("fails closed when committed artifact members or latest are swapped after their handles open", async function () {
+    it("fails closed when committed artifact members are swapped after their handles open", async function () {
         const variants: Array<{ name: string, abortedRead: number, target(first: any): string }> = [
             { name: "metadata", abortedRead: 6, target: first => first.metadataPath },
             { name: "artifact", abortedRead: 7, target: first => first.artifactPath },
             { name: "marker", abortedRead: 8, target: first => first.commitMarkerPath },
-            { name: "latest", abortedRead: 24, target: first => first.latestPointerPath },
         ];
         for (const variant of variants) {
             const root = temp(), bytes = Buffer.from(`stable-${variant.name}`);
             let displaced = "", target = "", swapped = false;
             try {
                 const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(bytes) });
-                const pointerBefore = readFileSync(first.latestPointerPath, "utf8");
+                const pointerBefore = journalState(root);
                 target = variant.target(first);
                 displaced = join(root, `.displaced-${variant.name}`);
                 const mutation = mutationSignal(variant.abortedRead, () => {
@@ -765,7 +739,7 @@ describe("game DB manual database artifact acquisition", function () {
                     renameSync(displaced, target);
                     swapped = false;
                 }
-                equal(readFileSync(first.latestPointerPath, "utf8"), pointerBefore, variant.name);
+                equal(journalState(root), pointerBefore, variant.name);
             } finally {
                 if (swapped && existsSync(target)) unlinkSync(target);
                 if (existsSync(displaced)) renameSync(displaced, target);
@@ -794,71 +768,91 @@ describe("game DB manual database artifact acquisition", function () {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("preserves the previous artifact and latest pointer when a later acquisition fails", async () => {
+    it("preserves the previous artifact and journal when a later acquisition fails", async () => {
         const root = temp();
         try {
             const raw = descriptor();
             const first = await acquireDatabaseArtifact({ descriptor: raw, storeRoot: root, transport: fakeTransport(Buffer.from("first-valid-bytes")) });
-            const latestBefore = await readFile(first.latestPointerPath, "utf8");
+            const latestBefore = journalState(root);
             await rejects(acquireDatabaseArtifact({ descriptor: raw, storeRoot: root, transport: fakeTransport(Buffer.from("bad"), { contentLength: "4" }) }), /truncated/);
-            equal(await readFile(first.latestPointerPath, "utf8"), latestBefore);
+            equal(journalState(root), latestBefore);
             equal(readFileSync(first.artifactPath).toString(), "first-valid-bytes");
             equal(readdirSync(root).some(name => name.startsWith(".download-") || name.startsWith(".pending-")), false);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("does not promote latest when the operational receipt cannot be committed", async () => {
+    it("does not append a pointer record when the operational receipt cannot be committed", async () => {
         const root = temp();
         try {
             const raw = descriptor();
             const first = await acquireDatabaseArtifact({ descriptor: raw, storeRoot: root, transport: fakeTransport(Buffer.from("first-valid-bytes")), now: () => new Date("2026-08-13T20:00:00.000Z") });
-            const latestBefore = await readFile(first.latestPointerPath, "utf8");
+            const latestBefore = journalState(root);
             rmSync(join(root, "receipts"), { recursive: true, force: true });
             writeFileSync(join(root, "receipts"), "blocks receipt directory");
             await rejects(acquireDatabaseArtifact({ descriptor: raw, storeRoot: root, transport: fakeTransport(Buffer.from("second-valid-bytes")), now: () => new Date("2026-08-13T21:00:00.000Z") }), /EEXIST|directory|store root/i);
-            equal(await readFile(first.latestPointerPath, "utf8"), latestBefore);
+            equal(journalState(root), latestBefore);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("validates complete latest rollback chains for new and repeated identities", async () => {
+    it("selects current and rollback deterministically for new and repeated identities", async () => {
         const root = temp();
         try {
             const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("identity-one")) });
-            deepEqual(latest(root), { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: first.identity, previousIdentity: null });
+            let selected = await validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true });
+            equal(selected.identity, first.identity); equal(selected.previousIdentity, null);
             const second = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("identity-two")) });
-            deepEqual(latest(root), { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: second.identity, previousIdentity: first.identity });
+            const order = [first.identity, second.identity].sort();
+            selected = await validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true });
+            equal(selected.identity, order[1]); equal(selected.previousIdentity, order[0]);
             const repeated = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("identity-two")) });
             equal(repeated.reused, true);
-            deepEqual(latest(root), { schemaVersion: 1, contract: "dokkan-game-db-local-latest", contractVersion: "1.0.0", currentIdentity: second.identity, previousIdentity: first.identity });
+            equal(journalFiles(root).length, 2);
+            selected = await validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true });
+            equal(selected.identity, order[1]); equal(selected.previousIdentity, order[0]);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
-    it("rejects arbitrary, missing, cyclic and corrupt latest references without replacing the pointer", async () => {
-        const variants: Array<{ name: string, mutate(root: string, first: any, second: any): void }> = [
-            { name: "arbitrary previous", mutate(root, _first, second) { const pointer = latest(root); pointer.previousIdentity = "a".repeat(64); writeFileSync(join(root, "latest.json"), `${JSON.stringify(pointer, null, 2)}\n`); } },
-            { name: "missing current artifact", mutate(root, _first, second) { rmSync(join(root, "artifacts", second.identity), { recursive: true, force: true }); } },
-            { name: "cycle", mutate(root, _first, second) { const pointer = latest(root); pointer.previousIdentity = second.identity; writeFileSync(join(root, "latest.json"), `${JSON.stringify(pointer, null, 2)}\n`); } },
-            { name: "corrupt current metadata", mutate(root, _first, second) { const path = join(root, "artifacts", second.identity, "metadata.json"); chmodSync(path, 0o644); writeFileSync(path, "{}\n"); } },
-            { name: "corrupt previous marker", mutate(root, first) { const path = join(root, "artifacts", first.identity, "commit-marker.json"); chmodSync(path, 0o644); writeFileSync(path, "{}\n"); } },
-        ];
-        for (const variant of variants) {
-            const root = temp();
-            try {
-                const first = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from(`first-${variant.name}`)) });
-                const second = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from(`second-${variant.name}`)) });
-                variant.mutate(root, first, second);
-                const pointerBefore = readFileSync(join(root, "latest.json"), "utf8");
-                await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from(`third-${variant.name}`)) }), /latest|artifact|metadata|marker|identity|cyclic/i, variant.name);
-                equal(readFileSync(join(root, "latest.json"), "utf8"), pointerBefore, variant.name);
-            } finally { rmSync(root, { recursive: true, force: true }); }
-        }
-    });
-
-    it("enforces an explicit single-writer lock", async () => {
+    it("deduplicates external records for one commit before selecting deterministic rollback", async () => {
         const root = temp();
         try {
-            await mkdir(join(root, ".acquisition.lock"));
-            await rejects(acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("x")) }), /active writer/);
+            await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("duplicate-one")) });
+            await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("duplicate-two")) });
+            const before = await validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true });
+            if (!before.pointerRecordPath || !before.previousIdentity) throw new Error("expected journal selection");
+            const duplicate = JSON.parse(readFileSync(before.pointerRecordPath, "utf8"));
+            duplicate.predecessorIdentity = duplicate.predecessorIdentity === null ? before.previousIdentity : null;
+            writePointerRecord(root, duplicate);
+            const after = await validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true });
+            equal(after.identity, before.identity);
+            equal(after.previousIdentity, before.previousIdentity);
+            notEqual(after.previousIdentity, after.identity);
+            equal(journalFiles(root).length, 3);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("ignores corrupt, truncated and missing-commit records while failing closed without any valid winner", async () => {
+        const root = temp();
+        try {
+            const acquired = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("journal-valid")) });
+            const corrupt = join(root, "pointers", `${"a".repeat(64)}.json`);
+            writeFileSync(corrupt, "{"); chmodSync(corrupt, 0o444);
+            const missing = { schemaVersion: 1, contract: "dokkan-game-db-pointer-record", contractVersion: "1.0.0", identity: "b".repeat(64), predecessorIdentity: null, order: { databaseVersion: version + 1, artifactIdentity: "b".repeat(64) } };
+            writePointerRecord(root, missing);
+            equal((await validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true })).identity, acquired.identity);
+            chmodSync(acquired.pointerRecordPath, 0o600); rmSync(acquired.pointerRecordPath, { force: true });
+            await rejects(validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true }), /journal has no valid materialized record/);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("ignores a divergent latest cache and rejects unexpected pointer directory members", async () => {
+        const root = temp();
+        try {
+            const acquired = await acquireDatabaseArtifact({ descriptor: descriptor(), storeRoot: root, transport: fakeTransport(Buffer.from("cache-divergence")) });
+            writeFileSync(join(root, "latest.json"), "{\"currentIdentity\":\"forged\"}\n");
+            equal((await validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true })).identity, acquired.identity);
+            writeFileSync(join(root, "pointers", "unexpected.txt"), "sentinel");
+            await rejects(validateAcquiredDatabaseArtifact({ storeRoot: root, useLatest: true }), /unexpected or non-regular member/);
+            equal(readFileSync(join(root, "pointers", "unexpected.txt"), "utf8"), "sentinel");
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 

@@ -171,7 +171,8 @@ Current status of that artifact:
 - old `pysqlsimplecipher` unwrap using both historical and current candidate keys also failed
 - direct SQLCipher opening with the known `GlbDbPassword` worked with default/`cipher_compatibility = 4`
 - exporting that decrypted DB produced a valid SQLite with `230` tables
-- the resulting SQLite successfully powered `run:game-db-build-first-party-export`
+- the resulting SQLite successfully powered the now-historical experimental
+  loose-SQLite export helper
 - the resulting export successfully powered `run:game-db-update --dry-run`
 
 So the project is now materially closer to independence:
@@ -268,21 +269,31 @@ the reservation race is never replaced or removed and is reused only if it is an
 independently valid complete commit of the exact identity. An invalid owned
 reservation is moved under an exclusive quarantine container only while its
 directory identity remains pinned, leaving the legitimate content-addressed name
-unoccupied. Receipt and rollback-pointer installation also use independent
-create-only copies rather than aliases.
-Before replacing `latest.json`, the implementation atomically moves
-the pathname into a new controlled history directory and validates the identity
-actually moved; it then creates the complete new pointer exclusively. Rollback
-uses the same move-and-validate operation and restores the validated prior history
-create-only. Successful receipt/download staging is moved into an exclusive
+unoccupied. Receipt installation also uses an independent create-only copy.
+
+Current selection is an append-only journal under `pointers/`, not a shared
+pathname replacement. Each promotion creates an exclusive immutable canonical
+record that binds commit identity, validated predecessor and deterministic order
+by database version then artifact identity. Consumers enumerate only contained
+regular single-link read-only records, validate their filename hash and bytes,
+fully revalidate referenced commits, materialize valid predecessor edges and
+select the deterministic maximum. Corrupt/truncated records and missing commits
+have no authority; unexpected pointer-directory members or no valid winner fail
+closed. Concurrent acquisitions may append records without overwriting each
+other. Rollback is the deterministic next-lower materialized valid record.
+`latest.json`, if
+left by an older version, is a dispensable cache and is ignored when missing or
+divergent. No portable compare-and-swap is claimed.
+
+Successful receipt/download staging is moved into an exclusive
 discard directory, identity-validated there and removed without touching a
-replacement at the original pathname. Retained failure and latest histories are
+replacement at the original pathname. Retained failure histories are
 limited by a fixed, non-configurable 256 MiB aggregate budget, checked before
 transport and before each retention. Reaching the ceiling stops acquisition
 before another request; safe garbage collection remains a separate reviewed
 operation.
 Existing ancestors are identity-pinned across store creation and every created
-segment must be a real directory. Artifact, metadata, marker, receipt and latest
+segment must be a real directory. Artifact, metadata, marker, receipt and journal
 validation reads through one identity-checked `FileHandle`, with before/after
 `fstat` and pathname revalidation, so a swapped member is never followed. The
 previous identity remains in the pointer and all prior artifact directories are
@@ -293,15 +304,21 @@ descriptor endpoint, login or refresh request is implemented.
 
 ### 5. Decrypt locally only when necessary
 
-This is a separate decision and is NO-GO during AQ0–AQ6. For an
-`encrypted_or_packaged` artifact, use the existing SQLCipher helper only after
-separate authorization and keep the key outside Git/logs:
+This is a separate future gate and is NO-GO during AQ0–AQ6. AQ terminates at the
+official artifact, possibly `encrypted_or_packaged`. The historical SQLCipher
+helper may still be useful for development after separate authorization, with
+the key outside Git/logs:
 
 ```powershell
 .\.venv-sqlcipher\Scripts\python game-db\game-db-decrypt-sqlcipher.py --input-path "<immutable-artifact-path>" --output-path "<local-decrypted-sqlite-path>" --key "<local-key>" --cipher-compatibility 4
 ```
 
 The acquisition metadata never contains the key or the decrypted output path.
+Its loose output is not an AQ or C4 artifact. A productive decryption/import gate
+must consume the parent AQ commit and produce a new deterministic derived commit
+containing parent identity, pinned tool/version, required non-secret parameters,
+result SHA/size/state, marker/metadata and a sanitized receipt. Only that derived
+commit may enter C4; the receipt is evidence, not byte authority.
 
 ### 6. Validate the SQLite read-only and compare C4
 
@@ -319,9 +336,12 @@ Even an exact SQLite match still requires C4 with the exact pinned ELF and
 semantic artifacts. The command first validates deterministic AQ metadata,
 marker, content-addressed identity, descriptor lineage, artifact SHA/size/state,
 containment, exact members, `nlink == 1` and read-only mode. It derives the SQLite
-path from that commit, performs header/hash/inspection sequentially, then
-revalidates both the file fingerprint and complete AQ commit. `latest` is accepted
-only through the explicit flag and its current/previous commits are revalidated.
+path from that commit, opens it once, copies that same descriptor into an exclusive
+private contained read-only snapshot and runs the adapter only on the snapshot.
+Snapshot SHA/size are checked before and after inspection, the AQ source commit is
+revalidated before reporting, and the report requires AQ identity/hash to equal
+the inspected snapshot identity/hash. `latest` is accepted only through the
+explicit flag; its journal winner and materialized commit are revalidated.
 The productive API and CLI accept no arbitrary SQLite path. A locally decrypted
 SQLite therefore needs a separately reviewed deterministic derived-artifact
 commit before C4; the loose decrypted pathname is not C4 authority. Any
@@ -333,9 +353,10 @@ Never run DB0–DB50 cumulatively for this refresh.
 Treat every descriptor, supplied path, pointer, receipt and artifact member as
 untrusted. Acquisition and C4 detect corruption, substitution and races inside
 their operation boundaries. Promotion creates no writable aliases; complete
-commits are revalidated before pointer installation, immediately after it and at
-every consumption. If post-install validation fails, the prior validated pointer
-is restored atomically and the operation fails. Later corruption is a closed failure, never
+commits are revalidated before journal append and at every consumption. Pointer
+records are immutable/create-only, concurrent writers never replace one another,
+and deterministic rollback comes only from the next-lower materialized valid record.
+Later corruption is a closed failure, never
 silent use. The workflow is manual/default-off, and neither a sanitized receipt
 nor `latest.json` grants authority over bytes.
 
@@ -347,15 +368,19 @@ consumption remain in scope despite those exclusions and must fail closed.
 
 ### 7. Build only a shadow first-party export
 
-Only after the prior local gates are separately authorized:
+Historical/experimental development helper only; it is outside AQ/C4 and must
+not be treated as a productive gate:
 
 ```powershell
-npm run run:game-db-build-first-party-export -- --sqlite-path "C:\local\decrypted-database.sqlite" --settings-json "C:\external\settings.json"
+npm run experimental:game-db-build-first-party-export-from-sqlite -- --sqlite-path "C:\local\decrypted-database.sqlite" --settings-json "C:\external\settings.json"
 npm run run:game-db-update -- --acquisition-mode first-party-export --first-party-dir ".\game-db\data\game-db-acquisition\first-party\latest" --skip-publish
 ```
 
 Stop after the local comparison. Do not publish, promote production data or
 change Android.
+This helper emits no C4 report or `acquiredArtifactState` and cannot establish
+AQ/derived lineage. A productive export must wait for the future derived commit
+gate described above.
 
 ## Independent decisions and current readiness
 

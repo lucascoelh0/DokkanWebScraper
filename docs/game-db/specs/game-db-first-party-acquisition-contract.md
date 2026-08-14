@@ -100,22 +100,33 @@ It can validate and retain an official Global EN database artifact, but it does
 not decrypt it, write this CSV export, invoke the update runner or promote any
 production data.
 
-Producing this first-party export remains a later, explicit transformation:
+AQ0–AQ6 ends at the official acquired artifact, which may still be encrypted.
+A loose decrypted SQLite has no productive derived-artifact contract and must
+not be sent directly to C4 or treated as an AQ commit. Producing a first-party
+export remains a later, explicit transformation:
 
 1. acquire and validate the Global EN artifact under AQ0–AQ6;
-2. decrypt locally if the artifact is `encrypted_or_packaged`;
-3. commit any readable SQLite under the AQ deterministic identity contract and
-   run the descriptor-bound read-only SQLite/C4 compatibility evaluation;
-4. write the normalized CSV tables;
-5. write this contract's `metadata.json`;
-6. place the export in a stable folder the runner can consume.
+2. after separate authorization, run a future decryption/import gate if the
+   artifact is `encrypted_or_packaged`;
+3. have that gate consume the parent AQ commit and produce a new deterministic
+   derived commit containing the parent AQ identity, pinned tool/version,
+   required non-secret parameters, result SHA/size/state, deterministic metadata
+   and marker, plus a sanitized operational receipt;
+4. run descriptor-bound read-only SQLite/C4 only on that derived commit;
+5. write the normalized CSV tables;
+6. write this contract's `metadata.json`;
+7. place the export in a stable folder the runner can consume.
 
 The productive C4 contract accepts only `storeRoot + artifactIdentity`, or an
 explicit `storeRoot + useLatest` selector. It never accepts an arbitrary SQLite
 path and derives its path only after validating deterministic metadata, the
 commit marker, the content-addressed directory identity, descriptor lineage,
-artifact SHA/size/state, containment and the exact member set. `latest` is
-revalidated together with current and rollback commits whenever selected.
+artifact SHA/size/state, containment and the exact member set. It opens the
+committed database once, copies bytes from that descriptor into a private
+exclusive read-only snapshot, validates snapshot SHA/size before and after the
+adapter, and revalidates the source commit before reporting. `latest` explicitly
+selects the immutable pointer journal winner and revalidates the materialized
+commit; a legacy `latest.json` cache is never authority.
 Operational receipts are optional sanitized evidence of an operation; they are
 not deterministic identity and cannot authorize bytes or produce
 `acquiredArtifactState`.
@@ -125,9 +136,10 @@ not deterministic identity and cannot authorize bytes or produce
 Descriptors, paths, pointers, receipts and artifacts are untrusted inputs.
 Within each operation, AQ and its consumers detect corruption, replacement and
 races at their validated handle/path boundaries. Promotion creates independent
-read-only files rather than writable aliases, validates the complete commit
-before and immediately after atomic pointer installation, and atomically restores
-the prior validated pointer when post-install validation fails. Every consumer revalidates
+read-only files rather than writable aliases. Pointer promotion appends one
+immutable create-only journal record and never overwrites a shared pointer
+pathname; deterministic selection and rollback use only fully validated commits.
+Every consumer revalidates
 the complete commit before using bytes; subsequent corruption therefore fails
 closed and is never silently accepted. Manual/default-off status grants no
 authority to receipts or pointers.
@@ -162,13 +174,15 @@ That helper:
 
 This is not the final acquisition solution, but it lets the rest of the pipeline start consuming the `first-party-export` layout immediately.
 
-There is also now a direct SQLite export helper:
+There is also a historical, explicitly experimental direct SQLite export helper:
 
 ```powershell
-npm run run:game-db-build-first-party-export -- --sqlite-path "C:\path\to\database.db"
+npm run experimental:game-db-build-first-party-export-from-sqlite -- --sqlite-path "C:\path\to\database.db"
 ```
 
-That helper is the first actual step toward a true first-party acquisition flow because it no longer requires a pre-exported `data/*.csv` folder.
+This helper is outside the AQ/C4 productive chain. It accepts a loose development
+SQLite under a different contract, emits no C4 report or `acquiredArtifactState`,
+and cannot establish acquired or derived artifact lineage.
 
 ## Why this matters
 
