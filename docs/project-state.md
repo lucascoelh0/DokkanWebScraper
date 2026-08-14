@@ -438,6 +438,22 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   confirmed conflicts does not establish completeness. Offline shadow
   consumption is GO; state lineage, authority, apply, production, publisher,
   R2, Android and FYI/DokkanInfo removal remain NO-GO.
+- K34 adds one explicit-opt-in, offline, stdout-only gate over the exact pinned
+  SQLite, DB1, K2, ELF and native-layout evidence. Exact schema proof records
+  that optimal-awakening growth rows contain no class/category/link replacement
+  columns, but stability is accepted only when the native constructor and
+  consumer paths also close the same dimension through hash-pinned code bytes,
+  decoded branches, symbols, PLT relocations and the Card element vtable slot.
+  Names and labels never participate in identity.
+- The real K34 audit joined all 5,759 DB1/K2 cards, 54,072 category assignments,
+  34,018 links and 4,895 optimal-awakening states over 4,874 distinct growth
+  rows. Its byte-identical 7,140-byte report has SHA-256
+  `a34afd7895d40dbdfd085c7c1b5af1304247b4e7476e89bec6c81e17758f638a`;
+  maximum measured peak RSS was 566,599,680 bytes. Class, category and link
+  scope are supported only for the exact pinned profile. Report
+  execution is GO; productive state binding, authority, apply/Character
+  mutation, publisher, R2, Android and
+  FYI/DokkanInfo removal remain NO-GO.
 
 ## Operating Constraints
 
