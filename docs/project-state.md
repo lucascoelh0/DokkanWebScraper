@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K40 — field-scoped shadow, candidate delivery and conditional publisher infrastructure
+### K10–K41 — field-scoped shadow, candidate delivery and public shadow consumption
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -615,6 +615,27 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K40 publication and public verification are GO. Android, consumers,
   authority and production remain NO-GO; any further R2 mutation remains a
   separate action requiring authorization.
+- K41 adds an explicitly opt-in, unauthenticated and strictly read-only public
+  shadow consumer over that exact release. It GETs only the fixed no-store
+  manifest and its four ordered content-addressed objects, blocks redirects,
+  bounds every response below 1 MiB and aggregate bytes below 5 MiB, validates
+  hashes/sizes/cache metadata, bounded-decompresses the payload and reproduces
+  all four exact K35 artifact byte sequences through the supported-only
+  validator. It exposes only a cloned, memory-only `cardId` lookup and preserves
+  omitted unknown dimensions; there is no `Character[]`, persistence, apply,
+  overlay, credential, publisher, Android or remote mutation path.
+- The final real K41 read-only run at `2026-08-14T21:23:32.815Z` completed five GETs
+  and read 260,894 bytes. It verified 5,759 records, 5,759 supported classes,
+  54,072 category assignments on 5,729 cards with 30 unknowns omitted, and
+  34,018 links on 5,620 cards with 139 unknowns omitted. Four portable focused
+  tests cover the fail-closed integrity and lookup boundary; a fifth
+  integration test passed against the exact K36/K37 bytes in memory. Public
+  delivery and remote shadow lookup are GO; persisted consumption,
+  `Character[]`, apply/overlay,
+  Android, authority, production and FYI/DokkanInfo removal remain NO-GO.
+  The final domain suite passed 183 tests with eight Windows symlink fixtures
+  pending. A conditional-fixture coverage P2 was corrected with the portable
+  4+1 test split, and contract re-review found no remaining P0-P2.
 
 ## Operating Constraints
 
