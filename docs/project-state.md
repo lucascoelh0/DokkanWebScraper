@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K37 — field-scoped shadow, candidate delivery and structural identity evidence
+### K10–K38 — field-scoped shadow, candidate delivery and remote preflight infrastructure
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -515,6 +515,21 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Peak RSS was 666,722,304 and 671,862,784 bytes. No remote operation was used.
   Remote inventory/preflight, network, publication, R2, Android, consumers,
   `Character[]`, apply/overlay, authority and production remain NO-GO.
+- K38 adds default-off remote read-only preflight infrastructure over only the
+  source-bound K37 reader. The productive API has no injected reader, bucket
+  result or report-authority path; it revalidates K37 before transport and
+  after all reads. It can issue GET only to the fixed public endpoint for the
+  exact four immutable keys plus the mutable manifest and can run only the
+  fixed bounded Wrangler `r2 bucket info dokkanpanion-data --json` command.
+- K38 treats immutable conflicts/failures, manifest failure, unknown bucket
+  usage, a namespace plan at or above 50 MB, and a conservative projected
+  bucket size at or above 10 GB as NO-GO. Its bounded create-only operational
+  report is explicitly non-authoritative; a future publisher must rerun K38
+  and still requires separate publication authorization. Eleven synthetic
+  transport, protocol, drift, budget and filesystem tests passed without real
+  network or Wrangler execution; Windows denied the file-symlink fixture while
+  the junction and hard-link cases passed. Real remote preflight, publication, R2 mutation,
+  Android, consumers, authority and production remain unexecuted and NO-GO.
 
 ## Operating Constraints
 
