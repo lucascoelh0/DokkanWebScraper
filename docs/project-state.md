@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K42 — field-scoped shadow, public delivery and supported state/form scope
+### K10–K43 — field-scoped shadow, public delivery and supported state/form projection
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -659,6 +659,28 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   symlink fixtures pending. A documentation P2 about the legacy loader's
   presentation-field parsing was corrected; contract re-review found no
   remaining P0-P2.
+- K43 adds an explicit-opt-in, offline, local supported-only state product
+  projection over the exact K42 GO inputs. It emits only structural IDs and
+  known supported state, release, awakening and form records; K7 remains
+  lineage/coverage only. `partial`, `unknown`, presentation data and
+  `Character[]` are excluded. No consumer, apply/overlay, authority,
+  production, publisher, network, R2 or Android path exists.
+- The create-only writer requires a separate existing non-link output root,
+  rejects containment or aliasing with every source root, writes a
+  content-addressed gzip payload plus fixed coverage and validation members,
+  and commits the fixed manifest last. The source-bound validator reconstructs
+  all bytes from the pinned sources and rereads the complete artifact set.
+- Two independent real K43 runs produced four byte-identical members. The
+  5,397,155-byte canonical JSON has uncompressed SHA-256
+  `cb059f931ecc0f40e53e3b25ba2fcd10ac347c71c065c63dbca2224ab1f813c8`;
+  the 332,720-byte gzip has SHA-256
+  `a136f631ed0fa1880f6a82af72ab2c429b547165945c09a13514c67f07925179`.
+  Metadata totals 4,646 bytes and the fixed 1,931-byte manifest has SHA-256
+  `8416d7005d2a087897c121da9fd632d2b9be47c0fc6414049429903295ba87a8`.
+  Peak RSS was 1,000,423,424 and 1,005,903,872 bytes, both below 1 GiB.
+  Offline generation and source-bound validation are GO; all downstream
+  consumption, authority, production, delivery and Android gates remain
+  NO-GO.
 
 ## Operating Constraints
 

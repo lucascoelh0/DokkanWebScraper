@@ -6,9 +6,9 @@ import {
     CharacterStateProductScopeReport,
 } from "./state-product-scope-contract";
 import {
-    assertCharacterStateProductScopeInputsUnchanged,
     assertCharacterStateProductScopePins,
     evaluateCharacterStateProductScope,
+    fingerprintCharacterStateProductScopeInputs,
 } from "./state-product-scope";
 
 export interface CharacterStateProductScopeRunOptions {
@@ -28,10 +28,27 @@ export async function runCharacterStateProductScopeAudit(
         productionRoot: options.productionRoot,
         fyiRoot: options.fyiRoot,
     };
-    const initial = await loadCharacterShadowInputs(loadOptions);
+    let initial: Awaited<ReturnType<typeof loadCharacterShadowInputs>> | undefined = await loadCharacterShadowInputs(loadOptions);
     const scope = evaluateCharacterStateProductScope(initial);
-    const reloaded = await loadCharacterShadowInputs(loadOptions);
-    const fingerprintSha256 = assertCharacterStateProductScopeInputsUnchanged(initial, reloaded);
+    const fingerprintSha256 = fingerprintCharacterStateProductScopeInputs(initial);
+    const sources = {
+        fingerprintSha256,
+        sidecars: initial.sidecarIdentities,
+        production: { sha256: initial.production.sha256, sizeBytes: initial.production.sizeBytes, topLevelCount: initial.production.topLevelCount },
+        fyi: { sha256: initial.fyi.sha256, sizeBytes: initial.fyi.sizeBytes, topLevelCount: initial.fyi.topLevelCount },
+    };
+    initial = undefined;
+    if (global.gc) global.gc();
+    let reloaded: Awaited<ReturnType<typeof loadCharacterShadowInputs>> | undefined = await loadCharacterShadowInputs(loadOptions);
+    const reloadedSources = {
+        fingerprintSha256: fingerprintCharacterStateProductScopeInputs(reloaded),
+        sidecars: reloaded.sidecarIdentities,
+        production: { sha256: reloaded.production.sha256, sizeBytes: reloaded.production.sizeBytes, topLevelCount: reloaded.production.topLevelCount },
+        fyi: { sha256: reloaded.fyi.sha256, sizeBytes: reloaded.fyi.sizeBytes, topLevelCount: reloaded.fyi.topLevelCount },
+    };
+    if (JSON.stringify(sources) !== JSON.stringify(reloadedSources)) throw new Error("K42 sources changed after evaluation");
+    reloaded = undefined;
+    if (global.gc) global.gc();
     assertCharacterStateProductScopePins(scope);
 
     return {
@@ -39,12 +56,7 @@ export async function runCharacterStateProductScopeAudit(
         contract: "dokkan-database-character-state-product-scope-audit",
         contractVersion: CHARACTER_STATE_PRODUCT_SCOPE_CONTRACT_VERSION,
         mode: "offline_local_explicit_opt_in_stdout_only",
-        sources: {
-            fingerprintSha256,
-            sidecars: initial.sidecarIdentities,
-            production: { sha256: initial.production.sha256, sizeBytes: initial.production.sizeBytes, topLevelCount: initial.production.topLevelCount },
-            fyi: { sha256: initial.fyi.sha256, sizeBytes: initial.fyi.sizeBytes, topLevelCount: initial.fyi.topLevelCount },
-        },
+        sources,
         policy: {
             structuralIdsOnly: true,
             sourceTextReadForScope: false,
