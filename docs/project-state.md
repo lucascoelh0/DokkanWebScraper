@@ -93,10 +93,11 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   concurrent writers never replace one shared pointer pathname. `latest.json`,
   if present from an older checkout, is a dispensable cache and has no authority.
 - AQ0–AQ6 ends at the official acquired artifact, which may remain encrypted.
-  A decrypted loose SQLite has no authority. DQ0-DQ4 now supplies the bounded
-  derived lineage/store contract described below. DQ5 adds only local
-  read-only C4 compatibility consumption of a validated DQ commit; productive
-  decryption remains a separate future gate.
+  A decrypted loose SQLite has no authority. DQ0-DQ4 supplies the bounded
+  derived lineage/store contract, DQ5 adds local read-only C4 compatibility
+  consumption, and DQ6 adds a fail-closed runtime-selection boundary plus a
+  test-only synthetic process harness. Productive process execution, key supply
+  and real decryption remain separate future gates.
 - Offline descriptor/artifact validation remains the only reviewable AQ path.
   Before integration, the next gate is the independent integration decision;
   after integration, the next separate gate is one explicitly authorized real
@@ -104,7 +105,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   lineage. Official download, decryption, refresh, publication, production
   promotion and Android otherwise remain NO-GO pending independent gates.
 
-### DQ0–DQ5 — derived SQLite lineage and local compatibility inspection
+### DQ0–DQ6 — derived SQLite lineage, fail-closed runtime boundary and local inspection
 
 - DQ0-DQ4 establishes an offline, production-shaped derived commit boundary
   from a fully revalidated AQ identity into a separate content-addressed store.
@@ -113,12 +114,27 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   transform kind, pinned implementation identity/version/hash, canonical
   non-secret parameters and plain-SQLite output SHA/size/state. Timestamps and
   results live only in separate sanitized operational receipts.
-- The runner currently accepts only injected test secret providers and
-  transformers. It exposes no key argv/environment contract, subprocess adapter,
-  productive Python path or real-decryption capability. Transformers receive a
+- The runner still accepts an injected secret provider and transformer. DQ6
+  supplies no executable transformer: its runtime-selection factory has an
+  empty reviewed allowlist and always fails before filesystem or process access.
+  Tests retain a compiled synthetic fixture and pending Python bridge. Injected
+  transformers receive a
   sequential 112 MiB sink plus `AbortSignal`, with a bounded 120-second maximum;
   raw output handles are not exposed. Sentinel tests cover metadata, markers,
   receipts, output, filenames, results and errors.
+- The productive DQ6 module imports no process launcher and receives neither AQ
+  source nor secret. Caller executable hashes, commands, arguments and bridge
+  paths have no authority. Portable Node cannot execute a validated descriptor;
+  reopening a private snapshot pathname still admits A-B-A substitution, so the
+  former process guarantee was withdrawn instead of weakened.
+- Only the spec launches the current test runtime with operation-local JavaScript
+  emitted from tracked TypeScript source text excluded from compiled/published
+  `lib/`. Its grace/force waits are bounded;
+  missing `close` quarantines test staging, and pre-assignment failures clean it.
+  Python immutable/driver key copies are not claimed zeroized and remain TBC.
+  The real SQLCipher bundle allowlist is empty; the historical argv-key helper
+  is a retired fail-closed stub, and no `sqlcipher3`, real key or real DB was
+  used.
 - Output is capped at 112 MiB, hashed, checked as structurally plain SQLite and
   copied independently into a create-only marker-last commit. Same-output reuse
   requires full material validation; corrupt destinations fail closed and prior
@@ -130,8 +146,9 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   material and AQ parent after inspection. AQ-direct reports remain `1.2.0`;
   DQ-derived reports use `1.3.0` and distinguish the inspected derived output
   from parent AQ lineage.
-- Only local read-only C4 compatibility inspection of a fully validated DQ
-  commit is GO. Real SQLCipher execution, real keys or secrets, decryption,
+- Only the fail-closed DQ6 selection boundary, test harness and local read-only C4
+  compatibility inspection of a fully validated DQ commit are GO. Real
+  process-bound adapter execution, SQLCipher execution, real keys or secrets, decryption,
   export, refresh, production, publication, R2 and Android remain NO-GO.
 
 ### E0–E9 — events, stages, enemies and bosses

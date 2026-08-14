@@ -22,9 +22,10 @@ We can already do all of this ourselves once we have a readable `database.db`:
 Today, the remaining gap is specifically:
 
 - how to obtain the latest DB artifact ourselves
-- how to add a separately reviewed productive decrypt adapter when the downloaded
-  artifact is not plain SQLite; DQ0-DQ4 currently provides lineage/storage and
-  injected tests only, while DQ5 adds local read-only C4 compatibility
+- how to authorize and supply a separately reviewed real key/provider when the
+  downloaded artifact is not plain SQLite; DQ0-DQ5 provides lineage/storage and
+  local C4 consumption, while DQ6 only adds a fail-closed runtime-selection
+  boundary and test-only synthetic process fixture
 
 ## Historical interception clues
 
@@ -304,10 +305,10 @@ retained. It also writes a separate operational receipt with mode
 Receipt time never affects immutable metadata, identity, marker or reuse. No
 descriptor endpoint, login or refresh request is implemented.
 
-### 5. Derived SQLite foundation (no real decryption)
+### 5. Derived SQLite foundation and DQ6 adapter (no real decryption)
 
 AQ terminates at the official artifact, possibly `encrypted_or_packaged`.
-DQ0-DQ4 now defines the separate derived lineage/store boundary documented in
+DQ0-DQ6 now defines the separate derived lineage/store boundary documented in
 [`specs/game-db-derived-sqlite-artifact-dq0-dq4.md`](specs/game-db-derived-sqlite-artifact-dq0-dq4.md).
 Its runner accepts only a fully revalidated AQ commit and uses an injected secret
 provider/transformer in tests. It commits validated plain SQLite into a separate
@@ -322,14 +323,31 @@ identity/SHA/size/state can be materially revalidated. A derived store alone is
 not C4 authority. DQ5 permits C4 to inspect only a committed DQ identity when
 both trust roots are supplied.
 
-No real SQLCipher adapter or productive secret provider exists in DQ0-DQ4. The
-existing Python helper is historical/nonproductive and must not be invoked as a
-pipeline gate. In particular, passing a key through `--key` or any other command
-line argument is prohibited; argv is outside the approved secret boundary. A
-loose helper output is not an AQ, DQ or C4 artifact.
-DQ5 does not invoke a transformer or secret provider and authorizes no real
-decryption, export, refresh, production promotion, publication, R2 or Android
-work.
+DQ6 now implements only a fail-closed runtime-selection factory plus a pending
+Python bridge. The factory accepts an exact non-secret profile but its reviewed
+runtime allowlist is empty, so it never returns a transformer, touches a bundle,
+launches a process or receives AQ source/key material. Caller executable hashes,
+commands, arguments and bridge paths are rejected. A private executable copy is
+not sufficient: portable Node must reopen its pathname for `CreateProcess`, so
+a same-OS-identity A-B-A substitution remains possible.
+
+Synthetic process execution lives only in the focused spec. The harness
+transpiles tracked TypeScript source text, which is excluded from `lib/`, to
+temporary emitted JavaScript and
+tests compatibility `3`/`4`, UTF-8/raw modes, bounded lifecycle, protocol
+failures and deterministic cleanup/quarantine. It is not exported and cannot
+produce a DQ commit. A future real adapter requires an approved OS-bound
+launcher and complete reviewed content-addressed bundle. Python and driver
+immutable key copies cannot be reliably zeroed; short-lived subprocess
+confinement remains residual/TBC. No real key, artifact or `sqlcipher3`
+operation was used.
+
+No productive secret provider or package command exists. The existing
+`game-db-decrypt-sqlcipher.py` is a retired fail-closed stub. It accepts no
+paths or key material and performs no SQLCipher import. Passing a key through
+argv remains prohibited. DQ5 does not invoke a transformer/provider; C4 consumes only
+an already committed, fully validated DQ identity. Real decryption, export,
+C1-C3 refresh, production promotion, publication, R2 and Android remain NO-GO.
 
 ### 6. Validate the SQLite read-only and compare C4
 
@@ -407,8 +425,11 @@ gate described above.
 | offline descriptor validation | GO |
 | offline artifact validation | GO |
 | local read-only C4 inspection of a validated DQ commit | GO |
+| fail-closed DQ6 runtime selection boundary | GO |
+| test-only DQ6 process protocol/lifecycle harness | GO |
+| productive DQ6 process adapter | NO-GO |
 | official database GET | NO-GO pending review and separate authorization |
-| local SQLCipher decryption | NO-GO in this campaign |
+| real SQLCipher execution/key provider | NO-GO in this campaign |
 | focused shadow refresh | NO-GO in this campaign |
 | authenticated refresh or credential acquisition | NO-GO |
 | R2 publication or productive promotion | NO-GO |

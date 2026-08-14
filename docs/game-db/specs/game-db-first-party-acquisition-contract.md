@@ -146,8 +146,9 @@ Receipt or
 clock failure after complete material validation does not revoke the valid
 marker-last commit, though the operation still reports failure.
 
-DQ's historical Python helper is not a productive adapter. Keys must never be
-passed in argv or environment contracts; DQ0-DQ4 passes runtime secret bytes only
+DQ's historical argv-key Python helper is retired and exits without accepting
+paths or secret material. Keys must never be passed in argv or environment
+contracts; DQ0-DQ4 passes runtime secret bytes only
 from an injected provider to an injected transformer that receives an open AQ
 input, a controlled bounded output sink and an `AbortSignal` rather than
 arbitrary paths or a raw output handle.

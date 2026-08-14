@@ -1,0 +1,57 @@
+import { createHash } from "crypto";
+import { readFileSync, writeFileSync, writeSync } from "fs";
+import { join } from "path";
+import { gunzipSync } from "zlib";
+
+const args = process.argv.slice(2);
+if (args.length !== 8
+    || args[0] !== "--protocol" || args[1] !== "dq6-sqlcipher-bridge-v-test"
+    || args[2] !== "--material-encoding" || !["utf8_passphrase", "raw_bytes"].includes(args[3])
+    || args[4] !== "--cipher-compatibility" || !["3", "4"].includes(args[5])
+    || args[6] !== "--work-directory") process.exit(64);
+
+const workDirectory = args[7];
+const source = readFileSync(3);
+const secret = Buffer.from(readFileSync(4));
+const mode = source.toString("ascii").split(":", 1)[0];
+
+function sqliteBytes(): Buffer {
+    return gunzipSync(Buffer.from(
+        "H4sIAAAAAAACCgsO9MksSVVIyy/KTSxRMGZgYmBkZHBQUGBgADIhGAZAbBYkPiMDYcDEoFfWyQtSzLiGAYhGAQUgiJFNXFmZMbckMSknNaXQLD4ts6KktAiZyeQc5OoY4qoQ4ujk46qAJKGRmaKQmVeSmp5apFBQlJmbWFSpkJ1aqcnLgBbLo2BEAQAe9zxXAAQAAA==",
+        "base64",
+    ));
+}
+
+function protocol(payload: Buffer, declaredSize = payload.length): void {
+    const header = Buffer.alloc(48);
+    Buffer.from("DQ6TEST1", "ascii").copy(header);
+    header.writeBigUInt64BE(BigInt(declaredSize), 8);
+    createHash("sha256").update(payload).digest().copy(header, 16);
+    writeSync(1, header);
+    if (payload.length > 0) writeSync(1, payload);
+}
+
+writeFileSync(join(workDirectory, "output.sqlite"), sqliteBytes(), { flag: "wx", mode: 0o600 });
+
+if (mode === "HANG" || mode === "CANCEL") {
+    setInterval(() => undefined, 1_000);
+} else if (mode === "EPIPE") {
+    process.exit(65);
+} else if (mode === "STDERR") {
+    writeSync(2, Buffer.concat([Buffer.from("fixture-stderr:"), secret]));
+} else if (mode === "OVERFLOW") {
+    protocol(Buffer.alloc(0), 112 * 1024 * 1024 + 1);
+} else if (mode === "MALFORMED") {
+    writeSync(1, Buffer.from("not-a-dq6-test-protocol"));
+} else if (mode === "NONZERO") {
+    process.exit(67);
+} else if (mode === "SECRET_STDOUT") {
+    protocol(secret);
+} else if (mode === "TRAILING") {
+    protocol(sqliteBytes());
+    writeSync(1, Buffer.from("x"));
+} else {
+    protocol(sqliteBytes());
+}
+
+secret.fill(0);

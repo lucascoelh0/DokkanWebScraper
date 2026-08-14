@@ -203,7 +203,7 @@ a future separately reviewed bounded GC.
 
 AQ0–AQ6 terminates at the official acquired artifact, which may be
 `encrypted_or_packaged`. A loose decrypted SQLite does not belong to the
-productive chain and cannot be passed to C4. DQ0-DQ4 now provides the bounded
+productive chain and cannot be passed to C4. DQ0-DQ6 now provides the bounded
 derived contract, injected test runner and validator in
 [`../docs/game-db/specs/game-db-derived-sqlite-artifact-dq0-dq4.md`](../docs/game-db/specs/game-db-derived-sqlite-artifact-dq0-dq4.md).
 It accepts only a fully revalidated AQ selector, writes a separate deterministic
@@ -220,13 +220,30 @@ given both trust roots and one exact derived identity. Operational clock/receipt
 failure after a fully validated marker-last commit does not remove that material
 commit.
 
-DQ0-DQ4 still has no real SQLCipher adapter or productive secret provider. DQ5
-allows only local read-only C4 compatibility inspection of an already validated
-derived commit and does not invoke the runner, transformer or provider. The
-historical Python helper is nonproductive; passing keys in command-line
-arguments is prohibited because process arguments are not an approved secret
-boundary. Real decryption, export, refresh, production, publication, R2 and
-Android remain NO-GO.
+DQ6 exports only a fail-closed runtime-selection factory. It rejects extra
+commands, arguments, executable/bridge paths and caller hashes; its reviewed
+runtime allowlist is empty, so it returns no transformer and performs no
+filesystem access or process launch. This is required because portable Node
+cannot spawn an already validated executable handle: validating then reopening
+even a private snapshot pathname leaves a same-identity A-B-A race.
+
+Process execution is confined to the focused test harness. It transpiles
+tracked TypeScript source text that is excluded from compiled/published `lib/`
+to a temporary `.js`, exercises the fixed pipe
+protocol and bounded grace/force termination, and removes or quarantines its
+owned staging. This harness is not exported and cannot receive AQ authority or
+produce a DQ commit. The pending Python bridge applies compatibility before key,
+but immutable Python/driver key copies cannot be proven zeroized and remain TBC.
+
+There is deliberately no approved SQLCipher runtime bundle, OS-bound launcher,
+package command or productive secret provider for DQ6. DQ5
+still allows only local read-only C4 compatibility inspection of an
+already validated derived commit and does not invoke the runner, transformer or
+provider. The historical argv-key Python helper is now a retired fail-closed
+stub that accepts no paths or secret material. Passing keys in command-line
+arguments is prohibited. Real bridge execution/key use,
+decryption, export, C1-C3 refresh, production, publication, R2 and Android
+remain NO-GO.
 
 ### Acquisition threat model
 
