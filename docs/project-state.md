@@ -421,6 +421,23 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   create/link/unlink steps, so K32 does not claim confinement against concurrent
   same-user namespace replacement or same-user hardlink attacks. Create-only
   final targets and manifest-last promotion remain enforced inside that model.
+- K33 adds a separate, explicitly opt-in offline shadow consumer over the exact
+  source-bound K32 artifact and productive Characters pin. It joins only by
+  `cardId`, marks every comparable top-level or transformation record with its
+  exact JSON path and unavailable release-state binding, preserves order and
+  duplicates, and emits only bounded aggregate evidence to stdout. It has no
+  apply, `Character[]` return, artifact writer, publisher, R2 or Android path.
+- Repeated real K33 executions produced byte-identical 15,695-byte reports with
+  SHA-256 `b685b9ac9d1608bcb7ab5d1d7d7aeacef1d8c638296ad7edb2012d44a27ce7ab`;
+  after releasing productive snapshots before the second source-bound K32
+  validation, externally sampled peak RSS was 724,344,832 bytes. The 1,623
+  comparable card IDs yielded 1,250 class agreements and 373 preserved
+  representation mismatches; categories yielded 12 ordered agreements, 1,406
+  same-multiset/different-order results and 205 unknowns; links yielded 46,
+  1,516 and 61 respectively, with zero different representations. Zero
+  confirmed conflicts does not establish completeness. Offline shadow
+  consumption is GO; state lineage, authority, apply, production, publisher,
+  R2, Android and FYI/DokkanInfo removal remain NO-GO.
 
 ## Operating Constraints
 
