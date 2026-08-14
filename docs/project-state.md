@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K35 — field-scoped shadow, candidate delivery and structural identity evidence
+### K10–K36 — field-scoped shadow, candidate delivery and structural identity evidence
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -475,6 +475,25 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   reconstruction. Offline generation and validation are GO. Every consumer,
   authority/apply path, production use, publisher, R2, Android, FYI removal and
   DokkanInfo removal remains NO-GO.
+- K36 adds an explicitly opt-in, offline and local-only delivery boundary for
+  the exact four K35 files. It validates K35 only through the existing
+  source-bound API with all roots explicit, creates one fixed-namespace
+  content-addressed release, records complete hashes/sizes/lineage in a
+  deterministic stopped receipt and writes a separate commit marker last.
+- The K36 reader requires the content-addressed ID plus every source root,
+  rejects traversal, links, `nlink != 1`, realpath escape, unexpected members
+  and byte or lineage drift, then revalidates K35 source-bound from the release
+  and reopens all six members. The release is create-only under a caller-owned
+  stable output root and stays strictly below 512 KiB and 1 GiB RSS limits.
+  Two real runs produced the same release ID
+  `4a6dcfa4b8818abbd070bad2a1318eec5df9a2b1b306286adfec5fadee8ddfe4`
+  and six byte-identical files totaling 262,186 bytes. Receipt SHA-256 is
+  `67c99c56f23890c91cb552c40e303fc7269cacdccc65769b3125ddfc3b6d8f13`;
+  marker SHA-256 is
+  `d185d8603698664be99f5c7443bb61ba28a1bfb91ff6c1885aa513f6b2e98d2f`.
+  Peak RSS was 661,557,248 and 662,052,864 bytes. Network, fetch, Wrangler/S3,
+  publisher, R2, Android, consumer, `Character[]`, apply/overlay, authority and
+  production remain NO-GO.
 
 ## Operating Constraints
 

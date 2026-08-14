@@ -54,12 +54,14 @@ const samePath = (left: string, right: string): boolean => process.platform === 
     : resolve(left) === resolve(right);
 
 class RssGuard {
-    private peak = process.memoryUsage().rss;
+    private peak = Math.max(process.memoryUsage().rss, process.resourceUsage().maxRSS * 1024);
     private exceeded = false;
     private readonly timer = setInterval(() => this.observe(), 10);
     constructor() { this.timer.unref(); }
     private observe(): void {
-        this.peak = Math.max(this.peak, process.memoryUsage().rss);
+        // maxRSS records the process high-water mark even when synchronous
+        // parsing or serialization prevents the interval from firing.
+        this.peak = Math.max(this.peak, process.memoryUsage().rss, process.resourceUsage().maxRSS * 1024);
         this.exceeded ||= this.peak >= TAXONOMY_PROJECTION_RSS_LIMIT_BYTES;
     }
     sample(nestedPeak = 0): void {

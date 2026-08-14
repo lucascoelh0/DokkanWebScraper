@@ -118,7 +118,9 @@ against a malicious same-user A-B-A namespace replacement; the threat model is
 `caller_controlled_stable_during_operation`.
 
 Canonical raw JSON is limited to 8 MiB, gzip to 1 MiB, and process RSS must stay
-strictly below 1 GiB. The package script fixes Node old-space at 768 MiB.
+strictly below 1 GiB. The guard includes the operating system's process
+high-water mark, so synchronous work cannot hide a transient peak from the
+event-loop sampler. The package script fixes Node old-space at 768 MiB.
 Failure reasons and per-reason examples are capped at five. Two complete
 materializations must be byte-identical before any write. Final validation
 reopens the artifact, bounds decompression, verifies canonical JSON and
