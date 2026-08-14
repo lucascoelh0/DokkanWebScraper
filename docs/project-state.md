@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K36 — field-scoped shadow, candidate delivery and structural identity evidence
+### K10–K37 — field-scoped shadow, candidate delivery and structural identity evidence
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -494,6 +494,27 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Peak RSS was 661,557,248 and 662,052,864 bytes. Network, fetch, Wrangler/S3,
   publisher, R2, Android, consumer, `Character[]`, apply/overlay, authority and
   production remain NO-GO.
+- K37 adds an explicitly opt-in, offline and local-only object plan over the
+  source-bound K36 reader. It derives exactly four immutable, content-addressed
+  K35 object keys under the new `database-characters/taxonomy-projection/v1`
+  namespace and a separate `no-store` mutable-manifest candidate with complete
+  K36/K35 hashes, sizes and lineage. K36 is revalidated before and after plan
+  construction; the local plan, candidate and stopped receipt are committed
+  create-only with a closed marker-last inventory.
+- K37 reserves a conservative 65,536 bytes for the mutable manifest and limits
+  worst-case namespace growth to 50,000,000 bytes. The 10,000,000,000-byte
+  bucket ceiling is recorded, while current usage, projected usage and bucket
+  compliance remain `UNKNOWN` until a separate remote preflight. Two real runs
+  produced plan ID
+  `7411a1c5b3220e5acf248fb5e670c03c437c699cb2b765fab0aa50fd9001d204`,
+  four byte-identical local files and a 319,271-byte worst-case remote plan.
+  Plan SHA-256 is
+  `19c2293c3d0ece19f9210eb1489bff16abdfe035450533bfabeec29193664a0c`;
+  manifest-candidate SHA-256 is
+  `9f803eb8eba00f2b7f49681b379fb3fe71eb08d551dc69cab03204542ec6e1e8`.
+  Peak RSS was 666,722,304 and 671,862,784 bytes. No remote operation was used.
+  Remote inventory/preflight, network, publication, R2, Android, consumers,
+  `Character[]`, apply/overlay, authority and production remain NO-GO.
 
 ## Operating Constraints
 
