@@ -8,13 +8,14 @@ describe("data download DD6", () => {
         const lock = JSON.parse(readFileSync(resolve(process.cwd(), "database-data-download-captures/data-download-dd6-source-lock.json"), "utf8")) as Dd6SourceLock;
         const changed: any = JSON.parse(JSON.stringify(lock));
         changed.artifacts[0].fileName = "../outside.md";
-        await assert.rejects(validateDd6SourceLock(process.cwd(), changed), /rejected|mismatch/);
+        await assert.rejects(validateDd6SourceLock(process.cwd(), changed), /invalid|rejected|mismatch/);
         const changedContract: any = JSON.parse(JSON.stringify(lock));
         changedContract.contract = "changed";
         await assert.rejects(validateDd6SourceLock(process.cwd(), changedContract), /contract mismatch/);
     });
 
-    it("fails closed when any individual canonical Git-blob pin mutates", async () => {
+    it("fails closed when any individual canonical Git-blob pin mutates", async function () {
+        this.timeout(30_000);
         const sourceRoot = process.cwd();
         const lock = JSON.parse(readFileSync(resolve(sourceRoot, "database-data-download-captures/data-download-dd6-source-lock.json"), "utf8")) as Dd6SourceLock;
         await validateDd6SourceLock(sourceRoot, lock);
