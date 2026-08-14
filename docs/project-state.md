@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K32 — field-scoped shadow, candidate delivery and structural identity evidence
+### K10–K35 — field-scoped shadow, candidate delivery and structural identity evidence
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -454,6 +454,27 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   execution is GO; productive state binding, authority, apply/Character
   mutation, publisher, R2, Android and
   FYI/DokkanInfo removal remain NO-GO.
+- K35 adds an explicitly opt-in, offline-only compact taxonomy projection over
+  the source-bound K32 artifact and the exact K34 card-scope gate. It retains
+  every K32 `cardId`, includes each class/category/link dimension only when its
+  structural evidence is supported, removes labels and presentation text, and
+  never reads or writes `Character[]`. Empty/unknown dimensions are omitted,
+  not converted into supported empty arrays.
+- The real K35 payload contains 5,759 cards, all 5,759 class facts, 54,072
+  category assignments across 5,729 cards and 34,018 links across 5,620 cards.
+  It omits 30 unknown category dimensions and 139 unknown link dimensions,
+  with zero partial or structural-unjoinable cases. Its 247,261-byte gzip has
+  SHA-256
+  `7e5c9fa501c8401489e8e6c0a057b1ecf01037d7969091ed88c0df73547f19e8`;
+  the 4,228,101-byte canonical raw payload has SHA-256
+  `c740d4874118c65f94588594f6b745146c506dd78a73fd605bbf40abf28d168a`.
+  Two separate complete runs were byte-identical and peaked at 652,185,600 and
+  651,706,368 bytes, below the exclusive 1 GiB limit.
+- K35 validates K32 through its existing source-bound API and executes K34
+  in-process both before generation and during final source-bound artifact
+  reconstruction. Offline generation and validation are GO. Every consumer,
+  authority/apply path, production use, publisher, R2, Android, FYI removal and
+  DokkanInfo removal remains NO-GO.
 
 ## Operating Constraints
 
