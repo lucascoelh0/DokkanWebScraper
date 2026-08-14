@@ -13,6 +13,14 @@ def open_read_only(path: str) -> sqlite3.Connection:
     return connection
 
 
+def open_descriptor_bound_bytes(data: bytes) -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:")
+    connection.deserialize(data)
+    connection.execute("PRAGMA query_only=ON")
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
 def quote_identifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
@@ -55,12 +63,14 @@ def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["inspect", "read-table"])
-    parser.add_argument("--database", required=True)
+    database = parser.add_mutually_exclusive_group(required=True)
+    database.add_argument("--database")
+    database.add_argument("--database-stdin", action="store_true")
     parser.add_argument("--table")
     parser.add_argument("--column", action="append", dest="columns")
     args = parser.parse_args()
 
-    connection = open_read_only(args.database)
+    connection = open_descriptor_bound_bytes(sys.stdin.buffer.read()) if args.database_stdin else open_read_only(args.database)
     try:
         if args.command == "inspect":
             result = inspect_database(connection)

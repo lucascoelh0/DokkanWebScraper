@@ -128,6 +128,48 @@ describe("game DB SQLite compatibility", function () {
         }
     });
 
+    it("binds inspection bytes when the private snapshot pathname changes A to B to A", async () => {
+        const root = temp(), aPath = join(root, "a.db"), bPath = join(root, "b.db");
+        createSqlite(aPath);
+        execFileSync(python(), ["-c", "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute('create table cards(id integer primary key, character_id integer)'); c.execute('create table forged_b(id integer)'); c.commit(); c.close()", bPath]);
+        const originalInspect = ReadOnlySqliteAdapter.prototype.inspect;
+        let swapped = false;
+        let inspectedTableCount: number | undefined;
+        try {
+            const acquired = await commit(root, readFileSync(aPath));
+            ReadOnlySqliteAdapter.prototype.inspect = async function () {
+                const displaced = `${this.databasePath}.displaced-a`;
+                renameSync(this.databasePath, displaced);
+                writeFileSync(this.databasePath, readFileSync(bPath));
+                chmodSync(this.databasePath, 0o444);
+                swapped = true;
+                try {
+                    const inspection = await originalInspect.call(this);
+                    inspectedTableCount = inspection.tableCount;
+                    return inspection;
+                }
+                finally {
+                    makeWritable(this.databasePath);
+                    unlinkSync(this.databasePath);
+                    renameSync(displaced, this.databasePath);
+                }
+            };
+            let report: Awaited<ReturnType<typeof buildGameDbSqliteCompatibility>> | undefined;
+            try { report = await buildGameDbSqliteCompatibility({ storeRoot: root, artifactIdentity: acquired.identity }); }
+            catch (error) { equal(/snapshot identity changed during inspection/i.test(String(error)), true); }
+            equal(swapped, true);
+            equal(inspectedTableCount, 1);
+            if (report) {
+                equal(report.c4Profile.sourceDatabase.actualTableCount, 1);
+                equal(report.inspectionSnapshot.sha256, acquired.metadata.localSha256);
+                equal(report.acquiredArtifact.sha256, report.inspectionSnapshot.sha256);
+            }
+        } finally {
+            ReadOnlySqliteAdapter.prototype.inspect = originalInspect;
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
     it("never reports exact_profile_match for a SQLite header alone", async () => {
         const root = temp();
         try {

@@ -265,6 +265,22 @@ async function hashHandle(handle: FileHandle, expectedSize: number): Promise<{ s
     return { sha256: hash.digest("hex"), readableSqliteHeader: prefix.equals(SQLITE_HEADER) };
 }
 
+async function readDescriptorBoundSnapshotBytes(handle: FileHandle, expectedSize: number, expectedSha256: string): Promise<Buffer> {
+    let bytes: Buffer;
+    try { bytes = Buffer.allocUnsafe(expectedSize); }
+    catch { throw new Error("C4 snapshot is too large for descriptor-bound inspection"); }
+    let offset = 0;
+    while (offset < expectedSize) {
+        const result = await handle.read(bytes, offset, expectedSize - offset, offset);
+        if (result.bytesRead <= 0) throw new Error("C4 snapshot ended during descriptor-bound inspection read");
+        offset += result.bytesRead;
+    }
+    const extra = Buffer.alloc(1);
+    if ((await handle.read(extra, 0, 1, expectedSize)).bytesRead !== 0) throw new Error("C4 snapshot grew during descriptor-bound inspection read");
+    if (createHash("sha256").update(bytes).digest("hex") !== expectedSha256) throw new Error("C4 descriptor-bound inspection bytes do not match the AQ commit");
+    return bytes;
+}
+
 async function copyHandle(source: FileHandle, destination: FileHandle, expectedSize: number): Promise<string> {
     const hash = createHash("sha256");
     const buffer = Buffer.allocUnsafe(64 * 1024);
@@ -494,7 +510,10 @@ export async function buildGameDbSqliteCompatibility(options: GameDbSqliteCompat
     try {
         await verifyPrivateInspectionSnapshot(snapshot, acquired.metadata.observedSizeBytes, acquired.metadata.localSha256);
         let inspection: SqliteInspection | undefined;
-        if (snapshot.readableSqliteHeader) inspection = await new ReadOnlySqliteAdapter(snapshot.path).inspect();
+        if (snapshot.readableSqliteHeader) {
+            const inspectionBytes = await readDescriptorBoundSnapshotBytes(snapshot.handle, acquired.metadata.observedSizeBytes, acquired.metadata.localSha256);
+            inspection = await ReadOnlySqliteAdapter.fromDescriptorBoundBytes(snapshot.path, inspectionBytes).inspect();
+        }
         await verifyPrivateInspectionSnapshot(snapshot, acquired.metadata.observedSizeBytes, acquired.metadata.localSha256);
         const revalidated = await validateAcquiredDatabaseArtifact(explicitLatest
             ? { storeRoot: options.storeRoot, useLatest: true }

@@ -165,7 +165,9 @@ The productive C4 API has no arbitrary SQLite-path mode. It derives `database.db
 only from a fully validated AQ commit, checks deterministic metadata, marker,
 content identity, descriptor lineage, size/SHA/state, containment and members,
 opens that member once, copies the bytes from the same `FileHandle` into an
-exclusive private read-only snapshot, and runs the adapter only on that snapshot.
+exclusive private read-only snapshot, reads inspection bytes from its still-open
+descriptor, and has the bridge deserialize that private byte copy without
+reopening the snapshot pathname.
 Snapshot size/SHA are checked before and after inspection and the AQ source commit
 is revalidated before reporting. The report binds the AQ identity to the inspected
 snapshot hash and requires equality. Journal records, receipts and `latest.json`

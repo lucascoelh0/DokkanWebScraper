@@ -12,10 +12,14 @@ identity, artifact SHA/size/state, descriptor lineage, containment and the exact
 member set before inspection. It opens the committed database exactly once,
 copies bytes from that same descriptor into an exclusive private contained
 read-only snapshot, validates snapshot SHA/size before and after the adapter, and
-revalidates the source commit before reporting. The report records AQ identity
-and inspected snapshot hash/size and requires equality. A source A→B→A pathname
-swap can therefore inspect only the already-open A bytes or fail closed; it can
-never report lineage A for inspection B.
+revalidates the source commit before reporting. For readable SQLite, C4 reads
+the inspection input positionally from the still-open snapshot `FileHandle`,
+hashes those bytes against AQ, and sends a private copy to the Python bridge.
+The bridge deserializes the bytes into an in-memory read-only SQLite connection;
+it never reopens the snapshot pathname. The report records AQ identity and
+inspected snapshot hash/size and requires equality. A source or snapshot A→B→A
+pathname swap can therefore inspect only descriptor-bound A bytes or fail closed;
+it can never report lineage A for inspection B.
 Node has no portable descriptor-bound unlink. Cleanup therefore truncates and
 fsyncs the exact owned snapshot handle, moves the directory into an exclusive
 quarantine container, and validates the moved zero-byte identity. The tombstone

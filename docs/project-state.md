@@ -64,7 +64,9 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   evidence refresh required, incompatible or unknown. It never reuses pinned
   ELF/DB48/DB49/DB50 evidence automatically, including on an exact SQLite-only
   match. Its source boundary opens the validated AQ database once, copies that
-  exact descriptor into an exclusive private read-only snapshot, verifies the
+  exact descriptor into an exclusive private read-only snapshot, reads the
+  inspection bytes from that still-open handle so the bridge never reopens its
+  pathname, verifies the
   snapshot SHA-256/size before and after SQLite inspection, and revalidates the
   source AQ commit before reporting. Its productive TypeScript/JavaScript API accepts only an AQ store plus
   committed identity, or an explicit fully revalidated `latest`; it accepts no
