@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K43 — field-scoped shadow, public delivery and supported state/form projection
+### K10–K44 — field-scoped shadow, public delivery and supported state/form consumption
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -681,6 +681,23 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Offline generation and source-bound validation are GO; all downstream
   consumption, authority, production, delivery and Android gates remain
   NO-GO.
+- K44 adds an explicit-opt-in, stdout-only local shadow consumer over the exact
+  source-bound K43 artifact. It validates K43 before building private indexes,
+  returns only deep-frozen clones, then repeats source-bound validation and
+  requires the artifact fingerprint to remain exact before returning the
+  consumer. Direct factories remain `NOT_EXECUTED`; only the private runner
+  finalization can report GO. There is no persisted consumer, `Character[]`,
+  apply/overlay, authority, writer, network, publisher, R2 or Android path.
+- The real shadow indexes 10,651 states across 5,759 card IDs and 12,171
+  release/awakening/form transitions across 4,497 participating card IDs.
+  Real state and transition lookups returned frozen structural clones. Two
+  independent canonical reports were byte-identical at 3,774 bytes with
+  SHA-256
+  `bd8a8e1479ebf174331a17c87687a8a0221d5304f80969c26a3e488ed8fb69a8`.
+  Measured peak RSS was 1,052,553,216 and 1,051,172,864 bytes; the post-review
+  verification measured 1,047,080,960 bytes, all below the exclusive 1 GiB
+  ceiling. Local shadow consumption is GO; persistence and every authority,
+  production, delivery and Android boundary remain NO-GO.
 
 ## Operating Constraints
 

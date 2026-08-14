@@ -1,0 +1,119 @@
+import {
+    validateCharacterStateProductProjectionArtifact,
+    CharacterStateProductProjectionSourceOptions,
+} from "./state-product-projection";
+import {
+    CHARACTER_STATE_PRODUCT_SHADOW_REPORT_LIMIT_BYTES,
+    CHARACTER_STATE_PRODUCT_SHADOW_RSS_LIMIT_BYTES,
+    CharacterStateProductShadowConsumer,
+} from "./state-product-shadow-contract";
+import {
+    assertCharacterStateProductShadowArtifactStable,
+    assertCharacterStateProductShadowSourceBound,
+    assertPinnedCharacterStateProductShadowDataset,
+    createCharacterStateProductShadowConsumer,
+    fingerprintCharacterStateProductShadowArtifact,
+} from "./state-product-shadow";
+
+export interface CharacterStateProductShadowRunOptions extends CharacterStateProductProjectionSourceOptions {
+    optIn: true;
+    k43Root: string;
+}
+
+function authorizeValidatedConsumer(consumer: Readonly<CharacterStateProductShadowConsumer>): Readonly<CharacterStateProductShadowConsumer> {
+    const report = Object.freeze({
+        ...consumer.report,
+        inputIntegrity: Object.freeze({
+            ...consumer.report.inputIntegrity,
+            k43ValidatedOnlyBySourceBoundApi: true as const,
+            sourceBoundValidationBeforeLookup: "GO" as const,
+            sourceBoundValidationAfterLookup: "GO" as const,
+            exactK43ArtifactIdentityStable: true as const,
+            exactSourceLineageStable: true as const,
+        }),
+        readiness: Object.freeze({ ...consumer.report.readiness, consumerShadow: "GO" as const }),
+    });
+    return Object.freeze({ report, lookup: consumer.lookup });
+}
+
+class RssGuard {
+    private peak = Math.max(process.memoryUsage().rss, process.resourceUsage().maxRSS * 1024);
+    private exceeded = false;
+    private readonly timer = setInterval(() => this.observe(), 10);
+    constructor() { this.timer.unref(); }
+    private observe(): void {
+        this.peak = Math.max(this.peak, process.memoryUsage().rss, process.resourceUsage().maxRSS * 1024);
+        this.exceeded ||= this.peak >= CHARACTER_STATE_PRODUCT_SHADOW_RSS_LIMIT_BYTES;
+    }
+    sample(): void { this.observe(); if (this.exceeded) throw new Error(`K44 RSS limit reached: ${this.peak}`); }
+    stop(): number { clearInterval(this.timer); this.sample(); return this.peak; }
+    dispose(): void { clearInterval(this.timer); }
+}
+
+export async function runCharacterStateProductShadow(options: CharacterStateProductShadowRunOptions): Promise<Readonly<CharacterStateProductShadowConsumer>> {
+    if (options?.optIn !== true) throw new Error("K44 requires explicit opt-in");
+    if (!options.sidecarRoot || !options.productionRoot || !options.fyiRoot || !options.k43Root) throw new Error("K44 requires all explicit roots");
+    if (typeof (global as any).gc !== "function") throw new Error("K44 requires Node --expose-gc");
+    const rss = new RssGuard();
+    try {
+        const sourceOptions = { artifactRoot: options.k43Root, sidecarRoot: options.sidecarRoot, productionRoot: options.productionRoot, fyiRoot: options.fyiRoot };
+        let before = await validateCharacterStateProductProjectionArtifact(sourceOptions);
+        assertCharacterStateProductShadowSourceBound(before);
+        assertPinnedCharacterStateProductShadowDataset(before.artifacts.dataset);
+        const consumer = createCharacterStateProductShadowConsumer(before.artifacts);
+        const beforeFingerprint = fingerprintCharacterStateProductShadowArtifact(before.artifacts);
+        rss.sample();
+        before = undefined as any;
+        (global as any).gc?.();
+        let after = await validateCharacterStateProductProjectionArtifact(sourceOptions);
+        assertCharacterStateProductShadowSourceBound(after);
+        assertPinnedCharacterStateProductShadowDataset(after.artifacts.dataset);
+        assertCharacterStateProductShadowArtifactStable(beforeFingerprint, fingerprintCharacterStateProductShadowArtifact(after.artifacts));
+        after = undefined as any;
+        (global as any).gc();
+        rss.sample();
+        rss.stop();
+        return authorizeValidatedConsumer(consumer);
+    } finally { rss.dispose(); }
+}
+
+function value(args: string[], name: string): string | undefined {
+    const indexes = args.flatMap((item, index) => item === name ? [index] : []);
+    if (indexes.length > 1) throw new Error(`duplicate ${name}`);
+    if (!indexes.length) return undefined;
+    const result = args[indexes[0] + 1];
+    if (!result || result.startsWith("--")) throw new Error(`missing value for ${name}`);
+    return result;
+}
+function required(args: string[], name: string): string {
+    const result = value(args, name);
+    if (!result) throw new Error(`K44 requires ${name}`);
+    return result;
+}
+
+export function parseCharacterStateProductShadowCli(args: string[]): CharacterStateProductShadowRunOptions {
+    const roots = ["--sidecar-root", "--production-root", "--fyi-root", "--k43-root"];
+    const allowed = new Set(["--opt-in-k44", ...roots]);
+    for (let index = 0; index < args.length; index++) {
+        const argument = args[index];
+        if (!allowed.has(argument)) throw new Error(`K44 unsupported argument ${argument}`);
+        if (argument !== "--opt-in-k44") {
+            const next = args[index + 1];
+            if (!next || next.startsWith("--")) throw new Error(`missing value for ${argument}`);
+            index++;
+        }
+    }
+    if (args.filter(item => item === "--opt-in-k44").length !== 1) throw new Error("K44 requires exactly one --opt-in-k44");
+    return {
+        optIn: true, sidecarRoot: required(args, "--sidecar-root"), productionRoot: required(args, "--production-root"),
+        fyiRoot: required(args, "--fyi-root"), k43Root: required(args, "--k43-root"),
+    };
+}
+
+async function run(): Promise<void> {
+    const consumer = await runCharacterStateProductShadow(parseCharacterStateProductShadowCli(process.argv.slice(2)));
+    const stdout = `${JSON.stringify(consumer.report, null, 2)}\n`;
+    if (Buffer.byteLength(stdout) >= CHARACTER_STATE_PRODUCT_SHADOW_REPORT_LIMIT_BYTES) throw new Error("K44 stdout report byte limit reached");
+    process.stdout.write(stdout);
+}
+if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });
