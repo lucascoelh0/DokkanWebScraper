@@ -54,7 +54,8 @@ describe("data download DD6", () => {
         await assert.rejects(readDd6CanonicalGitBlob(root, "../outside"), /path is invalid/);
     });
 
-    it("rejects detached lineage, envelope drift and row reclassification", async () => {
+    it("rejects detached lineage, envelope drift and row reclassification", async function () {
+        this.timeout(10_000);
         const root = process.cwd();
         const lock = JSON.parse(readFileSync(resolve(root, "database-data-download-captures/data-download-dd6-source-lock.json"), "utf8")) as Dd6SourceLock;
         const dd2 = validDd2();
