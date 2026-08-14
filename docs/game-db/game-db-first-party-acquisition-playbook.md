@@ -22,7 +22,9 @@ We can already do all of this ourselves once we have a readable `database.db`:
 Today, the remaining gap is specifically:
 
 - how to obtain the latest DB artifact ourselves
-- how to decrypt it when the downloaded artifact is not plain SQLite
+- how to add a separately reviewed productive decrypt adapter when the downloaded
+  artifact is not plain SQLite; DQ0-DQ4 currently provides lineage/storage and
+  injected tests only
 
 ## Historical interception clues
 
@@ -302,23 +304,28 @@ retained. It also writes a separate operational receipt with mode
 Receipt time never affects immutable metadata, identity, marker or reuse. No
 descriptor endpoint, login or refresh request is implemented.
 
-### 5. Decrypt locally only when necessary
+### 5. Derived SQLite foundation (no real decryption)
 
-This is a separate future gate and is NO-GO during AQ0–AQ6. AQ terminates at the
-official artifact, possibly `encrypted_or_packaged`. The historical SQLCipher
-helper may still be useful for development after separate authorization, with
-the key outside Git/logs:
+AQ terminates at the official artifact, possibly `encrypted_or_packaged`.
+DQ0-DQ4 now defines the separate derived lineage/store boundary documented in
+[`specs/game-db-derived-sqlite-artifact-dq0-dq4.md`](specs/game-db-derived-sqlite-artifact-dq0-dq4.md).
+Its runner accepts only a fully revalidated AQ commit and uses an injected secret
+provider/transformer in tests. It commits validated plain SQLite into a separate
+content-addressed namespace with deterministic metadata, marker-last promotion
+and a sanitized receipt.
 
-```powershell
-.\.venv-sqlcipher\Scripts\python game-db\game-db-decrypt-sqlcipher.py --input-path "<immutable-artifact-path>" --output-path "<local-decrypted-sqlite-path>" --key "<local-key>" --cipher-compatibility 4
-```
+The injected transformer receives an AQ input handle, a controlled 112 MiB
+sequential sink and an `AbortSignal`; it never receives a raw output handle.
+Timeout defaults to and is capped at 120 seconds. Derived validation requires
+both the derived store root and the AQ source-store root so the declared parent
+identity/SHA/size/state can be materially revalidated. A derived store alone is
+not C4 authority.
 
-The acquisition metadata never contains the key or the decrypted output path.
-Its loose output is not an AQ or C4 artifact. A productive decryption/import gate
-must consume the parent AQ commit and produce a new deterministic derived commit
-containing parent identity, pinned tool/version, required non-secret parameters,
-result SHA/size/state, marker/metadata and a sanitized receipt. Only that derived
-commit may enter C4; the receipt is evidence, not byte authority.
+No real SQLCipher adapter or productive secret provider exists in DQ0-DQ4. The
+existing Python helper is historical/nonproductive and must not be invoked as a
+pipeline gate. In particular, passing a key through `--key` or any other command
+line argument is prohibited; argv is outside the approved secret boundary. A
+loose helper output is not an AQ, DQ or C4 artifact.
 
 ### 6. Validate the SQLite read-only and compare C4
 
@@ -342,10 +349,11 @@ Snapshot SHA/size are checked before and after inspection, the AQ source commit 
 revalidated before reporting, and the report requires AQ identity/hash to equal
 the inspected snapshot identity/hash. `latest` is accepted only through the
 explicit flag; its journal winner and materialized commit are revalidated.
-The productive API and CLI accept no arbitrary SQLite path. A locally decrypted
-SQLite therefore needs a separately reviewed deterministic derived-artifact
-commit before C4; the loose decrypted pathname is not C4 authority. Any
-replacement or mutation fails closed without emitting a compatibility report.
+The productive API and CLI accept no arbitrary SQLite path. DQ0-DQ4 can now
+establish a deterministic derived-artifact commit, but C4 does not consume that
+contract in this slice; the loose decrypted pathname and the DQ receipt are not
+C4 authority. Any replacement or mutation fails closed without emitting a
+compatibility report.
 Never run DB0–DB50 cumulatively for this refresh.
 
 ## Threat model

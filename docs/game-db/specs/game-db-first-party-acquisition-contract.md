@@ -101,18 +101,21 @@ not decrypt it, write this CSV export, invoke the update runner or promote any
 production data.
 
 AQ0–AQ6 ends at the official acquired artifact, which may still be encrypted.
-A loose decrypted SQLite has no productive derived-artifact contract and must
-not be sent directly to C4 or treated as an AQ commit. Producing a first-party
-export remains a later, explicit transformation:
+A loose decrypted SQLite must not be sent directly to C4 or treated as an AQ
+commit. DQ0-DQ4 now defines the first bounded derived-artifact contract in
+[`game-db-derived-sqlite-artifact-dq0-dq4.md`](game-db-derived-sqlite-artifact-dq0-dq4.md),
+but provides only an injected test transformer and does not integrate C4.
+Producing a first-party export remains a later, explicit transformation:
 
 1. acquire and validate the Global EN artifact under AQ0–AQ6;
-2. after separate authorization, run a future decryption/import gate if the
-   artifact is `encrypted_or_packaged`;
-3. have that gate consume the parent AQ commit and produce a new deterministic
+2. after separate authorization, add a separately reviewed productive secret
+   provider and SQLCipher adapter if the artifact is `encrypted_or_packaged`;
+3. have DQ consume the parent AQ commit and produce a new deterministic
    derived commit containing the parent AQ identity, pinned tool/version,
    required non-secret parameters, result SHA/size/state, deterministic metadata
    and marker, plus a sanitized operational receipt;
-4. run descriptor-bound read-only SQLite/C4 only on that derived commit;
+4. after a separate C4 integration review, run descriptor-bound read-only
+   SQLite/C4 only on that derived commit;
 5. write the normalized CSV tables;
 6. write this contract's `metadata.json`;
 7. place the export in a stable folder the runner can consume.
@@ -130,6 +133,19 @@ commit; a legacy `latest.json` cache is never authority.
 Operational receipts are optional sanitized evidence of an operation; they are
 not deterministic identity and cannot authorize bytes or produce
 `acquiredArtifactState`.
+
+The DQ validator requires both the derived store root and AQ source-store root.
+It materially revalidates the parent identity and its SHA, size and state; a
+self-consistent derived commit or derived root alone is not lineage authority.
+Any future C4 integration must therefore receive both trust roots. Receipt or
+clock failure after complete material validation does not revoke the valid
+marker-last commit, though the operation still reports failure.
+
+DQ's historical Python helper is not a productive adapter. Keys must never be
+passed in argv or environment contracts; DQ0-DQ4 passes runtime secret bytes only
+from an injected provider to an injected transformer that receives an open AQ
+input, a controlled bounded output sink and an `AbortSignal` rather than
+arbitrary paths or a raw output handle.
 
 ## Threat model
 

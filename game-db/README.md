@@ -194,11 +194,27 @@ a future separately reviewed bounded GC.
 
 AQ0–AQ6 terminates at the official acquired artifact, which may be
 `encrypted_or_packaged`. A loose decrypted SQLite does not belong to the
-productive chain and cannot be passed to C4. A future separate derivation gate
-must consume the parent AQ commit and create a new deterministic commit containing
-the parent identity, pinned tool/version, required non-secret parameters,
-result SHA/size/state, marker/metadata and a sanitized operational receipt. Only
-that derived commit may enter C4.
+productive chain and cannot be passed to C4. DQ0-DQ4 now provides the bounded
+derived contract, injected test runner and validator in
+[`../docs/game-db/specs/game-db-derived-sqlite-artifact-dq0-dq4.md`](../docs/game-db/specs/game-db-derived-sqlite-artifact-dq0-dq4.md).
+It accepts only a fully revalidated AQ selector, writes a separate deterministic
+content-addressed commit and keeps operational receipts outside identity.
+The injected transformer receives a bounded sequential sink and `AbortSignal`,
+not a raw output handle. Its default and maximum timeout is 120 seconds; timeout
+and cancellation revoke late writes without waiting for an unresolved Promise.
+Public runner results return only a receipt filename, not an absolute path.
+
+Derived validation requires both the derived `storeRoot` and AQ
+`sourceStoreRoot`, then revalidates the parent AQ identity, SHA, size and state.
+A derived root by itself is not sufficient lineage authority, and any future C4
+consumer must be given both trust roots. Operational clock/receipt failure after
+a fully validated marker-last commit does not remove that material commit.
+
+DQ0-DQ4 still has no real SQLCipher adapter or productive secret provider, and
+C4 does not consume derived commits yet. The historical Python helper is
+nonproductive; passing keys in command-line arguments is prohibited because
+process arguments are not an approved secret boundary. Real decryption and C4
+integration remain separate NO-GO gates.
 
 ### Acquisition threat model
 

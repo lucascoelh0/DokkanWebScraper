@@ -1,6 +1,6 @@
 # Dokkanpanion Project State
 
-**Last updated**: 2026-08-13
+**Last updated**: 2026-08-14
 
 This is the concise operational checkpoint for future sessions. Durable
 decisions live in [`adr/`](adr/), and current workflow instructions live in
@@ -93,16 +93,40 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   concurrent writers never replace one shared pointer pathname. `latest.json`,
   if present from an older checkout, is a dispensable cache and has no authority.
 - AQ0–AQ6 ends at the official acquired artifact, which may remain encrypted.
-  A decrypted loose SQLite has no productive lineage contract yet. A future
-  separately reviewed derivation gate must bind its output commit to the parent
-  AQ identity, pinned tool/version, non-secret parameters and result SHA/size/state
-  before that derived commit can enter C4.
+  A decrypted loose SQLite has no authority. DQ0-DQ4 now supplies the bounded
+  derived lineage/store contract described below, while productive decryption
+  and C4 consumption remain separate future gates.
 - Offline descriptor/artifact validation remains the only reviewable AQ path.
   Before integration, the next gate is the independent integration decision;
   after integration, the next separate gate is one explicitly authorized real
   manual acquisition. No real acquisition was authorized or executed in this
   lineage. Official download, decryption, refresh, publication, production
   promotion and Android otherwise remain NO-GO pending independent gates.
+
+### DQ0–DQ4 — derived decrypted SQLite lineage/storage foundation
+
+- DQ0-DQ4 establishes an offline, production-shaped derived commit boundary
+  from a fully revalidated AQ identity into a separate content-addressed store.
+  It has no arbitrary input path mode and does not mutate AQ commits.
+- Deterministic metadata binds the parent AQ identity/source SHA/size/state,
+  transform kind, pinned implementation identity/version/hash, canonical
+  non-secret parameters and plain-SQLite output SHA/size/state. Timestamps and
+  results live only in separate sanitized operational receipts.
+- The runner currently accepts only injected test secret providers and
+  transformers. It exposes no key argv/environment contract, subprocess adapter,
+  productive Python path or real-decryption capability. Transformers receive a
+  sequential 112 MiB sink plus `AbortSignal`, with a bounded 120-second maximum;
+  raw output handles are not exposed. Sentinel tests cover metadata, markers,
+  receipts, output, filenames, results and errors.
+- Output is capped at 112 MiB, hashed, checked as structurally plain SQLite and
+  copied independently into a create-only marker-last commit. Same-output reuse
+  requires full material validation; corrupt destinations fail closed and prior
+  valid commits remain intact.
+- The strict derived validator requires both the derived and AQ trust roots and
+  materially revalidates parent identity/SHA/size/state. A derived root alone is
+  insufficient; any future C4 integration must provide both. C4 was not modified.
+  Real SQLCipher execution, real secrets, decryption, C4 consumption, export,
+  refresh, publication, R2 and Android remain NO-GO.
 
 ### E0–E9 — events, stages, enemies and bosses
 
