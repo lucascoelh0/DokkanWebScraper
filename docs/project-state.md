@@ -590,9 +590,31 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   and `56e9f18d317110baa32b396737c053b4cdf689b29c0dfb369215474dc8678f3e`.
   The 13 focused tests and the final 178-test domain suite passed, with eight
   Windows symlink fixtures pending; final read-only contract review found no
-  P0-P2. K40 dry-run is GO and publication is `NOT_EXECUTED`; authenticated
-  reads, immutable writes and manifest promotion remain pending explicit user
-  authorization. Android, consumers, authority and production remain NO-GO.
+  P0-P2. K40 dry-run is GO.
+- The separately authorized K40 publication at `2026-08-14T21:01:58.257Z`
+  rebuilt publication ID
+  `ae0b1626a7ec8de4f42c1d48524bb19966274504644021fc66c681ecebe36804`,
+  conditionally created and directly verified all four immutable objects
+  (253,735 bytes), then conditionally created and directly verified the mutable
+  manifest last. The result was `COMPLETED_CONDITIONALLY`, with zero deletes
+  and no rollback attempt. The pre-write K40/K39/K38 report hashes were
+  `10b50453916048e3d238d4f593ae289bb406f0da78417ee1f4b11c82e65dcdbc`,
+  `125813a33a676306047b73d46f1ea9538c7cde10baeb4c7ad11669b2c325501d`
+  and `b4d4bf99279ec001af6e143b892013c85dec33f621d417c2e1708b79351fe02a`.
+- The first public post-publish preflight encountered a transient cached 404
+  for the newly created gzip payload while the other three immutables and
+  manifest already matched. A read-only direct retry returned the expected
+  247,261-byte gzip with `CF-Cache-Status: EXPIRED`; no repair write occurred.
+  The final full read-only K40 rerun at `2026-08-14T21:07:41.393Z` found all
+  four immutable objects and the mutable manifest matching, with zero missing
+  immutable bytes and a conservative projected bucket upper bound of
+  365,007,159 bytes. Its K40/K39/K38 report hashes were
+  `b1d720580242a459f5f7d444a222d1486faf25237f3c50020681fa2552ec13ba`,
+  `41e4e3ee69a83e5d87484cf09813e7df00e94b9918d7bf75bb5d10cc286456f8`
+  and `ddd68ba68a9034ae1c44edcbcf18a9a9a50eb1331717e0ec5af202769b06eec3`.
+  K40 publication and public verification are GO. Android, consumers,
+  authority and production remain NO-GO; any further R2 mutation remains a
+  separate action requiring authorization.
 
 ## Operating Constraints
 

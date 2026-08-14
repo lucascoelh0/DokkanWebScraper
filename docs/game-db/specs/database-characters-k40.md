@@ -137,14 +137,47 @@ and the nested 5,205-byte K38 report has SHA-256
 The run ended with `dryRun: GO` and `publication: NOT_EXECUTED` before reading
 credential environment variables or constructing the S3 adapter.
 
+## Authorized publication and public verification
+
+The separately authorized publish invocation at `2026-08-14T21:01:58.257Z`
+rebuilt the same publication ID, uploaded the four absent immutable objects in
+the fixed K37 order, and promoted the previously absent mutable manifest last.
+All 253,735 immutable bytes were verified directly after upload, the final
+manifest bytes and metadata were verified directly after its conditional
+create, and the invocation completed as `COMPLETED_CONDITIONALLY`. It performed
+zero deletes and attempted no rollback. The invocation's pre-write K40 report
+is 13,599 bytes with SHA-256
+`10b50453916048e3d238d4f593ae289bb406f0da78417ee1f4b11c82e65dcdbc`;
+the nested K39 and K38 report hashes are respectively
+`125813a33a676306047b73d46f1ea9538c7cde10baeb4c7ad11669b2c325501d`
+and `b4d4bf99279ec001af6e143b892013c85dec33f621d417c2e1708b79351fe02a`.
+
+The first public post-publication preflight observed three immutable matches,
+the matching mutable manifest, and a transient cached 404 for the gzip payload.
+A direct unauthenticated retry at `2026-08-14T21:06:47Z` returned `200`, the
+expected 247,261-byte `application/gzip` object, immutable cache metadata, and
+`CF-Cache-Status: EXPIRED`, consistent with expiry of the pre-creation negative
+cache entry. No repair write was made.
+
+The final read-only K40 rerun at `2026-08-14T21:07:41.393Z` found all four
+immutable objects and the mutable manifest matching. It read 260,894 bytes,
+planned zero immutable bytes, retained only the 7,159-byte manifest candidate
+in the conservative hypothetical budget, and projected 365,007,159 bucket
+bytes. Its 13,638-byte K40 report has SHA-256
+`b1d720580242a459f5f7d444a222d1486faf25237f3c50020681fa2552ec13ba`;
+the nested 8,630-byte K39 and 5,988-byte K38 report hashes are respectively
+`41e4e3ee69a83e5d87484cf09813e7df00e94b9918d7bf75bb5d10cc286456f8`
+and `ddd68ba68a9034ae1c44edcbcf18a9a9a50eb1331717e0ec5af202769b06eec3`.
+
 ## Authorization and readiness
 
 | Scope | Decision |
 | --- | --- |
 | K40 implementation | **GO** |
 | authorized K40 real dry-run at `2026-08-14T20:52:37.491Z` | **GO** |
-| authenticated direct reads in a future publish invocation | **REQUIRES PUBLISH AUTHORIZATION** |
-| immutable writes or mutable-manifest promotion | **REQUIRES EXPLICIT USER AUTHORIZATION** |
+| authorized K40 publication at `2026-08-14T21:01:58.257Z` | **COMPLETED CONDITIONALLY** |
+| final public K40 verification at `2026-08-14T21:07:41.393Z` | **GO** |
+| any further immutable write or mutable-manifest promotion | **REQUIRES EXPLICIT USER AUTHORIZATION** |
 | delete or rollback | **NO-GO** |
 | Android or consumer | **NO-GO** |
 | authority or production | **NO-GO** |
