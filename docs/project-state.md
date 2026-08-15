@@ -771,6 +771,24 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   explicit semantic decision about values/percentages and clause behavior;
   presentation, consumer, authority, production, delivery, R2 and Android all
   remain NO-GO.
+- K49 adds an explicit-opt-in, offline/stdout-only semantic scope audit over
+  exact source-bound K48 plus the pinned K3 skill sidecar. It compacts the eight
+  typed `leader_skills` fields, loads K3 twice, validates K48 before/after and
+  requires stable identities and fingerprints. Description text is reduced to
+  an audit-only boolean and is never emitted or used as identity/join input.
+- Of 16,119 unique effect rows and 49,435 included references, K49 labels only
+  3,848 rows and 12,296 references as `partial`: exact type-82 shapes whose
+  vector position 1 matches an exact HP/ATK/DEF percentage phrase. Five type-82
+  outliers remain unknown, as do the other 12,266 rows; total unknown coverage
+  is 12,271 rows and 37,139 references. Missing rows and structural mismatches
+  are zero.
+- The first real attempt failed closed on multi-clause descriptions. After the
+  classifier was corrected to inspect every exact phrase-bound occurrence, two
+  complete runs produced identical 7,708-byte reports with SHA-256
+  `bf80061b70ac9630cee74b7bffebb34a440e4fabda98fa3e4e69c76a3af31844`.
+  Contract review found no remaining P0-P2. Leader-value scope audit is GO;
+  opaque projection, HP/ATK/DEF and selector semantics, clause composition,
+  consumer, authority, production, delivery, R2 and Android remain NO-GO.
 
 ## Operating Constraints
 
