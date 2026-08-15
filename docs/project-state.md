@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K46 — field-scoped shadow, state/form consumption and leader structural projection
+### K10–K47 — field-scoped shadow, state/form consumption and leader association scope
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -736,6 +736,21 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   896,233,472 bytes. Offline generation and source-bound validation are GO;
   consumers, effect-target association, clause semantics, presentation,
   production, delivery, R2 and Android remain NO-GO.
+- K47 reconstructs the structural `leader_skill` to target-set to target-row
+  joins from the exact pinned K3 raw IDs and proves them against source-bound
+  K46. All 49,435 effect associations reproduce the 34,914 flattened targets
+  byte-for-byte and in source order. The 12,720 repeated occurrences are
+  explained completely by repeated target-set expansion; missing effect rows,
+  missing target rows and mismatched states are all zero.
+- Two K47 runs produced the same canonical 5,304-byte stdout report with
+  SHA-256
+  `7841d8ad3e82756847a0c2186ed78f6f74d4d75c4b73c8c2765865326352e59b`.
+  The K3 association-input fingerprint is
+  `a92f8558fa47bddc244ad229db2ff0bcd56def25a0d00ef6020dfe8e0ff3e62b`,
+  and measured peak RSS was 916,099,072 bytes. Structural association scope
+  and the next ID-only association projection are GO; semantics, presentation,
+  product projection/consumer, production, delivery, R2 and Android remain
+  NO-GO.
 
 ## Operating Constraints
 
