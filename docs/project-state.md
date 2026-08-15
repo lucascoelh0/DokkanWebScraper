@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K48 — field-scoped shadow, state/form consumption and leader association projection
+### K10–K50 — field-scoped shadow, state/form consumption and leader native semantics
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -789,6 +789,25 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Contract review found no remaining P0-P2. Leader-value scope audit is GO;
   opaque projection, HP/ATK/DEF and selector semantics, clause composition,
   consumer, authority, production, delivery, R2 and Android remain NO-GO.
+- K50 binds K49 and source-bound K48/K3 to the exact 95,662,296-byte AArch64
+  `libcocos2dcpp.so` (SHA-256
+  `7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a`).
+  The offline audit pins eight native code regions, the 15-entry
+  `TeamingPower` efficacy dispatch initializer, seven `LeaderSkill` SQLite
+  column bindings and the battle ability factory's runtime-field transfer.
+- Native type 82 is now structurally supported as an element-or-awakening
+  bitmask in vector position 0 plus a common HP/ATK/DEF modifier in position 1;
+  position 2 is not read by that handler. The four `calc_option=0` rows are
+  flat-point bonuses and the 3,849 `calc_option=2` rows are proportional
+  modifiers divided by 100. All 3,853 rows and 12,310 K48 references validate,
+  with 38 mask values, 36 modifier values and zero invalid vectors.
+- Two complete source-bound runs produced identical 8,001-byte reports with
+  SHA-256
+  `27b484577e2727805b6b9aeae7861f4f00cf2ee18f357f173ffe613e39595802`
+  and empty stderr. Native/type-82 field semantics are GO as evidence only.
+  Target-type names, sub-target domain meanings, the behavior of the 17
+  non-null causalities, battle lifecycle, battle stacking/composition, product
+  projection, authority, production, delivery, R2 and Android remain NO-GO.
 
 ## Operating Constraints
 

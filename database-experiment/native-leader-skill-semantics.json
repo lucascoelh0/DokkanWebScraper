@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-native-leader-skill-semantics-evidence",
+  "contractVersion": "1.0.0",
+  "nativeRuntime": {
+    "fileName": "libcocos2dcpp.so",
+    "sha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+    "sizeBytes": 95662296,
+    "machine": 183
+  },
+  "codeRegions": [
+    { "role": "leader_skill_sqlite_constructor", "symbol": "_ZN11LeaderSkillC2EPN7SQLite33RowE", "vma": 54023696, "sizeBytes": 1700, "codeSha256": "ee496de9e8730fa4269b8988e7c7f763b37997d102e82dc244bf61fe76c3a914" },
+    { "role": "leader_skill_effect_value_accessor", "symbol": "_ZNK11LeaderSkill11getEffValueEi", "vma": 54025396, "sizeBytes": 32, "codeSha256": "0c01a40e52a33e1d47d98f105fb27773eaead9df0fc506ed8b9ac43bc9281164" },
+    { "role": "leader_skill_sub_target_accessor", "symbol": "_ZNK11LeaderSkill19getSubTargetTypeSetEv", "vma": 54025428, "sizeBytes": 56, "codeSha256": "b27824e8f907a3bf75fe524355eaa0c3e22cbed81cbc9b773b7418b3fb032134" },
+    { "role": "teaming_power_type82_handler", "symbol": "_ZN12TeamingPower10Calculator30leaderSkillElementTypeHpAtkDefERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "vma": 69078440, "sizeBytes": 380, "codeSha256": "7a5333e978a612ed8c973e15d8fcc4a6db6f8607cd5b7daed91c77a4fb387f91" },
+    { "role": "teaming_power_calculator", "symbol": "_ZN12TeamingPower10Calculator9calculateERK8UserDeckRKNSt6__ndk110shared_ptrI14LeaderSkillSetEERKNS5_I8UserCardEERKNS_6WeightEb", "vma": 69079756, "sizeBytes": 2708, "codeSha256": "e7937d291dc0da05517995fe2141c88716858d5b599c06cec39e07f7a246db95" },
+    { "role": "teaming_power_increase_value", "symbol": "_ZN12TeamingPower10Calculator16getIncreaseValueERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "vma": 69082544, "sizeBytes": 120, "codeSha256": "4c396d91b0bcc50d74ebcf343504c2a3b941f4ab92a077a0ef14140dc430f3f0" },
+    { "role": "teaming_power_dispatch_initializer", "symbol": null, "vma": 69084980, "sizeBytes": 1072, "codeSha256": "9ea889c9603481df580b3f0d10a9af1bff1736fce03020bb783cb319a5e7efcc" },
+    { "role": "battle_ability_leader_skill_factory", "symbol": "_ZN14AbilityManager17createLeaderSkillEiii", "vma": 64388884, "sizeBytes": 1584, "codeSha256": "43f991cc662732c4ec5e4ce995f03112e8c5948a2911ba4bbeb7c7cbe4df60b6" }
+  ],
+  "constructorColumns": [
+    { "name": "exec_timing_type", "literalVma": 32456068, "objectOffset": 56 },
+    { "name": "efficacy_type", "literalVma": 32246168, "objectOffset": 60 },
+    { "name": "target_type", "literalVma": 32873222, "objectOffset": 64 },
+    { "name": "calc_option", "literalVma": 33024419, "objectOffset": 68 },
+    { "name": "causality_conditions", "literalVma": 32873234, "objectOffset": 72 },
+    { "name": "efficacy_values", "literalVma": 31978297, "objectOffset": 112 },
+    { "name": "sub_target_type_set_id", "literalVma": 32490856, "objectOffset": 136 }
+  ],
+  "dispatch": {
+    "mapSymbol": "_ZN12TeamingPower10Calculator24SKILL_EFFICACY_FUNCTIONSE",
+    "mapVma": 96096208,
+    "mapSizeBytes": 24,
+    "initializerRelocation": { "offset": 95075352, "type": 1027, "addend": 69084980 },
+    "entries": [
+      { "efficacyType": 1, "gotVma": 95140416, "symbol": "_ZN12TeamingPower10Calculator16leaderSkillAtkUpERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69075744 },
+      { "efficacyType": 2, "gotVma": 95140424, "symbol": "_ZN12TeamingPower10Calculator16leaderSkillDefUpERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69075944 },
+      { "efficacyType": 3, "gotVma": 95140432, "symbol": "_ZN12TeamingPower10Calculator19leaderSkillAtkDefUpERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69076140 },
+      { "efficacyType": 5, "gotVma": 95140440, "symbol": "_ZN12TeamingPower10Calculator18leaderSkillEnegyUpERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69076412 },
+      { "efficacyType": 16, "gotVma": 95140448, "symbol": "_ZN12TeamingPower10Calculator25leaderSkillElementTypeAtkERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69076524 },
+      { "efficacyType": 17, "gotVma": 95140456, "symbol": "_ZN12TeamingPower10Calculator25leaderSkillElementTypeDefERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69076796 },
+      { "efficacyType": 18, "gotVma": 95140464, "symbol": "_ZN12TeamingPower10Calculator28leaderSkillElementTypeAtkDefERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69077064 },
+      { "efficacyType": 19, "gotVma": 95140472, "symbol": "_ZN12TeamingPower10Calculator24leaderSkillElementTypeHpERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69077400 },
+      { "efficacyType": 20, "gotVma": 95140480, "symbol": "_ZN12TeamingPower10Calculator27leaderSkillElementTypeEnegyERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69077668 },
+      { "efficacyType": 43, "gotVma": 95140488, "symbol": "_ZN12TeamingPower10Calculator16leaderSkillHpAtkERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69077856 },
+      { "efficacyType": 44, "gotVma": 95140496, "symbol": "_ZN12TeamingPower10Calculator27leaderSkillElementTypeHpAtkERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69078108 },
+      { "efficacyType": 82, "gotVma": 95140504, "symbol": "_ZN12TeamingPower10Calculator30leaderSkillElementTypeHpAtkDefERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69078440 },
+      { "efficacyType": 83, "gotVma": 95140512, "symbol": "_ZN12TeamingPower10Calculator38leaderSkillElementTypeEnergyBitpatternERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69078820 },
+      { "efficacyType": 93, "gotVma": 95140520, "symbol": "_ZN12TeamingPower10Calculator34leaderSkillElementTypeBitpatternHpERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69079044 },
+      { "efficacyType": 104, "gotVma": 95140528, "symbol": "_ZN12TeamingPower10Calculator19leaderSkillHpAtkDefERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "symbolVma": 69079348 }
+    ]
+  },
+  "decodedProofs": {
+    "type82Handler": {
+      "selector": "efficacy_values[0]_element_or_awakening_bitmask",
+      "modifier": "efficacy_values[1]",
+      "ignoredValue": "efficacy_values[2]",
+      "affectedStats": ["hp", "atk", "def"],
+      "calcOption0": "flat_points",
+      "calcOption2": "proportional_percent_divided_by_100"
+    },
+    "teamingPower": {
+      "candidateTargetTypes": [2, 12, 13],
+      "subTargetSetFiltersCandidates": true,
+      "matchingRowsAccumulateAdditively": true
+    },
+    "battleFactory": {
+      "transferredFields": ["exec_timing_type", "efficacy_type", "target_type", "calc_option", "causality_conditions", "efficacy_values[0]", "efficacy_values[1]", "efficacy_values[2]", "sub_target_type_set_id"]
+    }
+  },
+  "unresolved": [
+    "target_type_names",
+    "sub_target_domain_meanings",
+    "causality_behavior",
+    "battle_lifecycle",
+    "battle_stacking_and_composition",
+    "product_authority"
+  ]
+}
