@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K50 — field-scoped shadow, state/form consumption and leader native semantics
+### K10–K51 — field-scoped shadow, state/form consumption and leader native semantics
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -808,6 +808,28 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Target-type names, sub-target domain meanings, the behavior of the 17
   non-null causalities, battle lifecycle, battle stacking/composition, product
   projection, authority, production, delivery, R2 and Android remain NO-GO.
+- K51 bridges the K50 LeaderSkill runtime path to the already pinned generic
+  ability target dispatch and sub-target filter factories. The bridge is
+  code-bound end to end: `createLeaderSkill` calls the passive-status factory,
+  the manager vtable binds its add-status call, the passive-status vtable binds
+  target/sub-target getters plus `exec`, and exact PLT/GOT bindings prove
+  `exec -> process -> AbilityEfficacyCore::callEfficacyFunc`. For efficacy type
+  82, raw target `2` is team allies, `12` is super-class allies and `13` is
+  extreme-class allies. Sub-target value type `1` includes a structural card
+  category ID and type `2` excludes it; filters form a sequential `AND` chain,
+  an empty set is identity and duplicate filters are reapplied.
+- The exact type-82 corpus contains 625 nonzero target sets and 1,588 joined
+  rows: 883 category inclusions, 705 exclusions and zero partial/unsupported
+  value types. Of 12,310 K48 effect references, 9,040 carry a set, 3,270 use
+  the empty identity and their expansions contain 15,988 target occurrences.
+  The target raw-enum corpus is 3,788 / 37 / 28 rows for values 2 / 12 / 13.
+- Two complete source-bound runs produced identical 7,875-byte reports with
+  SHA-256
+  `f14fb07fa68ca36dcae121c741281d58e335658a9daf1c3392b2681c742da063`
+  and empty stderr. Type-82 target/category-filter semantics are GO as native
+  evidence only. Causality, battle lifecycle, battle stacking/composition,
+  product projection, authority, production, delivery, R2 and Android remain
+  NO-GO.
 
 ## Operating Constraints
 
