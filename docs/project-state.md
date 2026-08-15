@@ -1,6 +1,6 @@
 # Dokkanpanion Project State
 
-**Last updated**: 2026-08-14
+**Last updated**: 2026-08-15
 
 This is the concise operational checkpoint for future sessions. Durable
 decisions live in [`adr/`](adr/), and current workflow instructions live in
@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K44 — field-scoped shadow, public delivery and supported state/form consumption
+### K10–K45 — field-scoped shadow, state/form consumption and leader structural scope
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -698,6 +698,27 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   verification measured 1,047,080,960 bytes, all below the exclusive 1 GiB
   ceiling. Local shadow consumption is GO; persistence and every authority,
   production, delivery and Android boundary remain NO-GO.
+- K45 adds an explicit-opt-in, offline/stdout-only leader structural scope
+  audit over exact source-bound K43 plus the pinned K3 skill sidecar. All
+  10,651 supported K43 states join exactly to K3 by state ID, source state key,
+  card ID and release state; the only excluded K3 states are the same three
+  `unknown` growth states. Every included state has a leader set.
+- The K45 scope contains 3,506 unique leader-set rows, 49,435 effect references,
+  34,914 target references and 9,405 opaque structured-percent values. These
+  values are inventoried, not interpreted. OR-versus-sum semantics, localized
+  text, product replacement, consumers and authority remain NO-GO. The 59 C3
+  unknown rules belong to the passive C2/C3 comparison and do not filter leader
+  scope or change K9 readiness.
+- K45's public report factory remains `NOT_EXECUTED`; only the private runner
+  can return GO after K43 source-bound validation before/after and two exact K3
+  loads with stable compact fingerprints. K3 member reads use exact-size
+  allocation, no-follow handles, single-link/identity checks and pinned hashes.
+  Two post-hardening real runs produced identical 5,429-byte reports with
+  SHA-256
+  `23679af6c9b208ed66aebc032548545c5d4b922dd8c5e27973bcd1a33c218b34`.
+  Measured peak RSS was 1,010,200,576 bytes, below 1 GiB. Structural scope and
+  the next ID-only projection are GO; all semantic, presentation, production,
+  delivery and Android boundaries remain NO-GO.
 
 ## Operating Constraints
 
