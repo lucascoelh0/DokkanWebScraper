@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K45 — field-scoped shadow, state/form consumption and leader structural scope
+### K10–K46 — field-scoped shadow, state/form consumption and leader structural projection
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -719,6 +719,23 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Measured peak RSS was 1,010,200,576 bytes, below 1 GiB. Structural scope and
   the next ID-only projection are GO; all semantic, presentation, production,
   delivery and Android boundaries remain NO-GO.
+- K46 materializes that supported leader scope as a source-bound local
+  content-addressed projection containing only state identities and structural
+  row references. It preserves K3 source order and multiplicity: all 49,435
+  effect references are distinct per state, while the 34,914 target references
+  contain 12,720 repeated occurrences created by the source effect-to-target-set
+  expansion. K46 does not deduplicate them or claim effect-target association.
+- Two real K46 roots produced byte-identical members. The canonical payload is
+  5,817,631 bytes (SHA-256
+  `98c752e2b15676d1221dfec10e313c01b842c2f197d0e7f99e49885346208500`),
+  and the 204,314-byte gzip has SHA-256
+  `7ff068201c07560ead8c392e3e859fbcb889530844d04609701562788bbcf9fd`.
+  The manifest SHA-256 is
+  `079486e41b880206263d9c7f8e1cde7b1fc419f84e31b0b42deef5fde0d41e9b`;
+  metadata totals 3,928 bytes. Peak RSS values were 889,372,672 and
+  896,233,472 bytes. Offline generation and source-bound validation are GO;
+  consumers, effect-target association, clause semantics, presentation,
+  production, delivery, R2 and Android remain NO-GO.
 
 ## Operating Constraints
 
