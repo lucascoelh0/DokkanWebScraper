@@ -221,7 +221,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   K0–K9 generation evidence is deterministic and every recorded peak stays
   below 1 GiB (K1 is the maximum at 899,956,736 bytes).
 
-### K10–K47 — field-scoped shadow, state/form consumption and leader association scope
+### K10–K48 — field-scoped shadow, state/form consumption and leader association projection
 
 - The reviewed K10–K14 infrastructure is present in this history, remains
   disabled and is available for offline audit. Presence in the repository is
@@ -751,6 +751,26 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   and the next ID-only association projection are GO; semantics, presentation,
   product projection/consumer, production, delivery, R2 and Android remain
   NO-GO.
+- K48 materializes the K47-proven structural association per supported state:
+  each source-ordered `leader_skills` ref carries its structural target-set ID
+  and source-ordered `sub_target_types` refs. The redundant flat target array,
+  percentages, text, raw rows, values and `Character[]` are absent. Validation
+  preserves 49,435 effects, 34,914 targets and 12,720 explained repetitions,
+  with zero missing rows, flatten mismatch, presentation fields or invalid
+  null-target-set associations.
+- Two source-bound K48 roots produced byte-identical members. Canonical JSON is
+  7,774,315 bytes (SHA-256
+  `628a5910530c2b43482b80762dc60ef780f60048b2733caca26c5accf4680525`),
+  and the 224,154-byte gzip has SHA-256
+  `c0409ba742f2ea875d29bc66d7ebec411c37487ff56192dce371b3d2baa36361`.
+  The manifest SHA-256 is
+  `64a6a7b4de421b29265115717c1f1d5a26d726b1f19f275af57499fc60a3c5d4`;
+  metadata totals 5,186 bytes. Peak RSS values were 983,306,240 and
+  981,798,912 bytes. Offline generation and source-bound validation are GO.
+  Advancing from structural refs to a useful leader product now requires an
+  explicit semantic decision about values/percentages and clause behavior;
+  presentation, consumer, authority, production, delivery, R2 and Android all
+  remain NO-GO.
 
 ## Operating Constraints
 
