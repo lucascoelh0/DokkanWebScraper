@@ -830,6 +830,28 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   evidence only. Causality, battle lifecycle, battle stacking/composition,
   product projection, authority, production, delivery, R2 and Android remain
   NO-GO.
+- K52 closes the observed type-82 causality shape as structural evidence only.
+  K3 contains 17 non-null compiled conditions (12 scalar and five binary `&`
+  conjunctions) across 45 K48 references, but omits all six referenced
+  `skill_causalities` rows. K52 discloses that gap and separately binds the
+  exact 95,428,608-byte first-party SQLite by a protected descriptor, SHA-256
+  `3654eb7db9e18dfe4c238abd02bcc06a688ffa6f30aa1ad93fd108dcfeb78265`.
+  The six tuples are all type 35 with zero `cau_val2/3`; missing K48 effects,
+  missing database rows, unsupported expressions and type mismatches are zero.
+- Native evidence pins seven code regions, seven exact call/PLT/GOT bindings,
+  the full causality dispatch table and its type-35 handler slot. The supported
+  statement is limited to every requested bit being witnessed by an eligible
+  card in the runtime-inspected collection; scalar IDs are single predicates
+  and `["&", left, right]` requires both. No human names are attached to the
+  four observed masks. Complete party context, lifecycle, timing, recurrence,
+  reset, duration and stacking remain unknown/NO-GO.
+- Two complete canonical K52 runs produced byte-identical 8,029-byte reports
+  with SHA-256
+  `03886cc00ded6b85b7c5de82a867087812235c848c7616572f599473c908f157`
+  and empty stderr. An enforcement run measured peak RSS at 1,010,421,760
+  bytes, below the exclusive 1 GiB limit. Structural causality and the observed
+  type-35 condition are GO as evidence only; product projection, consumer,
+  authority, production, delivery, R2 and Android remain NO-GO.
 
 ## Operating Constraints
 
