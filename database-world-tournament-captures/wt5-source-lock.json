@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-world-tournament-shadow-source-lock",
+  "contractVersion": "0.6.0",
+  "files": [
+    { "key": "e1_payload", "root": "main", "path": "data/database-events/events-e1-catalog.json", "sizeBytes": 952729, "sha256": "567f54e09bb63427e972bf94e785bdacc92d69370c0ce5d09ef0d56a0d2c3100" },
+    { "key": "e1_manifest", "root": "main", "path": "data/database-events/events-e1-manifest.json", "sizeBytes": 945, "sha256": "7324e85a8ffbd16acf5b367666a864a2bbe286bbbf2b1b02de7224ccecb30ac1" },
+    { "key": "e1_validation", "root": "main", "path": "data/database-events/events-e1-validation.json", "sizeBytes": 184, "sha256": "01ce7bea0676df42ff69c54e6f3cc985ce293dd33e2b9371775e803401abb45e" },
+    { "key": "e5_payload", "root": "main", "path": "data/database-events/events-e5-rewards.json", "sizeBytes": 77316994, "sha256": "c2739eda27146de7e8ea16735ceb1f625878615ab8be601534a5dc28950902bf" },
+    { "key": "e5_manifest", "root": "main", "path": "data/database-events/events-e5-manifest.json", "sizeBytes": 1100, "sha256": "2150155f72b39bea05d56411b45553a7a2364717cbfe06cbbe334bc9bb6df06e" },
+    { "key": "e5_validation", "root": "main", "path": "data/database-events/events-e5-validation.json", "sizeBytes": 159, "sha256": "3209b07b42a9fbfbda2fa64ee6041f0beb4a3c740a3ffd76084df01b90f0990d" },
+    { "key": "e9_payload", "root": "main", "path": "data/database-events/events-e9-readiness.json", "sizeBytes": 6347, "sha256": "3d32ac0a8b0e85ec7a28e2e25e7abb5e26e5592d95dda245eb9b6071a335e052" },
+    { "key": "e9_manifest", "root": "main", "path": "data/database-events/events-e9-manifest.json", "sizeBytes": 1105, "sha256": "0bbc08d1c6728931213b006e0942247a33e60a1e148422f23be4851dbd88f45d" },
+    { "key": "e9_validation", "root": "main", "path": "data/database-events/events-e9-validation.json", "sizeBytes": 149, "sha256": "193a416c65e837fe1a76cbf17800908b842492458629eb3e2876811d9cb7cb6a" },
+    { "key": "s2_payload", "root": "main", "path": "data/database-server/s2/server-s2-roots.json", "sizeBytes": 22976, "sha256": "a4653dbaaf4885d51e13cdfcfa7bec9f7808128119b206ffb0611089e57016f6" },
+    { "key": "s2_manifest", "root": "main", "path": "data/database-server/s2/server-s2-manifest.json", "sizeBytes": 827, "sha256": "258443a37b6e60ac0fec489fabfa61af402384497155a7e1d5d38d38f8f4c1c3" },
+    { "key": "s2_validation", "root": "main", "path": "data/database-server/s2/server-s2-validation.json", "sizeBytes": 196, "sha256": "9fa9648355a0509023bc20be6f8d89db5ce573a9f0e942e51878b9d2bb4f4f03" },
+    { "key": "s7_payload", "root": "main", "path": "data/database-server/s7/server-s7-readiness.json", "sizeBytes": 11571, "sha256": "353b81ce312043770b65d2152dcfb37bbe04e5995fe6118b533622998fc2fb1a" },
+    { "key": "s7_manifest", "root": "main", "path": "data/database-server/s7/server-s7-manifest.json", "sizeBytes": 606, "sha256": "c7ef10dfa521a7d5ecdc3d7bde2f48b339f16aa5b491c7ddb291f22cb49987c5" },
+    { "key": "s7_validation", "root": "main", "path": "data/database-server/s7/server-s7-validation.json", "sizeBytes": 238, "sha256": "f47ae54367af8a1133adbbc62b225d8fc58bfcd1ba3ace773e023cd107897314" },
+    { "key": "h3_payload", "root": "capture", "path": "data/database-server-captures/h3/capture-h3-schedules.json", "sizeBytes": 12270274, "sha256": "9708c70f07480235bb60958fe2d379e250b46e7c75a06ed9a0f5be704b1ba8a2" },
+    { "key": "h3_validation", "root": "capture", "path": "data/database-server-captures/h3/capture-h3-validation.json", "sizeBytes": 184, "sha256": "57b8b05b2905e1d85c8d081dfa18955dbf08018e3a4c1488f4cce874d1021fd4" },
+    { "key": "h7_payload", "root": "capture", "path": "data/database-server-captures/h7/capture-h7-shadow-readiness.json", "sizeBytes": 25263, "sha256": "d712e199634af8890cec032709120500c24a7da9842024015fa4d7aa1441eb20" },
+    { "key": "h7_validation", "root": "capture", "path": "data/database-server-captures/h7/capture-h7-validation.json", "sizeBytes": 289, "sha256": "e38861feff5d9f83f3725d492a109b3e6ce91aeb30d7cd6735e21bf7fd57879c" },
+    { "key": "h7_source_lock", "root": "capture", "path": "database-server-captures/capture-h7-source-lock.json", "sizeBytes": 9116, "sha256": "efe83fb01e6a07ede24449ed2bebb1337657b665668ffa22e0e2615688e1fcfb" },
+    { "key": "h11_payload", "root": "capture", "path": "data/database-server-captures/h11/capture-h11-shadow-parity.json", "sizeBytes": 8054, "sha256": "8921825ce18113e5dee55f02072378d9b42dd963f6aed688e0e427e73535b1eb" },
+    { "key": "h11_validation", "root": "capture", "path": "data/database-server-captures/h11/capture-h11-validation.json", "sizeBytes": 390, "sha256": "9247864e06285a7f6238ffc96ae949cf47155fce1cc29ea1cb017f3781a1d4cb" },
+    { "key": "h11_source_lock", "root": "capture", "path": "database-server-captures/capture-h11-source-lock.json", "sizeBytes": 1106, "sha256": "59cc181d702d9174399bc674cb0dc3b63f2461e3dc04fa36f684a4eec2e2a570" },
+    { "key": "h12_source_lock", "root": "capture", "path": "database-server-captures/capture-h12-source-lock.json", "sizeBytes": 1105, "sha256": "69fde261c804942d49f79b0ed1308efa817325380592ea9182a1c33b6aa45b1b" },
+    { "key": "h12_payload", "root": "capture", "path": "data/database-server-captures/h12/capture-h12-readiness.json", "sizeBytes": 4431, "sha256": "02f304c804da78ce3adc5de9bc033b88491f8a5b0920ebcf5d7af1517b89837b" },
+    { "key": "h12_validation", "root": "capture", "path": "data/database-server-captures/h12/capture-h12-validation.json", "sizeBytes": 116, "sha256": "195ce5bf06c0b0e19e1143d0b34be14509ef0a4ac1dd119f6d987ce89cf3d7f2" },
+    { "key": "h13_payload", "root": "capture", "path": "data/database-server-captures/h13/capture-h13-gasha-audit.json", "sizeBytes": 2264344, "sha256": "6b1c82ddfad8672f8e1f9a22c4188cdc61c85dfae7aeee396b22ec2e687d7215" },
+    { "key": "h13_validation", "root": "capture", "path": "data/database-server-captures/h13/capture-h13-validation.json", "sizeBytes": 294, "sha256": "dab687cdf80975887509482814233c0a2739fdd52512c1c9d568da900fe50b9c" }
+  ],
+  "database": {
+    "fileName": "dokkan-global-current.db",
+    "sizeBytes": 95428608,
+    "sha256": "3654eb7db9e18dfe4c238abd02bcc06a688ffa6f30aa1ad93fd108dcfeb78265"
+  }
+}
