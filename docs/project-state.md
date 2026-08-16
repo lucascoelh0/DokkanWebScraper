@@ -1019,6 +1019,28 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   `database-characters` suite passed 321 tests with 9 platform-dependent tests
   pending. Combined process-tree RSS, R2 mutation, authority, production and
   Android remain NO-GO.
+- The explicitly authorized K60 publication checked at
+  `2026-08-16T14:56:00.523Z` completed with exit 0 and empty stderr. Fresh K59
+  still observed all five keys missing. K60 created four immutable objects with
+  `If-None-Match: *`, revalidated K58/K56, reread every immutable, created the
+  mutable manifest last with `If-None-Match: *`, and verified its final bytes.
+  Publication ID remained
+  `a23bda883f00c24ff9732ad3a57fbece890670b6a14f0377725d2b855e99e286`.
+  Zero unconditional writes, deletes, copies or multipart operations occurred.
+- The 7,575-byte prepublication report has SHA-256
+  `ba6a5d86bffc2f7fbfd1076dacff3ec057ec9bd6a1a3fb0abdd8b96d90dfaa29`;
+  the 1,596-byte post-publication receipt has SHA-256
+  `d56dd4bdb6a46570d687709acc687ae67a270908c1666c3f495e5ca29b901a68`.
+  Independent unauthenticated GETs returned HTTP 200 for all five public keys
+  and matched every expected byte, SHA-256, size, content type and cache
+  control. Post-publication bucket info reported 5,391 objects and 364 MB.
+- The public mutable bytes remain the exact 11,561-byte K58 candidate manifest,
+  SHA-256
+  `370dc7026c4523d509a403a2fbfa91009d1bb9452f7ab277f9c6aaebb8a1441e`.
+  Its own K58 policy remains `candidateOnly: true`; this is transport/public
+  delivery, not silent dataset authority or a productive Android contract.
+  Maximum individual-process RSS was 1,058,193,408 bytes. Combined process-tree
+  RSS, authority, production and Android remain NO-GO.
 
 ## Operating Constraints
 
