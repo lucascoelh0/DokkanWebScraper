@@ -976,6 +976,22 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   1,025,556,480 and 1,025,581,056 bytes. Local dry-run is GO; bucket use and
   headroom remain UNKNOWN, remote preflight is NOT_EXECUTED, and publication,
   R2 mutation, production and Android remain NO-GO.
+- K59 adds a fixed remote read-only preflight over the source-bound K58 plan.
+  It performs exactly four immutable-object GETs plus one fixed mutable-manifest
+  GET against `assets.dkbcompanion.com`, then the bounded fixed command
+  `r2 bucket info dokkanpanion-data --json`. Production exposes no injectable
+  source, transport, URL, bucket, command or report. It revalidates K58/K56
+  after all reads and persists only one local observational report.
+- The real K59 run observed all four immutable objects and the mutable manifest
+  as missing, with no conflicts or failures. Five bounded 404 bodies totaled
+  135,750 bytes. Bucket usage reported `364 MB`, conservatively bounded at
+  365,000,000 bytes; including 227,309 prospective bytes gives a projected
+  upper bound of 365,227,309 bytes, strictly below 10 GB. The 5,951-byte report
+  has SHA-256
+  `b9455a59fd0983bfeadacadf8b92bc65ecc2f1ab6f0e9f266e23dd0f1c22cf9b`.
+  Remote read-only preflight is GO. Publication, R2 mutation, authority,
+  production and Android remain NO-GO; a future publisher must rerun freshness
+  and strong-ETag CAS immediately before any authorized mutation.
 
 ## Operating Constraints
 

@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { constants, Stats } from "fs";
-import { lstat, open, realpath } from "fs/promises";
+import { lstat, open, readdir, realpath } from "fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "path";
 import { gunzipSync, gzipSync } from "zlib";
 import {
@@ -385,6 +385,99 @@ export async function writeCharacterLeaderSupportedPublisherDryRunArtifacts(
     const written: string[] = [];
     for (const [name, bytes] of files) { await writeCreateOnly(root, name, bytes); written.push(name); }
     return Object.freeze([...written]);
+}
+
+async function readK58Member(root: RootIdentity, name: string): Promise<Buffer> {
+    await checkpoint(root);
+    const path = join(root.path, name);
+    if (!samePath(path, resolve(root.path, name))) throw new Error("K58 source-bound member escaped artifact root");
+    const before = await lstat(path);
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1
+        || before.size >= CHARACTER_LEADER_SUPPORTED_PUBLISHER_REPORT_LIMIT_BYTES) {
+        throw new Error(`K58 source-bound member identity rejected: ${name}`);
+    }
+    const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    try {
+        const opened = await handle.stat();
+        if (!sameFile(before, opened) || !opened.isFile() || opened.nlink !== 1) {
+            throw new Error(`K58 source-bound member changed while opening: ${name}`);
+        }
+        const bytes = await handle.readFile();
+        const after = await handle.stat(), visible = await lstat(path);
+        if (!sameFile(opened, after) || !sameFile(opened, visible) || after.nlink !== 1 || visible.nlink !== 1
+            || visible.isSymbolicLink() || after.size !== bytes.length || visible.size !== bytes.length) {
+            throw new Error(`K58 source-bound member changed while reading: ${name}`);
+        }
+        return bytes;
+    } finally { await handle.close(); }
+}
+
+async function readCharacterLeaderSupportedPublisherDryRunArtifactSet(
+    artifactRoot: string,
+): Promise<CharacterLeaderSupportedPublisherDryRunArtifactSet> {
+    const root = await inspectRoot(artifactRoot, "artifact root");
+    const names = [
+        CHARACTER_LEADER_SUPPORTED_PUBLISHER_FILES.candidateManifest,
+        CHARACTER_LEADER_SUPPORTED_PUBLISHER_FILES.plan,
+        CHARACTER_LEADER_SUPPORTED_PUBLISHER_FILES.receipt,
+        CHARACTER_LEADER_SUPPORTED_PUBLISHER_FILES.marker,
+    ];
+    const entries = await readdir(root.path, { withFileTypes: true });
+    if (json(entries.map(entry => entry.name).sort()) !== json([...names].sort())
+        || entries.some(entry => !entry.isFile() || entry.isSymbolicLink())) {
+        throw new Error("K58 source-bound artifact root inventory rejected");
+    }
+    const [candidateManifestBytes, planBytes, receiptBytes, markerBytes] = await Promise.all(
+        names.map(name => readK58Member(root, name)),
+    );
+    let candidateManifest: any, plan: any, receipt: any, marker: any;
+    try {
+        candidateManifest = JSON.parse(candidateManifestBytes.toString("utf8"));
+        plan = JSON.parse(planBytes.toString("utf8"));
+        receipt = JSON.parse(receiptBytes.toString("utf8"));
+        marker = JSON.parse(markerBytes.toString("utf8"));
+    } catch { throw new Error("K58 source-bound artifact JSON rejected"); }
+    await checkpoint(root);
+    const artifacts = { candidateManifest, plan, receipt, marker, candidateManifestBytes, planBytes, receiptBytes, markerBytes };
+    assertCharacterLeaderSupportedPublisherDryRunArtifacts(artifacts);
+    return artifacts;
+}
+
+export async function validateCharacterLeaderSupportedPublisherDryRunArtifact(
+    options: CharacterLeaderSupportedProjectionSourceOptions & { k56Root: string; artifactRoot: string },
+): Promise<{
+    artifacts: CharacterLeaderSupportedPublisherDryRunArtifactSet;
+    sourceBoundValidation: "GO";
+    k55ValidationProcessPeakRssBytes: number;
+}> {
+    if (!options.k56Root || !options.artifactRoot) throw new Error("K58 validator requires explicit K56 and K58 artifact roots");
+    const k56 = await validateCharacterLeaderSupportedProjectionArtifact({
+        artifactRoot: options.k56Root,
+        sidecarRoot: options.sidecarRoot, productionRoot: options.productionRoot, fyiRoot: options.fyiRoot,
+        k43Root: options.k43Root, k46Root: options.k46Root, k48Root: options.k48Root,
+        nativeRuntime: options.nativeRuntime, database: options.database,
+    });
+    if (k56.sourceBoundValidation !== "GO") throw new Error("K58 validator requires K56 source-bound GO");
+    assertExactCharacterLeaderSupportedShadowK56Identity(k56.artifacts);
+    const expected = materialize(k56.artifacts, "GO");
+    const actual = await readCharacterLeaderSupportedPublisherDryRunArtifactSet(options.artifactRoot);
+    for (const [label, actualBytes, expectedBytes] of [
+        ["candidate manifest", actual.candidateManifestBytes, expected.candidateManifestBytes],
+        ["plan", actual.planBytes, expected.planBytes], ["receipt", actual.receiptBytes, expected.receiptBytes],
+        ["marker", actual.markerBytes, expected.markerBytes],
+    ] as Array<[string, Buffer, Buffer]>) if (!actualBytes.equals(expectedBytes)) {
+        throw new Error(`K58 source-bound artifact mismatch: ${label}`);
+    }
+    const reread = await readCharacterLeaderSupportedPublisherDryRunArtifactSet(options.artifactRoot);
+    if (!actual.candidateManifestBytes.equals(reread.candidateManifestBytes) || !actual.planBytes.equals(reread.planBytes)
+        || !actual.receiptBytes.equals(reread.receiptBytes) || !actual.markerBytes.equals(reread.markerBytes)) {
+        throw new Error("K58 source-bound artifacts drifted during validation");
+    }
+    return {
+        artifacts: reread,
+        sourceBoundValidation: "GO",
+        k55ValidationProcessPeakRssBytes: k56.k55ValidationProcessPeakRssBytes,
+    };
 }
 
 async function validateOutputSeparation(options: CharacterLeaderSupportedPublisherDryRunOptions): Promise<void> {

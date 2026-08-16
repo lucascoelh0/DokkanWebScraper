@@ -22,6 +22,7 @@ import {
     assertCharacterLeaderSupportedPublisherSourceStable,
     buildCharacterLeaderSupportedPublisherDryRun,
     maximumIndividualCharacterLeaderSupportedPublisherProcessPeakRss,
+    validateCharacterLeaderSupportedPublisherDryRunArtifact,
     writeCharacterLeaderSupportedPublisherDryRunArtifacts,
 } from "./leader-supported-publisher-dry-run";
 import { parseCharacterLeaderSupportedPublisherDryRunCli } from "./leader-supported-publisher-dry-run-run";
@@ -237,6 +238,15 @@ describe("K58 supported leader publisher local dry-run", function () {
         equal(core.includes("automaticCleanupAttempted: false"), true);
         equal(core.includes("concurrentSameUserAncestorReplacementProtected: false"), true);
         equal(core.includes("await checkpoint(root)"), true);
+    });
+
+    it("exposes only a real source-bound K58 validator with no supplied-report authority", () => {
+        const implementation = implementationSource("leader-supported-publisher-dry-run.ts");
+        equal(typeof validateCharacterLeaderSupportedPublisherDryRunArtifact, "function");
+        equal(implementation.includes("await validateCharacterLeaderSupportedProjectionArtifact({"), true);
+        equal(implementation.includes("const expected = materialize(k56.artifacts, \"GO\")"), true);
+        equal((implementation.match(/readCharacterLeaderSupportedPublisherDryRunArtifactSet\(options\.artifactRoot\)/g) ?? []).length, 2);
+        equal(/validateCharacterLeaderSupportedPublisherDryRunArtifact[\s\S]{0,500}upstream|suppliedReport/.test(implementation), false);
     });
 
     it("keeps RSS only in RunResult with explicit per-process scope", () => {
