@@ -1,0 +1,1 @@
+{"log":{"entries":[{"request":{"method":"GET","url":"https://example.invalid/budokais/7/entry","headers":[]},"response":{"status":200,"headers":[],"content":{"mimeType":"application/json","text":"{\"id\":7,\"name\":\"Synthetic tournament\",\"budokai_maps\":[{\"id\":701,\"budokai_id\":7}],\"participant\":0}"}}}]}}

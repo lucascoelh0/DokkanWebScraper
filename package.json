@@ -64,6 +64,7 @@
     "run:database-special-modes-m4": "node --max-old-space-size=576 lib/database-special-modes-captures/special-m4-run.js",
     "run:database-special-modes-m5": "node --max-old-space-size=576 lib/database-special-modes-captures/special-m5-run.js",
     "run:database-special-modes-m6": "node --max-old-space-size=576 lib/database-special-modes-captures/special-m6-run.js",
+    "run:database-world-tournament-wt0": "node --max-old-space-size=576 lib/database-world-tournament-captures/wt0-run.js",
     "run:database-data-download-dd0": "node --max-old-space-size=768 lib/database-data-download-captures/data-download-dd0-run.js",
     "run:database-data-download-dd1": "node --max-old-space-size=768 lib/database-data-download-captures/data-download-dd1-run.js",
     "run:database-data-download-dd2": "node --max-old-space-size=768 lib/database-data-download-captures/data-download-dd2-run.js",
