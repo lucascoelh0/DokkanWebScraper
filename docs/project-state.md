@@ -959,6 +959,23 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Persistence, the 17 conditionals, Leader + Friend composition, final combat
   calculation, authority, production, delivery, R2 and Android remain NO-GO;
   process-tree RSS remains unmeasured and NO-GO.
+- K58 adds a deterministic, offline-only publication plan for the exact K56
+  bytes. It models four immutable physical objects in order (payload,
+  coverage, validation and K56 source manifest) under
+  `database-characters/leader-supported/v1`; the raw JSON remains lineage-only.
+  The fixed mutable manifest candidate is last and future-only conditional
+  semantics require create-if-absent or a fresh ETag CAS. K58 constructs no
+  client, reads no credentials and performs no network or R2 operation.
+- Two real K58 runs produced byte-identical candidate, plan, receipt and marker.
+  The plan is 13,134 bytes (SHA-256
+  `49d6d520753f8d4591740ccccc86664fec7e675ac2f8054be1b715c762bcd632`)
+  and the candidate is 11,561 bytes (SHA-256
+  `370dc7026c4523d509a403a2fbfa91009d1bb9452f7ab277f9c6aaebb8a1441e`).
+  Projected remote bytes are 227,309 across four immutable objects plus the
+  mutable manifest candidate. Maximum individual-process RSS was
+  1,025,556,480 and 1,025,581,056 bytes. Local dry-run is GO; bucket use and
+  headroom remain UNKNOWN, remote preflight is NOT_EXECUTED, and publication,
+  R2 mutation, production and Android remain NO-GO.
 
 ## Operating Constraints
 
