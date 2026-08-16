@@ -1041,6 +1041,27 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   delivery, not silent dataset authority or a productive Android contract.
   Maximum individual-process RSS was 1,058,193,408 bytes. Combined process-tree
   RSS, authority, production and Android remain NO-GO.
+- K61 adds a credential-free, stdout-only public candidate shadow. It runs two
+  real K58 source-bound validations around exactly six public GETs: mutable
+  manifest, four ordered content-addressed K56 members, then mutable manifest
+  again. Every response must match exact bytes, SHA-256, size, content type and
+  cache control; redirects and encoded responses are blocked. The final
+  manifest must be byte-identical to the first.
+- K61 reconstructs the exact public K56 bundle, uses the K57 private consumer
+  indexes and audits reference/state/card/effect lookups through deep-frozen
+  clones. It preserves 12,265 references, 7,248 states, 3,434 cards and 3,836
+  effects. The 17 conditional effects and 45 references remain excluded as
+  `runtime_deck_index_unresolved`; the user-confirmed rule remains
+  coverage-only and non-authorizing.
+- The real K61 run checked at `2026-08-16T16:00:10.344Z` completed with exit 0
+  and empty stderr. Six GETs read 238,870 bytes; public delivery, source-bound
+  stability and all four shadow lookup dimensions were GO. The 4,364-byte
+  report has SHA-256
+  `4b2a5ed42ab5cf4d73cb40d5a40818a19e3eeab6daef01ab5755cf700bd71838`.
+  Maximum individual-process RSS was 1,022,099,456 bytes. Focused checks passed
+  16/16 and the compiled suite passed 328 tests with 9 pending. The public
+  manifest remains candidate-only; persisted consumer, authority, production,
+  Android, UI, authenticated network and R2 mutation remain NO-GO.
 
 ## Operating Constraints
 
