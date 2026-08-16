@@ -138,6 +138,7 @@
     "validate:fyi-character-dataset": "npx ts-node fyi-character-dataset-validate.ts",
     "run:fyi-experiment": "npx ts-node fyi-experiment.ts",
     "run:fyi-summons": "npx ts-node fyi-summons-run.ts",
+    "audit:summon-rng-s0-s2": "node --max-old-space-size=512 lib/summon-rng-audit/s0-s2-run.js",
     "run:fyi-stages": "npx ts-node fyi-stages-run.ts",
     "run:fyi-stage-details": "npx ts-node fyi-stage-details-run.ts",
     "publish:stage-details-r2": "npx ts-node publish-stage-details-r2.ts",

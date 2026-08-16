@@ -1,0 +1,23 @@
+import assert = require("assert");
+import { describe, it } from "mocha";
+import { S0S2Audit, validateS0S2Audit } from "./s0-s2-contract";
+
+const valid = (): S0S2Audit => ({
+    schemaVersion: 1, contract: "dokkan-summon-rng-audit-s0-s2", contractVersion: "0.1.0", campaign: "summon_rng", collectionMode: "offline_only", productionMutation: false, defaultEnabled: false,
+    artifacts: [{ id: "apk-global", role: "apk", declared: true, sha256: "a".repeat(64), sizeBytes: 10, region: "global", gameBuild: "x", version: "1", structuralIdentity: "package+manifest" }],
+    ledger: [{ id: "rates-1", kind: "published_rates", classification: "first_party_supported", summary: "Official rate snapshot.", sourceAuthority: "bandai_namco_dokkan_faq", sourceRef: "https://bnfaq.channel.or.jp/faq/detail/1625/8602" }],
+    findings: [{ id: "finding-1", kind: "published_rates", classification: "first_party_supported", claim: "Published rates are observable.", evidenceRefs: ["rates-1"], conclusion: "Rates are evidence, not draw independence." }],
+    decisions: [{ id: "s0-no-spend", capability: "sensitive_or_live_methods", status: "NO-GO", claim: "No experimental spending.", evidenceRefs: ["finding-1"], rationale: "The campaign is offline and must not cause purchases." }],
+    policy: { credentials: false, accountIds: false, deviceIds: false, rawAuthenticatedPayloads: false, spend: false, automation: false, hooking: false, instrumentation: false, predictionOrExploitation: false, production: false, r2: false, android: false },
+});
+
+describe("S0-S2 summon audit contract", () => {
+    it("accepts a valid offline fixture", () => assert.equal(validateS0S2Audit(valid()).valid, true));
+    it("rejects dangling evidence references", () => { const d: any = valid(); d.findings[0].evidenceRefs = ["missing"]; assert.equal(validateS0S2Audit(d).valid, false); });
+    it("rejects unsupported first-party statistical claims", () => { const d: any = valid(); d.findings[0].kind = "statistical_observation"; assert.equal(validateS0S2Audit(d).valid, false); });
+    it("rejects unanchored first-party ledger claims", () => { const d: any = valid(); delete d.ledger[0].sourceRef; delete d.ledger[0].sourceAuthority; const result = validateS0S2Audit(d); assert.equal(result.valid, false); assert.equal(result.failures.some(v => v.includes("unanchored first-party claim")), true); });
+    it("rejects arbitrary first-party URLs and classification escalation", () => { const d: any = valid(); d.ledger[0].sourceRef = "https://example.invalid/official-rate"; d.findings[0].evidenceRefs = ["community"]; d.ledger.push({ id: "community", kind: "community_report", classification: "unknown", summary: "A report." }); const result = validateS0S2Audit(d); assert.equal(result.valid, false); assert.equal(result.failures.some(v => v.includes("official source ref")), true); assert.equal(result.failures.some(v => v.includes("classification-incompatible evidence")), true); });
+    it("rejects cyclic finding evidence", () => { const d: any = valid(); d.findings[0].evidenceRefs = ["finding-1"]; const result = validateS0S2Audit(d); assert.equal(result.valid, false); assert.equal(result.failures.some(v => v.includes("dangling ref")), true); });
+    it("rejects sensitive keys, sensitive values and non-allowlisted GO capabilities", () => { const d: any = valid(); d.secretToken = "x"; d.ledger[0].summary = "Authorization: Bearer abcdefghijklmnop"; d.decisions[0] = { id: "unsafe", capability: "sensitive_or_live_methods", status: "GO", claim: "Send captured bodies", evidenceRefs: ["finding-1"], rationale: "Needed" }; const result = validateS0S2Audit(d); assert.equal(result.valid, false); assert.equal(result.failures.some(v => v.includes("sensitive key")), true); assert.equal(result.failures.some(v => v.includes("sensitive value")), true); assert.equal(result.failures.some(v => v.includes("GO contradicts capability policy")), true); });
+    it("rejects unknown fields, duplicate IDs, invalid hashes, and permissive policy", () => { const d: any = valid(); d.artifacts.push({ ...d.artifacts[0], id: "apk-global", sha256: "A".repeat(64) }); d.artifacts[0].extra = true; d.policy.spend = true; const result = validateS0S2Audit(d); assert.equal(result.valid, false); assert.equal(result.failures.some(v => v.includes("unknown field")), true); assert.equal(result.failures.some(v => v.includes("artifact IDs")), true); assert.equal(result.failures.some(v => v.includes("policy not prohibited")), true); });
+});

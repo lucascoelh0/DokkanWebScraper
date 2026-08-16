@@ -933,6 +933,30 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   production, delivery, R2, Android and concurrent ancestor replacement
   protection remain NO-GO.
 
+### SR0–SR2 — isolated summon RNG audit checkpoint
+
+- The separate `codex/summon-rng-audit` campaign pins the Global 6.4.0 (338)
+  APK, AArch64 ELF and current/backup SQLite snapshots without committing raw
+  binaries or touching Android, R2, publishers or production data.
+- Its offline, default-off and fail-closed contract separates client static,
+  protocol/catalog, published-rate, statistical, community and server-inference
+  evidence. Sensitive values and fields, arbitrary first-party sources,
+  classification escalation, cyclic evidence and non-allowlisted GO capabilities
+  fail validation.
+- The pinned client path constructs `gashas/{0}/courses/{1}/draw`, creates
+  `GashaResult` from the response JSON and retrieves `gasha_items` before movie
+  and result presentation. Local summon RNG identified in this build is scoped
+  to movie-state selection; no client card-selection RNG, seed or Friend-specific
+  draw engine was found in the pinned path.
+- This supports a client/server boundary only. Server RNG, independence,
+  account/session conditioning, shared Friend state and exact banner rules remain
+  unknown. H4/H10/H13 are partial catalog corroboration and are not an exact
+  per-step or per-slot null model.
+- S3-S5 remain NO-GO for confirmatory analysis until the alleged Friend trigger
+  and exact target banner/version/period/rate snapshots are fixed. No spending,
+  draw automation, authenticated interception or dynamic instrumentation is
+  authorized by this checkpoint.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
