@@ -1,0 +1,1 @@
+{"schemaVersion":1,"synthetic":true,"routes":[{"method":"GET","route":"/budokais/:budokai_id/ranks","responseSchema":[{"path":"$","types":["object"]},{"path":"$.ranks","types":["array"]}]}]}
