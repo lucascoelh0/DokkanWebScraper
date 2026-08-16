@@ -870,6 +870,22 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   deck-index 0/1 structural semantics are GO; human names, lifecycle,
   death/removal, stacking, product, authority, production, delivery, R2 and
   Android remain NO-GO.
+- K54 proves why the effective K53 branch cannot be selected from the database.
+  `AbilityManager::createLeaderSkill` receives `deckIndex` as its first runtime
+  argument, writes it to create-status `+0x0c`, and the base constructor copies
+  it to `AbilityStatus+0x10`; `getDeckIndex` reads that field. `target_type`
+  independently travels from `LeaderSkill+0x40` through create-status `+0x2c`
+  to `AbilityStatus+0xe0`. Thus it does not select `deckIndex` in the audited
+  creation chain, and no source-row/static-caller binding supplies the runtime
+  argument for the 17 observed rows.
+- K54 pins 11 code regions, 11 instruction fragments, one direct call, six
+  PLT/GOT calls, three vtables and four ABS64 bindings. Two complete real runs
+  produced byte-identical 16,255-byte reports with SHA-256
+  `33442f73e3795ded886cfa70371c6f654676aa4a511c59e965fab6f10ab620af`
+  and empty stderr under the exclusive 1 GiB limit. Runtime-argument provenance
+  and field independence in the audited chain are GO; effective/data-level
+  branch selection, lifecycle, stacking, product, authority, production,
+  delivery, R2 and Android remain NO-GO.
 
 ## Operating Constraints
 

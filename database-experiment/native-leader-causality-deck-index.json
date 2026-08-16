@@ -1,0 +1,304 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-database-native-leader-causality-deck-index",
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "codeRegions": [
+    {
+      "role": "leader_skill_factory",
+      "symbol": "_ZN14AbilityManager17createLeaderSkillEiii",
+      "vma": 64388884,
+      "sizeBytes": 1584,
+      "codeSha256": "43f991cc662732c4ec5e4ce995f03112e8c5948a2911ba4bbeb7c7cbe4df60b6"
+    },
+    {
+      "role": "current_character_lookup",
+      "symbol": "_ZN10InGameData19getCharaDataCurrentEi",
+      "vma": 49875780,
+      "sizeBytes": 136,
+      "codeSha256": "0379dd70ab28cb12fb10e715fb0af7e42a09da9ec8be98e06389b154a45d4d08"
+    },
+    {
+      "role": "leader_skill_creation_guard",
+      "symbol": "_ZNK15InGameCharaData20canCreateLeaderSkillEv",
+      "vma": 46616560,
+      "sizeBytes": 184,
+      "codeSha256": "e40c5cfeeeb4742d96f326ebc6b0362c3cc509da83e7218f6c33356185f9a8ef"
+    },
+    {
+      "role": "passive_status_factory",
+      "symbol": "_ZN20AbilityStatusPassive6createEP26CreateAbilityStatusPassive",
+      "vma": 64502080,
+      "sizeBytes": 80,
+      "codeSha256": "d05e63cab621838979d78b8f0b727b30ba9a7a4fd534501ec5f5183c7f93ab45"
+    },
+    {
+      "role": "passive_shared_factory_helper",
+      "symbol": null,
+      "vma": 64503324,
+      "sizeBytes": 280,
+      "codeSha256": "cb419a3ff6ef6f9f2abf9840cf0b7993de2cee7b20b46efc08259d55f604d94b"
+    },
+    {
+      "role": "passive_status_constructor",
+      "symbol": "_ZN20AbilityStatusPassiveC2EP26CreateAbilityStatusPassive",
+      "vma": 64502516,
+      "sizeBytes": 224,
+      "codeSha256": "a1c821af3c00beb8832320e5ca241c42a530bf915c1b6e5b09d86a4eb7ca57c7"
+    },
+    {
+      "role": "causality_status_constructor",
+      "symbol": "_ZN22AbilityStatusCausalityC2EP28CreateAbilityStatusCausality",
+      "vma": 64484464,
+      "sizeBytes": 284,
+      "codeSha256": "a124f4b274a60436dba01bf70971c096e1981ed4b498a7671c7cd8a288e8f85f"
+    },
+    {
+      "role": "efficacy_status_constructor",
+      "symbol": "_ZN21AbilityStatusEfficacyC2EP27CreateAbilityStatusEfficacy",
+      "vma": 64493900,
+      "sizeBytes": 820,
+      "codeSha256": "8207716704da65ad571c7e4fc3eeeda6e7ab59552716bcbf8dbb9e9bf1069f64"
+    },
+    {
+      "role": "base_status_constructor",
+      "symbol": "_ZN13AbilityStatusC2EP19CreateAbilityStatus",
+      "vma": 64481244,
+      "sizeBytes": 216,
+      "codeSha256": "3771214b5975010426d243415138025a6c551c077e4ed54494caa9ab38e00f84"
+    },
+    {
+      "role": "get_deck_index",
+      "symbol": "_ZNK13AbilityStatus12getDeckIndexEv",
+      "vma": 64480184,
+      "sizeBytes": 8,
+      "codeSha256": "6f1929ee2376e6ada94db6d2aafe012dfc8382613e73b99aea0c7dea270fac13"
+    },
+    {
+      "role": "get_target_type",
+      "symbol": "_ZNK21AbilityStatusEfficacy13getTargetTypeEv",
+      "vma": 64480256,
+      "sizeBytes": 8,
+      "codeSha256": "f0012dc4823812318679c1d1a773070ef58cc7bb934713906fe09197a50748da"
+    }
+  ],
+  "instructionFragments": [
+    {
+      "role": "factory_runtime_arguments_captured_w1_to_w22",
+      "vma": 64388916,
+      "sizeBytes": 32,
+      "instructionHex": "59d03bd5f403032af503022a281740f9f603012af30300aaa8831ef848c65b94"
+    },
+    {
+      "role": "same_w22_selects_current_character_vtable_slot_0x20",
+      "vma": 64389020,
+      "sizeBytes": 20,
+      "instructionHex": "080040f9081140f9e103162a00013fd6600000b4"
+    },
+    {
+      "role": "current_character_can_create_leader_skill_guard",
+      "vma": 64389036,
+      "sizeBytes": 12,
+      "instructionHex": "600000b45cbf5c94601e0036"
+    },
+    {
+      "role": "runtime_w22_w21_pair_saved_for_create_status",
+      "vma": 64389076,
+      "sizeBytes": 8,
+      "instructionHex": "f6571329f4a300b9"
+    },
+    {
+      "role": "create_status_base_is_sp_plus_0xa8",
+      "vma": 64389128,
+      "sizeBytes": 4,
+      "instructionHex": "f7a30291"
+    },
+    {
+      "role": "saved_w22_copied_to_create_status_plus_0x0c",
+      "vma": 64389236,
+      "sizeBytes": 20,
+      "instructionHex": "e04f40fd68008052ffdb00f98a3a40b9e0c200fc"
+    },
+    {
+      "role": "leader_skill_plus_0x40_copied_to_create_status_plus_0x2c",
+      "vma": 64389572,
+      "sizeBytes": 20,
+      "instructionHex": "8a4240b9890109aa08fd50d3a91d50b3ead700b9"
+    },
+    {
+      "role": "passive_factory_forwards_original_create_pointer",
+      "vma": 64502096,
+      "sizeBytes": 32,
+      "instructionHex": "53d03bd5e1230091691640f9a9831ff8e00700f9a02700d12d010094681640f9"
+    },
+    {
+      "role": "efficacy_constructor_forwards_create_pointer_to_base",
+      "vma": 64493936,
+      "sizeBytes": 20,
+      "instructionHex": "f50301aaf30300aa081740f9a8831ff8c41e5d94"
+    },
+    {
+      "role": "efficacy_constructor_copies_create_plus_0x2c_to_status_plus_0xe0",
+      "vma": 64494036,
+      "sizeBytes": 20,
+      "instructionHex": "a92243a9f60313aaaa2e40b9c98e0ef8ca821fb8"
+    },
+    {
+      "role": "base_constructor_copies_create_plus_0x0c_to_status_plus_0x10",
+      "vma": 64481260,
+      "sizeBytes": 28,
+      "instructionHex": "290c40b9280080522a1440b908300079e8e9009074e900f0091000b9"
+    }
+  ],
+  "exactDirectCalls": [
+    {
+      "role": "passive_factory_to_shared_constructor_helper",
+      "callerVma": 64502120,
+      "instructionHex": "2d010094",
+      "targetVma": 64503324
+    }
+  ],
+  "exactPltCalls": [
+    {
+      "role": "factory_creation_guard",
+      "callerVma": 64389040,
+      "instructionHex": "5cbf5c94",
+      "pltVma": 88702240,
+      "pltBytesHex": "703200d0119e46f910e2349120021fd6",
+      "relocationOffset": 95313208,
+      "symbol": "_ZNK15InGameCharaData20canCreateLeaderSkillEv",
+      "symbolValue": 46616560
+    },
+    {
+      "role": "factory_to_passive_status_factory",
+      "callerVma": 64389808,
+      "instructionHex": "58c05c94",
+      "pltVma": 88704016,
+      "pltBytesHex": "703200d0115a40f910c2029120021fd6",
+      "relocationOffset": 95314096,
+      "symbol": "_ZN20AbilityStatusPassive6createEP26CreateAbilityStatusPassive",
+      "symbolValue": 64502080
+    },
+    {
+      "role": "shared_helper_to_passive_constructor",
+      "callerVma": 64503404,
+      "instructionHex": "a5545c94",
+      "pltVma": 88707328,
+      "pltBytesHex": "703200b0119643f910a21c9120021fd6",
+      "relocationOffset": 95315752,
+      "symbol": "_ZN20AbilityStatusPassiveC1EP26CreateAbilityStatusPassive",
+      "symbolValue": 64502516
+    },
+    {
+      "role": "passive_to_causality_constructor",
+      "callerVma": 64502540,
+      "instructionHex": "75165d94",
+      "pltVma": 88904928,
+      "pltBytesHex": "b03100b0118e44f91062249120021fd6",
+      "relocationOffset": 95414552,
+      "symbol": "_ZN22AbilityStatusCausalityC2EP28CreateAbilityStatusCausality",
+      "symbolValue": 64484464
+    },
+    {
+      "role": "causality_to_efficacy_constructor",
+      "callerVma": 64484484,
+      "instructionHex": "47285d94",
+      "pltVma": 88905120,
+      "pltBytesHex": "b03100b011be44f910e2259120021fd6",
+      "relocationOffset": 95414648,
+      "symbol": "_ZN21AbilityStatusEfficacyC2EP27CreateAbilityStatusEfficacy",
+      "symbolValue": 64493900
+    },
+    {
+      "role": "efficacy_to_base_status_constructor",
+      "callerVma": 64493952,
+      "instructionHex": "c41e5d94",
+      "pltVma": 88904848,
+      "pltBytesHex": "b03100b0117a44f910c2239120021fd6",
+      "relocationOffset": 95414512,
+      "symbol": "_ZN13AbilityStatusC2EP19CreateAbilityStatus",
+      "symbolValue": 64481244
+    }
+  ],
+  "vtables": [
+    {
+      "role": "ability_manager",
+      "symbol": "_ZTV14AbilityManager",
+      "vma": 92054472,
+      "sizeBytes": 200,
+      "bytesSha256": "58ec95077a7df39db01804932f0b4b1f926eac72b956891a84e775d42c6a7753",
+      "vptrBiasBytes": 16,
+      "bindings": [
+        {
+          "relocationOffset": 92054536,
+          "relocationType": 257,
+          "symbol": "_ZN14AbilityManager17createLeaderSkillEiii",
+          "symbolValue": 64388884,
+          "objectVirtualSlotOffset": 48
+        }
+      ]
+    },
+    {
+      "role": "in_game_data",
+      "symbol": "_ZTV10InGameData",
+      "vma": 89644704,
+      "sizeBytes": 472,
+      "bytesSha256": "c3fc77eb3bf70f91aa56ba90a75930b8cd58d6d7222c8e4910d79c1cae79b08c",
+      "vptrBiasBytes": 16,
+      "bindings": [
+        {
+          "relocationOffset": 89644752,
+          "relocationType": 257,
+          "symbol": "_ZN10InGameData19getCharaDataCurrentEi",
+          "symbolValue": 49875780,
+          "objectVirtualSlotOffset": 32
+        }
+      ]
+    },
+    {
+      "role": "ability_status_efficacy",
+      "symbol": "_ZTV21AbilityStatusEfficacy",
+      "vma": 92058936,
+      "sizeBytes": 264,
+      "bytesSha256": "44b8aa4d28701168922acf61435ea4bb442f97b0b14ad7a2510ed68874ee2a72",
+      "vptrBiasBytes": 16,
+      "bindings": [
+        {
+          "relocationOffset": 92059024,
+          "relocationType": 257,
+          "symbol": "_ZNK13AbilityStatus12getDeckIndexEv",
+          "symbolValue": 64480184,
+          "objectVirtualSlotOffset": 72
+        },
+        {
+          "relocationOffset": 92059104,
+          "relocationType": 257,
+          "symbol": "_ZNK21AbilityStatusEfficacy13getTargetTypeEv",
+          "symbolValue": 64480256,
+          "objectVirtualSlotOffset": 152
+        }
+      ]
+    }
+  ],
+  "runtimeOffsets": {
+    "factoryCurrentCharacterVtableSlotBytes": 32,
+    "createAbilityStatusDeckIndexOffsetBytes": 12,
+    "abilityStatusDeckIndexOffsetBytes": 16,
+    "leaderSkillTargetTypeOffsetBytes": 64,
+    "createAbilityStatusTargetTypeOffsetBytes": 44,
+    "abilityStatusTargetTypeOffsetBytes": 224
+  },
+  "auditedSemantics": {
+    "factoryFirstRuntimeArgument": "w1_captured_as_w22",
+    "sameArgumentSelectsCurrentCharacter": true,
+    "currentCharacterCreationGuardRequiredWhenPresent": true,
+    "deckIndexPropagation": "factory_w1_to_create_plus_0x0c_to_status_plus_0x10",
+    "targetTypePropagation": "leader_skill_plus_0x40_to_create_plus_0x2c_to_status_plus_0xe0",
+    "deckIndexAndTargetTypeIndependentFields": true,
+    "staticCallerOrSourceRowBindingFound": false,
+    "effectiveLeaderRuntimeBranchBound": false,
+    "dataLevelBranchSelectionBound": false,
+    "lifecycleBound": false,
+    "stackingBound": false,
+    "productAuthorityBound": false
+  }
+}
