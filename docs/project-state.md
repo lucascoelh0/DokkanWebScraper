@@ -852,6 +852,24 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   bytes, below the exclusive 1 GiB limit. Structural causality and the observed
   type-35 condition are GO as evidence only; product projection, consumer,
   authority, production, delivery, R2 and Android remain NO-GO.
+- K53 binds the type-35 handler's candidate collection selector without
+  generalizing it to a generic team. `deckIndex=0` scans exactly seven indexed
+  player character records in `InGameData`; `deckIndex=1` scans the runtime
+  puzzle-enemy vector and an empty vector makes the condition false. Other deck
+  indices are unsupported. Each candidate resolves to a master `Card` and uses
+  its structural element and awakening-element getters against the selected
+  bit. The audited handler/helper has no explicit alive, active, category or
+  target filter, but this local negative result does not establish lifecycle.
+- The K53 evidence pins six code regions, six instruction fragments, six exact
+  PLT/GOT calls, two complete vtables and three ABS64 bindings. It wraps a real
+  K52 execution with native proof before/after, while the effective branch used
+  by observed leaders remains NO-GO. Two real runs produced byte-identical
+  11,807-byte reports with SHA-256
+  `7458e885f9a8621528042a57ea3719e7c2a7849255842a283e094b4f512399c3`
+  and empty stderr under the exclusive 1 GiB ceiling. Candidate-collection and
+  deck-index 0/1 structural semantics are GO; human names, lifecycle,
+  death/removal, stacking, product, authority, production, delivery, R2 and
+  Android remain NO-GO.
 
 ## Operating Constraints
 

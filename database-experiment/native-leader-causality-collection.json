@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-database-native-leader-causality-collection",
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "codeRegions": [
+    {
+      "role": "type35_handler",
+      "symbol": "_ZN20AbilityCausalityFunc28hasAllElementBitpatternCardsERKNSt6__ndk110shared_ptrI22AbilityStatusCausalityEERKNS1_I14SkillCausalityEE",
+      "vma": 64190660,
+      "sizeBytes": 324,
+      "codeSha256": "928889b69f78f4f42fad129ff6d5952d7fbc7977fa2ec93d870894bc1555125c"
+    },
+    {
+      "role": "candidate_resolver",
+      "symbol": "_ZN22AbilityEfficacyElement27isPureElementTypeBitPatternEiii",
+      "vma": 64248356,
+      "sizeBytes": 620,
+      "codeSha256": "4eeef03e6642eebd06afd561003ab1689227c278d08ac8b43cbf71bda759e4c6"
+    },
+    {
+      "role": "element_bit_pattern",
+      "symbol": "_ZN22AbilityEfficacyElement23isElementTypeBitPatternEi11ElementType20AwakeningElementType",
+      "vma": 64247152,
+      "sizeBytes": 632,
+      "codeSha256": "6b3db6fff5133833b17f76e6b625bcdc8e4db773fcd37e725045e3f58789e871"
+    },
+    {
+      "role": "get_deck_index",
+      "symbol": "_ZNK13AbilityStatus12getDeckIndexEv",
+      "vma": 64480184,
+      "sizeBytes": 8,
+      "codeSha256": "6f1929ee2376e6ada94db6d2aafe012dfc8382613e73b99aea0c7dea270fac13"
+    },
+    {
+      "role": "get_element",
+      "symbol": "_ZNK4Card10getElementEv",
+      "vma": 46427172,
+      "sizeBytes": 8,
+      "codeSha256": "7a2c484f16193ad2c5617bbe6704b2ccbdcc31004cfa1370a3ba4533f12de7f9"
+    },
+    {
+      "role": "get_awakening_element_type",
+      "symbol": "_ZNK4Card23getAwakeningElementTypeEv",
+      "vma": 46427372,
+      "sizeBytes": 8,
+      "codeSha256": "dd598cf70aef13b423eb4190433b2442752167a8f75ed3e5af29e9f25b1a8fd7"
+    }
+  ],
+  "instructionFragments": [
+    {
+      "role": "handler_status_deck_virtual_slot_0x50",
+      "vma": 64190688,
+      "sizeBytes": 24,
+      "instructionHex": "000040f9f50301aaf30308aa090040f9292940f920013fd6"
+    },
+    {
+      "role": "handler_cau_val1_mask_read",
+      "vma": 64190712,
+      "sizeBytes": 32,
+      "instructionHex": "a80240f9b8eb00d0f403002a181f47f9f7031f2a3a008052080540f9190140b9"
+    },
+    {
+      "role": "handler_deck_collection_branch",
+      "vma": 64190780,
+      "sizeBytes": 80,
+      "instructionHex": "54020034000340f9e00000b500279052c1785c94f60300aaef905c94e00316aa160300f9080040f9082940f900013fd6092050a9080109cb1bfd43d37f0700716a00005414000014fb008052e0031f2a"
+    },
+    {
+      "role": "player_candidate_index_stride_0x590_user_card_offset_0xa0",
+      "vma": 64248424,
+      "sizeBytes": 108,
+      "instructionHex": "df060071ff7f01a9a0060054f7031faab609003557eb0090f71e47f9f60240f9d60000b50027905270405c94f60300aa9e585c94f60200f908b28052a05a289b080c4af8081140f900013fd6080040f9081140f900013fd6017c4093e8030091e00314aa65585c94e003c03d"
+    },
+    {
+      "role": "puzzle_enemy_candidate_resolution",
+      "vma": 64248644,
+      "sizeBytes": 104,
+      "instructionHex": "57eb0090f71e47f9e00240f9e00000b5002790523e405c94f60300aa6c585c94e00316aaf60200f9080040f9082940f900013fd6e103152a354a5d94000c40f9080040f9080d40f900013fd6e103002ae8030091e00314aa31585c94e003c03d1700669ee007803d"
+    },
+    {
+      "role": "card_element_and_awakening_virtual_slots",
+      "vma": 64248748,
+      "sizeBytes": 52,
+      "instructionHex": "e80240f9081d40f9e00317aa00013fd6e80240f9f403002a088140f9e00317aa00013fd6e203002ae003132ae103142a313b5d94"
+    }
+  ],
+  "exactPltCalls": [
+    {
+      "callerVma": 64190868,
+      "instructionHex": "03445e94",
+      "pltVma": 88902048,
+      "pltBytesHex": "b03100d011be41f910e20d9120021fd6",
+      "relocationOffset": 95413112,
+      "symbol": "_ZN22AbilityEfficacyElement27isPureElementTypeBitPatternEiii",
+      "symbolValue": 64248356
+    },
+    {
+      "callerVma": 64190904,
+      "instructionHex": "fa435e94",
+      "pltVma": 88902048,
+      "pltBytesHex": "b03100d011be41f910e20d9120021fd6",
+      "relocationOffset": 95413112,
+      "symbol": "_ZN22AbilityEfficacyElement27isPureElementTypeBitPatternEiii",
+      "symbolValue": 64248356
+    },
+    {
+      "callerVma": 64248524,
+      "instructionHex": "65585c94",
+      "pltVma": 88456288,
+      "pltBytesHex": "70330090116e46f91062339120021fd6",
+      "relocationOffset": 95190232,
+      "symbol": "_ZNK9CardModel17getMasterCardByIdEm",
+      "symbolValue": 52308240
+    },
+    {
+      "callerVma": 64248700,
+      "instructionHex": "354a5d94",
+      "pltVma": 88704080,
+      "pltBytesHex": "703200d0116a40f91042039120021fd6",
+      "relocationOffset": 95314128,
+      "symbol": "_ZNK16InGamePuzzleData18getPuzzleEnemyDataEi",
+      "symbolValue": 50059092
+    },
+    {
+      "callerVma": 64248732,
+      "instructionHex": "31585c94",
+      "pltVma": 88456288,
+      "pltBytesHex": "70330090116e46f91062339120021fd6",
+      "relocationOffset": 95190232,
+      "symbol": "_ZNK9CardModel17getMasterCardByIdEm",
+      "symbolValue": 52308240
+    },
+    {
+      "callerVma": 64248796,
+      "instructionHex": "313b5d94",
+      "pltVma": 88688800,
+      "pltBytesHex": "90320090117e41f910e20b9120021fd6",
+      "relocationOffset": 95306488,
+      "symbol": "_ZN22AbilityEfficacyElement23isElementTypeBitPatternEi11ElementType20AwakeningElementType",
+      "symbolValue": 64247152
+    }
+  ],
+  "vtables": [
+    {
+      "role": "ability_status_causality",
+      "symbol": "_ZTV22AbilityStatusCausality",
+      "vma": 92058432,
+      "sizeBytes": 360,
+      "bytesSha256": "d3df611a0ed2e328b050d285287637c60643ba96ec09e4aaefaad7f2cd114b77",
+      "vptrBiasBytes": 8,
+      "bindings": [
+        {
+          "relocationOffset": 92058520,
+          "relocationType": 257,
+          "symbol": "_ZNK13AbilityStatus12getDeckIndexEv",
+          "symbolValue": 64480184,
+          "objectVirtualSlotOffset": 80
+        }
+      ]
+    },
+    {
+      "role": "card",
+      "symbol": "_ZTV4Card",
+      "vma": 89247104,
+      "sizeBytes": 296,
+      "bytesSha256": "250f52cb2d6f1966a29f6ac771fa1cd185b8f8531396c8a4026c0fe635617e0c",
+      "vptrBiasBytes": 16,
+      "bindings": [
+        {
+          "relocationOffset": 89247176,
+          "relocationType": 257,
+          "symbol": "_ZNK4Card10getElementEv",
+          "symbolValue": 46427172,
+          "objectVirtualSlotOffset": 56
+        },
+        {
+          "relocationOffset": 89247376,
+          "relocationType": 257,
+          "symbol": "_ZNK4Card23getAwakeningElementTypeEv",
+          "symbolValue": 46427372,
+          "objectVirtualSlotOffset": 256
+        }
+      ]
+    }
+  ],
+  "runtimeOffsets": {
+    "playerCandidateStrideBytes": 1424,
+    "playerUserCardReferenceOffsetBytes": 160,
+    "puzzleEnemyVectorBeginOffsetBytes": 256,
+    "puzzleEnemyVectorEndOffsetBytes": 264,
+    "puzzleEnemyVectorElementSizeBytes": 8
+  },
+  "auditedSemantics": {
+    "deckIndex0": "exactly_seven_ingame_data_indexed_character_records",
+    "deckIndex1": "puzzle_enemy_runtime_vector",
+    "deckIndex1Empty": "condition_false",
+    "otherDeckIndices": "unsupported",
+    "candidateResolution": "runtime_reference_to_master_card_element_and_awakening_element_type",
+    "cauVal1Read": true,
+    "cauVal2Read": false,
+    "cauVal3Read": false,
+    "explicitAliveFilter": false,
+    "explicitActiveFilter": false,
+    "explicitCategoryFilter": false,
+    "explicitTargetFilter": false,
+    "effectiveLeaderBranchBound": false,
+    "humanElementNamesBound": false,
+    "lifecycleBound": false,
+    "deathOrRemovalBound": false,
+    "stackingBound": false,
+    "productAuthorityBound": false
+  }
+}
