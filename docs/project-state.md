@@ -957,6 +957,24 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   draw automation, authenticated interception or dynamic instrumentation is
   authorized by this checkpoint.
 
+### SR3 — anonymized observational contract
+
+- SR3 adds an offline, default-off and fail-closed per-slot observation schema.
+  It stores only experiment-generated identifiers, hourly time buckets,
+  build/region, exact banner version, slot/card properties, Friend sequence and
+  attempt linkage, a coarse Friend-to-normal interval and closed provenance/
+  quality classifications. It stores no real observations in Git.
+- Friend attempts must be contiguous from attempt 1, include all preceding
+  negatives, stop at the single triggering attempt and link a later normal
+  summon only inside the same anonymous session. A trigger association is
+  rejected until its observable rule is fixed before collection.
+- Structurally complete rows bound to role-correct trigger, source and official-
+  rule descriptors are only analysis candidates: descriptors are declarations
+  until their external bytes and semantics are independently verified. Partial,
+  unverifiable or unpinned rows remain exploratory. S4-S5 analysis remains
+  NO-GO until the exact Friend trigger and target banner/rate snapshots are
+  supplied.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
