@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "synthetic": true,
+  "source": {
+    "sourceId": "world-tournament-until-start-crash-2026-08-16",
+    "sizeBytes": 1,
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "entryCount": 1
+  },
+  "security": {
+    "scannedFileCount": 1,
+    "capturedSensitiveValueCount": 1,
+    "exactCapturedValueMatches": 0,
+    "genericSecretPatternMatches": 0,
+    "valid": true,
+    "rawHarTracked": false,
+    "requestReplayImplemented": false,
+    "credentialFlowImplemented": false
+  },
+  "memory": {
+    "schemaVersion": 1,
+    "contract": "dokkan-world-tournament-memory-evidence",
+    "contractVersion": "0.7.0",
+    "method": "windows_process_tree_working_set_poll_15ms",
+    "limitBytes": 1073741824,
+    "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifactAggregateSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "implementationAggregateSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "measurements": [
+      { "gate": "WT0", "peakProcessTreeWorkingSetBytes": 1, "exitCode": 0 },
+      { "gate": "WT1", "peakProcessTreeWorkingSetBytes": 1, "exitCode": 0 },
+      { "gate": "WT2", "peakProcessTreeWorkingSetBytes": 1, "exitCode": 0 },
+      { "gate": "WT3", "peakProcessTreeWorkingSetBytes": 1, "exitCode": 0 },
+      { "gate": "WT4", "peakProcessTreeWorkingSetBytes": 1, "exitCode": 0 },
+      { "gate": "WT5", "peakProcessTreeWorkingSetBytes": 1, "exitCode": 0 },
+      { "gate": "WT6", "peakProcessTreeWorkingSetBytes": 1, "exitCode": 0 }
+    ],
+    "observedMaxPeakBytes": 1
+  }
+}

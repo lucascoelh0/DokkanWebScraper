@@ -83,6 +83,23 @@ function exactSecretMatches(serialized: string, values: Set<string>): number {
     for (const value of values) if (value.length >= 6 && (serialized.includes(JSON.stringify(value)) || serialized.includes(value))) matches += 1;
     return matches;
 }
+export function scanWtCampaignTexts(harText: string, structuralIds: number[], files: Array<{ name: string; text: string }>): { capturedSensitiveValueCount: number; scannedFileCount: number; exactCapturedValueMatches: number; numericCapturedValueMatches: number; stringCapturedValueMatches: number; genericSecretPatternMatches: number; exactMatchedFiles: string[]; valid: boolean } {
+    const har = object(JSON.parse(harText)), log = object(har?.log), rawEntries = log?.entries, sensitive = new Set<string>();
+    if (!Array.isArray(rawEntries) || rawEntries.length === 0 || files.length === 0) throw new Error("WT secret scan input invalid");
+    for (const raw of rawEntries) {
+        const entry = object(raw), request = object(entry?.request), response = object(entry?.response), rawUrl = text(request?.url); if (!request || !response || !rawUrl) throw new Error("WT secret scan malformed HAR");
+        let url: URL; try { url = new URL(rawUrl); } catch { throw new Error("WT secret scan invalid URL"); } const route = routeOf(url.pathname);
+        const requestHeaders = headerMap(request.headers), responseHeaders = headerMap(response.headers), scope = route ? classification(route) : "unknown", accountSurface = scope === "account_scoped" || scope === "opaque";
+        for (const value of [...requestHeaders.values(), ...responseHeaders.values(), ...url.searchParams.values()]) if (value.length >= 4) sensitive.add(value);
+        const postData = object(request.postData), content = object(response.content); for (const rawBody of [postData?.text, content?.text]) if (typeof rawBody === "string") { try { collectSensitive(JSON.parse(rawBody), sensitive, accountSurface); } catch { /* opaque bytes remain unretained */ } }
+    }
+    for (const id of structuralIds) sensitive.delete(String(id));
+    sensitive.delete("android"); // public platform classification retained only as an explicit NO-GO scope
+    const campaignMatches = (serialized: string): { numeric: number; string: number } => { let numeric = 0, string = 0; for (const value of sensitive) { if (value.length < 6) continue; const isNumeric = /^-?\d+(?:\.\d+)?$/.test(value), matched = isNumeric ? new RegExp(`(^|[^0-9])${value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^0-9]|$)`).test(serialized) : serialized.includes(JSON.stringify(value)) || serialized.includes(`'${value.replace(/'/g, "\\'")}'`) || serialized.includes(`\`${value.replace(/`/g, "\\`")}\``); if (matched) isNumeric ? numeric++ : string++; } return { numeric, string }; };
+    let exactCapturedValueMatches = 0, numericCapturedValueMatches = 0, stringCapturedValueMatches = 0, genericSecretPatternMatches = 0; const exactMatchedFiles: string[] = [];
+    for (const file of files) { const matched = campaignMatches(file.text), exact = matched.numeric + matched.string; numericCapturedValueMatches += matched.numeric; stringCapturedValueMatches += matched.string; exactCapturedValueMatches += exact; if (exact > 0) exactMatchedFiles.push(file.name); if (/Bearer\s+[A-Za-z0-9._~+\/-]{8,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/.test(file.text)) genericSecretPatternMatches++; }
+    return { capturedSensitiveValueCount: sensitive.size, scannedFileCount: files.length, exactCapturedValueMatches, numericCapturedValueMatches, stringCapturedValueMatches, genericSecretPatternMatches, exactMatchedFiles, valid: exactCapturedValueMatches === 0 && genericSecretPatternMatches === 0 };
+}
 export function assertExternalHarPath(root: string, sourcePath: string): void { const inside = relative(root, sourcePath).replace(/\\/g, "/"); if (!inside.startsWith("../") && inside !== "..") throw new Error("WT0 HAR source must remain outside the worktree"); }
 
 export function makeExternalSourceLock(harText: string): WtExternalSourceLock {

@@ -1063,6 +1063,30 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   manifest remains candidate-only; persisted consumer, authority, production,
   Android, UI, authenticated network and R2 mutation remain NO-GO.
 
+## World Tournament WT0-WT6 checkpoint (2026-08-16)
+
+- The isolated branch `codex/database-world-tournament-capture-audit` starts at
+  exact `3222f2eeede2b70bafbf1b6c00f2c6a521b74485`; `main` was not modified.
+- WT0-WT6 completed an offline, fail-closed audit of the external 7,087,930-byte
+  HAR (`70ce81581e9237fb1b9a8da7dd0db1c24dd397dc329cc57cca468705265d66cd`).
+  The HAR and its source lock are not tracked. Captured-value scan results are
+  1,289 in-memory values from all HAR routes, zero exact matches and zero
+  generic token matches.
+- Contracts now cover event/lifecycle, account entry/status, maps, ranks,
+  rankings, borders, friends, box ranking, schedules, briefing/supporters,
+  advantageous cards, mission relation and the opaque start envelope. HTTP 200
+  proves acceptance/order only; sign semantics and crash causality are unknown.
+- Structural shadow parity is 1 agreement, 4 coverage gaps, 1 unknown and 7
+  unjoinable cells. The older pinned database roots do not contain Budokai 63,
+  mission 63001 or box ranking 631. Reward definitions and grants stay separate.
+- Two complete generations of 21 WT0-WT6 files were byte-identical. Maximum
+  observed process-tree working set was 589,828,096 bytes. GO is limited to
+  offline/default-off infrastructure and sanitized fixtures. Replay,
+  authenticated automation, missing finish/results, sign decoding, Android,
+  R2, publisher, production and source replacement remain NO-GO.
+- Consolidated evidence and integration guidance are in
+  `docs/game-db/specs/database-world-tournament-capture-wt0-wt6.md`.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
