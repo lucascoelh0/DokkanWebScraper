@@ -886,6 +886,26 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   and field independence in the audited chain are GO; effective/data-level
   branch selection, lifecycle, stacking, product, authority, production,
   delivery, R2 and Android remain NO-GO.
+- K55 adds a source-bound native structural audit over a complete real K54
+  execution. It binds one status construction/registration per iterated leader
+  source row, the shared start-turn executor calls with their exact raw
+  arguments, additive matching type-82 contributions, the `calc_option=0`
+  integer conversion and the `calc_option=2` division by 100 at the handler.
+  These post-condition facts do not depend on type-35, but they authorize only
+  the 3,836 unconditional effects and 12,265 references. The 17 conditional
+  effects and 45 references remain excluded as
+  `runtime_deck_index_unresolved`.
+- K55 deliberately leaves single versus repeated evaluation, duration,
+  reset/removal results, enter/exit behavior, Leader + Friend composition,
+  final stacking/order/rounding and transformation/death/revive/exchange/
+  standby behavior unknown and NO-GO. The native evidence is 11,356 bytes
+  (SHA-256
+  `136d7792840ddb716a7d601b561bed56b7dda37297f4029480a605b6c1a95ec8`).
+  Two complete reports were byte-identical at 21,674 bytes with SHA-256
+  `c2131742d621c71ce12b9e1a379a4ad4ca7f1e38482445e692fb2bd1444459ab`,
+  empty stderr and an externally sampled peak working set of 1,012,617,216
+  bytes. Offline structural audit is GO; product projection, authority,
+  production, delivery, R2 and Android remain NO-GO.
 
 ## Operating Constraints
 

@@ -102,6 +102,7 @@
     "audit:database-characters-leader-causality-semantics": "node --expose-gc --max-old-space-size=768 lib/database-characters/leader-causality-semantics-run.js --opt-in-k52",
     "audit:database-characters-leader-causality-collection": "node --expose-gc --max-old-space-size=768 lib/database-characters/leader-causality-collection-run.js --opt-in-k53",
     "audit:database-characters-leader-causality-deck-index": "node --expose-gc --max-old-space-size=768 lib/database-characters/leader-causality-deck-index-run.js --opt-in-k54",
+    "audit:database-characters-leader-lifecycle-semantics": "node --expose-gc --max-old-space-size=768 lib/database-characters/leader-lifecycle-semantics-run.js --opt-in-k55",
     "run:game-db-init-first-party-export": "npx ts-node game-db/game-db-init-first-party-export.ts",
     "run:game-db-pull-emulator-database-artifact": "npx ts-node game-db/game-db-pull-emulator-database-artifact.ts",
     "run:game-db-promote-first-party-export": "npx ts-node game-db/game-db-promote-to-first-party-export.ts",

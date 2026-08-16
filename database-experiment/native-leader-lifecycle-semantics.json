@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "contract": "dokkan-database-native-leader-lifecycle-semantics",
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "codeRegions": [
+    { "role": "leader_status_factory", "symbol": "_ZN14AbilityManager17createLeaderSkillEiii", "vma": 64388884, "sizeBytes": 1584, "codeSha256": "43f991cc662732c4ec5e4ce995f03112e8c5948a2911ba4bbeb7c7cbe4df60b6" },
+    { "role": "passive_status_factory", "symbol": "_ZN20AbilityStatusPassive6createEP26CreateAbilityStatusPassive", "vma": 64502080, "sizeBytes": 80, "codeSha256": "d05e63cab621838979d78b8f0b727b30ba9a7a4fd534501ec5f5183c7f93ab45" },
+    { "role": "ability_status_registration", "symbol": "_ZN14AbilityManager16addAbilityStatusENSt6__ndk110shared_ptrI22AbilityStatusCausalityEEb", "vma": 64365596, "sizeBytes": 532, "codeSha256": "a24c705d6b484f69c0b6c7d05bd6a155bbcad77fa2417a6d5ad8d95090c21008" },
+    { "role": "start_turn_leader_execution", "symbol": "_ZN21DPuzzleGameController30executeLeaderSkillsAtStartTurnEv", "vma": 47869304, "sizeBytes": 528, "codeSha256": "c0dec71e27d7337f2baeed524c78fdf60b55d3a301aada4a992e127fbced0c76" },
+    { "role": "shared_status_execution", "symbol": "_ZN14AbilityManager21callAbilityStatusExecEi17SkillCategoryType19SkillExecTimingType9SkillTypeN13AbilityStatus14AddtionalParamE", "vma": 64372436, "sizeBytes": 1068, "codeSha256": "e479bd26a683eef5f1a8a035c4c99e83cd4e4a1de0ab4a716f5842df7e8aa707" },
+    { "role": "type82_handler", "symbol": "_ZN12TeamingPower10Calculator30leaderSkillElementTypeHpAtkDefERKNSt6__ndk110shared_ptrI11LeaderSkillEERKNS2_I8UserCardEE", "vma": 69078440, "sizeBytes": 380, "codeSha256": "7a5333e978a612ed8c973e15d8fcc4a6db6f8607cd5b7daed91c77a4fb387f91" },
+    { "role": "teaming_power_calculator", "symbol": "_ZN12TeamingPower10Calculator9calculateERK8UserDeckRKNSt6__ndk110shared_ptrI14LeaderSkillSetEERKNS5_I8UserCardEERKNS_6WeightEb", "vma": 69079756, "sizeBytes": 2708, "codeSha256": "e7937d291dc0da05517995fe2141c88716858d5b599c06cec39e07f7a246db95" },
+    { "role": "enemy_leader_deactivation", "symbol": "_ZN21DPuzzleGameController27deactivateEnemyLeaderSkillsEv", "vma": 47872928, "sizeBytes": 388, "codeSha256": "818e7e9c3cb60e471e603bd7317cfd9791353622dcb74b2d99ad5ed488a0e053" },
+    { "role": "party_leader_deactivation", "symbol": "_ZN21DPuzzleGameController27deactivatePartyLeaderSkillsEv", "vma": 47873316, "sizeBytes": 580, "codeSha256": "e5c4de5218e00a6bd62fabea1c25f600054b4540cbe73074982191a0707ee906" }
+  ],
+  "instructionFragments": [
+    { "role": "factory_loop_advances_compares_and_loads_one_row", "vma": 64389156, "sizeBytes": 20, "instructionHex": "b5420091bf0216eb201b0054b42240a9f42301a9" },
+    { "role": "factory_creates_and_registers_one_passive_status", "vma": 64389800, "sizeBytes": 56, "instructionHex": "e8830091e0a3029158c05c94e0a30291deda5b94680240f9e00bc03dff7f02a9080940f9e00f803de1c30091e00313aa2200805200013fd6" },
+    { "role": "factory_cleanup_returns_to_next_source_row", "vma": 64389964, "sizeBytes": 52, "instructionHex": "f40f40f9b4e6ffb48122009100008092e5a45b9420e6ffb5880240f9e00314aa080940f900013fd6e00314aab6c35b942affff17" },
+    { "role": "start_turn_shared_call_raw_category_0", "vma": 47869392, "sizeBytes": 28, "instructionHex": "e8630091a50301d1e1031f2ae2031f2a23008052640080529ec59b94" },
+    { "role": "start_turn_shared_call_raw_category_6", "vma": 47869588, "sizeBytes": 28, "instructionHex": "e8030091e5c30091c1008052e2031f2a23008052640080526dc59b94" },
+    { "role": "type82_calc_option_0_integer_conversion", "vma": 69078708, "sizeBytes": 28, "instructionHex": "00e4002f01d5200e22b8a10e7f1200b94104040e620200bd0b000014" },
+    { "role": "type82_calc_option_2_divide_by_100_float", "vma": 69078736, "sizeBytes": 40, "instructionHex": "0859a85201e4002f7f1600b90001271e7f0200b900fd202e02d4210e01e4006f4004040e621200bd" },
+    { "role": "teaming_power_matching_row_contribution_is_added", "vma": 69081192, "sizeBytes": 88, "instructionHex": "002940f9401e00b4080040f9091940f9a80302d162820091e10316aa20013fd6a80302d1a00359fc612240fda28359bc634a40bd0401c03d650ec03d00d4210ef81f40f94128231ea284a44e602200fd614a00bd620e803d" },
+    { "role": "enemy_deactivation_invokes_removal_and_status_apis", "vma": 47873008, "sizeBytes": 172, "instructionHex": "f4030091e80300f9f41300f9e103009130c59b94e01340f91f0014eb80000054000100b4080580520300001408048052e0030091090040f9286968f800013fd6600240f9e00000b50081825205b89a94f40300aab7c09b94e00314aa740200f9210080526200805282cb9b94600240f9e00000b500818252fab79a94f40300aaacc09b94e00314aa740200f9e1031f2a22008052230080526400805225008052e6031f2a47cb9b94a81640f9" },
+    { "role": "party_deactivation_invokes_removal_and_status_apis", "vma": 47873396, "sizeBytes": 352, "instructionHex": "f4030091e80300f9f41300f9e1030091cfc49b94e01340f91f0014eb80000054000100b4080580520300001408048052e0030091090040f9286968f800013fd6600240f9e00000b500818252a4b79a94f40300aa56c09b94e00314aa740200f9e1031f2a6200805221cb9b94600240f9e00000b50081825299b79a94f40300aa4bc09b94e00314aa740200f9e1031f2ae2031f2a230080526400805225008052e6031f2ae6ca9b94600240f9e00000b5008182528ab79a94f40300aa3cc09b94e00314aa740200f9c1008052e2031f2a230080526400805225008052e6031f2ad7ca9b94600240f9e00000b5008182527bb79a94f40300aa2dc09b94e00314aa740200f9e1031f2ae2031f2a630180526400805225008052e6031f2ac8ca9b94600240f9e00000b5008182526cb79a94f40300aa1ec09b94e00314aa740200f9c1008052e2031f2a630180526400805225008052e6031f2ab9ca9b94a81640f9" }
+  ],
+  "exactDirectBranches": [
+    { "role": "factory_next_source_row", "callerVma": 64390012, "instructionHex": "2affff17", "targetVma": 64389156 }
+  ],
+  "exactPltCalls": [
+    { "role": "factory_passive_status_create", "callerVma": 64389808, "instructionHex": "58c05c94", "pltVma": 88704016, "pltBytesHex": "703200d0115a40f910c2029120021fd6", "relocationOffset": 95314096, "symbol": "_ZN20AbilityStatusPassive6createEP26CreateAbilityStatusPassive", "symbolValue": 64502080 },
+    { "role": "start_turn_category_0", "callerVma": 47869416, "instructionHex": "9ec59b94", "pltVma": 88704096, "pltBytesHex": "703200d0116e40f91062039120021fd6", "relocationOffset": 95314136, "symbol": "_ZN14AbilityManager21callAbilityStatusExecEi17SkillCategoryType19SkillExecTimingType9SkillTypeN13AbilityStatus14AddtionalParamE", "symbolValue": 64372436 },
+    { "role": "start_turn_category_6", "callerVma": 47869612, "instructionHex": "6dc59b94", "pltVma": 88704096, "pltBytesHex": "703200d0116e40f91062039120021fd6", "relocationOffset": 95314136, "symbol": "_ZN14AbilityManager21callAbilityStatusExecEi17SkillCategoryType19SkillExecTimingType9SkillTypeN13AbilityStatus14AddtionalParamE", "symbolValue": 64372436 },
+    { "role": "enemy_remove_efficacy", "callerVma": 47873024, "instructionHex": "30c59b94", "pltVma": 88707264, "pltBytesHex": "703200b0118643f910221c9120021fd6", "relocationOffset": 95315720, "symbol": "_ZN14AbilityManager29removeAbilityEfficacyInfoListERKNSt6__ndk18functionIFbR19AbilityEfficacyInfoEEE", "symbolValue": 64414464 },
+    { "role": "enemy_remove_exec", "callerVma": 47873112, "instructionHex": "82cb9b94", "pltVma": 88713824, "pltBytesHex": "703200b011ee41f910620f9120021fd6", "relocationOffset": 95319000, "symbol": "_ZN14AbilityManager25removeAbilityExecInfoListE17SkillCategoryType9SkillType", "symbolValue": 64417336 },
+    { "role": "enemy_set_status", "callerVma": 47873172, "instructionHex": "47cb9b94", "pltVma": 88713648, "pltBytesHex": "703200b011c241f910020e9120021fd6", "relocationOffset": 95318912, "symbol": "_ZN14AbilityManager22setAbilityStatusStatusEi17SkillCategoryType19SkillExecTimingType9SkillTypeN13AbilityStatus6StatusES4_", "symbolValue": 64380028 },
+    { "role": "party_remove_efficacy", "callerVma": 47873412, "instructionHex": "cfc49b94", "pltVma": 88707264, "pltBytesHex": "703200b0118643f910221c9120021fd6", "relocationOffset": 95315720, "symbol": "_ZN14AbilityManager29removeAbilityEfficacyInfoListERKNSt6__ndk18functionIFbR19AbilityEfficacyInfoEEE", "symbolValue": 64414464 },
+    { "role": "party_remove_exec", "callerVma": 47873500, "instructionHex": "21cb9b94", "pltVma": 88713824, "pltBytesHex": "703200b011ee41f910620f9120021fd6", "relocationOffset": 95319000, "symbol": "_ZN14AbilityManager25removeAbilityExecInfoListE17SkillCategoryType9SkillType", "symbolValue": 64417336 },
+    { "role": "party_set_status_0", "callerVma": 47873560, "instructionHex": "e6ca9b94", "pltVma": 88713648, "pltBytesHex": "703200b011c241f910020e9120021fd6", "relocationOffset": 95318912, "symbol": "_ZN14AbilityManager22setAbilityStatusStatusEi17SkillCategoryType19SkillExecTimingType9SkillTypeN13AbilityStatus6StatusES4_", "symbolValue": 64380028 },
+    { "role": "party_set_status_6", "callerVma": 47873620, "instructionHex": "d7ca9b94", "pltVma": 88713648, "pltBytesHex": "703200b011c241f910020e9120021fd6", "relocationOffset": 95318912, "symbol": "_ZN14AbilityManager22setAbilityStatusStatusEi17SkillCategoryType19SkillExecTimingType9SkillTypeN13AbilityStatus6StatusES4_", "symbolValue": 64380028 },
+    { "role": "party_set_status_type_11_category_0", "callerVma": 47873680, "instructionHex": "c8ca9b94", "pltVma": 88713648, "pltBytesHex": "703200b011c241f910020e9120021fd6", "relocationOffset": 95318912, "symbol": "_ZN14AbilityManager22setAbilityStatusStatusEi17SkillCategoryType19SkillExecTimingType9SkillTypeN13AbilityStatus6StatusES4_", "symbolValue": 64380028 },
+    { "role": "party_set_status_type_11_category_6", "callerVma": 47873740, "instructionHex": "b9ca9b94", "pltVma": 88713648, "pltBytesHex": "703200b011c241f910020e9120021fd6", "relocationOffset": 95318912, "symbol": "_ZN14AbilityManager22setAbilityStatusStatusEi17SkillCategoryType19SkillExecTimingType9SkillTypeN13AbilityStatus6StatusES4_", "symbolValue": 64380028 }
+  ],
+  "vtables": [
+    {
+      "role": "ability_manager_status_registration_slot",
+      "symbol": "_ZTV14AbilityManager",
+      "vma": 92054472,
+      "sizeBytes": 200,
+      "bytesSha256": "58ec95077a7df39db01804932f0b4b1f926eac72b956891a84e775d42c6a7753",
+      "vptrBiasBytes": 16,
+      "bindings": [
+        { "objectVirtualSlotOffset": 16, "relocationOffset": 92054504, "relocationType": 257, "symbol": "_ZN14AbilityManager16addAbilityStatusENSt6__ndk110shared_ptrI22AbilityStatusCausalityEEb", "symbolValue": 64365596 }
+      ]
+    }
+  ],
+  "auditedSemantics": {
+    "oneStatusPerSourceRow": true,
+    "statusCreationSite": "factory_loop_over_leader_skill_set_rows",
+    "statusApplicationSite": "shared_start_turn_status_execution_invocation",
+    "startTurnRawArguments": [[0, 0, 1, 3], [6, 0, 1, 3]],
+    "type82MatchingRowsAdditiveInCalculator": true,
+    "calcOption0IntegerConversionAtHandler": true,
+    "calcOption2DivideBy100FloatAtHandler": true,
+    "type35RequiredForPostCondition": false,
+    "deactivationApisInvoked": true,
+    "deactivationOutcomeBound": false,
+    "db37PassiveTurnOrIsOnceLeaderBindingFound": false,
+    "singleEvaluationOrReevaluationBound": false,
+    "durationBound": false,
+    "resetOrRemovalOutcomeBound": false,
+    "enterExitBound": false,
+    "leaderFriendCompositionBound": false,
+    "finalStackingOrCompositionBound": false,
+    "finalOperationOrderingOutsideHandlerBound": false,
+    "transformationDeathReviveExchangeStandbyBound": false,
+    "finalRoundingBound": false
+  }
+}
