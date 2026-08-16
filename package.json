@@ -68,6 +68,7 @@
     "run:database-world-tournament-wt1": "node --max-old-space-size=576 lib/database-world-tournament-captures/wt1-run.js",
     "run:database-world-tournament-wt2": "node --max-old-space-size=576 lib/database-world-tournament-captures/wt2-run.js",
     "run:database-world-tournament-wt3": "node --max-old-space-size=576 lib/database-world-tournament-captures/wt3-run.js",
+    "run:database-world-tournament-wt4": "node --max-old-space-size=576 lib/database-world-tournament-captures/wt4-run.js",
     "run:database-data-download-dd0": "node --max-old-space-size=768 lib/database-data-download-captures/data-download-dd0-run.js",
     "run:database-data-download-dd1": "node --max-old-space-size=768 lib/database-data-download-captures/data-download-dd1-run.js",
     "run:database-data-download-dd2": "node --max-old-space-size=768 lib/database-data-download-captures/data-download-dd2-run.js",
