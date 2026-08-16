@@ -940,6 +940,25 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   artifact hash. Maximum individual-process RSS was 1,018,998,784 and
   1,023,991,808 bytes. RSS authority is explicitly per-process; combined
   process-tree RSS is unmeasured and remains NO-GO.
+- K57 adds a local, stdout-only shadow consumer over the exact K56 artifact.
+  It validates K56 source-bound before and after the lookup audit, pins all
+  five member identities, and requires the complete artifact fingerprint
+  `807a98ae37cd17a68a7f3f3544c1f14b4f4bfab9f75c9b627cca23cbab41e3b3`
+  plus lineage fingerprint
+  `132c1e858ed5fdb6bdc97f3c5e0313c865c7bf0ee7367e1ad1453b89e280fa5f`
+  to remain stable. Private indexes cover 12,265 references across 7,248
+  states, 3,434 cards and 3,836 effect rows; exact-reference, state, card and
+  effect lookups return deep-frozen clones while preserving source order and
+  multiplicity.
+- Two real K57 runs produced the same report after normalizing only
+  observational RSS measurements (normalized compact SHA-256
+  `cc2188a45f78b61f5bc2bcc2cd748417720bf988ec9464661df36377b086db8c`).
+  Raw reports were 4,291 bytes with empty stderr. Maximum individual-process
+  RSS was 1,017,950,208 and 1,025,351,680 bytes; parent K57 peaks were
+  993,509,376 and 995,381,248 bytes. Local shadow consumption is GO.
+  Persistence, the 17 conditionals, Leader + Friend composition, final combat
+  calculation, authority, production, delivery, R2 and Android remain NO-GO;
+  process-tree RSS remains unmeasured and NO-GO.
 
 ## Operating Constraints
 
