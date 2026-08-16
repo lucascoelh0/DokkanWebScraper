@@ -992,6 +992,33 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Remote read-only preflight is GO. Publication, R2 mutation, authority,
   production and Android remain NO-GO; a future publisher must rerun freshness
   and strong-ETag CAS immediately before any authorized mutation.
+- K60 implements the conditional publisher behind mutually exclusive explicit
+  `--dry-run` and `--publish` modes. Every invocation runs a fresh real K59
+  first, then source-binds K58/K56 and joins candidate, plan, receipt, marker,
+  full-artifact and lineage identities. The deterministic publication ID
+  excludes observation time and remote statuses. Dry-run cannot accept a
+  confirmation, construct the S3 client or read credentials; publish requires
+  the exact publication ID before any local persistence or client construction.
+- The future mutation protocol is create-only `If-None-Match: *` for missing
+  immutable objects, exact verified reuse for present immutable objects and a
+  fresh strong nonempty ETag `If-Match` CAS for a different mutable manifest.
+  Source validation and all immutable rereads precede the final manifest
+  reread/CAS; the manifest is always last and finally reread. Unconditional
+  writes, deletes, copies and multipart operations are forbidden. A separate
+  content-addressed publication receipt can be created only after final remote
+  verification and does not claim RSS authority.
+- The real K60 dry-run checked at `2026-08-16T10:13:56.648Z` completed with
+  exit 0. All five objects remained missing and all modeled actions remained
+  conditional create-if-absent. The stable publication ID is
+  `a23bda883f00c24ff9732ad3a57fbece890670b6a14f0377725d2b855e99e286`.
+  The 7,575-byte report has SHA-256
+  `04bfece327902c2019941ddca348d34f1f460f2c0466a1c9c20902197a245274`;
+  no publication summary or receipt was produced, client/credential access was
+  NOT_EXECUTED and remote writes were zero. Maximum individual-process RSS was
+  1,024,901,120 bytes. Focused K58-K60 checks passed 31/31 and the compiled
+  `database-characters` suite passed 321 tests with 9 platform-dependent tests
+  pending. Combined process-tree RSS, R2 mutation, authority, production and
+  Android remain NO-GO.
 
 ## Operating Constraints
 
