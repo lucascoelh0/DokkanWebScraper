@@ -932,6 +932,14 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   are GO; conditional runtime selection, combined value, authority,
   production, delivery, R2, Android and concurrent ancestor replacement
   protection remain NO-GO.
+- K56 RSS hardening moves each real K55 audit into a serial, bounded Node child
+  with explicit arguments, no shell, limited output, canonical-envelope
+  validation, timeout, termination escalation and final fail-closed
+  settlement. The public source-bound validator still runs K55 itself and
+  cannot accept an injected report. Two hardened real runs preserved every
+  artifact hash. Maximum individual-process RSS was 1,018,998,784 and
+  1,023,991,808 bytes. RSS authority is explicitly per-process; combined
+  process-tree RSS is unmeasured and remains NO-GO.
 
 ## Operating Constraints
 

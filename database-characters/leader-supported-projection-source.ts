@@ -5,7 +5,7 @@ import { isAbsolute, join, relative, resolve, sep } from "path";
 import { gunzipSync, gzipSync } from "zlib";
 import { resolveCharacterInputFile } from "./artifact-path";
 import type { CharacterLeaderLifecycleSemanticsReport } from "./leader-lifecycle-semantics-contract";
-import { runCharacterLeaderLifecycleSemanticsAudit } from "./leader-lifecycle-semantics-run";
+import { runCharacterLeaderK55Subprocess } from "./leader-supported-projection-k55-subprocess";
 import { validateCharacterLeaderAssociationProjectionArtifact } from "./leader-association-projection";
 import {
     assertLeaderCausalityDatabaseStable,
@@ -277,9 +277,12 @@ async function readArtifactSet(root: string): Promise<CharacterLeaderSupportedPr
 
 export async function validateCharacterLeaderSupportedProjectionArtifact(
     options: CharacterLeaderSupportedProjectionSourceOptions & { artifactRoot: string },
-): Promise<{ artifacts: CharacterLeaderSupportedProjectionArtifactSet; sourceBoundValidation: "GO" }> {
-    const upstreamK55 = await runCharacterLeaderLifecycleSemanticsAudit({
-        optIn: true,
+): Promise<{
+    artifacts: CharacterLeaderSupportedProjectionArtifactSet;
+    sourceBoundValidation: "GO";
+    k55ValidationProcessPeakRssBytes: number;
+}> {
+    const child = await runCharacterLeaderK55Subprocess({
         sidecarRoot: options.sidecarRoot,
         productionRoot: options.productionRoot,
         fyiRoot: options.fyiRoot,
@@ -289,7 +292,7 @@ export async function validateCharacterLeaderSupportedProjectionArtifact(
         nativeRuntime: options.nativeRuntime,
         database: options.database,
     });
-    let expected = await buildCharacterLeaderSupportedProjectionFromSources(options, upstreamK55);
+    let expected = await buildCharacterLeaderSupportedProjectionFromSources(options, child.report);
     let actual = await readArtifactSet(options.artifactRoot);
     assertCharacterLeaderSupportedProjectionArtifactBytes(actual, expected);
     const reread = await readArtifactSet(options.artifactRoot);
@@ -299,7 +302,11 @@ export async function validateCharacterLeaderSupportedProjectionArtifact(
     }
     expected = undefined as any; actual = undefined as any;
     if (global.gc) global.gc();
-    return { artifacts: reread, sourceBoundValidation: "GO" };
+    return {
+        artifacts: reread,
+        sourceBoundValidation: "GO",
+        k55ValidationProcessPeakRssBytes: child.processPeakRssBytes,
+    };
 }
 
 export function assertCharacterLeaderSupportedProjectionArtifactBytes(

@@ -13,7 +13,7 @@ import {
     validateCharacterLeaderSupportedProjectionRootSeparation,
     writeCharacterLeaderSupportedProjectionArtifacts,
 } from "./leader-supported-projection-source";
-import { runCharacterLeaderLifecycleSemanticsAudit } from "./leader-lifecycle-semantics-run";
+import { runCharacterLeaderK55Subprocess } from "./leader-supported-projection-k55-subprocess";
 
 export interface CharacterLeaderSupportedProjectionRunOptions extends CharacterLeaderSupportedProjectionSourceOptions {
     optIn: true;
@@ -32,7 +32,11 @@ export interface CharacterLeaderSupportedProjectionRunResult {
     k55RealAudit: "GO";
     sourceBoundValidation: "GO";
     localShadowAuditDefaultOff: "GO";
-    peakRssBytes: number;
+    rssAccountingScope: "per_process_not_process_tree";
+    k55InitialProcessPeakRssBytes: number;
+    k55ValidationProcessPeakRssBytes: number;
+    parentProcessPeakRssBytes: number;
+    maximumIndividualProcessPeakRssBytes: number;
     readiness: {
         offlineSupportedOnlyProjection: "GO";
         conditional17: "NO-GO";
@@ -50,6 +54,8 @@ export interface CharacterLeaderSupportedProjectionRunResult {
         combatCalculation: "NO-GO";
         dynamicInstrumentation: "NO-GO";
         concurrentOutputAncestorReplacement: "NO-GO";
+        perProcessRssUnder1GiB: "GO";
+        processTreeRssUnder1GiB: "NO-GO";
     };
 }
 
@@ -71,6 +77,12 @@ class RssGuard {
     dispose(): void { clearInterval(this.timer); }
 }
 
+export function maximumIndividualCharacterLeaderSupportedProjectionProcessPeakRss(...peaks: number[]): number {
+    if (peaks.length !== 3 || peaks.some(peak => !Number.isSafeInteger(peak) || peak <= 0
+        || peak >= CHARACTER_LEADER_SUPPORTED_PROJECTION_RSS_LIMIT_BYTES)) throw new Error("K56 per-process RSS peak rejected");
+    return Math.max(...peaks);
+}
+
 export async function runCharacterLeaderSupportedProjection(
     options: CharacterLeaderSupportedProjectionRunOptions,
 ): Promise<CharacterLeaderSupportedProjectionRunResult> {
@@ -84,8 +96,7 @@ export async function runCharacterLeaderSupportedProjection(
     try {
         await validateCharacterLeaderSupportedProjectionRootSeparation(options);
         rss.sample();
-        const upstreamK55 = await runCharacterLeaderLifecycleSemanticsAudit({
-            optIn: true,
+        let initialChild = await runCharacterLeaderK55Subprocess({
             sidecarRoot: options.sidecarRoot,
             productionRoot: options.productionRoot,
             fyiRoot: options.fyiRoot,
@@ -95,6 +106,9 @@ export async function runCharacterLeaderSupportedProjection(
             nativeRuntime: options.nativeRuntime,
             database: options.database,
         });
+        const k55InitialProcessPeakRssBytes = initialChild.processPeakRssBytes;
+        let upstreamK55 = initialChild.report;
+        initialChild = undefined as any;
         rss.sample();
         let first = await buildCharacterLeaderSupportedProjectionFromSources(options, upstreamK55);
         rss.sample();
@@ -108,11 +122,17 @@ export async function runCharacterLeaderSupportedProjection(
         rss.sample();
         await writeCharacterLeaderSupportedProjectionArtifacts(options.outputRoot, second);
         second = undefined as any;
+        upstreamK55 = undefined as any;
         (global as any).gc();
         rss.sample();
         const validated = await validateCharacterLeaderSupportedProjectionArtifact({ artifactRoot: options.outputRoot, ...options });
         rss.sample();
-        const peakRssBytes = rss.stop();
+        const parentProcessPeakRssBytes = rss.stop();
+        const maximumIndividualProcessPeakRssBytes = maximumIndividualCharacterLeaderSupportedProjectionProcessPeakRss(
+            parentProcessPeakRssBytes,
+            k55InitialProcessPeakRssBytes,
+            validated.k55ValidationProcessPeakRssBytes,
+        );
         return {
             outputRoot: options.outputRoot,
             manifest: validated.artifacts.manifest,
@@ -125,13 +145,19 @@ export async function runCharacterLeaderSupportedProjection(
             k55RealAudit: "GO",
             sourceBoundValidation: "GO",
             localShadowAuditDefaultOff: "GO",
-            peakRssBytes,
+            rssAccountingScope: "per_process_not_process_tree",
+            k55InitialProcessPeakRssBytes,
+            k55ValidationProcessPeakRssBytes: validated.k55ValidationProcessPeakRssBytes,
+            parentProcessPeakRssBytes,
+            maximumIndividualProcessPeakRssBytes,
             readiness: {
                 offlineSupportedOnlyProjection: "GO", conditional17: "NO-GO", deckFallback: "NO-GO",
                 effectiveCombinedLeaderValue: "NO-GO", authority: "NO-GO", apply: "NO-GO", production: "NO-GO",
                 publisher: "NO-GO", network: "NO-GO", r2: "NO-GO", android: "NO-GO", ui: "NO-GO",
                 fyiRemoval: "NO-GO", combatCalculation: "NO-GO", dynamicInstrumentation: "NO-GO",
                 concurrentOutputAncestorReplacement: "NO-GO",
+                perProcessRssUnder1GiB: "GO",
+                processTreeRssUnder1GiB: "NO-GO",
             },
         };
     } finally { rss.dispose(); }

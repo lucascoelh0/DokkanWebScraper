@@ -86,10 +86,24 @@ Two independent real roots produced four byte-identical members:
 | validation | 1,498 | `c24b898cbbd4da324ac4cf83068f2d9ec9603b3276993f48736a40fa99eddf4e` |
 | manifest | 7,146 | `e5213cc11b141e585eff1cffdfd3043e790cff718569367e26c5dd581bdd1546` |
 
-Both runs had empty stderr. Peak RSS was 1,067,995,136 and 1,067,003,904
-bytes, below the exclusive 1 GiB ceiling by only 5,746,688 and 6,737,920
-bytes respectively. This narrow margin is an operational risk and must remain
-monitored.
+Both original runs had empty stderr. Their single-process peak RSS was
+1,067,995,136 and 1,067,003,904 bytes, below the exclusive 1 GiB ceiling by
+only 5,746,688 and 6,737,920 bytes respectively.
+
+The hardened runner now executes each real K55 audit serially in a bounded
+child process. The child uses explicit Node arguments, no shell, bounded
+stdout/stderr, canonical-envelope validation, a ten-minute timeout, forced
+termination escalation and a final fail-closed settlement deadline. The
+source-bound validator creates its own child and does not accept a caller-
+supplied K55 report.
+
+Two post-hardening real runs preserved all four artifact hashes exactly. Their
+maximum individual-process peaks were 1,018,998,784 and 1,023,991,808 bytes.
+The individual parent/initial-K55/final-K55 peaks were respectively
+1,018,998,784 / 1,012,006,912 / 1,007,362,048 bytes and 1,023,991,808 /
+1,018,290,176 / 1,018,871,808 bytes. The accounting scope is explicitly
+`per_process_not_process_tree`: every process stayed below 1 GiB, but combined
+process-tree RSS is not measured or authorized and remains NO-GO.
 
 The card-ID-only shadow comparison joined 2,265 of 3,434 projected distinct
 card IDs. It found 8,893 structurally joinable references and 3,372 unjoinable
@@ -108,3 +122,5 @@ not a completeness or authority claim.
 | publisher, network, R2 or Android | **NO-GO** |
 | concurrent output-ancestor replacement protection | **NO-GO** |
 | dynamic runtime instrumentation | **NO-GO** |
+| per-process RSS below 1 GiB | **GO** |
+| combined process-tree RSS below 1 GiB | **NO-GO** |

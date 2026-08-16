@@ -1,7 +1,9 @@
 import { deepStrictEqual, equal, rejects, throws } from "assert";
-import { existsSync } from "fs";
+import { EventEmitter } from "events";
+import { existsSync, readFileSync } from "fs";
 import { link, lstat, mkdir, rm, symlink, writeFile } from "fs/promises";
 import { join, resolve } from "path";
+import { PassThrough } from "stream";
 import type { CharacterLeaderAssociationProjectionArtifactSet } from "./leader-association-projection-contract";
 import type { CharacterLeaderLifecycleSemanticsReport } from "./leader-lifecycle-semantics-contract";
 import { CHARACTER_LEADER_CAUSALITY_PIN } from "./leader-causality-semantics-contract";
@@ -19,7 +21,19 @@ import {
     materializeCharacterLeaderSupportedProjection,
     validateCharacterLeaderSupportedProjection,
 } from "./leader-supported-projection";
-import { parseCharacterLeaderSupportedProjectionCli } from "./leader-supported-projection-run";
+import {
+    maximumIndividualCharacterLeaderSupportedProjectionProcessPeakRss,
+    parseCharacterLeaderSupportedProjectionCli,
+} from "./leader-supported-projection-run";
+import {
+    CHARACTER_LEADER_K55_SUBPROCESS_STDERR_LIMIT_BYTES,
+    CHARACTER_LEADER_K55_SUBPROCESS_STDOUT_LIMIT_BYTES,
+    CharacterLeaderK55ChildLike,
+    CharacterLeaderK55SubprocessOutcome,
+    characterLeaderK55SubprocessArgs,
+    collectCharacterLeaderK55ChildOutcome,
+    parseCharacterLeaderK55SubprocessOutcome,
+} from "./leader-supported-projection-k55-subprocess";
 import {
     assertCharacterLeaderSupportedProjectionArtifactBytes,
     validateCharacterLeaderSupportedProjectionArtifact,
@@ -32,6 +46,31 @@ const args = [
     "--opt-in-k56", "--sidecar-root", "s", "--production-root", "p", "--fyi-root", "f", "--k43-root", "43",
     "--k46-root", "46", "--k48-root", "48", "--output-root", "o", "--native-runtime", "elf", "--database", "db",
 ];
+
+function childOutcome(stdout: Buffer | string, overrides: Partial<CharacterLeaderK55SubprocessOutcome> = {}): CharacterLeaderK55SubprocessOutcome {
+    return {
+        stdout: Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout), stderr: Buffer.alloc(0), exitCode: 0, signal: null,
+        timedOut: false, stdoutOverflow: false, stderrOverflow: false, terminationUnconfirmed: false, ...overrides,
+    };
+}
+
+class NeverClosingK55Child extends EventEmitter {
+    readonly stdout = new PassThrough();
+    readonly stderr = new PassThrough();
+    readonly killSignals: Array<NodeJS.Signals | undefined> = [];
+    private readonly acceptsKill: boolean;
+    constructor(acceptsKill = true) { super(); this.acceptsKill = acceptsKill; }
+    kill(signal?: NodeJS.Signals): boolean {
+        this.killSignals.push(signal);
+        return this.acceptsKill;
+    }
+}
+
+function implementationSource(fileName: string): string {
+    const sibling = resolve(__dirname, fileName);
+    const path = existsSync(sibling) ? sibling : resolve(__dirname, "..", "..", "database-characters", fileName);
+    return readFileSync(path, "utf8");
+}
 
 function k55(): CharacterLeaderLifecycleSemanticsReport {
     const noGos = {
@@ -159,6 +198,88 @@ describe("K56 supported-only leader projection", function () {
         throws(() => parseCharacterLeaderSupportedProjectionCli([...args, "loose"]), /unsupported argument/);
         throws(() => parseCharacterLeaderSupportedProjectionCli([...args, "--database", "again"]), /duplicate --database/);
         throws(() => parseCharacterLeaderSupportedProjectionCli(args.slice(0, -1)), /missing value/);
+    });
+
+    it("accepts only the exact canonical K55 subprocess envelope and exact source arguments", () => {
+        const report = k55(), processPeakRssBytes = 123_456_789;
+        const stdout = `${JSON.stringify({ report, processPeakRssBytes })}\n`;
+        deepStrictEqual(parseCharacterLeaderK55SubprocessOutcome(childOutcome(stdout)), { report, processPeakRssBytes });
+        deepStrictEqual(characterLeaderK55SubprocessArgs({
+            sidecarRoot: "s", productionRoot: "p", fyiRoot: "f", k43Root: "43", k46Root: "46", k48Root: "48",
+            nativeRuntime: "elf", database: "db",
+        }), [
+            "--sidecar-root", "s", "--production-root", "p", "--fyi-root", "f", "--k43-root", "43",
+            "--k46-root", "46", "--k48-root", "48", "--native-runtime", "elf", "--database", "db",
+        ]);
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome(stdout, { stderr: Buffer.from("warning") })), /wrote stderr/);
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome(stdout, { exitCode: 1 })), /exited 1/);
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome(stdout, { timedOut: true })), /timed out/);
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome(stdout, { terminationUnconfirmed: true })), /termination unconfirmed/);
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome(stdout, { killError: "SIGKILL refused" })), /termination failed/);
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome("not-json\n")), /envelope malformed/);
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome(`${JSON.stringify({ report, processPeakRssBytes, extra: true })}\n`)), /envelope rejected/);
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome(Buffer.alloc(CHARACTER_LEADER_K55_SUBPROCESS_STDOUT_LIMIT_BYTES + 1))), /stdout limit/);
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome(`${JSON.stringify({ report, processPeakRssBytes: 1024 * 1024 * 1024 })}\n`)), /envelope rejected/);
+        const drifted = { ...report, contract: "drift" };
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome(`${JSON.stringify({ report: drifted, processPeakRssBytes })}\n`)), /report contract drifted/);
+        const promoted: any = JSON.parse(JSON.stringify(report));
+        promoted.readiness.leaderFriendComposition = "GO";
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome(`${JSON.stringify({ report: promoted, processPeakRssBytes })}\n`)), /conservative K55 leaderFriendComposition NO-GO/);
+        equal(maximumIndividualCharacterLeaderSupportedProjectionProcessPeakRss(100, 300, 200), 300);
+        throws(() => maximumIndividualCharacterLeaderSupportedProjectionProcessPeakRss(100, 1024 * 1024 * 1024, 200), /per-process RSS peak rejected/);
+    });
+
+    it("settles fail-closed when a terminated or errored child never emits close", async () => {
+        const limits = { timeoutMs: 2, terminationGraceMs: 2, finalTerminationDeadlineMs: 20 };
+        const neverClosing = new NeverClosingK55Child();
+        const outcome = await Promise.race([
+            collectCharacterLeaderK55ChildOutcome(neverClosing as CharacterLeaderK55ChildLike, limits),
+            new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("K55 lifecycle promise remained pending")), 250)),
+        ]);
+        equal(outcome.timedOut, true);
+        equal(outcome.terminationUnconfirmed, true);
+        deepStrictEqual(neverClosing.killSignals, [undefined, "SIGKILL"]);
+        throws(() => parseCharacterLeaderK55SubprocessOutcome(outcome), /termination unconfirmed/);
+
+        for (const streamName of ["stdout", "stderr"] as const) {
+            const overflowing = new NeverClosingK55Child();
+            const overflowPromise = collectCharacterLeaderK55ChildOutcome(overflowing as CharacterLeaderK55ChildLike, {
+                timeoutMs: 100, terminationGraceMs: 2, finalTerminationDeadlineMs: 20,
+            });
+            overflowing[streamName].write(Buffer.alloc((streamName === "stdout"
+                ? CHARACTER_LEADER_K55_SUBPROCESS_STDOUT_LIMIT_BYTES
+                : CHARACTER_LEADER_K55_SUBPROCESS_STDERR_LIMIT_BYTES) + 1));
+            const overflowOutcome = await overflowPromise;
+            equal(overflowOutcome[streamName === "stdout" ? "stdoutOverflow" : "stderrOverflow"], true);
+            equal(overflowOutcome.terminationUnconfirmed, true);
+            deepStrictEqual(overflowing.killSignals, [undefined, "SIGKILL"]);
+        }
+
+        const refused = new NeverClosingK55Child(false);
+        const refusedOutcome = await collectCharacterLeaderK55ChildOutcome(refused as CharacterLeaderK55ChildLike, limits);
+        equal(refusedOutcome.terminationUnconfirmed, true);
+        equal(refusedOutcome.killError?.includes("not accepted"), true);
+
+        const errored = new NeverClosingK55Child();
+        const erroredPromise = collectCharacterLeaderK55ChildOutcome(errored as CharacterLeaderK55ChildLike, {
+            timeoutMs: 100, terminationGraceMs: 2, finalTerminationDeadlineMs: 20,
+        });
+        errored.emit("error", new Error("synthetic spawn failure"));
+        const erroredOutcome = await erroredPromise;
+        equal(erroredOutcome.terminationUnconfirmed, true);
+        equal(erroredOutcome.spawnError?.message, "synthetic spawn failure");
+    });
+
+    it("contains no direct in-process K55 execution in K56 source or runner", () => {
+        for (const fileName of ["leader-supported-projection-source.ts", "leader-supported-projection-run.ts"]) {
+            const source = implementationSource(fileName);
+            equal(source.includes("runCharacterLeaderLifecycleSemanticsAudit"), false);
+            equal(source.includes("runCharacterLeaderK55Subprocess"), true);
+        }
+        const runner = implementationSource("leader-supported-projection-run.ts");
+        equal(runner.includes('rssAccountingScope: "per_process_not_process_tree"'), true);
+        equal(runner.includes('perProcessRssUnder1GiB: "GO"'), true);
+        equal(runner.includes('processTreeRssUnder1GiB: "NO-GO"'), true);
     });
 
     it("requires six K55 GOs and preserves every conservative NO-GO", () => {
@@ -296,7 +417,7 @@ describe("K56 supported-only leader projection", function () {
         drifted.gzip[0] ^= 1;
         throws(() => assertCharacterLeaderSupportedProjectionArtifactBytes(drifted, artifacts), /source-bound artifact mismatch: payload/);
         const validatorSource = validateCharacterLeaderSupportedProjectionArtifact.toString();
-        equal(validatorSource.includes("runCharacterLeaderLifecycleSemanticsAudit"), true);
+        equal(validatorSource.includes("runCharacterLeaderK55Subprocess"), true);
         equal(validatorSource.includes("options.upstreamK55"), false);
     });
 
