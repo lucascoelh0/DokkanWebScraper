@@ -1,6 +1,6 @@
 # Dokkanpanion Project State
 
-**Last updated**: 2026-08-15
+**Last updated**: 2026-08-16
 
 This is the concise operational checkpoint for future sessions. Durable
 decisions live in [`adr/`](adr/), and current workflow instructions live in
@@ -906,6 +906,32 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   empty stderr and an externally sampled peak working set of 1,012,617,216
   bytes. Offline structural audit is GO; product projection, authority,
   production, delivery, R2 and Android remain NO-GO.
+- K56 materializes the first-party-supported portion as a local, default-off
+  projection. It preserves source order and occurrence identity for 3,836
+  unconditional type-82 effects and 12,265 references. The exact 17
+  conditional rows (`5266`, `5271`, `5276`, `5281`, `5986`, `5991`, `5996`,
+  `6001`, `8071`, `10036`, `11861`, `11863`, `10326202`-`10326602`) and 45
+  references remain excluded as `runtime_deck_index_unresolved`.
+- The user-confirmed all-five-types/Friend/awakening domain rule is stored only
+  as corroborative coverage with provenance `user_confirmed_domain_rule`. It
+  separates current element type, battle class, selected awakening state,
+  team-including-Friend condition scope and eligible effect targets. It is not
+  first-party `deckIndex` evidence, does not authorize the 17 rows and is absent
+  from the payload. No runtime instrumentation was performed.
+- Two complete K56 roots produced byte-identical members. Canonical JSON is
+  12,847,768 bytes (SHA-256
+  `345f7ab587fe893c58971799e220548896f2bf803b667b18a70595f32ac78154`),
+  and the 185,908-byte gzip has SHA-256
+  `5579ed50704453cae29e97d770c05b02492c4f5130d2e4075da1e961817f2473`.
+  Coverage, validation and manifest hashes are respectively
+  `e8e7a372d87ee3fc0b7393a15e83a191290cee61f88c303c25178504dffd6a8f`,
+  `c24b898cbbd4da324ac4cf83068f2d9ec9603b3276993f48736a40fa99eddf4e`
+  and `e5213cc11b141e585eff1cffdfd3043e790cff718569367e26c5dd581bdd1546`.
+  Peak RSS was 1,067,995,136 and 1,067,003,904 bytes, only 5,746,688 and
+  6,737,920 bytes below 1 GiB. Offline generation and source-bound validation
+  are GO; conditional runtime selection, combined value, authority,
+  production, delivery, R2, Android and concurrent ancestor replacement
+  protection remain NO-GO.
 
 ## Operating Constraints
 
