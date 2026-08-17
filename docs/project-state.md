@@ -1074,9 +1074,16 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   The HAR and its source lock are not tracked. The scanner catalogued 19,572
   scalar observations across headers, cookies, URL paths, query names/values,
   URL credentials and every non-empty request/response JSON or textual body
-  leaf. It examined 3,616 targets/3,416 unique blobs across the complete
-  corrected tip and every old/new changed blob in the ten-commit range, with
-  zero captured-value matches and zero captured/raw HAR targets. Compact long
+  leaf. The eleventh-commit scanner classifies every literal/contextual match;
+  the final candidate derived 6,097 total matches: 6,059 permitted
+  protocol structures, 38 permitted public first-party game structures, zero
+  prohibited sensitive matches and zero unresolved matches. The three auth
+  mutation-body matches are the exact public app identity proven independently
+  from the pinned first-party APK; effectively sensitive account payload and
+  opaque credential counts remain zero. It examined 3,662 targets/3,439 unique
+  blobs across the complete corrected tip and every old/new changed blob in the
+  eleven-commit range, with zero
+  prohibited/unresolved matches and zero captured/raw HAR targets. Compact long
   hexadecimal, UUID, base32/base64/base64url, decimal and alphabetic values use
   context-independent literal scanning without a character-class diversity
   requirement. Short values require JSON shape/path/type or header, cookie,
@@ -1097,7 +1104,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   event, mission or box-ranking identities. Reward definitions and grants stay
   separate.
 - Two complete generations of 21 WT0-WT6 files were byte-identical. Maximum
-  observed process-tree working set was 626,892,800 bytes. GO is limited to
+  observed process-tree working set was 625,582,080 bytes. GO is limited to
   reviewed offline/default-off infrastructure and completely synthetic fixtures. Replay,
   authenticated automation, missing finish/results, sign decoding, Android,
   R2, publisher, production and source replacement remain NO-GO.

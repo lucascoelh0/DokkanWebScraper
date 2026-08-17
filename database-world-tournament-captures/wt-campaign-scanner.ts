@@ -1,6 +1,7 @@
 import { execFileSync } from "child_process";
 import { createHash } from "crypto";
 import * as ts from "typescript";
+import { validateWtFirstPartyAppIdentityProof, WT_FIRST_PARTY_APP_IDENTITY_RULE, WtFirstPartyAppIdentityEvidence, WtFirstPartyAppIdentityProof } from "./wt-first-party-app-identity";
 
 const REQUIRED_SOURCE_CATEGORIES = ["headers", "cookies", "url_path", "query", "url_credentials", "request_body", "response_body"] as const;
 const REQUIRED_GIT_TARGET_CATEGORIES = ["tip", "history_old", "history_new"] as const;
@@ -9,6 +10,9 @@ const OBJECT_ID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 const JSON_MIME = /^(?:application|text)\/(?:[^;]+\+)?json(?:\s*;|$)/i;
 const URL_TOKEN = /https?:\/\/[^\s"'`<>]+/g;
 const MAX_AUDIT_BLOB_BYTES = 16 * 1024 * 1024;
+export const WT_LITERAL_MATCHER_CONTRACT_VERSION = "length-boundary-v1" as const;
+export const WT_LITERAL_STRING_MIN_BYTES = 16;
+export const WT_LITERAL_CANONICAL_MIN_BYTES = 8;
 
 export type WtSensitiveCategory = typeof REQUIRED_SOURCE_CATEGORIES[number];
 export type WtAuditTargetCategory = typeof REQUIRED_GIT_TARGET_CATEGORIES[number] | "fixture" | "spec" | "generated" | "other";
@@ -31,7 +35,11 @@ export interface WtAuditTargetInput {
 
 export interface WtAuditScanPolicy {
     allowedHistoricalHarTargetFingerprints: readonly string[];
+    firstPartyAppIdentity?: WtFirstPartyAppIdentityProof;
 }
+
+export type WtMatchClass = "prohibited_sensitive" | "permitted_protocol_structure" | "permitted_public_game_structure" | "permitted_synthetic_fixture" | "unresolved";
+export type WtEndpointScope = "global" | "account" | "mutation" | "unknown";
 
 export interface WtGitAuditTargets {
     schemaVersion: 1;
@@ -53,6 +61,15 @@ export interface WtAuditScanResult {
     uniqueBlobCount: number;
     sensitiveValueCount: number;
     sensitiveMatchCount: number;
+    matchClassCounts: Record<WtMatchClass, number>;
+    matchRuleCounts: Record<string, number>;
+    prohibitedSensitiveMatchCount: number;
+    unresolvedMatchCount: number;
+    permittedStructuralMatchCount: number;
+    mutationBodyMatchCount: number;
+    publicFirstPartyIdentityMatchCount: number;
+    accountScopedPayloadMatchCount: number;
+    opaqueCredentialMatchCount: number;
     harStructureTargetCount: number;
     tipHarStructureTargetCount: number;
     rawHarTargetCount: number;
@@ -61,21 +78,22 @@ export interface WtAuditScanResult {
     harStructureTargets: Array<{ category: WtAuditTargetCategory; fingerprint: string }>;
     categoryTargetCounts: Record<WtAuditTargetCategory, number>;
     sensitiveMatchCategoryCounts: Record<WtSensitiveCategory, number>;
-    matchedTargets: Array<{ targetId: string; blobId?: string; categories: WtSensitiveCategory[]; rawHar: boolean; matches: Array<{ category: WtSensitiveCategory; sourceStructuralCategory: WtStructuralCategory; foundStructuralCategory: WtStructuralCategory | "literal"; matchMode: "literal" | "contextual"; jsonType: ScalarKind; origin: CaptureOrigin; method: string; endpointHash: string; sourcePathHash: string; foundPathHash: string }> }>;
+    firstPartyAppIdentityEvidence?: WtFirstPartyAppIdentityEvidence;
+    matchedTargets: Array<{ targetId: string; targetCategory: WtAuditTargetCategory; targetPathHash: string; targetCommit?: string; blobId?: string; categories: WtSensitiveCategory[]; rawHar: boolean; matches: Array<{ category: WtSensitiveCategory; sourceStructuralCategory: WtStructuralCategory; foundStructuralCategory: WtStructuralCategory | "literal"; matchMode: "literal" | "contextual"; jsonType: ScalarKind; origin: CaptureOrigin; method: string; endpointHash: string; sourcePathHash: string; foundPathHash: string; endpointScope: WtEndpointScope; classification: WtMatchClass; rule: string; valueSha256: string; valueSizeBytes: number }> }>;
 }
 
 type ScalarKind = "string" | "number" | "boolean" | "null";
 type CaptureOrigin = "request" | "response";
-export type WtStructuralCategory = "header" | "cookie" | "url_path_segment" | "query_name" | "query_value" | "url_username" | "url_password" | "json_body" | "text_body" | "text_exact";
+export type WtStructuralCategory = "header" | "cookie" | "url_path_segment" | "query_name" | "query_value" | "url_username" | "url_password" | "json_body" | "text_body" | "text_exact" | "code_literal";
 interface SensitiveAtom { category: WtSensitiveCategory; structuralCategory: WtStructuralCategory; origin: CaptureOrigin; method: string; endpoint: string; path: string; context: string; kind: ScalarKind; canonicalValue: string; }
 interface TargetObservation { structuralCategory: WtStructuralCategory; path: string; kind: ScalarKind; canonicalValue: string; context: string; captureScoped?: boolean; }
-interface MatchProvenance { category: WtSensitiveCategory; structuralCategory: WtStructuralCategory; origin: CaptureOrigin; method: string; endpointHash: string; sourcePathHash: string; kind: ScalarKind; }
-interface ScanMatch extends MatchProvenance { matchMode: "literal" | "contextual"; foundStructuralCategory: WtStructuralCategory | "literal"; foundPath: string; }
+interface MatchProvenance { category: WtSensitiveCategory; structuralCategory: WtStructuralCategory; origin: CaptureOrigin; method: string; endpoint: string; endpointHash: string; sourcePath: string; sourcePathHash: string; sourceContext: string; kind: ScalarKind; canonicalValue: string; }
+interface ScanMatch extends MatchProvenance { matchMode: "literal" | "contextual"; foundStructuralCategory: WtStructuralCategory | "literal"; foundPath: string; foundContext: string; }
 interface ScanContentResult { categories: WtSensitiveCategory[]; matches: ScanMatch[]; rawHar: boolean; }
 interface MatcherNode { next: Map<number, number>; failure: number; outputs: number[]; }
-interface LongPattern extends MatchProvenance { bytes: Buffer; anchorLength: number; tokenBoundary: boolean; }
-interface CatalogState { atoms: SensitiveAtom[]; longMatcher: MatcherNode[]; longPatterns: LongPattern[]; contextualMatchers: Map<string, Map<string, MatchProvenance>>; scopedMatchers: Map<string, Map<string, MatchProvenance>>; }
-interface GitDescriptor { targetId: string; pathHash: string; blobId: string; category: typeof REQUIRED_GIT_TARGET_CATEGORIES[number]; }
+interface LongPattern extends MatchProvenance { bytes: Buffer; anchorLength: number; }
+interface CatalogState { atoms: SensitiveAtom[]; longMatcher: MatcherNode[]; longPatterns: LongPattern[]; longCanonicalMatchers: Map<string, Map<string, MatchProvenance>>; contextualMatchers: Map<string, Map<string, MatchProvenance>>; scopedMatchers: Map<string, Map<string, MatchProvenance>>; }
+interface GitDescriptor { targetId: string; pathHash: string; blobId: string; category: typeof REQUIRED_GIT_TARGET_CATEGORIES[number]; commit: string; }
 interface GitState { repoRoot: string; descriptors: GitDescriptor[]; }
 
 const catalogStates = new WeakMap<WtSensitiveCatalog, CatalogState>();
@@ -209,8 +227,8 @@ function deduplicateAtoms(atoms: SensitiveAtom[]): SensitiveAtom[] {
     for (const atom of atoms) unique.set(`${atom.category}\0${atom.structuralCategory}\0${atom.origin}\0${atom.method}\0${atom.endpoint}\0${atom.path}\0${atom.context}\0${atom.kind}\0${atom.canonicalValue}`, atom);
     return [...unique.values()];
 }
-function provenance(atom: SensitiveAtom): MatchProvenance { return { category: atom.category, structuralCategory: atom.structuralCategory, origin: atom.origin, method: atom.method, endpointHash: sha256(atom.endpoint), sourcePathHash: sha256(atom.path), kind: atom.kind }; }
-function provenanceIdentity(value: MatchProvenance): string { return `${value.category}\0${value.structuralCategory}\0${value.origin}\0${value.method}\0${value.endpointHash}\0${value.sourcePathHash}\0${value.kind}`; }
+function provenance(atom: SensitiveAtom): MatchProvenance { return { category: atom.category, structuralCategory: atom.structuralCategory, origin: atom.origin, method: atom.method, endpoint: atom.endpoint, endpointHash: sha256(atom.endpoint), sourcePath: atom.path, sourcePathHash: sha256(atom.path), sourceContext: atom.context, kind: atom.kind, canonicalValue: atom.canonicalValue }; }
+function provenanceIdentity(value: MatchProvenance): string { return `${value.category}\0${value.structuralCategory}\0${value.origin}\0${value.method}\0${value.endpointHash}\0${value.sourcePathHash}\0${value.sourceContext}\0${value.kind}\0${value.canonicalValue}`; }
 function addProvenance(target: Map<string, Map<string, MatchProvenance>>, key: string, value: MatchProvenance): void { const values = target.get(key) ?? new Map<string, MatchProvenance>(); values.set(provenanceIdentity(value), value); target.set(key, values); }
 
 function contextualKey(structuralCategory: WtStructuralCategory, kind: ScalarKind, canonicalValue: string, context: string): string {
@@ -220,6 +238,7 @@ function contextualKey(structuralCategory: WtStructuralCategory, kind: ScalarKin
         case "cookie": return `${structuralCategory}\0${context}\0${kind}\0${canonicalValue}`;
         case "query_value": case "query_name": case "url_path_segment": return `${structuralCategory}\0${context}\0${kind}\0${canonicalValue}`;
         case "text_body": case "text_exact": return `textual_body\0${context}\0${kind}\0${canonicalValue}`;
+        case "code_literal": return `${structuralCategory}\0${context}\0${kind}\0${canonicalValue}`;
         case "url_username": case "url_password": return `${structuralCategory}\0${kind}\0${canonicalValue}`;
         default: throw new Error("WT sensitive source category has no matcher");
     }
@@ -230,22 +249,18 @@ function decodedCanonical(atom: Pick<SensitiveAtom, "kind" | "canonicalValue">):
     if (typeof parsed !== "string") throw new Error("WT sensitive string canonicalization failed");
     return parsed;
 }
-function distinctiveLiteral(atom: SensitiveAtom, value: string): boolean {
-    if (Buffer.byteLength(value) < (atom.kind === "string" ? 16 : 8)) return false;
-    if (atom.kind !== "string") return true;
-    if (/\s/.test(value)) return false;
-    if (/^[A-Za-z0-9]+$/.test(value) || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) || /^[A-Z2-7]+={0,6}$/.test(value)) return true;
-    if (/^[A-Za-z0-9+/]+={0,2}$/.test(value) && value.length % 4 === 0 && /[A-Z0-9+=]/.test(value)) return true;
-    return /^[A-Za-z0-9_-]+={0,2}$/.test(value) && /[_-]/.test(value) && /[A-Z0-9]/.test(value);
+function meetsLiteralThreshold(atom: SensitiveAtom, value: string): boolean {
+    return value.length > 0 && Buffer.byteLength(value) >= (atom.kind === "string" ? WT_LITERAL_STRING_MIN_BYTES : WT_LITERAL_CANONICAL_MIN_BYTES);
 }
-function literalNeedsTokenBoundary(value: string): boolean { return /^[A-Za-z0-9_+\/-]+={0,6}$/.test(value); }
-function tokenByte(value: number | undefined): boolean { return value !== undefined && ((value >= 48 && value <= 57) || (value >= 65 && value <= 90) || (value >= 97 && value <= 122) || value === 43 || value === 45 || value === 47 || value === 95); }
+function genericTokenByte(value: number | undefined): boolean {
+    return value !== undefined && ((value >= 48 && value <= 57) || (value >= 65 && value <= 90) || (value >= 97 && value <= 122) || value === 37 || value === 43 || value === 45 || value === 46 || value === 47 || value === 61 || value === 95 || value === 126);
+}
 function distinctivePathSegment(value: string): boolean { return /[0-9]/.test(value) || /[^A-Za-z_-]/.test(value); }
-function buildMatchers(atoms: SensitiveAtom[]): Pick<CatalogState, "longMatcher" | "longPatterns" | "contextualMatchers" | "scopedMatchers"> {
-    const nodes: MatcherNode[] = [{ next: new Map(), failure: 0, outputs: [] }], patterns: LongPattern[] = [], contextualMatchers = new Map<string, Map<string, MatchProvenance>>(), scopedMatchers = new Map<string, Map<string, MatchProvenance>>(), seenPatterns = new Set<string>(), matcherCategories = new Set<WtSensitiveCategory>();
-    const add = (pattern: Buffer, atom: SensitiveAtom, tokenBoundary: boolean): void => {
+function buildMatchers(atoms: SensitiveAtom[]): Pick<CatalogState, "longMatcher" | "longPatterns" | "longCanonicalMatchers" | "contextualMatchers" | "scopedMatchers"> {
+    const nodes: MatcherNode[] = [{ next: new Map(), failure: 0, outputs: [] }], patterns: LongPattern[] = [], longCanonicalMatchers = new Map<string, Map<string, MatchProvenance>>(), contextualMatchers = new Map<string, Map<string, MatchProvenance>>(), scopedMatchers = new Map<string, Map<string, MatchProvenance>>(), seenPatterns = new Set<string>(), matcherCategories = new Set<WtSensitiveCategory>();
+    const add = (pattern: Buffer, atom: SensitiveAtom): void => {
         const source = provenance(atom), identity = `${provenanceIdentity(source)}\0${sha256(pattern)}`; if (seenPatterns.has(identity)) return; seenPatterns.add(identity); matcherCategories.add(atom.category);
-        const patternId = patterns.length, anchorLength = Math.min(16, pattern.length), anchor = pattern.subarray(0, anchorLength); patterns.push({ bytes: pattern, anchorLength, tokenBoundary, ...source });
+        const patternId = patterns.length, anchorLength = Math.min(WT_LITERAL_STRING_MIN_BYTES, pattern.length), anchor = pattern.subarray(0, anchorLength); patterns.push({ bytes: pattern, anchorLength, ...source });
         let node = 0;
         for (const byte of anchor) {
             let next = nodes[node].next.get(byte);
@@ -261,10 +276,11 @@ function buildMatchers(atoms: SensitiveAtom[]): Pick<CatalogState, "longMatcher"
             addProvenance(scopedMatchers, contextualKey(atom.structuralCategory, atom.kind, atom.canonicalValue, scopedCaptureContext(atom, atom.context)), provenance(atom));
             matcherCategories.add(atom.category);
         }
-        if (distinctiveLiteral(atom, literal)) {
-            add(Buffer.from(literal, "utf8"), atom, literalNeedsTokenBoundary(literal));
-            if (atom.kind === "string") add(Buffer.from(atom.canonicalValue, "utf8"), atom, false);
-            if (atom.structuralCategory === "query_name" || atom.structuralCategory === "query_value" || atom.structuralCategory === "url_path_segment" || atom.structuralCategory === "url_username" || atom.structuralCategory === "url_password") add(Buffer.from(encodeURIComponent(literal), "utf8"), atom, false);
+        if (meetsLiteralThreshold(atom, literal)) {
+            addProvenance(longCanonicalMatchers, `${atom.kind}\0${atom.canonicalValue}`, provenance(atom));
+            add(Buffer.from(literal, "utf8"), atom);
+            if (atom.kind === "string") add(Buffer.from(atom.canonicalValue, "utf8"), atom);
+            if (atom.structuralCategory === "query_name" || atom.structuralCategory === "query_value" || atom.structuralCategory === "url_path_segment" || atom.structuralCategory === "url_username" || atom.structuralCategory === "url_password") add(Buffer.from(encodeURIComponent(literal), "utf8"), atom);
         }
     }
     const queue: number[] = [];
@@ -282,17 +298,17 @@ function buildMatchers(atoms: SensitiveAtom[]): Pick<CatalogState, "longMatcher"
     }
     if (atoms.length === 0 || contextualMatchers.size === 0) throw new Error("WT sensitive source catalog is empty");
     for (const category of new Set(atoms.map(atom => atom.category))) if (!matcherCategories.has(category)) throw new Error("WT sensitive source category has no matcher");
-    return { longMatcher: nodes, longPatterns: patterns, contextualMatchers, scopedMatchers };
+    return { longMatcher: nodes, longPatterns: patterns, longCanonicalMatchers, contextualMatchers, scopedMatchers };
 }
 
 function matchLongValues(content: Buffer, matcher: MatcherNode[], patterns: LongPattern[]): ScanMatch[] {
-    const matchedPatterns = new Set<number>(); let node = 0;
+    const matchedPatterns = new Map<number, { start: number; end: number }>(); let node = 0;
     for (let index = 0; index < content.length; index++) { const byte = content[index];
         while (node !== 0 && !matcher[node].next.has(byte)) node = matcher[node].failure;
         node = matcher[node].next.get(byte) ?? 0;
-        for (const patternId of matcher[node].outputs) { const pattern = patterns[patternId], start = index - pattern.anchorLength + 1, end = start + pattern.bytes.length; if (start >= 0 && end <= content.length && content.subarray(start, end).equals(pattern.bytes) && (!pattern.tokenBoundary || (!tokenByte(content[start - 1]) && !tokenByte(content[end])))) matchedPatterns.add(patternId); }
+        for (const patternId of matcher[node].outputs) { const pattern = patterns[patternId], start = index - pattern.anchorLength + 1, end = start + pattern.bytes.length; if (start >= 0 && end <= content.length && content.subarray(start, end).equals(pattern.bytes) && !genericTokenByte(content[start - 1]) && !genericTokenByte(content[end]) && !matchedPatterns.has(patternId)) matchedPatterns.set(patternId, { start, end }); }
     }
-    return [...matchedPatterns].map(patternId => { const { bytes: _bytes, anchorLength: _anchorLength, tokenBoundary: _tokenBoundary, ...source } = patterns[patternId]; return { ...source, matchMode: "literal" as const, foundStructuralCategory: "literal" as const, foundPath: `$literal:${source.structuralCategory}` }; });
+    return [...matchedPatterns].map(([patternId, location]) => { const { bytes: _bytes, anchorLength: _anchorLength, ...source } = patterns[patternId], before = content.subarray(Math.max(0, location.start - 96), location.start).toString("utf8"), after = content.subarray(location.end, Math.min(content.length, location.end + 96)).toString("utf8"); return { ...source, matchMode: "literal" as const, foundStructuralCategory: "literal" as const, foundPath: `$literal:${source.structuralCategory}`, foundContext: `${before}\0${after}` }; });
 }
 
 export function buildWtSensitiveCatalog(harText: string): WtSensitiveCatalog {
@@ -542,6 +558,7 @@ function collectTargetTypeScript(text: string, target: TargetObservation[]): voi
                 else { collectTargetJsonScalars(result.value, target, rootPath, "$", jsonShapeFingerprint(result.value)); collectTargetStructures(result.value, target, rootPath, parentKey); }
                 rootIndex += 1;
             }
+            else if (result.ok && !composite && scalarKind(result.value)) addTargetObservation(target, "code_literal", result.value, `$typescript[${rootIndex}]`, parentKey || "anonymous");
         }
         ts.forEachChild(node, visit);
     };
@@ -573,6 +590,12 @@ function deduplicateTargetObservations(values: TargetObservation[]): TargetObser
     return [...unique.values()];
 }
 
+function credentialCoordinate(structuralCategory: WtStructuralCategory | "literal", path: string, context: string): boolean {
+    if (structuralCategory === "cookie" || structuralCategory === "url_username" || structuralCategory === "url_password") return true;
+    const coordinate = `${path}\0${context}`;
+    return /(?:^|[^a-z0-9])(?:authorization|authentication|set-cookie|cookie|token|sign|signature|jwt|bearer|password|secret|account(?:_?id)?|user(?:_?id)?|session|device(?:_?id)?)(?:[^a-z0-9]|$)/i.test(coordinate);
+}
+
 function isHarBuffer(content: Buffer): boolean {
     let parsed: unknown;
     try { parsed = JSON.parse(content.toString("utf8")); }
@@ -588,10 +611,22 @@ function scanContent(content: Buffer, state: CatalogState): ScanContentResult {
     catch { /* arbitrary non-JSON versioned blobs are scanned literally and as conservative text */ }
     if (json) { collectTargetJsonScalars(parsed, observations); collectTargetStructures(parsed, observations); collectTargetExactText(text, observations); }
     else { collectTargetText(text, observations); collectTargetTypeScript(text, observations); }
-    for (const observation of deduplicateTargetObservations(observations)) {
+    const targetObservations = deduplicateTargetObservations(observations);
+    for (const observation of targetObservations) {
         const key = contextualKey(observation.structuralCategory, observation.kind, observation.canonicalValue, observation.context);
         const matcher = observation.captureScoped ? state.scopedMatchers : state.contextualMatchers;
-        for (const source of matcher.get(key)?.values() ?? []) matches.push({ ...source, matchMode: "contextual", foundStructuralCategory: observation.structuralCategory, foundPath: observation.path });
+        for (const source of matcher.get(key)?.values() ?? []) matches.push({ ...source, matchMode: "contextual", foundStructuralCategory: observation.structuralCategory, foundPath: observation.path, foundContext: observation.context });
+    }
+    const existingLiteralSources = new Set(matches.filter(match => match.matchMode === "literal").map(provenanceIdentity));
+    for (const observation of targetObservations) {
+        for (const source of state.longCanonicalMatchers.get(`${observation.kind}\0${observation.canonicalValue}`)?.values() ?? []) {
+            if (!existingLiteralSources.has(provenanceIdentity(source))) matches.push({ ...source, matchMode: "literal", foundStructuralCategory: observation.structuralCategory, foundPath: observation.path, foundContext: observation.context });
+        }
+    }
+    for (const match of matches) {
+        if (match.matchMode !== "literal") continue;
+        const exactTargets = targetObservations.filter(observation => observation.kind === match.kind && observation.canonicalValue === match.canonicalValue), foundTarget = exactTargets.find(observation => credentialCoordinate(observation.structuralCategory, observation.path, observation.context)) ?? exactTargets[0];
+        if (foundTarget) { match.foundStructuralCategory = foundTarget.structuralCategory; match.foundPath = foundTarget.path; match.foundContext = foundTarget.context; }
     }
     const unique = new Map<string, ScanMatch>();
     for (const match of matches) unique.set(`${provenanceIdentity(match)}\0${match.matchMode}\0${match.foundStructuralCategory}\0${match.foundPath}`, match);
@@ -606,15 +641,52 @@ function emptyMatchCounts(): Record<WtSensitiveCategory, number> {
     return { headers: 0, cookies: 0, url_path: 0, query: 0, url_credentials: 0, request_body: 0, response_body: 0 };
 }
 
-function scanTargetSequence(catalog: WtSensitiveCatalog, sequence: Iterable<{ targetId: string; category: WtAuditTargetCategory; content: () => Buffer; blobId?: string; pathHash?: string }>, policy: WtAuditScanPolicy, cacheByBlobIdentity = false, preScannedBlobs = new Map<string, ScanContentResult>()): WtAuditScanResult {
+function emptyClassCounts(): Record<WtMatchClass, number> {
+    return { prohibited_sensitive: 0, permitted_protocol_structure: 0, permitted_public_game_structure: 0, permitted_synthetic_fixture: 0, unresolved: 0 };
+}
+function endpointRoute(endpoint: string): string { try { return new URL(endpoint).pathname; } catch { throw new Error("WT match endpoint is malformed"); } }
+function endpointScope(match: ScanMatch): WtEndpointScope {
+    const route = endpointRoute(match.endpoint);
+    if (route === "/ping") return "global";
+    if (route.startsWith("/auth/") || match.method !== "GET") return "mutation";
+    if (/(?:^|\/)(?:my|account|user|friends|deck|participant|entry)(?:\/|$)/i.test(route)) return "account";
+    return "unknown";
+}
+function firstPartyBundleSourceCoordinate(match: ScanMatch): boolean {
+    return match.category === "request_body" && match.structuralCategory === "json_body" && match.origin === "request" && match.method === "POST" && endpointRoute(match.endpoint) === "/auth/sign_in" && match.sourcePath === "$.bundle_id" && match.kind === "string";
+}
+function publicFirstPartyIdentityMatch(match: ScanMatch, proof: WtFirstPartyAppIdentityProof | undefined): boolean {
+    if (!validateWtFirstPartyAppIdentityProof(proof) || !firstPartyBundleSourceCoordinate(match)) return false;
+    const coordinate = `${match.foundPath}\0${match.foundContext}`, publicIdentityCoordinate = /(?:^|[^a-z0-9])(?:bundle[_-]?id|package[_-]?(?:id|name)|package\s+(?:confirmed|identity)|application[_-]?id|default_package_name)(?:[^a-z0-9]|$)/i.test(coordinate);
+    const targetCoordinateAllowed = (match.foundStructuralCategory === "literal" || match.foundStructuralCategory === "text_exact" || match.foundStructuralCategory === "code_literal") && publicIdentityCoordinate
+        || (match.foundStructuralCategory === "json_body" && /(?:^|[^a-z0-9])bundle_id(?:[^a-z0-9]|$)/i.test(coordinate));
+    return targetCoordinateAllowed && decodedCanonical(match) === proof.packageIdentity;
+}
+function classifyMatch(match: ScanMatch, policy: WtAuditScanPolicy): { classification: WtMatchClass; rule: string; scope: WtEndpointScope } {
+    const scope = endpointScope(match), route = endpointRoute(match.endpoint), literal = decodedCanonical(match);
+    const sourceCredential = match.structuralCategory !== "query_name" && match.structuralCategory !== "url_path_segment" && credentialCoordinate(match.structuralCategory, match.sourcePath, match.sourceContext);
+    if (match.category === "cookies" || match.category === "url_credentials" || sourceCredential || firstPartyBundleSourceCoordinate(match) && credentialCoordinate(match.foundStructuralCategory, match.foundPath, match.foundContext)) return { classification: "prohibited_sensitive", rule: "credential_token_account_precedence_v1", scope };
+    if (publicFirstPartyIdentityMatch(match, policy.firstPartyAppIdentity)) return { classification: "permitted_public_game_structure", rule: WT_FIRST_PARTY_APP_IDENTITY_RULE, scope };
+    if (match.category === "request_body" && (route.startsWith("/auth/") || match.method !== "GET")) return { classification: validateWtFirstPartyAppIdentityProof(policy.firstPartyAppIdentity) ? "prohibited_sensitive" : "unresolved", rule: validateWtFirstPartyAppIdentityProof(policy.firstPartyAppIdentity) ? "auth_mutation_body_default_prohibited_v1" : "public_identity_evidence_missing_or_invalid_v1", scope };
+    if (match.structuralCategory === "header" && (normalizedName(match.sourceContext) === "content-type" || normalizedName(match.sourceContext) === "host")) return { classification: "permitted_protocol_structure", rule: "protocol_header_constant_v1", scope };
+    if (match.structuralCategory === "query_name") return { classification: "permitted_protocol_structure", rule: "protocol_query_name_v1", scope };
+    if (match.structuralCategory === "url_path_segment") {
+        const staticSegments = endpointRoute(match.endpoint).split("/").filter(Boolean).map(decodedComponent).filter(value => value !== "{id}");
+        if (staticSegments.includes(literal)) return { classification: "permitted_protocol_structure", rule: "protocol_static_route_segment_v1", scope };
+    }
+    if (match.category === "response_body" && match.structuralCategory === "json_body" && match.origin === "response" && match.method === "GET" && route === "/ping" && match.sourcePath === "$.ping_info.host" && match.kind === "string") return { classification: "permitted_public_game_structure", rule: "public_global_ping_host_v1", scope };
+    return { classification: "unresolved", rule: "unclassified_match_fail_closed_v1", scope };
+}
+
+function scanTargetSequence(catalog: WtSensitiveCatalog, sequence: Iterable<{ targetId: string; category: WtAuditTargetCategory; content: () => Buffer; blobId?: string; pathHash?: string; commit?: string }>, policy: WtAuditScanPolicy, cacheByBlobIdentity = false, preScannedBlobs = new Map<string, ScanContentResult>()): WtAuditScanResult {
     const state = catalogStates.get(catalog);
     if (!state) throw new Error("WT sensitive catalog is not an active catalog");
     const allowedHistoricalHarTargets = new Set(policy.allowedHistoricalHarTargetFingerprints);
     if (allowedHistoricalHarTargets.size !== policy.allowedHistoricalHarTargetFingerprints.length || [...allowedHistoricalHarTargets].some(value => !/^[0-9a-f]{64}$/.test(value))) throw new Error("WT historical HAR allowlist is invalid");
-    const categoryTargetCounts = emptyCategoryCounts(), sensitiveMatchCategoryCounts = emptyMatchCounts(), matchedTargets: WtAuditScanResult["matchedTargets"] = [], blobs = new Set<string>();
+    const categoryTargetCounts = emptyCategoryCounts(), sensitiveMatchCategoryCounts = emptyMatchCounts(), matchClassCounts = emptyClassCounts(), matchRuleCounts: Record<string, number> = {}, matchedTargets: WtAuditScanResult["matchedTargets"] = [], blobs = new Set<string>();
     const harStructureTargets: WtAuditScanResult["harStructureTargets"] = [], observedAllowedHistoricalHarTargets = new Set<string>();
     const scannedBlobs = new Map(preScannedBlobs);
-    let targetCount = 0, sensitiveMatchCount = 0, harStructureTargetCount = 0, tipHarStructureTargetCount = 0, rawHarTargetCount = 0;
+    let targetCount = 0, sensitiveMatchCount = 0, harStructureTargetCount = 0, tipHarStructureTargetCount = 0, rawHarTargetCount = 0, mutationBodyMatchCount = 0, publicFirstPartyIdentityMatchCount = 0, accountScopedPayloadMatchCount = 0, opaqueCredentialMatchCount = 0;
     for (const target of sequence) {
         targetCount += 1; categoryTargetCounts[target.category] += 1;
         let contentIdentity = target.blobId, scanned = contentIdentity && cacheByBlobIdentity ? scannedBlobs.get(contentIdentity) : undefined;
@@ -640,12 +712,23 @@ function scanTargetSequence(catalog: WtSensitiveCatalog, sequence: Iterable<{ ta
         if (rawHar) rawHarTargetCount += 1;
         sensitiveMatchCount += scanned.matches.length;
         for (const category of categories) sensitiveMatchCategoryCounts[category] += 1;
-        if (rawHar || categories.length) matchedTargets.push({ targetId: sha256(target.targetId), ...(target.blobId ? { blobId: target.blobId } : {}), categories, rawHar, matches: scanned.matches.map(match => ({ category: match.category, sourceStructuralCategory: match.structuralCategory, foundStructuralCategory: match.foundStructuralCategory, matchMode: match.matchMode, jsonType: match.kind, origin: match.origin, method: match.method, endpointHash: match.endpointHash, sourcePathHash: match.sourcePathHash, foundPathHash: sha256(match.foundPath) })) });
+        const classified = scanned.matches.map(match => {
+            const decision = classifyMatch(match, policy), value = decodedCanonical(match);
+            matchClassCounts[decision.classification] += 1; matchRuleCounts[decision.rule] = (matchRuleCounts[decision.rule] ?? 0) + 1;
+            if (match.category === "request_body" && (endpointRoute(match.endpoint).startsWith("/auth/") || match.method !== "GET")) mutationBodyMatchCount += 1;
+            if (decision.rule === WT_FIRST_PARTY_APP_IDENTITY_RULE) publicFirstPartyIdentityMatchCount += 1;
+            if (decision.classification === "prohibited_sensitive" && (match.category === "request_body" || match.category === "response_body") && (decision.scope === "account" || decision.scope === "mutation")) accountScopedPayloadMatchCount += 1;
+            if (decision.classification === "prohibited_sensitive" && (match.category === "cookies" || match.category === "url_credentials" || credentialCoordinate(match.structuralCategory, match.sourcePath, match.sourceContext))) opaqueCredentialMatchCount += 1;
+            return { category: match.category, sourceStructuralCategory: match.structuralCategory, foundStructuralCategory: match.foundStructuralCategory, matchMode: match.matchMode, jsonType: match.kind, origin: match.origin, method: match.method, endpointHash: match.endpointHash, sourcePathHash: match.sourcePathHash, foundPathHash: sha256(match.foundPath), endpointScope: decision.scope, classification: decision.classification, rule: decision.rule, valueSha256: sha256(value), valueSizeBytes: Buffer.byteLength(value) };
+        });
+        if (rawHar || categories.length) matchedTargets.push({ targetId: sha256(target.targetId), targetCategory: target.category, targetPathHash: target.pathHash ?? sha256(target.targetId), ...(target.commit ? { targetCommit: target.commit } : {}), ...(target.blobId ? { blobId: target.blobId } : {}), categories, rawHar, matches: classified });
     }
     if (targetCount === 0) throw new Error("WT audit target collection is empty");
     harStructureTargets.sort((left, right) => left.fingerprint.localeCompare(right.fingerprint));
     const historicalHarAllowlistSatisfied = observedAllowedHistoricalHarTargets.size === allowedHistoricalHarTargets.size;
-    return { schemaVersion: 1, valid: sensitiveMatchCount === 0 && rawHarTargetCount === 0 && tipHarStructureTargetCount === 0 && historicalHarAllowlistSatisfied, targetCount, uniqueBlobCount: blobs.size, sensitiveValueCount: state.atoms.length, sensitiveMatchCount, harStructureTargetCount, tipHarStructureTargetCount, rawHarTargetCount, historicalHarAllowlistCount: allowedHistoricalHarTargets.size, historicalHarAllowlistSatisfied, harStructureTargets, categoryTargetCounts, sensitiveMatchCategoryCounts, matchedTargets };
+    const prohibitedSensitiveMatchCount = matchClassCounts.prohibited_sensitive, unresolvedMatchCount = matchClassCounts.unresolved, permittedStructuralMatchCount = matchClassCounts.permitted_protocol_structure + matchClassCounts.permitted_public_game_structure + matchClassCounts.permitted_synthetic_fixture;
+    const valid = prohibitedSensitiveMatchCount === 0 && unresolvedMatchCount === 0 && rawHarTargetCount === 0 && tipHarStructureTargetCount === 0 && historicalHarAllowlistSatisfied;
+    return { schemaVersion: 1, valid, targetCount, uniqueBlobCount: blobs.size, sensitiveValueCount: state.atoms.length, sensitiveMatchCount, matchClassCounts, matchRuleCounts: Object.fromEntries(Object.entries(matchRuleCounts).sort(([left], [right]) => left.localeCompare(right))), prohibitedSensitiveMatchCount, unresolvedMatchCount, permittedStructuralMatchCount, mutationBodyMatchCount, publicFirstPartyIdentityMatchCount, accountScopedPayloadMatchCount, opaqueCredentialMatchCount, harStructureTargetCount, tipHarStructureTargetCount, rawHarTargetCount, historicalHarAllowlistCount: allowedHistoricalHarTargets.size, historicalHarAllowlistSatisfied, harStructureTargets, categoryTargetCounts, sensitiveMatchCategoryCounts, ...(validateWtFirstPartyAppIdentityProof(policy.firstPartyAppIdentity) ? { firstPartyAppIdentityEvidence: policy.firstPartyAppIdentity.evidence } : {}), matchedTargets };
 }
 
 export function scanWtAuditTargets(catalog: WtSensitiveCatalog, targets: readonly WtAuditTargetInput[] | WtGitAuditTargets, policy: WtAuditScanPolicy = { allowedHistoricalHarTargetFingerprints: [] }): WtAuditScanResult {
@@ -654,7 +737,7 @@ export function scanWtAuditTargets(catalog: WtSensitiveCatalog, targets: readonl
         const catalogState = catalogStates.get(catalog);
         if (!catalogState) throw new Error("WT sensitive catalog is not an active catalog");
         const scanned = scanGitBlobs(gitState.repoRoot, [...new Set(gitState.descriptors.map(value => value.blobId))], catalogState);
-        return scanTargetSequence(catalog, gitState.descriptors.map(descriptor => ({ targetId: descriptor.targetId, category: descriptor.category, blobId: descriptor.blobId, pathHash: descriptor.pathHash, content: () => { throw new Error("WT git audit pre-scan omitted a blob"); } })), policy, true, scanned);
+        return scanTargetSequence(catalog, gitState.descriptors.map(descriptor => ({ targetId: descriptor.targetId, category: descriptor.category, blobId: descriptor.blobId, pathHash: descriptor.pathHash, commit: descriptor.commit, content: () => { throw new Error("WT git audit pre-scan omitted a blob"); } })), policy, true, scanned);
     }
     if (!Array.isArray(targets)) throw new Error("WT audit target collection is invalid");
     return scanTargetSequence(catalog, targets.map(target => {
@@ -728,7 +811,7 @@ function scanGitBlobs(repoRoot: string, blobIds: string[], state: CatalogState):
 function addDescriptor(target: GitDescriptor[], path: Buffer, blobId: string, category: GitDescriptor["category"], commit: string, side: string): void {
     if (!OBJECT_ID.test(blobId)) throw new Error("WT git audit object identity is malformed");
     const pathHash = sha256(path), targetId = sha256(`${category}\0${commit}\0${side}\0${pathHash}\0${blobId}`);
-    target.push({ targetId, pathHash, blobId, category });
+    target.push({ targetId, pathHash, blobId, category, commit });
 }
 
 export function collectWtGitAuditTargets(repoRoot: string, base: string, tip: string): WtGitAuditTargets {

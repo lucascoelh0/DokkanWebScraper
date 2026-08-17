@@ -1,9 +1,11 @@
 import * as assert from "assert";
 import { execFileSync } from "child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { buildWtSensitiveCatalog, collectWtGitAuditTargets, scanWtAuditTargets, WtAuditTargetInput } from "./wt-campaign-scanner";
+import { buildWtSensitiveCatalog, collectWtGitAuditTargets, scanWtAuditTargets, WT_LITERAL_CANONICAL_MIN_BYTES, WT_LITERAL_MATCHER_CONTRACT_VERSION, WT_LITERAL_STRING_MIN_BYTES, WtAuditTargetInput } from "./wt-campaign-scanner";
+import { WT_FIRST_PARTY_AAPT_SHA256, WT_FIRST_PARTY_AAPT_VERSION, WT_FIRST_PARTY_APK_SHA256, WT_FIRST_PARTY_APK_SIZE_BYTES, WT_FIRST_PARTY_APP_IDENTITY_RULE, WT_FIRST_PARTY_APP_IDENTITY_SHA256, WT_FIRST_PARTY_APP_IDENTITY_SIZE_BYTES, WtFirstPartyAppIdentityProof } from "./wt-first-party-app-identity";
+import { createHash } from "crypto";
 
 const values = {
     array: "synthetic-array-private-8f4d",
@@ -68,6 +70,33 @@ function har(overrides?: { requestBody?: unknown; responseBody?: unknown; author
 
 function target(targetId: string, category: WtAuditTargetInput["category"], content: string): WtAuditTargetInput {
     return { targetId, category, content: Buffer.from(content) };
+}
+
+function pinnedAppIdentityFromReviewedBase(): string {
+    const text = readFileSync(join(process.cwd(), "game-db/game-db-pull-emulator-database-artifact.ts"), "utf8"), candidates = text.match(/[A-Za-z0-9_.-]{16,}/g) ?? [];
+    const identity = candidates.find(value => Buffer.byteLength(value) === WT_FIRST_PARTY_APP_IDENTITY_SIZE_BYTES && createHash("sha256").update(value).digest("hex") === WT_FIRST_PARTY_APP_IDENTITY_SHA256);
+    if (!identity) throw new Error("WT synthetic test could not materialize the independently pinned public identity");
+    return identity;
+}
+const syntheticAppIdentity = pinnedAppIdentityFromReviewedBase();
+function appIdentityProof(identity = syntheticAppIdentity): WtFirstPartyAppIdentityProof {
+    return {
+        packageIdentity: identity,
+        evidence: {
+            schemaVersion: 1,
+            contract: "dokkan-wt-first-party-app-identity",
+            rule: WT_FIRST_PARTY_APP_IDENTITY_RULE,
+            apk: { sizeBytes: WT_FIRST_PARTY_APK_SIZE_BYTES, sha256: WT_FIRST_PARTY_APK_SHA256 },
+            tool: { name: "aapt", executableSha256: WT_FIRST_PARTY_AAPT_SHA256, version: WT_FIRST_PARTY_AAPT_VERSION, command: "aapt dump badging <pinned-apk>" },
+            identity: { jsonType: "string", sizeBytes: WT_FIRST_PARTY_APP_IDENTITY_SIZE_BYTES, sha256: WT_FIRST_PARTY_APP_IDENTITY_SHA256 },
+        },
+    };
+}
+
+function authCatalog(body: unknown, method = "POST", route = "/auth/sign_in"): ReturnType<typeof buildWtSensitiveCatalog> {
+    const authEntry = (JSON.parse(focusedHar({ method, url: `https://example.invalid${route}`, requestBody: body })) as any).log.entries[0];
+    const matcherCoverageEntry = (JSON.parse(focusedHar({ url: "https://example.invalid/audit/q7" })) as any).log.entries[0];
+    return buildWtSensitiveCatalog(JSON.stringify({ log: { entries: [authEntry, matcherCoverageEntry] } }));
 }
 
 function git(root: string, args: string[]): string {
@@ -144,8 +173,9 @@ describe("World Tournament campaign scanner", () => {
     it("detects a captured URL path segment structurally", () => {
         const catalog = buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/audit/q7" }));
         const result = scanWtAuditTargets(catalog, [target("url-path", "fixture", "https://example.invalid/audit/q7")]);
-        assert.equal(result.valid, false);
+        assert.equal(result.valid, true);
         assert.equal(result.sensitiveMatchCategoryCounts.url_path > 0, true);
+        assert.equal(result.matchClassCounts.permitted_protocol_structure > 0, true);
     });
 
     it("catalogs public alphabetic route segments without treating them as captured-value matches", () => {
@@ -162,7 +192,7 @@ describe("World Tournament campaign scanner", () => {
         assert.equal(scanWtAuditTargets(catalog, [target("text-body", "fixture", "q7")]).sensitiveMatchCategoryCounts.request_body > 0, true);
     });
 
-    it("detects long literal formats in every source category under unrelated target context", () => {
+    it("detects every threshold-length literal without format or character-class heuristics", () => {
         const cases: Array<{ label: string; value: string | number; source: FocusedHarOptions; kind: "string" | "number" }> = [
             { label: "hex", value: "abcdef0123456789abcdef0123456789", source: { requestHeaders: [{ name: "X-Capture", value: "abcdef0123456789abcdef0123456789" }] }, kind: "string" },
             { label: "numeric-hex", value: "01234567890123456789012345678901", source: { requestCookies: [{ name: "sid", value: "01234567890123456789012345678901" }] }, kind: "string" },
@@ -174,6 +204,12 @@ describe("World Tournament campaign scanner", () => {
             { label: "decimal-string", value: "123456789012345678901234567890", source: { responseText: "123456789012345678901234567890", responseMimeType: "text/plain" }, kind: "string" },
             { label: "decimal-number", value: 1234567890123, source: { requestBody: { id: 1234567890123 } }, kind: "number" },
             { label: "alphabetic", value: "abcdefghijklmnop", source: { url: "https://example.invalid/?cursor=abcdefghijklmnop" }, kind: "string" },
+            { label: "lower-base64url", value: "abcdefghijklmnop-_", source: { url: "https://example.invalid/?cursor=abcdefghijklmnop-_" }, kind: "string" },
+            { label: "compact-dotted", value: "token.compacto.pontuado", source: { requestBody: { x: "token.compacto.pontuado" } }, kind: "string" },
+            { label: "multi-dotted", value: "abc.def.ghi.jklmnop", source: { responseBody: { x: "abc.def.ghi.jklmnop" } }, kind: "string" },
+            { label: "hyphen-underscore", value: "--------________", source: { requestHeaders: [{ name: "X-Capture", value: "--------________" }] }, kind: "string" },
+            { label: "dots", value: "................", source: { requestCookies: [{ name: "sid", value: "................" }] }, kind: "string" },
+            { label: "tilde-plus-slash-equals", value: "~~~~++++////====", source: { responseText: "~~~~++++////====", responseMimeType: "text/plain" }, kind: "string" },
         ];
         for (const row of cases) {
             const result = scanWtAuditTargets(buildWtSensitiveCatalog(focusedHar(row.source)), [target(`${row.label}.ts`, "spec", `export const renamedValue = ${JSON.stringify(row.value)};`)]);
@@ -185,13 +221,34 @@ describe("World Tournament campaign scanner", () => {
             assert.match(literal.sourcePathHash, /^[a-f0-9]{64}$/);
             assert.match(literal.method, /^[A-Z]+$/);
         }
+        assert.equal(WT_LITERAL_MATCHER_CONTRACT_VERSION, "length-boundary-v1");
+        assert.equal(WT_LITERAL_STRING_MIN_BYTES, 16);
+        assert.equal(WT_LITERAL_CANONICAL_MIN_BYTES, 8);
     });
 
-    it("requires token boundaries for compact long literals", () => {
+    it("uses one generic boundary rule at file positions and around delimiters", () => {
+        const value = "abcdefghijklmnop-_", catalog = buildWtSensitiveCatalog(focusedHar({ responseBody: { token: value } }));
+        const delimited = [value, `${value}\ntrailer`, `prefix ${value} suffix`, `prefix\n${value}`, `"${value}"`, `(${value}),`, `[${value}]`, `{ ${value}; }`];
+        for (const [index, content] of delimited.entries()) assert.equal(scanWtAuditTargets(catalog, [target(`delimited-${index}`, "spec", content)]).valid, false, `missed delimited position ${index}`);
+        for (const edge of ["a", "Z", "7", "-", "_", ".", "~", "+", "/", "=", "%"]) {
+            for (const content of [`${edge}${value}`, `${value}${edge}`, `${edge}${value}${edge}`]) assert.equal(scanWtAuditTargets(catalog, [target(`larger-${edge}`, "spec", content)]).valid, true, `matched internal token at ${JSON.stringify(edge)}`);
+        }
         const numeric = buildWtSensitiveCatalog(focusedHar({ requestBody: { id: 1234567890123 } }));
         assert.equal(scanWtAuditTargets(numeric, [target("larger-number.ts", "spec", "const unrelated = 912345678901234;")]).valid, true);
-        const alphabetic = buildWtSensitiveCatalog(focusedHar({ responseBody: { token: "abcdefghijklmnop" } }));
-        assert.equal(scanWtAuditTargets(alphabetic, [target("larger-token.ts", "spec", "const unrelated = \"xabcdefghijklmnopy\";")]).valid, true);
+    });
+
+    it("enforces the length invariant across a matrix of character alphabets", () => {
+        const alphabets = ["a", "Z", "7", "-", "_", ".", "~", "+", "/", "=", "-_", ".~", "+/=", "aZ7-_.~+/="];
+        const toThreshold = (alphabet: string): string => alphabet.repeat(Math.ceil(WT_LITERAL_STRING_MIN_BYTES / Buffer.byteLength(alphabet))).slice(0, WT_LITERAL_STRING_MIN_BYTES);
+        for (const alphabet of alphabets) {
+            const value = toThreshold(alphabet), catalog = buildWtSensitiveCatalog(focusedHar({ requestBody: { x: value } }));
+            const result = scanWtAuditTargets(catalog, [target(`alphabet-${Buffer.from(alphabet).toString("hex")}`, "spec", `const unrelated = ${JSON.stringify(value)};`)]);
+            assert.equal(Buffer.byteLength(value), WT_LITERAL_STRING_MIN_BYTES);
+            assert.equal(result.valid, false, `composition escaped: ${JSON.stringify(alphabet)}`);
+            assert.equal(result.matchedTargets.flatMap(row => row.matches).some(match => match.matchMode === "literal"), true);
+        }
+        const below = "a".repeat(WT_LITERAL_STRING_MIN_BYTES - 1), belowCatalog = buildWtSensitiveCatalog(focusedHar({ requestBody: { x: below } }));
+        assert.equal(scanWtAuditTargets(belowCatalog, [target("below-threshold", "fixture", JSON.stringify({ y: below }))]).valid, true);
     });
 
     it("classifies explicit TypeScript and raw textual bodies separately from JSON", () => {
@@ -303,7 +360,7 @@ describe("World Tournament campaign scanner", () => {
         const secret = "synthetic-neutral-long-6e2f", catalog = buildWtSensitiveCatalog(focusedHar({ requestBody: { x: secret } }));
         const result = scanWtAuditTargets(catalog, [target("literal", "spec", `export const leaked = ${JSON.stringify(secret)};`)]);
         assert.equal(result.valid, false);
-        assert.equal(result.matchedTargets[0].matches.some(value => value.matchMode === "literal" && value.foundStructuralCategory === "literal"), true);
+        assert.equal(result.matchedTargets[0].matches.some(value => value.matchMode === "literal" && value.foundStructuralCategory === "code_literal"), true);
     });
 
     it("fails closed for an expected malformed JSON body and an empty catalog", () => {
@@ -470,5 +527,80 @@ describe("World Tournament campaign scanner", () => {
             assert.throws(() => collectWtGitAuditTargets(root, tip, tip), /range is empty/);
             assert.throws(() => collectWtGitAuditTargets(root, "not-a-revision", tip), /command failed/);
         } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it("permits only the exact first-party bundle identity with pinned APK provenance", () => {
+        const proof = appIdentityProof(), result = scanWtAuditTargets(authCatalog({ bundle_id: syntheticAppIdentity }), [target("bundle", "fixture", `const bundle_id = "${syntheticAppIdentity}";`)], { allowedHistoricalHarTargetFingerprints: [], firstPartyAppIdentity: proof });
+        assert.equal(result.valid, true);
+        assert.equal(result.publicFirstPartyIdentityMatchCount, 1);
+        assert.equal(result.matchClassCounts.permitted_public_game_structure, 1);
+        assert.equal(result.matchRuleCounts[WT_FIRST_PARTY_APP_IDENTITY_RULE], 1);
+        assert.deepEqual(result.firstPartyAppIdentityEvidence, proof.evidence);
+        assert.equal(JSON.stringify(result).includes(syntheticAppIdentity), false);
+    });
+
+    it("fails closed for divergent identity, missing APK evidence, or a divergent APK hash", () => {
+        const targetValue = target("bundle", "fixture", `"${syntheticAppIdentity}"`);
+        const divergent = scanWtAuditTargets(authCatalog({ bundle_id: syntheticAppIdentity }), [targetValue], { allowedHistoricalHarTargetFingerprints: [], firstPartyAppIdentity: appIdentityProof("another.public.identity") });
+        assert.equal(divergent.valid, false); assert.equal(divergent.prohibitedSensitiveMatchCount + divergent.unresolvedMatchCount > 0, true);
+        const missing = scanWtAuditTargets(authCatalog({ bundle_id: syntheticAppIdentity }), [targetValue]);
+        assert.equal(missing.valid, false); assert.equal(missing.unresolvedMatchCount > 0, true);
+        const badHash = appIdentityProof(); badHash.evidence.apk.sha256 = "f".repeat(64) as typeof WT_FIRST_PARTY_APK_SHA256;
+        const invalid = scanWtAuditTargets(authCatalog({ bundle_id: syntheticAppIdentity }), [targetValue], { allowedHistoricalHarTargetFingerprints: [], firstPartyAppIdentity: badHash });
+        assert.equal(invalid.valid, false); assert.equal(invalid.unresolvedMatchCount > 0, true); assert.equal(invalid.firstPartyAppIdentityEvidence, undefined);
+    });
+
+    it("keeps token, sign, cookies, and authentication headers prohibited ahead of the public field rule", () => {
+        const proof = appIdentityProof(), catalog = authCatalog({ bundle_id: syntheticAppIdentity }), policy = { allowedHistoricalHarTargetFingerprints: [], firstPartyAppIdentity: proof };
+        for (const [name, content] of [
+            ["token", JSON.stringify({ token: syntheticAppIdentity })],
+            ["sign", JSON.stringify({ sign: syntheticAppIdentity })],
+            ["other-json-path", JSON.stringify({ other: syntheticAppIdentity })],
+            ["cookie", `Cookie: sid=${syntheticAppIdentity}`],
+            ["authorization", `Authorization: ${syntheticAppIdentity}`],
+            ["typescript-token", `const token = "${syntheticAppIdentity}";`],
+            ["typescript-sign", `const sign = "${syntheticAppIdentity}";`],
+            ["typescript-account", `const accountId = "${syntheticAppIdentity}";`],
+            ["typescript-unknown", `const other = "${syntheticAppIdentity}";`],
+        ] as const) {
+            const result = scanWtAuditTargets(catalog, [target(name, "fixture", content)], policy);
+            assert.equal(result.valid, false, name); assert.equal(result.prohibitedSensitiveMatchCount > 0, true, name); assert.equal(result.publicFirstPartyIdentityMatchCount, 0, name);
+        }
+    });
+
+    it("rejects neighboring auth fields and every mutation of method, route, path, or provenance", () => {
+        const proof = appIdentityProof(), literalTarget = [target("identity", "fixture", `"${syntheticAppIdentity}"`)], policy = { allowedHistoricalHarTargetFingerprints: [], firstPartyAppIdentity: proof };
+        const cases = [
+            authCatalog({ neighboring_field: syntheticAppIdentity }),
+            authCatalog({ bundle_id: syntheticAppIdentity }, "PUT"),
+            authCatalog({ bundle_id: syntheticAppIdentity }, "POST", "/auth/refresh"),
+            authCatalog({ nested: { bundle_id: syntheticAppIdentity } }),
+        ];
+        for (const catalog of cases) { const result = scanWtAuditTargets(catalog, literalTarget, policy); assert.equal(result.valid, false); assert.equal(result.publicFirstPartyIdentityMatchCount, 0); }
+        const mutated = appIdentityProof(); mutated.evidence.rule = "mutated" as typeof WT_FIRST_PARTY_APP_IDENTITY_RULE;
+        const result = scanWtAuditTargets(authCatalog({ bundle_id: syntheticAppIdentity }), literalTarget, { allowedHistoricalHarTargetFingerprints: [], firstPartyAppIdentity: mutated });
+        assert.equal(result.valid, false); assert.equal(result.unresolvedMatchCount > 0, true);
+    });
+
+    it("rejects fabricated identity and aapt provenance even when their shapes are valid", () => {
+        const fabricated = appIdentityProof("another.public.identity.value");
+        fabricated.evidence.tool.executableSha256 = "c".repeat(64) as typeof WT_FIRST_PARTY_AAPT_SHA256;
+        fabricated.evidence.tool.version = "synthetic aapt" as typeof WT_FIRST_PARTY_AAPT_VERSION;
+        const result = scanWtAuditTargets(authCatalog({ bundle_id: "another.public.identity.value" }), [target("fabricated", "fixture", "const bundle_id = \"another.public.identity.value\";")], { allowedHistoricalHarTargetFingerprints: [], firstPartyAppIdentity: fabricated });
+        assert.equal(result.valid, false); assert.equal(result.unresolvedMatchCount > 0, true); assert.equal(result.firstPartyAppIdentityEvidence, undefined);
+    });
+
+    it("classifies the same exact public identity in three base targets as three permitted matches", () => {
+        const targets = ["one", "two", "three"].map(name => target(name, "fixture", `const bundle_id = "${syntheticAppIdentity}";`));
+        const result = scanWtAuditTargets(authCatalog({ bundle_id: syntheticAppIdentity }), targets, { allowedHistoricalHarTargetFingerprints: [], firstPartyAppIdentity: appIdentityProof() });
+        assert.equal(result.valid, true); assert.equal(result.sensitiveMatchCount, 3); assert.equal(result.publicFirstPartyIdentityMatchCount, 3); assert.equal(result.prohibitedSensitiveMatchCount, 0); assert.equal(result.unresolvedMatchCount, 0);
+    });
+
+    it("requires an explicit public identity coordinate for raw text", () => {
+        const catalog = authCatalog({ bundle_id: syntheticAppIdentity }), policy = { allowedHistoricalHarTargetFingerprints: [], firstPartyAppIdentity: appIdentityProof() };
+        const publicText = scanWtAuditTargets(catalog, [target("public-doc", "fixture", `package confirmed: ${syntheticAppIdentity}`)], policy);
+        const tokenText = scanWtAuditTargets(catalog, [target("raw-token", "fixture", `token = ${syntheticAppIdentity}`)], policy);
+        assert.equal(publicText.valid, true); assert.equal(publicText.publicFirstPartyIdentityMatchCount, 1);
+        assert.equal(tokenText.valid, false); assert.equal(tokenText.prohibitedSensitiveMatchCount, 1);
     });
 });

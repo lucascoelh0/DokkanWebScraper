@@ -56,13 +56,13 @@ tracked.
 | WT3 | `wt3-rankings-box-schedules.json` | 40,529 | `cb438a3f166873d285a79fbe0ca626763c49cf872c89b1e03bb19d6ee087b840` |
 | WT4 | `wt4-briefing-missions-start.json` | 21,308 | `b5d8a7999ad2352e84090511b5e57c605a7c132d355cf35d05a540ead722ebff` |
 | WT5 | `wt5-shadow-parity.json` | 14,043 | `9723fb520cc68a37a3ee75e07e9e277da9b1952b5e93df208e287c365ce0e0f1` |
-| WT6 | `wt6-readiness.json` | 10,629 | `b90d63db6def94c3feef7a64058b13bb3722cd77c84f8f0f617d3c35f3cbe529` |
+| WT6 | `wt6-readiness.json` | 12,128 | `4dd9636d7e848409ee6a590880e2fd6daf1092d3b815e35a202d46ac94dc36e7` |
 
 WT6 pins 18 WT0-WT5 payload/manifest/validation members with aggregate SHA-256
 `0ed76199d05bf27bf90ef89c8aa474c09e6ea2d894060b577409b179fe9117df`.
 Two complete external generations of all 21 WT0-WT6 files were byte-identical;
 their aggregate SHA-256 was
-`efa5bc2277e45bfffb90019db425e1d5ff03861997ca67ee7a19bdbd3654870e`.
+`92245a779e74abb2fbb323b8049b42080dfcfc592a87d1caa22361f4327f78f4`.
 
 ## Security and resource evidence
 
@@ -71,10 +71,20 @@ The offline scanner collected 19,572 captured scalar observations in memory:
 credentials, 16 request-body leaves and 16,760 response-body leaves. Every JSON
 leaf is retained in memory with request/response origin, sanitized endpoint,
 method, structural category, exact JSON path, JSON type and canonical value.
-It examined 3,616 targets and 3,416 unique blobs: every one of the 3,329 files
-in the reviewed tip plus 87 old and 200 new historical targets across the
-ten-commit range. The complete matcher found zero captured-value matches and
-zero captured/raw HAR targets. Two
+It examined 3,662 targets and 3,439 unique blobs: all 3,332 files in the
+reviewed tip plus 107 old and 223 new historical targets across the
+eleven-commit range. The complete matcher classified 6,097 matches: 6,059
+`permitted_protocol_structure`, 38
+`permitted_public_game_structure`, 0 `prohibited_sensitive` and 0 `unresolved`.
+The public-game total is 35 exact global `/ping` host coordinates plus three
+exact `POST /auth/sign_in` `$.bundle_id` coordinates. The three mutation-body
+matches are therefore public first-party identity, while effectively sensitive
+account-scoped payload matches and opaque credential matches are both zero.
+Of the 20 matches above the formerly reported 6,077, 16 are long query names
+that the corrected exact structural matcher finds at delimiter boundaries and
+four are permitted protocol-header constants in the changed documentation
+lineage. The derived result was retained rather than forced to the earlier estimate. There
+are zero captured/raw HAR targets. Two
 historical targets are structurally HAR-shaped copies of the former wholly
 synthetic fixture. They are accepted only by two exact, category-bound structural
 fingerprints; any missing, additional or tip HAR-shaped target fails closed.
@@ -99,11 +109,31 @@ empty text is ignored symmetrically. Static JSON-like literals in
 TypeScript/JavaScript receive the JSON projection; explicit textual/raw names,
 constant bindings and static templates receive the textual projection. When a target carries
 an explicit capture envelope, origin, method and sanitized endpoint also bind
-body, header, cookie, URL and query matching. Alphabetic public route components
-remain catalogued but only value-bearing path segments participate in the
-captured-value matcher. The scanner rejects blobs above 16 MiB, empty catalogs/targets, malformed
+body, header, cookie, URL and query matching. Public route components remain
+catalogued and can be classified only through exact static-route structure;
+credential/account coordinates retain higher prohibited precedence. The scanner
+rejects blobs above 16 MiB, empty catalogs/targets, malformed
 expected JSON/URL structures, unreadable blobs and captured categories without
 an implemented matcher.
+
+Forty observations removed by the previous correction were empty
+`application/octet-stream` bodies. They contain no scalar value and remain
+ignored symmetrically for request and response; this is an explicit empty-body
+rule, not a missing matcher.
+
+The field-scoped rule `public_first_party_app_bundle_identity_v1` is supported
+independently by the pinned first-party APK (98,799,013 bytes, SHA-256
+`a51ba758e0555e0a756aa4f20278e6bec25ba6b0c7dcdcd0f4372e0fad159bc0`).
+`aapt dump badging` was run with Android Asset Packaging Tool
+`v0.2-12874835`; the executable SHA-256 is
+`3a79b1b3f6e68d83a0eb5fe82bd557f51c6c02f07355ee0ad293c5ea43e32427`.
+Only the extracted identity's size (32 bytes) and SHA-256
+`74d2f87b503e9ff38f27298af6942a1a1898d1aef543b6c85720205e92cd0888`
+are persisted. The clear identity and the HAR observation were compared only
+in memory. The rule requires exact method, route, JSON path, string type, value
+and evidence provenance; token/sign/cookie/authentication coordinates take
+precedence as prohibited, and every other auth/mutation field remains
+fail-closed.
 
 Observed process-tree working-set peaks were:
 
@@ -115,12 +145,13 @@ Observed process-tree working-set peaks were:
 | WT3 | 51,400,704 |
 | WT4 | 39,075,840 |
 | WT5 | 518,160,384 |
-| WT6 | 626,892,800 |
+| WT6 | 625,582,080 |
 
 Every peak is below the strict 1 GiB limit. The final WT6 repeat measured
-626,892,800 bytes. The evidence is bound to the HAR identity, the aggregate of
-the 18 upstream artifacts and the aggregate of the 25 executable implementation
-files used by the campaign (`c1ace519f8fa7b50739c56d4c330dfb0d918ae59d0c7935cb523c7d15a3123b2`).
+625,582,080 bytes. The evidence is bound to the HAR identity, the aggregate of
+the 18 upstream artifacts and the aggregate of the 26 executable implementation
+files used by the campaign, including the identity verifier
+`5a86ed746398db85b943a10bf383404a96a3cd61040197518acac77f60b74adc`).
 
 ## Readiness
 
@@ -168,3 +199,6 @@ explicit decision for every excluded scope.
 - Long/text boundary correction: the tenth corrective commit removes the
   character-class requirement for compact long literals, separates JSON,
   textual and raw projections, and enforces the 16 MiB fail-closed blob bound
+- First-party field classification: the eleventh corrective commit binds the
+  exact auth bundle coordinate to independently pinned APK evidence, preserves
+  credential precedence and reports every permitted/prohibited/unresolved class
