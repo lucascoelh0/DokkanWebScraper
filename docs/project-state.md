@@ -1062,6 +1062,45 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   16/16 and the compiled suite passed 328 tests with 9 pending. The public
   manifest remains candidate-only; persisted consumer, authority, production,
   Android, UI, authenticated network and R2 mutation remain NO-GO.
+- K62 adds an offline/default-off productive compatibility audit over the exact
+  K61 candidate. It source-binds K58/K56, losslessly reconstructs K56, pins the
+  K57/K59/K60/K61 reports plus K60 publication receipt, and verifies the
+  current scraper/Team Analysis and Android wire/domain/evaluator source
+  identities without modifying Android or making a request. The public
+  manifest remains `candidateOnly: true`; 3,836 effects, 12,265 references and
+  four indices are preserved, while the 17/45 conditionals remain excluded as
+  `runtime_deck_index_unresolved`.
+- Structural `cardId` parity against the exact productive `Character[]` joins
+  8,893 references over 2,265 cards and leaves 3,372 references over 1,169
+  cards unjoinable. Those joins are identity agreements and representation
+  gains only: comparable values and confirmed conflicts are both zero, all
+  12,265 values/lifecycle outcomes remain unknown, and zero conflict is not
+  completeness. The productive pin contains zero structured Leader-detail
+  records; text is baseline only and never identity.
+- The 18-dimension matrix classifies six dimensions directly representable,
+  seven as requiring an additive contract, three as lossy in the current
+  model, lifecycle/timing as blocked unknown, and missing runtime dimensions as
+  runtime-context-required. Every one of the 3,836 supported whole effects
+  requires a separate additive contract for lossless shadow storage. This is
+  sufficient for a documented K63 design GO: a separate optional data sidecar
+  mapped to separate immutable domain evidence, absent-compatible with old
+  caches and the existing fallback, never replacing effective values or UI.
+- The real K62 run performed two byte-identical materializations and a
+  source-bound post-write reconstruction. The 850,319-byte raw report and
+  19,032-byte gzip have SHA-256
+  `23c03e337c6c04066da06bb63bf33dc4b283a571a72182c527e4ec297383845f`
+  and `39fd57186bf78afce2cc2baaa8764725715e787e45cd0aa0ff6361d32d6d9edb`.
+  Coverage, validation and manifest hashes are respectively
+  `a3b8788907aaa51320b439850dd8032a0bdf23a82d6ebb5fd232cf655fb067bb`,
+  `bc85a5b3f13d7ba0c7b1c12929ebe4ee4b3254bfdfea04b926019d95ff23bc43`
+  and `b28f410f3676af76adfced9f12b2fd3f47be9e4e2ed7ac09801eaccaca86eb33`.
+  Maximum individual-process RSS was 1,039,409,152 bytes, below 1 GiB by
+  34,332,672 bytes; process-tree RSS remains unmeasured/NO-GO. K62 audit and
+  K63 additive design are GO; current-contract consumption, authority,
+  production, Android implementation, UI, runtime context and K63 execution
+  remain NO-GO. Focused K62 checks passed 5/5, the compiled
+  `database-characters` suite passed 333 tests with 9 pending, and independent
+  contract review found no P0-P2.
 
 ## World Tournament WT0-WT6 checkpoint (2026-08-16)
 
