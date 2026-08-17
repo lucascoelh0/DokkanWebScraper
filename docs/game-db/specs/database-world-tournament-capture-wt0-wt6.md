@@ -56,24 +56,24 @@ tracked.
 | WT3 | `wt3-rankings-box-schedules.json` | 40,529 | `cb438a3f166873d285a79fbe0ca626763c49cf872c89b1e03bb19d6ee087b840` |
 | WT4 | `wt4-briefing-missions-start.json` | 21,308 | `b5d8a7999ad2352e84090511b5e57c605a7c132d355cf35d05a540ead722ebff` |
 | WT5 | `wt5-shadow-parity.json` | 14,043 | `9723fb520cc68a37a3ee75e07e9e277da9b1952b5e93df208e287c365ce0e0f1` |
-| WT6 | `wt6-readiness.json` | 10,626 | `51ffea105c2324ab0efedc6ff7571069948ad86ebdbf092617a6b78bfaa2d141` |
+| WT6 | `wt6-readiness.json` | 10,629 | `b90d63db6def94c3feef7a64058b13bb3722cd77c84f8f0f617d3c35f3cbe529` |
 
 WT6 pins 18 WT0-WT5 payload/manifest/validation members with aggregate SHA-256
 `0ed76199d05bf27bf90ef89c8aa474c09e6ea2d894060b577409b179fe9117df`.
 Two complete external generations of all 21 WT0-WT6 files were byte-identical;
 their aggregate SHA-256 was
-`cecce461d7a6185d50f54d9d52101efa945f733c70c48f65a9590e2283c7daad`.
+`efa5bc2277e45bfffb90019db425e1d5ff03861997ca67ee7a19bdbd3654870e`.
 
 ## Security and resource evidence
 
-The offline scanner collected 19,612 captured scalar observations in memory:
+The offline scanner collected 19,572 captured scalar observations in memory:
 1,807 headers, 0 cookies, 317 URL path segments, 672 query names/values, 0 URL
-credentials, 16 request-body leaves and 16,800 response-body leaves. Every JSON
+credentials, 16 request-body leaves and 16,760 response-body leaves. Every JSON
 leaf is retained in memory with request/response origin, sanitized endpoint,
-  method, structural category, exact JSON path, JSON type and canonical value.
- It examined 3,588 targets and 3,402 unique blobs: every one of the 3,329 files
- in the reviewed tip plus 73 old and 186 new historical targets across the
-nine-commit range. The complete matcher found zero captured-value matches and
+method, structural category, exact JSON path, JSON type and canonical value.
+It examined 3,616 targets and 3,416 unique blobs: every one of the 3,329 files
+in the reviewed tip plus 87 old and 200 new historical targets across the
+ten-commit range. The complete matcher found zero captured-value matches and
 zero captured/raw HAR targets. Two
 historical targets are structurally HAR-shaped copies of the former wholly
 synthetic fixture. They are accepted only by two exact, category-bound structural
@@ -83,17 +83,25 @@ corrected tip. Specs, fixtures, `lib/`, arbitrary extensions and
 deleted historical blobs receive no exclusion.
 The source lock, diagnostics and generated artifacts remain ignored.
 
-Compact distinctive strings of at least 16 bytes and distinctive numeric
-scalars of at least 8 bytes receive literal byte matching across every blob.
+Compact strings of at least 16 bytes and numeric scalars of at least 8 bytes
+receive literal byte matching across every blob, independent of source and
+target context. This covers hexadecimal, UUID with or without hyphens, base32,
+base64, base64url, long decimal identifiers and single-class alphabetic or
+alphanumeric strings without requiring character-class diversity. Token
+boundaries prevent a compact long source value from matching only as a
+substring of an unrelated larger token.
 Short values use structural context: complete JSON shape plus exact path/type,
 normalized header name, cookie name, absolute URL component, query name and
-value, or exact conservative non-JSON text token. Static JSON-like literals in
-TypeScript/JavaScript receive the same structural projection; primitive roots
-are accepted only in explicitly JSON-like named contexts. When a target carries
+value, or exact non-JSON text. `json_body`, `text_body` and raw `text_exact`
+remain distinct; explicit non-JSON MIME wins even when its bytes parse as JSON.
+Raw text retains whitespace, newlines and bodies beyond 4 KiB exactly, while
+empty text is ignored symmetrically. Static JSON-like literals in
+TypeScript/JavaScript receive the JSON projection; explicit textual/raw names,
+constant bindings and static templates receive the textual projection. When a target carries
 an explicit capture envelope, origin, method and sanitized endpoint also bind
 body, header, cookie, URL and query matching. Alphabetic public route components
 remain catalogued but only value-bearing path segments participate in the
-captured-value matcher. The scanner rejects empty catalogs/targets, malformed
+captured-value matcher. The scanner rejects blobs above 16 MiB, empty catalogs/targets, malformed
 expected JSON/URL structures, unreadable blobs and captured categories without
 an implemented matcher.
 
@@ -107,12 +115,12 @@ Observed process-tree working-set peaks were:
 | WT3 | 51,400,704 |
 | WT4 | 39,075,840 |
 | WT5 | 518,160,384 |
-| WT6 | 625,881,088 |
+| WT6 | 626,892,800 |
 
 Every peak is below the strict 1 GiB limit. The final WT6 repeat measured
-625,881,088 bytes. The evidence is bound to the HAR identity, the aggregate of
+626,892,800 bytes. The evidence is bound to the HAR identity, the aggregate of
 the 18 upstream artifacts and the aggregate of the 25 executable implementation
-files used by the campaign (`7ee0e0429892f8a491624dc7d996a0c4ec61128d638283ea4bc92bc71ed38bb1`).
+files used by the campaign (`c1ace519f8fa7b50739c56d4c330dfb0d918ae59d0c7935cb523c7d15a3123b2`).
 
 ## Readiness
 
@@ -157,3 +165,6 @@ explicit decision for every excluded scope.
   synthetic-fixture and post-integration readiness corrections
 - Complete scanner coverage: the ninth corrective commit cataloguing every JSON
   scalar leaf and enforcing literal/contextual matchers
+- Long/text boundary correction: the tenth corrective commit removes the
+  character-class requirement for compact long literals, separates JSON,
+  textual and raw projections, and enforces the 16 MiB fail-closed blob bound

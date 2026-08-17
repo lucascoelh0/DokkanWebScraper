@@ -8,7 +8,7 @@
     "entryCount": 1
   },
   "security": {
-    "commitCount": 9,
+    "commitCount": 10,
     "targetCount": 3,
     "uniqueBlobCount": 3,
     "categoryTargetCounts": { "tip": 1, "history_old": 1, "history_new": 1 },
@@ -34,7 +34,7 @@
   "memory": {
     "schemaVersion": 1,
     "contract": "dokkan-world-tournament-memory-evidence",
-    "contractVersion": "0.9.0",
+    "contractVersion": "0.10.0",
     "method": "windows_process_tree_working_set_poll_15ms",
     "limitBytes": 1073741824,
     "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

@@ -1071,15 +1071,17 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   infrastructure integration is GO.
 - WT0-WT6 completed an offline, fail-closed audit of the external 7,087,930-byte
   HAR (`70ce81581e9237fb1b9a8da7dd0db1c24dd397dc329cc57cca468705265d66cd`).
-  The HAR and its source lock are not tracked. The scanner catalogued 19,612
+  The HAR and its source lock are not tracked. The scanner catalogued 19,572
   scalar observations across headers, cookies, URL paths, query names/values,
-  URL credentials and every request/response JSON leaf. It examined 3,588
-  targets/3,402 unique blobs across the
-  complete corrected tip and every old/new changed blob in the nine-commit
-  range, with zero captured-value matches and zero
-  captured/raw HAR targets. Long distinctive values use literal scanning;
-  short values require JSON shape/path/type or header, cookie, URL/query and
-  conservative text context. The two
+  URL credentials and every non-empty request/response JSON or textual body
+  leaf. It examined 3,616 targets/3,416 unique blobs across the complete
+  corrected tip and every old/new changed blob in the ten-commit range, with
+  zero captured-value matches and zero captured/raw HAR targets. Compact long
+  hexadecimal, UUID, base32/base64/base64url, decimal and alphabetic values use
+  context-independent literal scanning without a character-class diversity
+  requirement. Short values require JSON shape/path/type or header, cookie,
+  URL/query and exact textual context. JSON, text-body and raw `text_exact`
+  projections remain separate. The two
   former synthetic-fixture HAR-shaped historical targets are pinned by exact
   category-bound fingerprints; missing, additional or tip structure fails closed.
 - Source ingestion requires an absolute external non-reparse root and a strict
@@ -1095,7 +1097,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   event, mission or box-ranking identities. Reward definitions and grants stay
   separate.
 - Two complete generations of 21 WT0-WT6 files were byte-identical. Maximum
-  observed process-tree working set was 625,881,088 bytes. GO is limited to
+  observed process-tree working set was 626,892,800 bytes. GO is limited to
   reviewed offline/default-off infrastructure and completely synthetic fixtures. Replay,
   authenticated automation, missing finish/results, sign decoding, Android,
   R2, publisher, production and source replacement remain NO-GO.

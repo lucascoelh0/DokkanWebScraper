@@ -162,6 +162,77 @@ describe("World Tournament campaign scanner", () => {
         assert.equal(scanWtAuditTargets(catalog, [target("text-body", "fixture", "q7")]).sensitiveMatchCategoryCounts.request_body > 0, true);
     });
 
+    it("detects long literal formats in every source category under unrelated target context", () => {
+        const cases: Array<{ label: string; value: string | number; source: FocusedHarOptions; kind: "string" | "number" }> = [
+            { label: "hex", value: "abcdef0123456789abcdef0123456789", source: { requestHeaders: [{ name: "X-Capture", value: "abcdef0123456789abcdef0123456789" }] }, kind: "string" },
+            { label: "numeric-hex", value: "01234567890123456789012345678901", source: { requestCookies: [{ name: "sid", value: "01234567890123456789012345678901" }] }, kind: "string" },
+            { label: "uuid-hyphen", value: "123e4567-e89b-12d3-a456-426614174000", source: { url: "https://example.invalid/?cursor=123e4567-e89b-12d3-a456-426614174000" }, kind: "string" },
+            { label: "uuid-compact", value: "123e4567e89b12d3a456426614174000", source: { url: "https://example.invalid/123e4567e89b12d3a456426614174000" }, kind: "string" },
+            { label: "base32", value: "JBSWY3DPEBLW64TMMQ======", source: { requestBody: { token: "JBSWY3DPEBLW64TMMQ======" } }, kind: "string" },
+            { label: "base64", value: "YWJjZGVmZ2hpamtsbW5vcA==", source: { responseBody: { token: "YWJjZGVmZ2hpamtsbW5vcA==" } }, kind: "string" },
+            { label: "base64url", value: "YWJjZGVmZ2hpamtsbW5vcA_-", source: { requestText: "YWJjZGVmZ2hpamtsbW5vcA_-", requestMimeType: "text/plain" }, kind: "string" },
+            { label: "decimal-string", value: "123456789012345678901234567890", source: { responseText: "123456789012345678901234567890", responseMimeType: "text/plain" }, kind: "string" },
+            { label: "decimal-number", value: 1234567890123, source: { requestBody: { id: 1234567890123 } }, kind: "number" },
+            { label: "alphabetic", value: "abcdefghijklmnop", source: { url: "https://example.invalid/?cursor=abcdefghijklmnop" }, kind: "string" },
+        ];
+        for (const row of cases) {
+            const result = scanWtAuditTargets(buildWtSensitiveCatalog(focusedHar(row.source)), [target(`${row.label}.ts`, "spec", `export const renamedValue = ${JSON.stringify(row.value)};`)]);
+            assert.equal(result.valid, false, `missed ${row.label}`);
+            const literal = result.matchedTargets.flatMap(value => value.matches).find(value => value.matchMode === "literal");
+            assert.ok(literal, `missing literal report for ${row.label}`);
+            assert.equal(literal.jsonType, row.kind);
+            assert.match(literal.endpointHash, /^[a-f0-9]{64}$/);
+            assert.match(literal.sourcePathHash, /^[a-f0-9]{64}$/);
+            assert.match(literal.method, /^[A-Z]+$/);
+        }
+    });
+
+    it("requires token boundaries for compact long literals", () => {
+        const numeric = buildWtSensitiveCatalog(focusedHar({ requestBody: { id: 1234567890123 } }));
+        assert.equal(scanWtAuditTargets(numeric, [target("larger-number.ts", "spec", "const unrelated = 912345678901234;")]).valid, true);
+        const alphabetic = buildWtSensitiveCatalog(focusedHar({ responseBody: { token: "abcdefghijklmnop" } }));
+        assert.equal(scanWtAuditTargets(alphabetic, [target("larger-token.ts", "spec", "const unrelated = \"xabcdefghijklmnopy\";")]).valid, true);
+    });
+
+    it("classifies explicit TypeScript and raw textual bodies separately from JSON", () => {
+        const requestCatalog = buildWtSensitiveCatalog(focusedHar({ requestText: "q7", requestMimeType: "text/plain" }));
+        const responseCatalog = buildWtSensitiveCatalog(focusedHar({ responseText: "q7", responseMimeType: "text/plain" }));
+        const requestTargets = [
+            target("raw.txt", "fixture", "q7"),
+            target("raw-structure.json", "fixture", JSON.stringify({ postData: { mimeType: "text/plain", text: "q7" } })),
+            target("direct.ts", "spec", "const leakedTextBody = \"q7\";"),
+            target("intermediate.ts", "spec", "const intermediate = \"q7\"; const leakedTextBody = intermediate;"),
+            target("template.ts", "spec", "const leakedTextBody = `q7`;"),
+            target("interpolated-template.ts", "spec", "const intermediate = \"q7\"; const leakedTextBody = `${intermediate}`;"),
+        ];
+        for (const candidate of requestTargets) {
+            const result = scanWtAuditTargets(requestCatalog, [candidate]);
+            assert.equal(result.valid, false, `missed ${candidate.targetId}`);
+            assert.equal(result.sensitiveMatchCategoryCounts.request_body > 0, true);
+            assert.equal(result.matchedTargets[0].matches.every(value => value.sourceStructuralCategory === "text_body" && (value.foundStructuralCategory === "text_body" || value.foundStructuralCategory === "text_exact")), true);
+        }
+        const response = scanWtAuditTargets(responseCatalog, [target("response.ts", "spec", "const leakedTextBody = \"q7\";")]);
+        assert.equal(response.valid, false);
+        assert.equal(response.sensitiveMatchCategoryCounts.response_body > 0, true);
+
+        const jsonCatalog = buildWtSensitiveCatalog(focusedHar({ requestBody: { x: "q7" } }));
+        assert.equal(scanWtAuditTargets(jsonCatalog, [target("text-context.ts", "spec", "const leakedTextBody = \"q7\";")]).valid, true);
+        assert.equal(scanWtAuditTargets(requestCatalog, [target("json-context.json", "fixture", JSON.stringify({ x: "q7" }))]).valid, true);
+
+        const jsonShapedCatalog = buildWtSensitiveCatalog(focusedHar({ requestText: JSON.stringify({ x: "q7" }), requestMimeType: "text/plain" }));
+        assert.equal(scanWtAuditTargets(jsonShapedCatalog, [target("json-shaped-raw.txt", "fixture", JSON.stringify({ x: "q7" }))]).valid, false);
+        assert.equal(scanWtAuditTargets(jsonShapedCatalog, [target("json-structure.json", "fixture", JSON.stringify({ body: { x: "q7" } }))]).valid, true);
+
+        for (const [label, raw] of [["whitespace", "  q7  "], ["multiline", "line one\nq7\nline three"], ["over-4k", "q7 ".repeat(1500)]] as const) {
+            const exactCatalog = buildWtSensitiveCatalog(focusedHar({ requestText: raw, requestMimeType: "text/plain" }));
+            assert.equal(scanWtAuditTargets(exactCatalog, [target(`${label}.txt`, "fixture", raw)]).valid, false, `missed exact ${label}`);
+            assert.equal(scanWtAuditTargets(exactCatalog, [target(`${label}-changed.txt`, "fixture", `${raw}x`)]).valid, true, `accepted inexact ${label}`);
+        }
+
+        const emptyCatalog = buildWtSensitiveCatalog(focusedHar({ requestHeaders: [{ name: "ETag", value: "q7" }], requestText: "", requestMimeType: "text/plain" }));
+        assert.equal(scanWtAuditTargets(emptyCatalog, [{ targetId: "empty.txt", category: "fixture", content: Buffer.alloc(0) }]).valid, true);
+    });
+
     it("does not cross-match the same short value across structural contexts", () => {
         const catalog = buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/", responseHeaders: [{ name: "ETag", value: "q7" }] }));
         for (const content of [JSON.stringify({ x: "q7" }), "Cookie: sid=q7", "https://example.invalid/other?etag=q7", "q7"]) assert.equal(scanWtAuditTargets(catalog, [target("different-context", "fixture", content)]).valid, true);
@@ -193,11 +264,11 @@ describe("World Tournament campaign scanner", () => {
     it("extracts typed primitive JSON roots from explicitly JSON-like static TypeScript contexts", () => {
         for (const value of ["q7", 17, false, null]) {
             const catalog = buildWtSensitiveCatalog(focusedHar({ requestBody: value }));
-            const declaration = `const leakedBody = ${JSON.stringify(value)};`;
+            const declaration = `const leakedJsonBody = ${JSON.stringify(value)};`;
             assert.equal(scanWtAuditTargets(catalog, [target("primitive.ts", "spec", declaration)]).valid, false, `missed ${JSON.stringify(value)}`);
         }
         const catalog = buildWtSensitiveCatalog(focusedHar({ responseBody: "q7" }));
-        assert.equal(scanWtAuditTargets(catalog, [target("return.ts", "spec", "function leakedBody() { return \"q7\"; }")]).valid, false);
+        assert.equal(scanWtAuditTargets(catalog, [target("return.ts", "spec", "function leakedJsonBody() { return \"q7\"; }")]).valid, false);
         assert.equal(scanWtAuditTargets(catalog, [target("unrelated.ts", "spec", "const retryCount = 17; const enabled = false;")]).valid, true);
     });
 
@@ -232,15 +303,18 @@ describe("World Tournament campaign scanner", () => {
         const secret = "synthetic-neutral-long-6e2f", catalog = buildWtSensitiveCatalog(focusedHar({ requestBody: { x: secret } }));
         const result = scanWtAuditTargets(catalog, [target("literal", "spec", `export const leaked = ${JSON.stringify(secret)};`)]);
         assert.equal(result.valid, false);
-        assert.equal(result.matchedTargets[0].matches.some(value => value.structuralCategory === "literal"), true);
+        assert.equal(result.matchedTargets[0].matches.some(value => value.matchMode === "literal" && value.foundStructuralCategory === "literal"), true);
     });
 
     it("fails closed for an expected malformed JSON body and an empty catalog", () => {
         assert.throws(() => buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/", requestText: "{broken", requestMimeType: "application/json" })), /JSON body is malformed/);
+        assert.throws(() => buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/", requestText: "", requestMimeType: "application/json" })), /JSON body is malformed/);
         assert.throws(() => buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/" })), /catalog is empty/);
         const catalog = buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/", requestBody: { x: "q7" } }));
         assert.throws(() => scanWtAuditTargets(catalog, [target("invalid-url", "fixture", JSON.stringify({ url: "https://[" }))]), /invalid URL structure/);
         assert.throws(() => scanWtAuditTargets(catalog, [target("invalid-json-body", "fixture", JSON.stringify({ postData: { mimeType: "application/json", text: "{broken" } }))]), /JSON body is malformed/);
+        assert.throws(() => scanWtAuditTargets(catalog, [target("invalid-mime", "fixture", JSON.stringify({ postData: { mimeType: 17, text: "q7" } }))]), /MIME type is malformed/);
+        assert.throws(() => scanWtAuditTargets(catalog, [{ targetId: "oversized", category: "fixture", content: Buffer.alloc(16 * 1024 * 1024 + 1) }]), /exceeds the bounded scanner size/);
     });
 
     it("detects a top-level primitive JSON body", () => {
@@ -284,6 +358,13 @@ describe("World Tournament campaign scanner", () => {
         assert.equal(serialized.includes(values.array), false);
         assert.equal(serialized.includes("private/logical/path"), false);
         assert.match(result.matchedTargets[0].targetId, /^[a-f0-9]{64}$/);
+        const match = result.matchedTargets[0].matches[0];
+        assert.equal(match.matchMode, "literal");
+        assert.equal(match.jsonType, "string");
+        assert.equal(match.origin, "request");
+        assert.equal(match.method, "POST");
+        assert.match(match.endpointHash, /^[a-f0-9]{64}$/);
+        assert.match(match.sourcePathHash, /^[a-f0-9]{64}$/);
     });
 
     it("fails closed when no audit targets are supplied", () => {

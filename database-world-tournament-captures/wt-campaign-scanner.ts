@@ -8,6 +8,7 @@ const ZERO_OBJECT_ID = /^0+$/;
 const OBJECT_ID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 const JSON_MIME = /^(?:application|text)\/(?:[^;]+\+)?json(?:\s*;|$)/i;
 const URL_TOKEN = /https?:\/\/[^\s"'`<>]+/g;
+const MAX_AUDIT_BLOB_BYTES = 16 * 1024 * 1024;
 
 export type WtSensitiveCategory = typeof REQUIRED_SOURCE_CATEGORIES[number];
 export type WtAuditTargetCategory = typeof REQUIRED_GIT_TARGET_CATEGORIES[number] | "fixture" | "spec" | "generated" | "other";
@@ -60,19 +61,20 @@ export interface WtAuditScanResult {
     harStructureTargets: Array<{ category: WtAuditTargetCategory; fingerprint: string }>;
     categoryTargetCounts: Record<WtAuditTargetCategory, number>;
     sensitiveMatchCategoryCounts: Record<WtSensitiveCategory, number>;
-    matchedTargets: Array<{ targetId: string; blobId?: string; categories: WtSensitiveCategory[]; rawHar: boolean; matches: Array<{ category: WtSensitiveCategory; structuralCategory: WtStructuralCategory | "literal"; foundPathHash: string }> }>;
+    matchedTargets: Array<{ targetId: string; blobId?: string; categories: WtSensitiveCategory[]; rawHar: boolean; matches: Array<{ category: WtSensitiveCategory; sourceStructuralCategory: WtStructuralCategory; foundStructuralCategory: WtStructuralCategory | "literal"; matchMode: "literal" | "contextual"; jsonType: ScalarKind; origin: CaptureOrigin; method: string; endpointHash: string; sourcePathHash: string; foundPathHash: string }> }>;
 }
 
 type ScalarKind = "string" | "number" | "boolean" | "null";
 type CaptureOrigin = "request" | "response";
-export type WtStructuralCategory = "header" | "cookie" | "url_path_segment" | "query_name" | "query_value" | "url_username" | "url_password" | "json_body" | "text_body";
+export type WtStructuralCategory = "header" | "cookie" | "url_path_segment" | "query_name" | "query_value" | "url_username" | "url_password" | "json_body" | "text_body" | "text_exact";
 interface SensitiveAtom { category: WtSensitiveCategory; structuralCategory: WtStructuralCategory; origin: CaptureOrigin; method: string; endpoint: string; path: string; context: string; kind: ScalarKind; canonicalValue: string; }
 interface TargetObservation { structuralCategory: WtStructuralCategory; path: string; kind: ScalarKind; canonicalValue: string; context: string; captureScoped?: boolean; }
-interface ScanMatch { category: WtSensitiveCategory; structuralCategory: WtStructuralCategory | "literal"; foundPath: string; }
+interface MatchProvenance { category: WtSensitiveCategory; structuralCategory: WtStructuralCategory; origin: CaptureOrigin; method: string; endpointHash: string; sourcePathHash: string; kind: ScalarKind; }
+interface ScanMatch extends MatchProvenance { matchMode: "literal" | "contextual"; foundStructuralCategory: WtStructuralCategory | "literal"; foundPath: string; }
 interface ScanContentResult { categories: WtSensitiveCategory[]; matches: ScanMatch[]; rawHar: boolean; }
 interface MatcherNode { next: Map<number, number>; failure: number; outputs: number[]; }
-interface LongPattern { bytes: Buffer; category: WtSensitiveCategory; structuralCategory: WtStructuralCategory; anchorLength: number; }
-interface CatalogState { atoms: SensitiveAtom[]; longMatcher: MatcherNode[]; longPatterns: LongPattern[]; contextualMatchers: Map<string, Set<WtSensitiveCategory>>; scopedMatchers: Map<string, Set<WtSensitiveCategory>>; }
+interface LongPattern extends MatchProvenance { bytes: Buffer; anchorLength: number; tokenBoundary: boolean; }
+interface CatalogState { atoms: SensitiveAtom[]; longMatcher: MatcherNode[]; longPatterns: LongPattern[]; contextualMatchers: Map<string, Map<string, MatchProvenance>>; scopedMatchers: Map<string, Map<string, MatchProvenance>>; }
 interface GitDescriptor { targetId: string; pathHash: string; blobId: string; category: typeof REQUIRED_GIT_TARGET_CATEGORIES[number]; }
 interface GitState { repoRoot: string; descriptors: GitDescriptor[]; }
 
@@ -141,10 +143,13 @@ function collectBodyText(containerValue: unknown, category: "request_body" | "re
     if (container.text === undefined) return;
     if (typeof container.text !== "string" || (container.mimeType !== undefined && typeof container.mimeType !== "string")) throw new Error("WT sensitive source body text is malformed");
     const bodyText = decodeBody(container.text, container.encoding);
+    const explicitMime = typeof container.mimeType === "string" && container.mimeType.trim() !== "", declaredJson = explicitMime && JSON_MIME.test((container.mimeType as string).trim());
+    if (bodyText.length === 0) { if (declaredJson) throw new Error("WT sensitive source JSON body is malformed"); return; }
+    if (explicitMime && !declaredJson) { addAtom(target, category, "text_body", bodyText, "$text", context, "text_exact"); return; }
     try { const parsed = JSON.parse(bodyText); collectBodyAtoms(parsed, category, target, context, jsonShapeFingerprint(parsed)); }
     catch (error) {
         if (!(error instanceof SyntaxError)) throw error;
-        if (typeof container.mimeType === "string" && JSON_MIME.test(container.mimeType.trim())) throw new Error("WT sensitive source JSON body is malformed");
+        if (declaredJson) throw new Error("WT sensitive source JSON body is malformed");
         addAtom(target, category, "text_body", bodyText, "$text", context, "text_exact");
     }
 }
@@ -204,14 +209,17 @@ function deduplicateAtoms(atoms: SensitiveAtom[]): SensitiveAtom[] {
     for (const atom of atoms) unique.set(`${atom.category}\0${atom.structuralCategory}\0${atom.origin}\0${atom.method}\0${atom.endpoint}\0${atom.path}\0${atom.context}\0${atom.kind}\0${atom.canonicalValue}`, atom);
     return [...unique.values()];
 }
-function addCategory(target: Map<string, Set<WtSensitiveCategory>>, key: string, category: WtSensitiveCategory): void { const values = target.get(key) ?? new Set<WtSensitiveCategory>(); values.add(category); target.set(key, values); }
+function provenance(atom: SensitiveAtom): MatchProvenance { return { category: atom.category, structuralCategory: atom.structuralCategory, origin: atom.origin, method: atom.method, endpointHash: sha256(atom.endpoint), sourcePathHash: sha256(atom.path), kind: atom.kind }; }
+function provenanceIdentity(value: MatchProvenance): string { return `${value.category}\0${value.structuralCategory}\0${value.origin}\0${value.method}\0${value.endpointHash}\0${value.sourcePathHash}\0${value.kind}`; }
+function addProvenance(target: Map<string, Map<string, MatchProvenance>>, key: string, value: MatchProvenance): void { const values = target.get(key) ?? new Map<string, MatchProvenance>(); values.set(provenanceIdentity(value), value); target.set(key, values); }
 
 function contextualKey(structuralCategory: WtStructuralCategory, kind: ScalarKind, canonicalValue: string, context: string): string {
     switch (structuralCategory) {
         case "json_body": return `${structuralCategory}\0${kind}\0${context}\0${canonicalValue}`;
         case "header": return `${structuralCategory}\0${normalizedName(context)}\0${kind}\0${canonicalValue}`;
         case "cookie": return `${structuralCategory}\0${context}\0${kind}\0${canonicalValue}`;
-        case "query_value": case "query_name": case "url_path_segment": case "text_body": return `${structuralCategory}\0${context}\0${kind}\0${canonicalValue}`;
+        case "query_value": case "query_name": case "url_path_segment": return `${structuralCategory}\0${context}\0${kind}\0${canonicalValue}`;
+        case "text_body": case "text_exact": return `textual_body\0${context}\0${kind}\0${canonicalValue}`;
         case "url_username": case "url_password": return `${structuralCategory}\0${kind}\0${canonicalValue}`;
         default: throw new Error("WT sensitive source category has no matcher");
     }
@@ -223,18 +231,21 @@ function decodedCanonical(atom: Pick<SensitiveAtom, "kind" | "canonicalValue">):
     return parsed;
 }
 function distinctiveLiteral(atom: SensitiveAtom, value: string): boolean {
-    if (/\s/.test(value) || Buffer.byteLength(value) > 4096 || atom.structuralCategory === "query_name" || atom.structuralCategory === "url_path_segment") return false;
-    const minimum = atom.kind === "string" ? 16 : 8;
-    if (Buffer.byteLength(value) < minimum || new Set([...value]).size < 4) return false;
-    const classes = [/[a-z]/.test(value), /[A-Z]/.test(value), /[0-9]/.test(value), /[^A-Za-z0-9]/.test(value)].filter(Boolean).length;
-    return atom.kind !== "string" || classes >= 3;
+    if (Buffer.byteLength(value) < (atom.kind === "string" ? 16 : 8)) return false;
+    if (atom.kind !== "string") return true;
+    if (/\s/.test(value)) return false;
+    if (/^[A-Za-z0-9]+$/.test(value) || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) || /^[A-Z2-7]+={0,6}$/.test(value)) return true;
+    if (/^[A-Za-z0-9+/]+={0,2}$/.test(value) && value.length % 4 === 0 && /[A-Z0-9+=]/.test(value)) return true;
+    return /^[A-Za-z0-9_-]+={0,2}$/.test(value) && /[_-]/.test(value) && /[A-Z0-9]/.test(value);
 }
+function literalNeedsTokenBoundary(value: string): boolean { return /^[A-Za-z0-9_+\/-]+={0,6}$/.test(value); }
+function tokenByte(value: number | undefined): boolean { return value !== undefined && ((value >= 48 && value <= 57) || (value >= 65 && value <= 90) || (value >= 97 && value <= 122) || value === 43 || value === 45 || value === 47 || value === 95); }
 function distinctivePathSegment(value: string): boolean { return /[0-9]/.test(value) || /[^A-Za-z_-]/.test(value); }
 function buildMatchers(atoms: SensitiveAtom[]): Pick<CatalogState, "longMatcher" | "longPatterns" | "contextualMatchers" | "scopedMatchers"> {
-    const nodes: MatcherNode[] = [{ next: new Map(), failure: 0, outputs: [] }], patterns: LongPattern[] = [], contextualMatchers = new Map<string, Set<WtSensitiveCategory>>(), scopedMatchers = new Map<string, Set<WtSensitiveCategory>>(), seenPatterns = new Set<string>(), matcherCategories = new Set<WtSensitiveCategory>();
-    const add = (pattern: Buffer, atom: SensitiveAtom): void => {
-        const identity = `${atom.category}\0${atom.structuralCategory}\0${sha256(pattern)}`; if (seenPatterns.has(identity)) return; seenPatterns.add(identity); matcherCategories.add(atom.category);
-        const patternId = patterns.length, anchorLength = Math.min(16, pattern.length), anchor = pattern.subarray(0, anchorLength); patterns.push({ bytes: pattern, category: atom.category, structuralCategory: atom.structuralCategory, anchorLength });
+    const nodes: MatcherNode[] = [{ next: new Map(), failure: 0, outputs: [] }], patterns: LongPattern[] = [], contextualMatchers = new Map<string, Map<string, MatchProvenance>>(), scopedMatchers = new Map<string, Map<string, MatchProvenance>>(), seenPatterns = new Set<string>(), matcherCategories = new Set<WtSensitiveCategory>();
+    const add = (pattern: Buffer, atom: SensitiveAtom, tokenBoundary: boolean): void => {
+        const source = provenance(atom), identity = `${provenanceIdentity(source)}\0${sha256(pattern)}`; if (seenPatterns.has(identity)) return; seenPatterns.add(identity); matcherCategories.add(atom.category);
+        const patternId = patterns.length, anchorLength = Math.min(16, pattern.length), anchor = pattern.subarray(0, anchorLength); patterns.push({ bytes: pattern, anchorLength, tokenBoundary, ...source });
         let node = 0;
         for (const byte of anchor) {
             let next = nodes[node].next.get(byte);
@@ -246,14 +257,14 @@ function buildMatchers(atoms: SensitiveAtom[]): Pick<CatalogState, "longMatcher"
     for (const atom of atoms) {
         const literal = decodedCanonical(atom);
         if (atom.structuralCategory !== "url_path_segment" || distinctivePathSegment(literal)) {
-            addCategory(contextualMatchers, contextualKey(atom.structuralCategory, atom.kind, atom.canonicalValue, atom.context), atom.category);
-            addCategory(scopedMatchers, contextualKey(atom.structuralCategory, atom.kind, atom.canonicalValue, scopedCaptureContext(atom, atom.context)), atom.category);
+            addProvenance(contextualMatchers, contextualKey(atom.structuralCategory, atom.kind, atom.canonicalValue, atom.context), provenance(atom));
+            addProvenance(scopedMatchers, contextualKey(atom.structuralCategory, atom.kind, atom.canonicalValue, scopedCaptureContext(atom, atom.context)), provenance(atom));
             matcherCategories.add(atom.category);
         }
         if (distinctiveLiteral(atom, literal)) {
-            add(Buffer.from(literal, "utf8"), atom);
-            if (atom.kind === "string") add(Buffer.from(atom.canonicalValue, "utf8"), atom);
-            if (atom.structuralCategory === "query_name" || atom.structuralCategory === "query_value" || atom.structuralCategory === "url_path_segment" || atom.structuralCategory === "url_username" || atom.structuralCategory === "url_password") add(Buffer.from(encodeURIComponent(literal), "utf8"), atom);
+            add(Buffer.from(literal, "utf8"), atom, literalNeedsTokenBoundary(literal));
+            if (atom.kind === "string") add(Buffer.from(atom.canonicalValue, "utf8"), atom, false);
+            if (atom.structuralCategory === "query_name" || atom.structuralCategory === "query_value" || atom.structuralCategory === "url_path_segment" || atom.structuralCategory === "url_username" || atom.structuralCategory === "url_password") add(Buffer.from(encodeURIComponent(literal), "utf8"), atom, false);
         }
     }
     const queue: number[] = [];
@@ -279,9 +290,9 @@ function matchLongValues(content: Buffer, matcher: MatcherNode[], patterns: Long
     for (let index = 0; index < content.length; index++) { const byte = content[index];
         while (node !== 0 && !matcher[node].next.has(byte)) node = matcher[node].failure;
         node = matcher[node].next.get(byte) ?? 0;
-        for (const patternId of matcher[node].outputs) { const pattern = patterns[patternId], start = index - pattern.anchorLength + 1, end = start + pattern.bytes.length; if (start >= 0 && end <= content.length && content.subarray(start, end).equals(pattern.bytes)) matchedPatterns.add(patternId); }
+        for (const patternId of matcher[node].outputs) { const pattern = patterns[patternId], start = index - pattern.anchorLength + 1, end = start + pattern.bytes.length; if (start >= 0 && end <= content.length && content.subarray(start, end).equals(pattern.bytes) && (!pattern.tokenBoundary || (!tokenByte(content[start - 1]) && !tokenByte(content[end])))) matchedPatterns.add(patternId); }
     }
-    return [...matchedPatterns].map(patternId => ({ category: patterns[patternId].category, structuralCategory: "literal" as const, foundPath: `$literal:${patterns[patternId].structuralCategory}` }));
+    return [...matchedPatterns].map(patternId => { const { bytes: _bytes, anchorLength: _anchorLength, tokenBoundary: _tokenBoundary, ...source } = patterns[patternId]; return { ...source, matchMode: "literal" as const, foundStructuralCategory: "literal" as const, foundPath: `$literal:${source.structuralCategory}` }; });
 }
 
 export function buildWtSensitiveCatalog(harText: string): WtSensitiveCatalog {
@@ -422,9 +433,13 @@ function collectTargetStructures(value: unknown, target: TargetObservation[], pa
         collectTargetNamedArray(row.queryString, "query", target, childJsonPath(path, "queryString"), `${requestUrl.origin}${requestUrl.pathname}`, capture);
     }
     if (typeof row.text === "string" && (normalizedName(parentKey) === "postdata" || normalizedName(parentKey) === "content")) {
+        if (row.mimeType !== undefined && typeof row.mimeType !== "string") throw new Error("WT audit target body MIME type is malformed");
+        const explicitMime = typeof row.mimeType === "string" && row.mimeType.trim() !== "", declaredJson = explicitMime && JSON_MIME.test((row.mimeType as string).trim());
         let embedded: unknown, parsed = false;
-        try { embedded = JSON.parse(row.text); parsed = true; }
-        catch { if (typeof row.mimeType === "string" && JSON_MIME.test(row.mimeType.trim())) throw new Error("WT audit target JSON body is malformed"); }
+        if (!explicitMime || declaredJson) {
+            try { embedded = JSON.parse(row.text); parsed = true; }
+            catch { if (declaredJson) throw new Error("WT audit target JSON body is malformed"); }
+        }
         if (parsed) collectTargetJsonScalars(embedded, target, `${path}.text$body`, "$");
         else addTargetObservation(target, "text_body", row.text, `${path}.text$body`, "text_exact");
     }
@@ -443,15 +458,25 @@ function unwrapStaticExpression(node: ts.Expression): ts.Expression {
     while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current) || ts.isTypeAssertionExpression(current)) current = current.expression;
     return current;
 }
-function evaluateStaticExpression(node: ts.Expression): { ok: true; value: unknown } | { ok: false } {
+function evaluateStaticExpression(node: ts.Expression, bindings = new Map<string, unknown>()): { ok: true; value: unknown } | { ok: false } {
     const current = unwrapStaticExpression(node);
+    if (ts.isIdentifier(current) && bindings.has(current.text)) return { ok: true, value: bindings.get(current.text) };
     if (ts.isStringLiteral(current) || ts.isNoSubstitutionTemplateLiteral(current)) return { ok: true, value: current.text };
+    if (ts.isTemplateExpression(current)) {
+        let value = current.head.text;
+        for (const span of current.templateSpans) {
+            const expression = evaluateStaticExpression(span.expression, bindings);
+            if (!expression.ok || (typeof expression.value === "object" && expression.value !== null)) return { ok: false };
+            value += String(expression.value) + span.literal.text;
+        }
+        return { ok: true, value };
+    }
     if (ts.isNumericLiteral(current)) return { ok: true, value: Number(current.text) };
     if (current.kind === ts.SyntaxKind.TrueKeyword) return { ok: true, value: true };
     if (current.kind === ts.SyntaxKind.FalseKeyword) return { ok: true, value: false };
     if (current.kind === ts.SyntaxKind.NullKeyword) return { ok: true, value: null };
     if (ts.isPrefixUnaryExpression(current) && (current.operator === ts.SyntaxKind.MinusToken || current.operator === ts.SyntaxKind.PlusToken)) {
-        const operand = evaluateStaticExpression(current.operand);
+        const operand = evaluateStaticExpression(current.operand, bindings);
         if (!operand.ok || typeof operand.value !== "number") return { ok: false };
         return { ok: true, value: current.operator === ts.SyntaxKind.MinusToken ? -operand.value : operand.value };
     }
@@ -459,7 +484,7 @@ function evaluateStaticExpression(node: ts.Expression): { ok: true; value: unkno
         const values: unknown[] = [];
         for (const element of current.elements) {
             if (ts.isSpreadElement(element) || ts.isOmittedExpression(element)) return { ok: false };
-            const result = evaluateStaticExpression(element);
+            const result = evaluateStaticExpression(element, bindings);
             if (!result.ok) return { ok: false };
             values.push(result.value);
         }
@@ -469,7 +494,7 @@ function evaluateStaticExpression(node: ts.Expression): { ok: true; value: unkno
         const value: Record<string, unknown> = {};
         for (const property of current.properties) {
             if (!ts.isPropertyAssignment(property)) return { ok: false };
-            const name = staticPropertyName(property.name), result = evaluateStaticExpression(property.initializer);
+            const name = staticPropertyName(property.name), result = evaluateStaticExpression(property.initializer, bindings);
             if (name === null || !result.ok) return { ok: false };
             value[name] = result.value;
         }
@@ -495,19 +520,26 @@ function staticRootName(node: ts.Node): string {
     }
     return "";
 }
-function permitsStaticPrimitive(name: string): boolean { return /(?:body|payload|fixture|json|leak)/i.test(name); }
+function staticPrimitiveMode(name: string, value: unknown): "json" | "text" | null {
+    if (typeof value === "string" && /(?:text|raw)/i.test(name) && /(?:body|payload|fixture|leak)/i.test(name)) return "text";
+    if (/json/i.test(name)) return "json";
+    return null;
+}
+function isConstVariable(node: ts.VariableDeclaration): boolean { return ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0; }
 function collectTargetTypeScript(text: string, target: TargetObservation[]): void {
     const source = ts.createSourceFile("audit-target.ts", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-    let rootIndex = 0;
+    const bindings = new Map<string, unknown>(); let rootIndex = 0;
     const visit = (node: ts.Node): void => {
         const expression = staticRootExpression(node);
         if (expression) {
-            const unwrapped = unwrapStaticExpression(expression), result = evaluateStaticExpression(unwrapped);
+            const unwrapped = unwrapStaticExpression(expression), result = evaluateStaticExpression(unwrapped, bindings);
             const parentKey = staticRootName(node), composite = Array.isArray(result.ok ? result.value : undefined) || record(result.ok ? result.value : undefined) !== null;
-            if (result.ok && (composite || permitsStaticPrimitive(parentKey))) {
+            if (result.ok && ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && isConstVariable(node)) bindings.set(node.name.text, result.value);
+            const primitiveMode = result.ok && !composite ? staticPrimitiveMode(parentKey, result.value) : null;
+            if (result.ok && (composite || primitiveMode)) {
                 const rootPath = `$typescript[${rootIndex}]`;
-                collectTargetJsonScalars(result.value, target, rootPath, "$", jsonShapeFingerprint(result.value));
-                collectTargetStructures(result.value, target, rootPath, parentKey);
+                if (primitiveMode === "text") addTargetObservation(target, "text_body", result.value, rootPath, "text_exact");
+                else { collectTargetJsonScalars(result.value, target, rootPath, "$", jsonShapeFingerprint(result.value)); collectTargetStructures(result.value, target, rootPath, parentKey); }
                 rootIndex += 1;
             }
         }
@@ -529,8 +561,11 @@ function collectTargetText(text: string, target: TargetObservation[]): void {
         const candidate = match[0].replace(/[),.;\]}]+$/, "");
         if (collectTargetUrl(candidate, target, `$text.urls[${urlIndex}]`)) urlIndex += 1;
     }
-    const trimmed = text.trim();
-    if (trimmed && trimmed.length <= 4096 && !/[\r\n]/.test(trimmed) && !/^[A-Za-z][A-Za-z0-9-]*\s*:/.test(trimmed) && !/^https?:\/\//.test(trimmed)) addTargetObservation(target, "text_body", trimmed, "$text.exact", "text_exact");
+    collectTargetExactText(text, target);
+}
+function collectTargetExactText(text: string, target: TargetObservation[]): void {
+    if (text.length === 0) return;
+    addTargetObservation(target, "text_exact", text, "$text.exact", "text_exact");
 }
 function deduplicateTargetObservations(values: TargetObservation[]): TargetObservation[] {
     const unique = new Map<string, TargetObservation>();
@@ -551,16 +586,16 @@ function scanContent(content: Buffer, state: CatalogState): ScanContentResult {
     let parsed: unknown, json = false;
     try { parsed = JSON.parse(text); json = true; }
     catch { /* arbitrary non-JSON versioned blobs are scanned literally and as conservative text */ }
-    if (json) { collectTargetJsonScalars(parsed, observations); collectTargetStructures(parsed, observations); }
+    if (json) { collectTargetJsonScalars(parsed, observations); collectTargetStructures(parsed, observations); collectTargetExactText(text, observations); }
     else { collectTargetText(text, observations); collectTargetTypeScript(text, observations); }
     for (const observation of deduplicateTargetObservations(observations)) {
         const key = contextualKey(observation.structuralCategory, observation.kind, observation.canonicalValue, observation.context);
         const matcher = observation.captureScoped ? state.scopedMatchers : state.contextualMatchers;
-        for (const category of matcher.get(key) ?? []) matches.push({ category, structuralCategory: observation.structuralCategory, foundPath: observation.path });
+        for (const source of matcher.get(key)?.values() ?? []) matches.push({ ...source, matchMode: "contextual", foundStructuralCategory: observation.structuralCategory, foundPath: observation.path });
     }
     const unique = new Map<string, ScanMatch>();
-    for (const match of matches) unique.set(`${match.category}\0${match.structuralCategory}\0${match.foundPath}`, match);
-    const rows = [...unique.values()].sort((left, right) => `${left.category}\0${left.structuralCategory}\0${left.foundPath}`.localeCompare(`${right.category}\0${right.structuralCategory}\0${right.foundPath}`));
+    for (const match of matches) unique.set(`${provenanceIdentity(match)}\0${match.matchMode}\0${match.foundStructuralCategory}\0${match.foundPath}`, match);
+    const rows = [...unique.values()].sort((left, right) => `${provenanceIdentity(left)}\0${left.matchMode}\0${left.foundStructuralCategory}\0${left.foundPath}`.localeCompare(`${provenanceIdentity(right)}\0${right.matchMode}\0${right.foundStructuralCategory}\0${right.foundPath}`));
     return { categories: [...new Set(rows.map(value => value.category))].sort(), matches: rows, rawHar: isHarBuffer(content) };
 }
 
@@ -588,6 +623,7 @@ function scanTargetSequence(catalog: WtSensitiveCatalog, sequence: Iterable<{ ta
             try { content = target.content(); }
             catch { throw new Error("WT audit target blob is unreadable"); }
             if (!Buffer.isBuffer(content)) throw new Error("WT audit target is not a buffer");
+            if (content.length > MAX_AUDIT_BLOB_BYTES) throw new Error("WT audit target blob exceeds the bounded scanner size");
             contentIdentity = target.blobId ?? sha256(content);
             scanned = scanContent(content, state);
             if (cacheByBlobIdentity && target.blobId) scannedBlobs.set(target.blobId, scanned);
@@ -604,7 +640,7 @@ function scanTargetSequence(catalog: WtSensitiveCatalog, sequence: Iterable<{ ta
         if (rawHar) rawHarTargetCount += 1;
         sensitiveMatchCount += scanned.matches.length;
         for (const category of categories) sensitiveMatchCategoryCounts[category] += 1;
-        if (rawHar || categories.length) matchedTargets.push({ targetId: sha256(target.targetId), ...(target.blobId ? { blobId: target.blobId } : {}), categories, rawHar, matches: scanned.matches.map(match => ({ category: match.category, structuralCategory: match.structuralCategory, foundPathHash: sha256(match.foundPath) })) });
+        if (rawHar || categories.length) matchedTargets.push({ targetId: sha256(target.targetId), ...(target.blobId ? { blobId: target.blobId } : {}), categories, rawHar, matches: scanned.matches.map(match => ({ category: match.category, sourceStructuralCategory: match.structuralCategory, foundStructuralCategory: match.foundStructuralCategory, matchMode: match.matchMode, jsonType: match.kind, origin: match.origin, method: match.method, endpointHash: match.endpointHash, sourcePathHash: match.sourcePathHash, foundPathHash: sha256(match.foundPath) })) });
     }
     if (targetCount === 0) throw new Error("WT audit target collection is empty");
     harStructureTargets.sort((left, right) => left.fingerprint.localeCompare(right.fingerprint));
@@ -663,7 +699,7 @@ function scanGitBlobs(repoRoot: string, blobIds: string[], state: CatalogState):
     const chunks: string[][] = []; let current: string[] = [], currentBytes = 0;
     for (const blobId of ordered) {
         const size = sizes.get(blobId)!;
-        if (size > 512 * 1024 * 1024) throw new Error("WT git audit blob exceeds the bounded scanner size");
+        if (size > MAX_AUDIT_BLOB_BYTES) throw new Error("WT git audit blob exceeds the bounded scanner size");
         if (current.length && currentBytes + size > 32 * 1024 * 1024) { chunks.push(current); current = []; currentBytes = 0; }
         current.push(blobId); currentBytes += size;
     }
