@@ -1,12 +1,13 @@
 import { execFileSync } from "child_process";
 import { createHash } from "crypto";
+import * as ts from "typescript";
 
-const REQUIRED_SOURCE_CATEGORIES = ["headers", "cookies", "query", "url_credentials", "request_body", "response_body"] as const;
+const REQUIRED_SOURCE_CATEGORIES = ["headers", "cookies", "url_path", "query", "url_credentials", "request_body", "response_body"] as const;
 const REQUIRED_GIT_TARGET_CATEGORIES = ["tip", "history_old", "history_new"] as const;
 const ZERO_OBJECT_ID = /^0+$/;
 const OBJECT_ID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
-const SECRET_CONTEXT = /(?:auth|token|cookie|credential|device|password|secret|session|sign|user|account|nonce)/i;
-const BODY_SENSITIVE_PATH = /(?:participant|rankers|my_ranking|ranking|point|title|supporter|deck|teaming|card|mission|budokai_status|start_at|end_at|updated_at|collecting|result|name|description)/i;
+const JSON_MIME = /^(?:application|text)\/(?:[^;]+\+)?json(?:\s*;|$)/i;
+const URL_TOKEN = /https?:\/\/[^\s"'`<>]+/g;
 
 export type WtSensitiveCategory = typeof REQUIRED_SOURCE_CATEGORIES[number];
 export type WtAuditTargetCategory = typeof REQUIRED_GIT_TARGET_CATEGORIES[number] | "fixture" | "spec" | "generated" | "other";
@@ -59,14 +60,19 @@ export interface WtAuditScanResult {
     harStructureTargets: Array<{ category: WtAuditTargetCategory; fingerprint: string }>;
     categoryTargetCounts: Record<WtAuditTargetCategory, number>;
     sensitiveMatchCategoryCounts: Record<WtSensitiveCategory, number>;
-    matchedTargets: Array<{ targetId: string; blobId?: string; categories: WtSensitiveCategory[]; rawHar: boolean }>;
+    matchedTargets: Array<{ targetId: string; blobId?: string; categories: WtSensitiveCategory[]; rawHar: boolean; matches: Array<{ category: WtSensitiveCategory; structuralCategory: WtStructuralCategory | "literal"; foundPathHash: string }> }>;
 }
 
 type ScalarKind = "string" | "number" | "boolean" | "null";
-interface SensitiveAtom { category: WtSensitiveCategory; kind: ScalarKind; value: string; context: string; }
+type CaptureOrigin = "request" | "response";
+export type WtStructuralCategory = "header" | "cookie" | "url_path_segment" | "query_name" | "query_value" | "url_username" | "url_password" | "json_body" | "text_body";
+interface SensitiveAtom { category: WtSensitiveCategory; structuralCategory: WtStructuralCategory; origin: CaptureOrigin; method: string; endpoint: string; path: string; context: string; kind: ScalarKind; canonicalValue: string; }
+interface TargetObservation { structuralCategory: WtStructuralCategory; path: string; kind: ScalarKind; canonicalValue: string; context: string; captureScoped?: boolean; }
+interface ScanMatch { category: WtSensitiveCategory; structuralCategory: WtStructuralCategory | "literal"; foundPath: string; }
+interface ScanContentResult { categories: WtSensitiveCategory[]; matches: ScanMatch[]; rawHar: boolean; }
 interface MatcherNode { next: Map<number, number>; failure: number; outputs: number[]; }
-interface LongPattern { bytes: Buffer; category: WtSensitiveCategory; anchorLength: number; }
-interface CatalogState { atoms: SensitiveAtom[]; longMatcher: MatcherNode[]; longPatterns: LongPattern[]; shortStructured: Map<string, Set<WtSensitiveCategory>>; shortTokens: Map<string, Set<WtSensitiveCategory>>; }
+interface LongPattern { bytes: Buffer; category: WtSensitiveCategory; structuralCategory: WtStructuralCategory; anchorLength: number; }
+interface CatalogState { atoms: SensitiveAtom[]; longMatcher: MatcherNode[]; longPatterns: LongPattern[]; contextualMatchers: Map<string, Set<WtSensitiveCategory>>; scopedMatchers: Map<string, Set<WtSensitiveCategory>>; }
 interface GitDescriptor { targetId: string; pathHash: string; blobId: string; category: typeof REQUIRED_GIT_TARGET_CATEGORIES[number]; }
 interface GitState { repoRoot: string; descriptors: GitDescriptor[]; }
 
@@ -82,106 +88,153 @@ function scalarKind(value: unknown): ScalarKind | null {
     if (typeof value === "boolean") return "boolean";
     return null;
 }
-function scalarText(value: unknown, kind: ScalarKind): string {
-    if (kind === "null") return "null";
-    if (kind === "number") {
-        if (!Number.isFinite(value as number)) throw new Error("WT sensitive source contains a non-finite number");
-        return JSON.stringify(value);
-    }
-    return String(value);
+function canonicalScalar(value: unknown, kind: ScalarKind): string {
+    if (kind === "number" && !Number.isFinite(value as number)) throw new Error("WT sensitive source contains a non-finite number");
+    const encoded = JSON.stringify(value);
+    if (typeof encoded !== "string") throw new Error("WT sensitive source scalar canonicalization failed");
+    return encoded;
 }
-function normalizeContext(value: string): string { return value.trim().toLowerCase(); }
-
-function addAtom(target: SensitiveAtom[], category: WtSensitiveCategory, value: unknown, context: string): void {
-    const kind = scalarKind(value);
-    if (!kind) return;
-    const text = scalarText(value, kind);
-    if (kind === "string" && text.length === 0) return;
-    target.push({ category, kind, value: text, context: normalizeContext(context) });
+function normalizedName(value: string): string { return value.trim().toLowerCase(); }
+function childJsonPath(parent: string, key: string): string { return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? `${parent}.${key}` : `${parent}[${JSON.stringify(key)}]`; }
+function jsonShapeFingerprint(value: unknown): string {
+    const visit = (current: unknown): string => {
+        const kind = scalarKind(current); if (kind) return kind;
+        if (Array.isArray(current)) return `[${current.map(visit).join(",")}]`;
+        const row = record(current); if (!row) throw new Error("WT JSON shape contains an unsupported value");
+        return `{${Object.keys(row).sort().map(key => `${JSON.stringify(key)}:${visit(row[key])}`).join(",")}}`;
+    };
+    return sha256(visit(value));
 }
-
-function collectBodyAtoms(value: unknown, category: "request_body" | "response_body", target: SensitiveAtom[], context = "$"): void {
+function decodedComponent(value: string): string { try { return decodeURIComponent(value); } catch { throw new Error("WT sensitive source URL component decoding failed"); } }
+function sanitizeEndpoint(url: URL): string {
+    const route = url.pathname.split("/").map(segment => {
+        if (!segment) return "";
+        const decoded = decodedComponent(segment);
+        return /^\d+$/.test(decoded) || /^[0-9a-f]{24,}$/i.test(decoded) || /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(decoded) ? "{id}" : encodeURIComponent(decoded);
+    }).join("/");
+    return `${url.protocol}//${url.host}${route}`;
+}
+interface CaptureContext { origin: CaptureOrigin; method: string; endpoint: string; }
+function scopedCaptureContext(capture: CaptureContext, structuralContext: string): string { return `${capture.origin}\0${capture.method}\0${capture.endpoint}\0${structuralContext}`; }
+function addAtom(target: SensitiveAtom[], category: WtSensitiveCategory, structuralCategory: WtStructuralCategory, value: unknown, path: string, capture: CaptureContext, matcherContext = path): void {
     const kind = scalarKind(value);
-    if (kind) { if (context === "$" || SECRET_CONTEXT.test(context) || BODY_SENSITIVE_PATH.test(context)) addAtom(target, category, value, context); return; }
-    if (Array.isArray(value)) {
-        for (const child of value) collectBodyAtoms(child, category, target, `${context}[]`);
-        return;
-    }
+    if (!kind) throw new Error("WT sensitive source contains an unsupported scalar");
+    target.push({ category, structuralCategory, origin: capture.origin, method: capture.method, endpoint: capture.endpoint, path, context: matcherContext, kind, canonicalValue: canonicalScalar(value, kind) });
+}
+function collectBodyAtoms(value: unknown, category: "request_body" | "response_body", target: SensitiveAtom[], context: CaptureContext, shapeFingerprint: string, path = "$"): void {
+    const kind = scalarKind(value);
+    if (kind) { addAtom(target, category, "json_body", value, path, context, `${shapeFingerprint}\0${path}`); return; }
+    if (Array.isArray(value)) { for (let index = 0; index < value.length; index++) collectBodyAtoms(value[index], category, target, context, shapeFingerprint, `${path}[${index}]`); return; }
     const row = record(value);
     if (!row) throw new Error("WT sensitive source contains an unsupported body value");
-    for (const [key, child] of Object.entries(row)) collectBodyAtoms(child, category, target, `${context}.${key}`);
+    for (const [key, child] of Object.entries(row)) collectBodyAtoms(child, category, target, context, shapeFingerprint, childJsonPath(path, key));
 }
-
-function collectBodyText(raw: unknown, encoding: unknown, category: "request_body" | "response_body", target: SensitiveAtom[]): void {
-    if (typeof raw !== "string") return;
-    let bodyText = raw;
-    if (encoding === "base64") {
-        try { bodyText = Buffer.from(raw, "base64").toString("utf8"); }
-        catch { throw new Error("WT sensitive source body decoding failed"); }
-    }
-    try { collectBodyAtoms(JSON.parse(bodyText), category, target); }
+function decodeBody(raw: string, encoding: unknown): string {
+    if (encoding === undefined || encoding === null || encoding === "") return raw;
+    if (encoding !== "base64" || raw.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(raw)) throw new Error("WT sensitive source body decoding failed");
+    return Buffer.from(raw, "base64").toString("utf8");
+}
+function collectBodyText(containerValue: unknown, category: "request_body" | "response_body", target: SensitiveAtom[], context: CaptureContext): void {
+    if (containerValue === undefined) return;
+    const container = record(containerValue);
+    if (!container) throw new Error("WT sensitive source body container is malformed");
+    if (container.text === undefined) return;
+    if (typeof container.text !== "string" || (container.mimeType !== undefined && typeof container.mimeType !== "string")) throw new Error("WT sensitive source body text is malformed");
+    const bodyText = decodeBody(container.text, container.encoding);
+    try { const parsed = JSON.parse(bodyText); collectBodyAtoms(parsed, category, target, context, jsonShapeFingerprint(parsed)); }
     catch (error) {
-        if (error instanceof SyntaxError) addAtom(target, category, bodyText, "$");
-        else throw error;
+        if (!(error instanceof SyntaxError)) throw error;
+        if (typeof container.mimeType === "string" && JSON_MIME.test(container.mimeType.trim())) throw new Error("WT sensitive source JSON body is malformed");
+        addAtom(target, category, "text_body", bodyText, "$text", context, "text_exact");
     }
 }
-
-function collectHeaders(value: unknown, category: "headers", atoms: SensitiveAtom[]): void {
+function collectCookiePairs(value: string, headerName: string, target: SensitiveAtom[], context: CaptureContext, path: string): void {
+    const parts = value.split(";");
+    const selected = normalizedName(headerName) === "set-cookie" ? parts.slice(0, 1) : parts;
+    for (let index = 0; index < selected.length; index++) {
+        const equals = selected[index].indexOf("=");
+        if (equals <= 0) continue;
+        const name = selected[index].slice(0, equals).trim(), cookieValue = selected[index].slice(equals + 1).trim();
+        if (name) addAtom(target, "cookies", "cookie", cookieValue, `${path}[${index}].${name}`, context, name);
+    }
+}
+function collectHeaders(value: unknown, target: SensitiveAtom[], context: CaptureContext, path: string): void {
     if (value === undefined) return;
     if (!Array.isArray(value)) throw new Error("WT sensitive source headers are malformed");
-    for (const item of value) {
-        const row = record(item);
-        if (!row || typeof row.name !== "string" || typeof row.value !== "string") throw new Error("WT sensitive source header is malformed");
-        addAtom(atoms, category, row.value, row.name);
-        if (/^(?:cookie|set-cookie)$/i.test(row.name)) collectCookieHeader(row.value, atoms);
+    for (let index = 0; index < value.length; index++) {
+        const row = record(value[index]);
+        if (!row || typeof row.name !== "string" || typeof row.value !== "string" || !row.name.trim()) throw new Error("WT sensitive source header is malformed");
+        addAtom(target, "headers", "header", row.value, `${path}[${index}].${normalizedName(row.name)}`, context, normalizedName(row.name));
+        if (/^(?:cookie|set-cookie)$/i.test(row.name.trim())) collectCookiePairs(row.value, row.name, target, context, `${path}[${index}]`);
     }
 }
-
-function collectCookieHeader(value: string, atoms: SensitiveAtom[]): void {
-    for (const part of value.split(";")) {
-        const equals = part.indexOf("=");
-        if (equals <= 0) continue;
-        addAtom(atoms, "cookies", part.slice(equals + 1).trim(), part.slice(0, equals));
-    }
-}
-
-function collectCookies(value: unknown, atoms: SensitiveAtom[]): void {
+function collectCookies(value: unknown, target: SensitiveAtom[], context: CaptureContext, path: string): void {
     if (value === undefined) return;
     if (!Array.isArray(value)) throw new Error("WT sensitive source cookies are malformed");
-    for (const item of value) {
-        const row = record(item);
-        if (!row || typeof row.name !== "string" || !(typeof row.value === "string" || typeof row.value === "number" || typeof row.value === "boolean")) throw new Error("WT sensitive source cookie is malformed");
-        addAtom(atoms, "cookies", row.value, row.name);
+    for (let index = 0; index < value.length; index++) {
+        const row = record(value[index]);
+        if (!row || typeof row.name !== "string" || !row.name.trim() || !scalarKind(row.value)) throw new Error("WT sensitive source cookie is malformed");
+        addAtom(target, "cookies", "cookie", row.value, `${path}[${index}].${row.name.trim()}`, context, row.name.trim());
     }
 }
-
-function collectQuery(value: unknown, url: URL, atoms: SensitiveAtom[]): void {
-    if (value !== undefined) {
-        if (!Array.isArray(value)) throw new Error("WT sensitive source query is malformed");
-        for (const item of value) {
-            const row = record(item);
-            if (!row || typeof row.name !== "string" || !(typeof row.value === "string" || typeof row.value === "number" || typeof row.value === "boolean")) throw new Error("WT sensitive source query item is malformed");
-            addAtom(atoms, "query", row.value, row.name);
-        }
+function collectUrl(url: URL, target: SensitiveAtom[], context: CaptureContext, path: string): void {
+    const segments = url.pathname.split("/").filter(Boolean);
+    for (let index = 0; index < segments.length; index++) addAtom(target, "url_path", "url_path_segment", decodedComponent(segments[index]), `${path}.path[${index}]`, context, `${url.origin}${url.pathname}\0${index}`);
+    let queryIndex = 0;
+    for (const [name, value] of url.searchParams) {
+        addAtom(target, "query", "query_name", name, `${path}.query[${queryIndex}].name`, context, `${url.origin}${url.pathname}\0${name}`);
+        addAtom(target, "query", "query_value", value, `${path}.query[${queryIndex}].value:${name}`, context, `${url.origin}${url.pathname}\0${name}`);
+        queryIndex += 1;
     }
-    for (const [name, queryValue] of url.searchParams) addAtom(atoms, "query", queryValue, name);
+    if (url.username) addAtom(target, "url_credentials", "url_username", decodedComponent(url.username), `${path}.username`, context);
+    if (url.password) addAtom(target, "url_credentials", "url_password", decodedComponent(url.password), `${path}.password`, context);
 }
-
+function collectQuery(value: unknown, target: SensitiveAtom[], context: CaptureContext, path: string, urlPath: string): void {
+    if (value === undefined) return;
+    if (!Array.isArray(value)) throw new Error("WT sensitive source query is malformed");
+    for (let index = 0; index < value.length; index++) {
+        const row = record(value[index]);
+        if (!row || typeof row.name !== "string" || !row.name.trim() || !scalarKind(row.value)) throw new Error("WT sensitive source query item is malformed");
+        addAtom(target, "query", "query_name", row.name, `${path}[${index}].name`, context, `${urlPath}\0${row.name}`);
+        addAtom(target, "query", "query_value", row.value, `${path}[${index}].value:${row.name}`, context, `${urlPath}\0${row.name}`);
+    }
+}
 function deduplicateAtoms(atoms: SensitiveAtom[]): SensitiveAtom[] {
     const unique = new Map<string, SensitiveAtom>();
-    for (const atom of atoms) unique.set(`${atom.category}\0${atom.kind}\0${atom.context}\0${atom.value}`, atom);
+    for (const atom of atoms) unique.set(`${atom.category}\0${atom.structuralCategory}\0${atom.origin}\0${atom.method}\0${atom.endpoint}\0${atom.path}\0${atom.context}\0${atom.kind}\0${atom.canonicalValue}`, atom);
     return [...unique.values()];
 }
-
 function addCategory(target: Map<string, Set<WtSensitiveCategory>>, key: string, category: WtSensitiveCategory): void { const values = target.get(key) ?? new Set<WtSensitiveCategory>(); values.add(category); target.set(key, values); }
 
-function globallySensitive(atom: SensitiveAtom): boolean { return atom.context === "$" || atom.category === "cookies" || atom.category === "url_credentials" || SECRET_CONTEXT.test(atom.context); }
-
-function buildMatchers(atoms: SensitiveAtom[]): Pick<CatalogState, "longMatcher" | "longPatterns" | "shortStructured" | "shortTokens"> {
-    const nodes: MatcherNode[] = [{ next: new Map(), failure: 0, outputs: [] }], patterns: LongPattern[] = [], shortStructured = new Map<string, Set<WtSensitiveCategory>>(), shortTokens = new Map<string, Set<WtSensitiveCategory>>(), seenPatterns = new Set<string>();
-    const add = (pattern: Buffer, category: WtSensitiveCategory): void => {
-        const identity = `${category}\0${sha256(pattern)}`; if (seenPatterns.has(identity)) return; seenPatterns.add(identity);
-        const patternId = patterns.length, anchorLength = Math.min(16, pattern.length), anchor = pattern.subarray(0, anchorLength); patterns.push({ bytes: pattern, category, anchorLength });
+function contextualKey(structuralCategory: WtStructuralCategory, kind: ScalarKind, canonicalValue: string, context: string): string {
+    switch (structuralCategory) {
+        case "json_body": return `${structuralCategory}\0${kind}\0${context}\0${canonicalValue}`;
+        case "header": return `${structuralCategory}\0${normalizedName(context)}\0${kind}\0${canonicalValue}`;
+        case "cookie": return `${structuralCategory}\0${context}\0${kind}\0${canonicalValue}`;
+        case "query_value": case "query_name": case "url_path_segment": case "text_body": return `${structuralCategory}\0${context}\0${kind}\0${canonicalValue}`;
+        case "url_username": case "url_password": return `${structuralCategory}\0${kind}\0${canonicalValue}`;
+        default: throw new Error("WT sensitive source category has no matcher");
+    }
+}
+function decodedCanonical(atom: Pick<SensitiveAtom, "kind" | "canonicalValue">): string {
+    if (atom.kind !== "string") return atom.canonicalValue;
+    const parsed = JSON.parse(atom.canonicalValue);
+    if (typeof parsed !== "string") throw new Error("WT sensitive string canonicalization failed");
+    return parsed;
+}
+function distinctiveLiteral(atom: SensitiveAtom, value: string): boolean {
+    if (/\s/.test(value) || Buffer.byteLength(value) > 4096 || atom.structuralCategory === "query_name" || atom.structuralCategory === "url_path_segment") return false;
+    const minimum = atom.kind === "string" ? 16 : 8;
+    if (Buffer.byteLength(value) < minimum || new Set([...value]).size < 4) return false;
+    const classes = [/[a-z]/.test(value), /[A-Z]/.test(value), /[0-9]/.test(value), /[^A-Za-z0-9]/.test(value)].filter(Boolean).length;
+    return atom.kind !== "string" || classes >= 3;
+}
+function distinctivePathSegment(value: string): boolean { return /[0-9]/.test(value) || /[^A-Za-z_-]/.test(value); }
+function buildMatchers(atoms: SensitiveAtom[]): Pick<CatalogState, "longMatcher" | "longPatterns" | "contextualMatchers" | "scopedMatchers"> {
+    const nodes: MatcherNode[] = [{ next: new Map(), failure: 0, outputs: [] }], patterns: LongPattern[] = [], contextualMatchers = new Map<string, Set<WtSensitiveCategory>>(), scopedMatchers = new Map<string, Set<WtSensitiveCategory>>(), seenPatterns = new Set<string>(), matcherCategories = new Set<WtSensitiveCategory>();
+    const add = (pattern: Buffer, atom: SensitiveAtom): void => {
+        const identity = `${atom.category}\0${atom.structuralCategory}\0${sha256(pattern)}`; if (seenPatterns.has(identity)) return; seenPatterns.add(identity); matcherCategories.add(atom.category);
+        const patternId = patterns.length, anchorLength = Math.min(16, pattern.length), anchor = pattern.subarray(0, anchorLength); patterns.push({ bytes: pattern, category: atom.category, structuralCategory: atom.structuralCategory, anchorLength });
         let node = 0;
         for (const byte of anchor) {
             let next = nodes[node].next.get(byte);
@@ -191,11 +244,16 @@ function buildMatchers(atoms: SensitiveAtom[]): Pick<CatalogState, "longMatcher"
         nodes[node].outputs.push(patternId);
     };
     for (const atom of atoms) {
-        addCategory(shortStructured, `${atom.kind}\0${atom.context}\0${atom.value}`, atom.category);
-        if (atom.kind === "string" && globallySensitive(atom)) {
-            const size = Buffer.byteLength(atom.value), shortCredential = atom.category === "cookies" || atom.category === "url_credentials" || (atom.category === "headers" && /authorization/i.test(atom.context));
-            if (size >= 8) { addCategory(shortTokens, atom.value, atom.category); add(Buffer.from(atom.value, "utf8"), atom.category); add(Buffer.from(JSON.stringify(atom.value), "utf8"), atom.category); }
-            else if (shortCredential) addCategory(shortTokens, atom.value, atom.category);
+        const literal = decodedCanonical(atom);
+        if (atom.structuralCategory !== "url_path_segment" || distinctivePathSegment(literal)) {
+            addCategory(contextualMatchers, contextualKey(atom.structuralCategory, atom.kind, atom.canonicalValue, atom.context), atom.category);
+            addCategory(scopedMatchers, contextualKey(atom.structuralCategory, atom.kind, atom.canonicalValue, scopedCaptureContext(atom, atom.context)), atom.category);
+            matcherCategories.add(atom.category);
+        }
+        if (distinctiveLiteral(atom, literal)) {
+            add(Buffer.from(literal, "utf8"), atom);
+            if (atom.kind === "string") add(Buffer.from(atom.canonicalValue, "utf8"), atom);
+            if (atom.structuralCategory === "query_name" || atom.structuralCategory === "query_value" || atom.structuralCategory === "url_path_segment" || atom.structuralCategory === "url_username" || atom.structuralCategory === "url_password") add(Buffer.from(encodeURIComponent(literal), "utf8"), atom);
         }
     }
     const queue: number[] = [];
@@ -211,17 +269,19 @@ function buildMatchers(atoms: SensitiveAtom[]): Pick<CatalogState, "longMatcher"
             queue.push(child);
         }
     }
-    return { longMatcher: nodes, longPatterns: patterns, shortStructured, shortTokens };
+    if (atoms.length === 0 || contextualMatchers.size === 0) throw new Error("WT sensitive source catalog is empty");
+    for (const category of new Set(atoms.map(atom => atom.category))) if (!matcherCategories.has(category)) throw new Error("WT sensitive source category has no matcher");
+    return { longMatcher: nodes, longPatterns: patterns, contextualMatchers, scopedMatchers };
 }
 
-function matchLongValues(content: Buffer, matcher: MatcherNode[], patterns: LongPattern[]): Set<WtSensitiveCategory> {
-    const matched = new Set<WtSensitiveCategory>(); let node = 0;
+function matchLongValues(content: Buffer, matcher: MatcherNode[], patterns: LongPattern[]): ScanMatch[] {
+    const matchedPatterns = new Set<number>(); let node = 0;
     for (let index = 0; index < content.length; index++) { const byte = content[index];
         while (node !== 0 && !matcher[node].next.has(byte)) node = matcher[node].failure;
         node = matcher[node].next.get(byte) ?? 0;
-        for (const patternId of matcher[node].outputs) { const pattern = patterns[patternId], start = index - pattern.anchorLength + 1, end = start + pattern.bytes.length; if (start >= 0 && end <= content.length && content.subarray(start, end).equals(pattern.bytes)) matched.add(pattern.category); }
+        for (const patternId of matcher[node].outputs) { const pattern = patterns[patternId], start = index - pattern.anchorLength + 1, end = start + pattern.bytes.length; if (start >= 0 && end <= content.length && content.subarray(start, end).equals(pattern.bytes)) matchedPatterns.add(patternId); }
     }
-    return matched;
+    return [...matchedPatterns].map(patternId => ({ category: patterns[patternId].category, structuralCategory: "literal" as const, foundPath: `$literal:${patterns[patternId].structuralCategory}` }));
 }
 
 export function buildWtSensitiveCatalog(harText: string): WtSensitiveCatalog {
@@ -233,60 +293,249 @@ export function buildWtSensitiveCatalog(harText: string): WtSensitiveCatalog {
     const atoms: SensitiveAtom[] = [];
     for (const rawEntry of entries) {
         const entry = record(rawEntry), request = record(entry?.request), response = record(entry?.response);
-        if (!entry || !request || !response || typeof request.url !== "string") throw new Error("WT sensitive source contains a malformed entry");
+        if (!entry || !request || !response || typeof request.url !== "string" || typeof request.method !== "string" || !request.method.trim()) throw new Error("WT sensitive source contains a malformed entry");
         let url: URL;
         try { url = new URL(request.url); }
         catch { throw new Error("WT sensitive source contains an invalid URL"); }
-        collectHeaders(request.headers, "headers", atoms);
-        collectHeaders(response.headers, "headers", atoms);
-        collectCookies(request.cookies, atoms);
-        collectCookies(response.cookies, atoms);
-        collectQuery(request.queryString, url, atoms);
-        if (url.username) addAtom(atoms, "url_credentials", decodeURIComponent(url.username), "username");
-        if (url.password) addAtom(atoms, "url_credentials", decodeURIComponent(url.password), "password");
-        const postData = record(request.postData), content = record(response.content);
-        collectBodyText(postData?.text, postData?.encoding, "request_body", atoms);
-        collectBodyText(content?.text, content?.encoding, "response_body", atoms);
+        const method = request.method.trim().toUpperCase(), endpoint = sanitizeEndpoint(url), requestContext: CaptureContext = { origin: "request", method, endpoint }, responseContext: CaptureContext = { origin: "response", method, endpoint };
+        collectHeaders(request.headers, atoms, requestContext, "$.request.headers");
+        collectHeaders(response.headers, atoms, responseContext, "$.response.headers");
+        collectCookies(request.cookies, atoms, requestContext, "$.request.cookies");
+        collectCookies(response.cookies, atoms, responseContext, "$.response.cookies");
+        collectUrl(url, atoms, requestContext, "$.request.url");
+        collectQuery(request.queryString, atoms, requestContext, "$.request.queryString", `${url.origin}${url.pathname}`);
+        collectBodyText(request.postData, "request_body", atoms, requestContext);
+        collectBodyText(response.content, "response_body", atoms, responseContext);
     }
     const unique = deduplicateAtoms(atoms);
     const categoryValueCounts = Object.fromEntries(REQUIRED_SOURCE_CATEGORIES.map(category => [category, unique.filter(atom => atom.category === category).length])) as Record<WtSensitiveCategory, number>;
     if (Object.keys(categoryValueCounts).length !== REQUIRED_SOURCE_CATEGORIES.length) throw new Error("WT sensitive source category coverage failed");
+    if (unique.length === 0) throw new Error("WT sensitive source catalog is empty");
+    const matchers = buildMatchers(unique);
     const catalog: WtSensitiveCatalog = Object.freeze({ schemaVersion: 1, sourceSha256: sha256(harText), sourceSizeBytes: Buffer.byteLength(harText), entryCount: entries.length, sensitiveValueCount: unique.length, categoryValueCounts: Object.freeze(categoryValueCounts) });
-    catalogStates.set(catalog, { atoms: unique, ...buildMatchers(unique) });
+    catalogStates.set(catalog, { atoms: unique, ...matchers });
     return catalog;
 }
 
-function parseJsonScalars(text: string): Map<string, Set<string>> {
-    let parsed: unknown;
-    try { parsed = JSON.parse(text); }
-    catch { return new Map(); }
-    const values = new Map<string, Set<string>>();
-    const visit = (value: unknown, context = "$"): void => {
-        const kind = scalarKind(value);
-        if (kind) {
-            const key = `${kind}\0${normalizeContext(context)}`;
-            const set = values.get(key) ?? new Set<string>();
-            set.add(scalarText(value, kind)); values.set(key, set); return;
+function addTargetObservation(target: TargetObservation[], structuralCategory: WtStructuralCategory, value: unknown, path: string, context = path, capture?: CaptureContext): void {
+    const kind = scalarKind(value);
+    if (!kind) throw new Error("WT audit target contains an unsupported scalar");
+    target.push({ structuralCategory, path, context: capture ? scopedCaptureContext(capture, context) : context, kind, canonicalValue: canonicalScalar(value, kind), ...(capture ? { captureScoped: true } : {}) });
+}
+function collectTargetJsonScalars(value: unknown, target: TargetObservation[], path = "$", matcherPath = path, shapeFingerprint = jsonShapeFingerprint(value), capture?: CaptureContext): void {
+    const kind = scalarKind(value);
+    if (kind) {
+        const structuralContext = `${shapeFingerprint}\0${matcherPath}`;
+        addTargetObservation(target, "json_body", value, path, structuralContext, capture);
+        return;
+    }
+    if (Array.isArray(value)) { for (let index = 0; index < value.length; index++) collectTargetJsonScalars(value[index], target, `${path}[${index}]`, `${matcherPath}[${index}]`, shapeFingerprint, capture); return; }
+    const row = record(value);
+    if (!row) throw new Error("WT audit target JSON contains an unsupported value");
+    for (const [key, child] of Object.entries(row)) collectTargetJsonScalars(child, target, childJsonPath(path, key), childJsonPath(matcherPath, key), shapeFingerprint, capture);
+}
+function collectTargetCookiePairs(value: string, headerName: string, target: TargetObservation[], path: string, capture?: CaptureContext): void {
+    const parts = value.split(";"), selected = normalizedName(headerName) === "set-cookie" ? parts.slice(0, 1) : parts;
+    for (let index = 0; index < selected.length; index++) {
+        const equals = selected[index].indexOf("="); if (equals <= 0) continue;
+        const name = selected[index].slice(0, equals).trim(), cookieValue = selected[index].slice(equals + 1).trim();
+        if (name) addTargetObservation(target, "cookie", cookieValue, `${path}[${index}]`, name, capture);
+    }
+}
+function collectTargetUrl(value: string, target: TargetObservation[], path: string, strict = false, capture?: CaptureContext): boolean {
+    let url: URL;
+    try { url = new URL(value); }
+    catch { if (strict) throw new Error("WT audit target contains an invalid URL structure"); return false; }
+    if (!/^https?:$/.test(url.protocol)) { if (strict) throw new Error("WT audit target URL scheme is unsupported"); return false; }
+    const segments = url.pathname.split("/").filter(Boolean);
+    for (let index = 0; index < segments.length; index++) addTargetObservation(target, "url_path_segment", decodedComponent(segments[index]), `${path}.path[${index}]`, `${url.origin}${url.pathname}\0${index}`, capture);
+    let queryIndex = 0;
+    for (const [name, queryValue] of url.searchParams) {
+        addTargetObservation(target, "query_name", name, `${path}.query[${queryIndex}].name`, `${url.origin}${url.pathname}\0${name}`, capture);
+        addTargetObservation(target, "query_value", queryValue, `${path}.query[${queryIndex}].value`, `${url.origin}${url.pathname}\0${name}`, capture);
+        queryIndex += 1;
+    }
+    if (url.username) addTargetObservation(target, "url_username", decodedComponent(url.username), `${path}.username`, "username", capture);
+    if (url.password) addTargetObservation(target, "url_password", decodedComponent(url.password), `${path}.password`, "password", capture);
+    return true;
+}
+function collectTargetNamedArray(value: unknown, kind: "headers" | "cookies" | "query", target: TargetObservation[], path: string, urlPath = "", capture?: CaptureContext): void {
+    if (!Array.isArray(value)) return;
+    for (let index = 0; index < value.length; index++) {
+        const row = record(value[index]);
+        if (!row || typeof row.name !== "string" || !row.name.trim() || !scalarKind(row.value)) throw new Error(`WT audit target ${kind} structure is malformed`);
+        const itemPath = `${path}[${index}]`;
+        if (kind === "headers") {
+            if (typeof row.value !== "string") throw new Error("WT audit target headers structure is malformed");
+            addTargetObservation(target, "header", row.value, `${itemPath}.value`, normalizedName(row.name), capture);
+            if (/^(?:cookie|set-cookie)$/i.test(row.name.trim())) collectTargetCookiePairs(row.value, row.name, target, `${itemPath}.cookie`, capture);
+        } else if (kind === "cookies") addTargetObservation(target, "cookie", row.value, `${itemPath}.value`, row.name.trim(), capture);
+        else {
+            addTargetObservation(target, "query_name", row.name, `${itemPath}.name`, `${urlPath}\0${row.name}`, capture);
+            addTargetObservation(target, "query_value", row.value, `${itemPath}.value`, `${urlPath}\0${row.name}`, capture);
         }
-        if (Array.isArray(value)) { for (const child of value) visit(child, `${context}[]`); return; }
-        const row = record(value); if (row) { const siblingContext = typeof row.name === "string" && scalarKind(row.value) ? row.name : null; for (const [key, child] of Object.entries(row)) visit(child, key === "value" && siblingContext ? siblingContext : `${context}.${key}`); }
-    };
-    visit(parsed);
-    return values;
+    }
+}
+function recognizedHeaderName(value: string): boolean {
+    const name = normalizedName(value);
+    return name.includes("-") || /^(?:accept|authorization|cache-control|connection|content-length|content-type|cookie|date|etag|expires|host|if-match|if-none-match|location|origin|pragma|referer|set-cookie|user-agent|vary)$/.test(name);
+}
+function targetCaptureContext(value: Record<string, unknown>): CaptureContext | null {
+    const hasCaptureField = Object.prototype.hasOwnProperty.call(value, "origin") || (Object.prototype.hasOwnProperty.call(value, "body") && Object.prototype.hasOwnProperty.call(value, "url"));
+    if (!hasCaptureField) return null;
+    if ((value.origin !== "request" && value.origin !== "response") || typeof value.method !== "string" || !value.method.trim() || typeof value.url !== "string") throw new Error("WT audit target capture context is malformed");
+    let url: URL;
+    try { url = new URL(value.url); }
+    catch { throw new Error("WT audit target capture context contains an invalid URL"); }
+    if (!/^https?:$/.test(url.protocol)) throw new Error("WT audit target capture context URL scheme is unsupported");
+    return { origin: value.origin, method: value.method.trim().toUpperCase(), endpoint: sanitizeEndpoint(url) };
+}
+function collectTargetStructures(value: unknown, target: TargetObservation[], path = "$", parentKey = "", inheritedCapture?: CaptureContext): void {
+    const kind = scalarKind(value);
+    if (kind) {
+        if (kind === "string") {
+            const text = JSON.parse(canonicalScalar(value, kind)) as string;
+            if (/^https?:\/\//.test(text)) collectTargetUrl(text, target, path, normalizedName(parentKey) === "url", inheritedCapture);
+        }
+        return;
+    }
+    if (Array.isArray(value)) {
+        const normalized = normalizedName(parentKey);
+        if (normalized === "headers") collectTargetNamedArray(value, "headers", target, path, "", inheritedCapture);
+        else if (normalized === "cookies") collectTargetNamedArray(value, "cookies", target, path, "", inheritedCapture);
+        else if (normalized === "querystring" || normalized === "query") collectTargetNamedArray(value, "query", target, path, "", inheritedCapture);
+        for (let index = 0; index < value.length; index++) collectTargetStructures(value[index], target, `${path}[${index}]`, parentKey, inheritedCapture);
+        return;
+    }
+    const row = record(value);
+    if (!row) throw new Error("WT audit target structure is unsupported");
+    const capture = targetCaptureContext(row) ?? inheritedCapture;
+    if (capture && Object.prototype.hasOwnProperty.call(row, "body")) collectTargetJsonScalars(row.body, target, childJsonPath(path, "body"), "$", jsonShapeFingerprint(row.body), capture);
+    if (typeof row.name === "string" && typeof row.value === "string" && recognizedHeaderName(row.name)) {
+        addTargetObservation(target, "header", row.value, childJsonPath(path, "value"), normalizedName(row.name), capture);
+        if (/^(?:cookie|set-cookie)$/i.test(row.name.trim())) collectTargetCookiePairs(row.value, row.name, target, `${path}.cookie`, capture);
+    }
+    if (typeof row.url === "string" && Array.isArray(row.queryString)) {
+        let requestUrl: URL;
+        try { requestUrl = new URL(row.url); }
+        catch { throw new Error("WT audit target contains an invalid URL structure"); }
+        collectTargetNamedArray(row.queryString, "query", target, childJsonPath(path, "queryString"), `${requestUrl.origin}${requestUrl.pathname}`, capture);
+    }
+    if (typeof row.text === "string" && (normalizedName(parentKey) === "postdata" || normalizedName(parentKey) === "content")) {
+        let embedded: unknown, parsed = false;
+        try { embedded = JSON.parse(row.text); parsed = true; }
+        catch { if (typeof row.mimeType === "string" && JSON_MIME.test(row.mimeType.trim())) throw new Error("WT audit target JSON body is malformed"); }
+        if (parsed) collectTargetJsonScalars(embedded, target, `${path}.text$body`, "$");
+        else addTargetObservation(target, "text_body", row.text, `${path}.text$body`, "text_exact");
+    }
+    for (const [key, child] of Object.entries(row)) {
+        if (capture && key === "body") continue;
+        collectTargetStructures(child, target, childJsonPath(path, key), key, capture);
+    }
 }
 
-function stringTokens(text: string): Set<string> {
-    const result = new Set<string>();
-    const quoted = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/gs;
-    for (const match of text.matchAll(quoted)) {
-        const token = match[0];
-        if (token.startsWith("\"") ) {
-            try { const parsed = JSON.parse(token); if (typeof parsed === "string") result.add(parsed); } catch { /* not a JSON string literal */ }
-        } else result.add(token.slice(1, -1).replace(/\\([\\'"`])/g, "$1"));
+function staticPropertyName(node: ts.PropertyName): string | null {
+    if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node)) return node.text;
+    return null;
+}
+function unwrapStaticExpression(node: ts.Expression): ts.Expression {
+    let current = node;
+    while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current) || ts.isTypeAssertionExpression(current)) current = current.expression;
+    return current;
+}
+function evaluateStaticExpression(node: ts.Expression): { ok: true; value: unknown } | { ok: false } {
+    const current = unwrapStaticExpression(node);
+    if (ts.isStringLiteral(current) || ts.isNoSubstitutionTemplateLiteral(current)) return { ok: true, value: current.text };
+    if (ts.isNumericLiteral(current)) return { ok: true, value: Number(current.text) };
+    if (current.kind === ts.SyntaxKind.TrueKeyword) return { ok: true, value: true };
+    if (current.kind === ts.SyntaxKind.FalseKeyword) return { ok: true, value: false };
+    if (current.kind === ts.SyntaxKind.NullKeyword) return { ok: true, value: null };
+    if (ts.isPrefixUnaryExpression(current) && (current.operator === ts.SyntaxKind.MinusToken || current.operator === ts.SyntaxKind.PlusToken)) {
+        const operand = evaluateStaticExpression(current.operand);
+        if (!operand.ok || typeof operand.value !== "number") return { ok: false };
+        return { ok: true, value: current.operator === ts.SyntaxKind.MinusToken ? -operand.value : operand.value };
     }
-    const headerLine = /(?:^|[\r\n])\s*[A-Za-z][A-Za-z0-9-]*\s*:\s*([^\r\n]+)/g;
-    for (const match of text.matchAll(headerLine)) result.add(match[1].trim());
-    return result;
+    if (ts.isArrayLiteralExpression(current)) {
+        const values: unknown[] = [];
+        for (const element of current.elements) {
+            if (ts.isSpreadElement(element) || ts.isOmittedExpression(element)) return { ok: false };
+            const result = evaluateStaticExpression(element);
+            if (!result.ok) return { ok: false };
+            values.push(result.value);
+        }
+        return { ok: true, value: values };
+    }
+    if (ts.isObjectLiteralExpression(current)) {
+        const value: Record<string, unknown> = {};
+        for (const property of current.properties) {
+            if (!ts.isPropertyAssignment(property)) return { ok: false };
+            const name = staticPropertyName(property.name), result = evaluateStaticExpression(property.initializer);
+            if (name === null || !result.ok) return { ok: false };
+            value[name] = result.value;
+        }
+        return { ok: true, value };
+    }
+    return { ok: false };
+}
+function staticRootExpression(node: ts.Node): ts.Expression | null {
+    if (ts.isVariableDeclaration(node) && node.initializer) return node.initializer;
+    if (ts.isPropertyDeclaration(node) && node.initializer) return node.initializer;
+    if (ts.isExportAssignment(node)) return node.expression;
+    if (ts.isReturnStatement(node) && node.expression) return node.expression;
+    return null;
+}
+function staticRootName(node: ts.Node): string {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) return node.name.text;
+    if (ts.isPropertyDeclaration(node) && node.name && (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))) return node.name.text;
+    if (ts.isExportAssignment(node)) return "exportedJson";
+    if (ts.isReturnStatement(node)) {
+        let parent: ts.Node | undefined = node.parent;
+        while (parent && !ts.isFunctionDeclaration(parent) && !ts.isMethodDeclaration(parent) && !ts.isFunctionExpression(parent) && !ts.isArrowFunction(parent)) parent = parent.parent;
+        if (parent && (ts.isFunctionDeclaration(parent) || ts.isMethodDeclaration(parent) || ts.isFunctionExpression(parent)) && parent.name && ts.isIdentifier(parent.name)) return parent.name.text;
+    }
+    return "";
+}
+function permitsStaticPrimitive(name: string): boolean { return /(?:body|payload|fixture|json|leak)/i.test(name); }
+function collectTargetTypeScript(text: string, target: TargetObservation[]): void {
+    const source = ts.createSourceFile("audit-target.ts", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let rootIndex = 0;
+    const visit = (node: ts.Node): void => {
+        const expression = staticRootExpression(node);
+        if (expression) {
+            const unwrapped = unwrapStaticExpression(expression), result = evaluateStaticExpression(unwrapped);
+            const parentKey = staticRootName(node), composite = Array.isArray(result.ok ? result.value : undefined) || record(result.ok ? result.value : undefined) !== null;
+            if (result.ok && (composite || permitsStaticPrimitive(parentKey))) {
+                const rootPath = `$typescript[${rootIndex}]`;
+                collectTargetJsonScalars(result.value, target, rootPath, "$", jsonShapeFingerprint(result.value));
+                collectTargetStructures(result.value, target, rootPath, parentKey);
+                rootIndex += 1;
+            }
+        }
+        ts.forEachChild(node, visit);
+    };
+    visit(source);
+}
+function collectTargetText(text: string, target: TargetObservation[]): void {
+    const headerLine = /^\s*([A-Za-z][A-Za-z0-9-]*)\s*:\s*([^\r\n]*)\s*$/gm;
+    let headerIndex = 0;
+    for (const match of text.matchAll(headerLine)) {
+        const name = match[1], value = match[2].trim(), path = `$text.headers[${headerIndex}]`;
+        addTargetObservation(target, "header", value, path, normalizedName(name));
+        if (/^(?:cookie|set-cookie)$/i.test(name)) collectTargetCookiePairs(value, name, target, `${path}.cookie`);
+        headerIndex += 1;
+    }
+    let urlIndex = 0;
+    for (const match of text.matchAll(URL_TOKEN)) {
+        const candidate = match[0].replace(/[),.;\]}]+$/, "");
+        if (collectTargetUrl(candidate, target, `$text.urls[${urlIndex}]`)) urlIndex += 1;
+    }
+    const trimmed = text.trim();
+    if (trimmed && trimmed.length <= 4096 && !/[\r\n]/.test(trimmed) && !/^[A-Za-z][A-Za-z0-9-]*\s*:/.test(trimmed) && !/^https?:\/\//.test(trimmed)) addTargetObservation(target, "text_body", trimmed, "$text.exact", "text_exact");
+}
+function deduplicateTargetObservations(values: TargetObservation[]): TargetObservation[] {
+    const unique = new Map<string, TargetObservation>();
+    for (const value of values) unique.set(`${value.structuralCategory}\0${value.path}\0${value.context}\0${value.captureScoped ? "scoped" : "unscoped"}\0${value.kind}\0${value.canonicalValue}`, value);
+    return [...unique.values()];
 }
 
 function isHarBuffer(content: Buffer): boolean {
@@ -297,21 +546,32 @@ function isHarBuffer(content: Buffer): boolean {
     return Array.isArray(log?.entries);
 }
 
-function scanContent(content: Buffer, state: CatalogState): Set<WtSensitiveCategory> {
-    const matched = matchLongValues(content, state.longMatcher, state.longPatterns), text = content.toString("utf8"), structured = parseJsonScalars(text), tokens = stringTokens(text);
-    for (const [kindAndContext, values] of structured) for (const value of values) for (const category of state.shortStructured.get(`${kindAndContext}\0${value}`) ?? []) matched.add(category);
-    for (const token of tokens) for (const category of state.shortTokens.get(token) ?? []) matched.add(category);
-    return matched;
+function scanContent(content: Buffer, state: CatalogState): ScanContentResult {
+    const matches = matchLongValues(content, state.longMatcher, state.longPatterns), text = content.toString("utf8"), observations: TargetObservation[] = [];
+    let parsed: unknown, json = false;
+    try { parsed = JSON.parse(text); json = true; }
+    catch { /* arbitrary non-JSON versioned blobs are scanned literally and as conservative text */ }
+    if (json) { collectTargetJsonScalars(parsed, observations); collectTargetStructures(parsed, observations); }
+    else { collectTargetText(text, observations); collectTargetTypeScript(text, observations); }
+    for (const observation of deduplicateTargetObservations(observations)) {
+        const key = contextualKey(observation.structuralCategory, observation.kind, observation.canonicalValue, observation.context);
+        const matcher = observation.captureScoped ? state.scopedMatchers : state.contextualMatchers;
+        for (const category of matcher.get(key) ?? []) matches.push({ category, structuralCategory: observation.structuralCategory, foundPath: observation.path });
+    }
+    const unique = new Map<string, ScanMatch>();
+    for (const match of matches) unique.set(`${match.category}\0${match.structuralCategory}\0${match.foundPath}`, match);
+    const rows = [...unique.values()].sort((left, right) => `${left.category}\0${left.structuralCategory}\0${left.foundPath}`.localeCompare(`${right.category}\0${right.structuralCategory}\0${right.foundPath}`));
+    return { categories: [...new Set(rows.map(value => value.category))].sort(), matches: rows, rawHar: isHarBuffer(content) };
 }
 
 function emptyCategoryCounts(): Record<WtAuditTargetCategory, number> {
     return { tip: 0, history_old: 0, history_new: 0, fixture: 0, spec: 0, generated: 0, other: 0 };
 }
 function emptyMatchCounts(): Record<WtSensitiveCategory, number> {
-    return { headers: 0, cookies: 0, query: 0, url_credentials: 0, request_body: 0, response_body: 0 };
+    return { headers: 0, cookies: 0, url_path: 0, query: 0, url_credentials: 0, request_body: 0, response_body: 0 };
 }
 
-function scanTargetSequence(catalog: WtSensitiveCatalog, sequence: Iterable<{ targetId: string; category: WtAuditTargetCategory; content: () => Buffer; blobId?: string; pathHash?: string }>, policy: WtAuditScanPolicy, cacheByBlobIdentity = false, preScannedBlobs = new Map<string, { categories: WtSensitiveCategory[]; rawHar: boolean }>()): WtAuditScanResult {
+function scanTargetSequence(catalog: WtSensitiveCatalog, sequence: Iterable<{ targetId: string; category: WtAuditTargetCategory; content: () => Buffer; blobId?: string; pathHash?: string }>, policy: WtAuditScanPolicy, cacheByBlobIdentity = false, preScannedBlobs = new Map<string, ScanContentResult>()): WtAuditScanResult {
     const state = catalogStates.get(catalog);
     if (!state) throw new Error("WT sensitive catalog is not an active catalog");
     const allowedHistoricalHarTargets = new Set(policy.allowedHistoricalHarTargetFingerprints);
@@ -329,7 +589,7 @@ function scanTargetSequence(catalog: WtSensitiveCatalog, sequence: Iterable<{ ta
             catch { throw new Error("WT audit target blob is unreadable"); }
             if (!Buffer.isBuffer(content)) throw new Error("WT audit target is not a buffer");
             contentIdentity = target.blobId ?? sha256(content);
-            scanned = { rawHar: isHarBuffer(content), categories: [...scanContent(content, state)].sort() };
+            scanned = scanContent(content, state);
             if (cacheByBlobIdentity && target.blobId) scannedBlobs.set(target.blobId, scanned);
         }
         blobs.add(contentIdentity!);
@@ -342,9 +602,9 @@ function scanTargetSequence(catalog: WtSensitiveCatalog, sequence: Iterable<{ ta
         if (harStructure && target.category === "tip") tipHarStructureTargetCount += 1;
         if (allowedHistoricalHar) observedAllowedHistoricalHarTargets.add(structuralFingerprint);
         if (rawHar) rawHarTargetCount += 1;
-        sensitiveMatchCount += categories.length;
+        sensitiveMatchCount += scanned.matches.length;
         for (const category of categories) sensitiveMatchCategoryCounts[category] += 1;
-        if (rawHar || categories.length) matchedTargets.push({ targetId: sha256(target.targetId), ...(target.blobId ? { blobId: target.blobId } : {}), categories, rawHar });
+        if (rawHar || categories.length) matchedTargets.push({ targetId: sha256(target.targetId), ...(target.blobId ? { blobId: target.blobId } : {}), categories, rawHar, matches: scanned.matches.map(match => ({ category: match.category, structuralCategory: match.structuralCategory, foundPathHash: sha256(match.foundPath) })) });
     }
     if (targetCount === 0) throw new Error("WT audit target collection is empty");
     harStructureTargets.sort((left, right) => left.fingerprint.localeCompare(right.fingerprint));
@@ -389,7 +649,7 @@ function gitWithInput(repoRoot: string, args: string[], input: string, maxBuffer
     catch { throw new Error("WT git audit blob batch is unreadable"); }
 }
 
-function scanGitBlobs(repoRoot: string, blobIds: string[], state: CatalogState): Map<string, { categories: WtSensitiveCategory[]; rawHar: boolean }> {
+function scanGitBlobs(repoRoot: string, blobIds: string[], state: CatalogState): Map<string, ScanContentResult> {
     if (blobIds.length === 0 || blobIds.some(value => !OBJECT_ID.test(value))) throw new Error("WT git audit blob collection is invalid");
     const ordered = [...blobIds].sort(), input = `${ordered.join("\n")}\n`;
     const check = gitWithInput(repoRoot, ["cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"], input, Math.max(1024 * 1024, ordered.length * 128)).toString("ascii").trim().split(/\r?\n/);
@@ -408,7 +668,7 @@ function scanGitBlobs(repoRoot: string, blobIds: string[], state: CatalogState):
         current.push(blobId); currentBytes += size;
     }
     if (current.length) chunks.push(current);
-    const result = new Map<string, { categories: WtSensitiveCategory[]; rawHar: boolean }>();
+    const result = new Map<string, ScanContentResult>();
     for (const chunk of chunks) {
         const expectedBytes = chunk.reduce((sum, value) => sum + sizes.get(value)!, 0), output = gitWithInput(repoRoot, ["cat-file", "--batch"], `${chunk.join("\n")}\n`, expectedBytes + chunk.length * 256 + 1024 * 1024);
         let offset = 0;
@@ -420,7 +680,7 @@ function scanGitBlobs(repoRoot: string, blobIds: string[], state: CatalogState):
             const start = newline + 1, end = start + size;
             if (end >= output.length || output[end] !== 10) throw new Error("WT git audit blob batch body is truncated");
             const content = output.subarray(start, end);
-            result.set(expectedId, { rawHar: isHarBuffer(content), categories: [...scanContent(content, state)].sort() });
+            result.set(expectedId, scanContent(content, state));
             offset = end + 1;
         }
         if (offset !== output.length) throw new Error("WT git audit blob batch has trailing bytes");

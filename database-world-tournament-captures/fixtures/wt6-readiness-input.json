@@ -8,12 +8,12 @@
     "entryCount": 1
   },
   "security": {
-    "commitCount": 8,
+    "commitCount": 9,
     "targetCount": 3,
     "uniqueBlobCount": 3,
     "categoryTargetCounts": { "tip": 1, "history_old": 1, "history_new": 1 },
-    "sensitiveValueCount": 6,
-    "sourceCategoryValueCounts": { "headers": 1, "cookies": 1, "query": 1, "url_credentials": 1, "request_body": 1, "response_body": 1 },
+    "sensitiveValueCount": 7,
+    "sourceCategoryValueCounts": { "headers": 1, "cookies": 1, "url_path": 1, "query": 1, "url_credentials": 1, "request_body": 1, "response_body": 1 },
     "sensitiveMatchCount": 0,
     "harStructureTargetCount": 2,
     "tipHarStructureTargetCount": 0,
@@ -34,7 +34,7 @@
   "memory": {
     "schemaVersion": 1,
     "contract": "dokkan-world-tournament-memory-evidence",
-    "contractVersion": "0.8.0",
+    "contractVersion": "0.9.0",
     "method": "windows_process_tree_working_set_poll_15ms",
     "limitBytes": 1073741824,
     "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

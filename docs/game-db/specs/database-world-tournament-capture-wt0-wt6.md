@@ -56,21 +56,25 @@ tracked.
 | WT3 | `wt3-rankings-box-schedules.json` | 40,529 | `cb438a3f166873d285a79fbe0ca626763c49cf872c89b1e03bb19d6ee087b840` |
 | WT4 | `wt4-briefing-missions-start.json` | 21,308 | `b5d8a7999ad2352e84090511b5e57c605a7c132d355cf35d05a540ead722ebff` |
 | WT5 | `wt5-shadow-parity.json` | 14,043 | `9723fb520cc68a37a3ee75e07e9e277da9b1952b5e93df208e287c365ce0e0f1` |
-| WT6 | `wt6-readiness.json` | 10,600 | `8af37202cb78a9d406853e31b09ed2ce581fde0b5aa5527c9a69eafaf338e785` |
+| WT6 | `wt6-readiness.json` | 10,626 | `51ffea105c2324ab0efedc6ff7571069948ad86ebdbf092617a6b78bfaa2d141` |
 
 WT6 pins 18 WT0-WT5 payload/manifest/validation members with aggregate SHA-256
 `0ed76199d05bf27bf90ef89c8aa474c09e6ea2d894060b577409b179fe9117df`.
 Two complete external generations of all 21 WT0-WT6 files were byte-identical;
 their aggregate SHA-256 was
-`4463b3343e57413c6d6f5e1880adbedbc5920f4f67d928e58b0bd97aa4fc3d88`.
+`cecce461d7a6185d50f54d9d52101efa945f733c70c48f65a9590e2283c7daad`.
 
 ## Security and resource evidence
 
-The offline scanner collected 3,361 sensitive captured values in memory across
-headers, cookies, query values, URL credentials and request/response bodies. It
-examined 3,560 targets and 3,388 unique blobs: every one of the 3,329 files in
-the reviewed tip plus the old/new blobs of every changed path in the eight-commit
-range. It found zero sensitive matches and zero captured/raw HAR targets. Two
+The offline scanner collected 19,612 captured scalar observations in memory:
+1,807 headers, 0 cookies, 317 URL path segments, 672 query names/values, 0 URL
+credentials, 16 request-body leaves and 16,800 response-body leaves. Every JSON
+leaf is retained in memory with request/response origin, sanitized endpoint,
+  method, structural category, exact JSON path, JSON type and canonical value.
+ It examined 3,588 targets and 3,402 unique blobs: every one of the 3,329 files
+ in the reviewed tip plus 73 old and 186 new historical targets across the
+nine-commit range. The complete matcher found zero captured-value matches and
+zero captured/raw HAR targets. Two
 historical targets are structurally HAR-shaped copies of the former wholly
 synthetic fixture. They are accepted only by two exact, category-bound structural
 fingerprints; any missing, additional or tip HAR-shaped target fails closed.
@@ -78,6 +82,20 @@ Neither matches captured values, and no HAR-shaped file is present in the
 corrected tip. Specs, fixtures, `lib/`, arbitrary extensions and
 deleted historical blobs receive no exclusion.
 The source lock, diagnostics and generated artifacts remain ignored.
+
+Compact distinctive strings of at least 16 bytes and distinctive numeric
+scalars of at least 8 bytes receive literal byte matching across every blob.
+Short values use structural context: complete JSON shape plus exact path/type,
+normalized header name, cookie name, absolute URL component, query name and
+value, or exact conservative non-JSON text token. Static JSON-like literals in
+TypeScript/JavaScript receive the same structural projection; primitive roots
+are accepted only in explicitly JSON-like named contexts. When a target carries
+an explicit capture envelope, origin, method and sanitized endpoint also bind
+body, header, cookie, URL and query matching. Alphabetic public route components
+remain catalogued but only value-bearing path segments participate in the
+captured-value matcher. The scanner rejects empty catalogs/targets, malformed
+expected JSON/URL structures, unreadable blobs and captured categories without
+an implemented matcher.
 
 Observed process-tree working-set peaks were:
 
@@ -89,12 +107,12 @@ Observed process-tree working-set peaks were:
 | WT3 | 51,400,704 |
 | WT4 | 39,075,840 |
 | WT5 | 518,160,384 |
-| WT6 | 589,512,704 |
+| WT6 | 625,881,088 |
 
 Every peak is below the strict 1 GiB limit. The final WT6 repeat measured
-589,512,704 bytes. The evidence is bound to the HAR identity, the aggregate of
+625,881,088 bytes. The evidence is bound to the HAR identity, the aggregate of
 the 18 upstream artifacts and the aggregate of the 25 executable implementation
-files used by the campaign.
+files used by the campaign (`7ee0e0429892f8a491624dc7d996a0c4ec61128d638283ea4bc92bc71ed38bb1`).
 
 ## Readiness
 
@@ -137,3 +155,5 @@ explicit decision for every excluded scope.
 - WT6: `d1516f1`
 - Corrective hardening: the eighth commit containing the scanner, containment,
   synthetic-fixture and post-integration readiness corrections
+- Complete scanner coverage: the ninth corrective commit cataloguing every JSON
+  scalar leaf and enforcing literal/contextual matchers

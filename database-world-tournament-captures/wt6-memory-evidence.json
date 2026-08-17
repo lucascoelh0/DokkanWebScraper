@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "contract": "dokkan-world-tournament-memory-evidence",
-  "contractVersion": "0.8.0",
+  "contractVersion": "0.9.0",
   "method": "windows_process_tree_working_set_poll_15ms",
   "limitBytes": 1073741824,
   "sourceSha256": "70ce81581e9237fb1b9a8da7dd0db1c24dd397dc329cc57cca468705265d66cd",
   "artifactAggregateSha256": "0ed76199d05bf27bf90ef89c8aa474c09e6ea2d894060b577409b179fe9117df",
-  "implementationAggregateSha256": "b2e0480db1a15c4e7591eb47d77e07f9306d9c5ebd2702f123aa92bc3fa5b149",
+  "implementationAggregateSha256": "7ee0e0429892f8a491624dc7d996a0c4ec61128d638283ea4bc92bc71ed38bb1",
   "measurements": [
     { "gate": "WT0", "peakProcessTreeWorkingSetBytes": 84836352, "exitCode": 0 },
     { "gate": "WT1", "peakProcessTreeWorkingSetBytes": 49209344, "exitCode": 0 },
@@ -14,7 +14,7 @@
     { "gate": "WT3", "peakProcessTreeWorkingSetBytes": 51400704, "exitCode": 0 },
     { "gate": "WT4", "peakProcessTreeWorkingSetBytes": 39075840, "exitCode": 0 },
     { "gate": "WT5", "peakProcessTreeWorkingSetBytes": 518160384, "exitCode": 0 },
-    { "gate": "WT6", "peakProcessTreeWorkingSetBytes": 589512704, "exitCode": 0 }
+    { "gate": "WT6", "peakProcessTreeWorkingSetBytes": 625881088, "exitCode": 0 }
   ],
-  "observedMaxPeakBytes": 589512704
+  "observedMaxPeakBytes": 625881088
 }

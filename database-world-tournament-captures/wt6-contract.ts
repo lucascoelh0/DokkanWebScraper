@@ -4,12 +4,12 @@ export const WT6_ALLOWED_HISTORICAL_HAR_TARGET_FINGERPRINTS = [
 ] as const;
 
 export type Wt6DecisionStatus = "GO" | "NO_GO";
-export interface Wt6MemoryEvidence { schemaVersion: 1; contract: "dokkan-world-tournament-memory-evidence"; contractVersion: "0.8.0"; method: "windows_process_tree_working_set_poll_15ms"; limitBytes: 1073741824; sourceSha256: string; artifactAggregateSha256: string; implementationAggregateSha256: string; measurements: Array<{ gate: "WT0" | "WT1" | "WT2" | "WT3" | "WT4" | "WT5" | "WT6"; peakProcessTreeWorkingSetBytes: number; exitCode: 0 }>; observedMaxPeakBytes: number }
+export interface Wt6MemoryEvidence { schemaVersion: 1; contract: "dokkan-world-tournament-memory-evidence"; contractVersion: "0.9.0"; method: "windows_process_tree_working_set_poll_15ms"; limitBytes: 1073741824; sourceSha256: string; artifactAggregateSha256: string; implementationAggregateSha256: string; measurements: Array<{ gate: "WT0" | "WT1" | "WT2" | "WT3" | "WT4" | "WT5" | "WT6"; peakProcessTreeWorkingSetBytes: number; exitCode: 0 }>; observedMaxPeakBytes: number }
 export interface Wt6Decision { key: string; status: Wt6DecisionStatus; scope: string; rationale: string; exitCriteria: string[] }
 export interface Wt6Dataset {
     schemaVersion: 1;
     contract: "dokkan-world-tournament-readiness";
-    contractVersion: "0.8.0";
+    contractVersion: "0.9.0";
     collectionMode: "offline_double_generation_no_requests";
     productionMutation: false;
     defaultEnabled: false;
@@ -22,7 +22,7 @@ export interface Wt6Dataset {
         uniqueBlobCount: number;
         categoryTargetCounts: { tip: number; history_old: number; history_new: number };
         sensitiveValueCount: number;
-        sourceCategoryValueCounts: { headers: number; cookies: number; query: number; url_credentials: number; request_body: number; response_body: number };
+        sourceCategoryValueCounts: { headers: number; cookies: number; url_path: number; query: number; url_credentials: number; request_body: number; response_body: number };
         sensitiveMatchCount: 0;
         harStructureTargetCount: 2;
         tipHarStructureTargetCount: 0;
