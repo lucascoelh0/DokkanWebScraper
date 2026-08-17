@@ -72,6 +72,13 @@ export interface Wt5SqliteEvidence {
     mapLinks: Array<{ mapId: number; budokaiId: number }>;
 }
 
+export interface Wt5StructuralCoordinates {
+    eventId: number;
+    missionIds: number[];
+    boxRankingIds: number[];
+    mapIds: number[];
+}
+
 export interface Wt5Sources {
     files: Map<string, any>;
     sqlite: Wt5SqliteEvidence;

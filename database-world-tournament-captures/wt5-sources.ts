@@ -2,7 +2,7 @@ import { execFileSync } from "child_process";
 import { createHash } from "crypto";
 import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "fs";
 import { relative, resolve } from "path";
-import { Wt5SourceLock, Wt5Sources, Wt5SqliteEvidence } from "./wt5-contract";
+import { Wt5SourceLock, Wt5Sources, Wt5SqliteEvidence, Wt5StructuralCoordinates } from "./wt5-contract";
 
 const sha256 = (value: string | Buffer): string => createHash("sha256").update(value).digest("hex");
 
@@ -24,7 +24,7 @@ function validateArtifact(files: Map<string, any>, lock: Wt5SourceLock, key: "e1
     if (!payloadLock || !validationLock || payload?.contract !== contract || payload?.contractVersion !== version || validation?.valid !== true || manifest?.contractVersion !== version || manifest?.fileName !== payloadLock.path.split("/").at(-1) || manifest?.sizeBytes !== payloadLock.sizeBytes || manifest?.sha256 !== payloadLock.sha256 || manifest?.validation?.fileName !== validationLock.path.split("/").at(-1) || manifest?.validation?.sizeBytes !== validationLock.sizeBytes || manifest?.validation?.sha256 !== validationLock.sha256) throw new Error(`WT5 ${key} contract mismatch`);
 }
 
-export function loadWt5Sources(roots: Record<"main" | "capture" | "database", string>, lock: Wt5SourceLock): Wt5Sources {
+export function loadWt5Sources(roots: Record<"main" | "capture" | "database", string>, lock: Wt5SourceLock, coordinates?: Wt5StructuralCoordinates): Wt5Sources {
     const expected = ["e1_manifest","e1_payload","e1_validation","e5_manifest","e5_payload","e5_validation","e9_manifest","e9_payload","e9_validation","h11_payload","h11_source_lock","h11_validation","h12_payload","h12_source_lock","h12_validation","h13_payload","h13_validation","h3_payload","h3_validation","h7_payload","h7_source_lock","h7_validation","s2_manifest","s2_payload","s2_validation","s7_manifest","s7_payload","s7_validation"].sort();
     if (lock.schemaVersion !== 1 || lock.contract !== "dokkan-world-tournament-shadow-source-lock" || lock.contractVersion !== "0.6.0" || JSON.stringify(lock.files.map(value => value.key).sort()) !== JSON.stringify(expected)) throw new Error("WT5 source lock mismatch");
     const files = new Map<string, any>(), lineage: Wt5Sources["lineage"] = [];
@@ -67,7 +67,8 @@ export function loadWt5Sources(roots: Record<"main" | "capture" | "database", st
         const snapshotInside = relative(logsReal, snapshotPath); if (!snapshotInside || snapshotInside.startsWith("..")) throw new Error("WT5 private snapshot boundary");
         writeFileSync(snapshotPath, before, { flag: "wx", mode: 0o600 }); const snapshotBefore = readFileSync(snapshotPath);
         if (lstatSync(snapshotPath).isSymbolicLink() || snapshotBefore.length !== lock.database.sizeBytes || sha256(snapshotBefore) !== lock.database.sha256) throw new Error("WT5 private snapshot identity mismatch");
-        sqlite = JSON.parse(execFileSync(process.platform === "win32" ? "python" : "python3", [bridge, "--database", snapshotPath], { encoding: "utf8", maxBuffer: 1024 * 1024, timeout: 15000, killSignal: "SIGKILL", windowsHide: true })) as Wt5SqliteEvidence;
+        if (!coordinates || !Number.isSafeInteger(coordinates.eventId) || coordinates.missionIds.length === 0 || coordinates.boxRankingIds.length === 0 || coordinates.mapIds.length === 0 || [...coordinates.missionIds, ...coordinates.boxRankingIds, ...coordinates.mapIds].some(value => !Number.isSafeInteger(value))) throw new Error("WT5 structural coordinates invalid");
+        sqlite = JSON.parse(execFileSync(process.platform === "win32" ? "python" : "python3", [bridge, "--database", snapshotPath, "--event-id", String(coordinates.eventId), "--mission-ids", coordinates.missionIds.join(","), "--box-ranking-ids", coordinates.boxRankingIds.join(","), "--map-ids", coordinates.mapIds.join(",")], { encoding: "utf8", maxBuffer: 1024 * 1024, timeout: 15000, killSignal: "SIGKILL", windowsHide: true })) as Wt5SqliteEvidence;
         const snapshotAfter = readFileSync(snapshotPath), sourceAfter = readFileSync(databasePath);
         if (lstatSync(snapshotPath).isSymbolicLink() || snapshotAfter.length !== snapshotBefore.length || sha256(snapshotAfter) !== lock.database.sha256 || sourceAfter.length !== before.length || sha256(sourceAfter) !== lock.database.sha256) throw new Error("WT5 snapshot/source changed during read");
     } finally {

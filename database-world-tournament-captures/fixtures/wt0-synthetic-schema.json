@@ -1,0 +1,1 @@
+{"schemaVersion":1,"synthetic":true,"namespace":"safe-integer-high-synthetic","eventId":9007190000000007,"mapId":9007190000000701,"responseSchema":[{"path":"$","types":["object"]},{"path":"$.budokai_maps","types":["array"]}]}

@@ -1065,23 +1065,33 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ## World Tournament WT0-WT6 checkpoint (2026-08-16)
 
-- The isolated branch `codex/database-world-tournament-capture-audit` starts at
-  exact `3222f2eeede2b70bafbf1b6c00f2c6a521b74485`; `main` was not modified.
+- The WT campaign ancestry is pinned to exact
+  `3222f2eeede2b70bafbf1b6c00f2c6a521b74485`. The capture execution itself did
+  not perform repository integration; reviewed offline/default-off
+  infrastructure integration is GO.
 - WT0-WT6 completed an offline, fail-closed audit of the external 7,087,930-byte
   HAR (`70ce81581e9237fb1b9a8da7dd0db1c24dd397dc329cc57cca468705265d66cd`).
-  The HAR and its source lock are not tracked. Captured-value scan results are
-  1,289 in-memory values from all HAR routes, zero exact matches and zero
-  generic token matches.
+  The HAR and its source lock are not tracked. The scanner catalogued 3,361
+  sensitive values and examined 3,560 targets/3,388 unique blobs across the
+  complete corrected tip and every old/new changed blob in the eight-commit
+  range, with zero sensitive matches and zero captured/raw HAR targets. The two
+  former synthetic-fixture HAR-shaped historical targets are pinned by exact
+  category-bound fingerprints; missing, additional or tip structure fails closed.
+- Source ingestion requires an absolute external non-reparse root and a strict
+  relative child path; realpath containment and every path component are
+  revalidated before and after reading. Absolute, traversal, UNC, drive-relative,
+  mixed-separator, symlink and junction escapes fail closed.
 - Contracts now cover event/lifecycle, account entry/status, maps, ranks,
   rankings, borders, friends, box ranking, schedules, briefing/supporters,
   advantageous cards, mission relation and the opaque start envelope. HTTP 200
   proves acceptance/order only; sign semantics and crash causality are unknown.
 - Structural shadow parity is 1 agreement, 4 coverage gaps, 1 unknown and 7
-  unjoinable cells. The older pinned database roots do not contain Budokai 63,
-  mission 63001 or box ranking 631. Reward definitions and grants stay separate.
+  unjoinable cells. The older pinned database roots do not contain the observed
+  event, mission or box-ranking identities. Reward definitions and grants stay
+  separate.
 - Two complete generations of 21 WT0-WT6 files were byte-identical. Maximum
-  observed process-tree working set was 589,828,096 bytes. GO is limited to
-  offline/default-off infrastructure and sanitized fixtures. Replay,
+  observed process-tree working set was 589,512,704 bytes. GO is limited to
+  reviewed offline/default-off infrastructure and completely synthetic fixtures. Replay,
   authenticated automation, missing finish/results, sign decoding, Android,
   R2, publisher, production and source replacement remain NO-GO.
 - Consolidated evidence and integration guidance are in

@@ -7,7 +7,17 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--database", required=True)
+    parser.add_argument("--event-id", required=True, type=int)
+    parser.add_argument("--mission-ids", required=True)
+    parser.add_argument("--box-ranking-ids", required=True)
+    parser.add_argument("--map-ids", required=True)
     options = parser.parse_args()
+    parse_ids = lambda value: [int(item) for item in value.split(",") if item]
+    mission_ids = parse_ids(options.mission_ids)
+    box_ranking_ids = parse_ids(options.box_ranking_ids)
+    map_ids = parse_ids(options.map_ids)
+    if not mission_ids or not box_ranking_ids or not map_ids:
+        raise RuntimeError("structural coordinates missing")
     database = Path(options.database).resolve(strict=True)
     connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
     connection.execute("PRAGMA query_only = ON")
@@ -17,13 +27,16 @@ def main() -> None:
         required = {"budokais", "budokai_missions", "budokai_box_rankings"}
         if not required.issubset(tables):
             raise RuntimeError("required structural tables missing")
-        budokai_ids = [row[0] for row in connection.execute("SELECT id FROM budokais WHERE id = ? ORDER BY id", (63,))]
-        mission_links = [{"missionId": row[0], "budokaiId": row[1]} for row in connection.execute("SELECT id, budokai_id FROM budokai_missions WHERE id = ? ORDER BY id", (63001,))]
-        box_links = [{"boxRankingId": row[0], "budokaiId": row[1]} for row in connection.execute("SELECT id, budokai_id FROM budokai_box_rankings WHERE id = ? ORDER BY id", (631,))]
+        budokai_ids = [row[0] for row in connection.execute("SELECT id FROM budokais WHERE id = ? ORDER BY id", (options.event_id,))]
+        mission_marks = ",".join("?" for _ in mission_ids)
+        box_marks = ",".join("?" for _ in box_ranking_ids)
+        map_marks = ",".join("?" for _ in map_ids)
+        mission_links = [{"missionId": row[0], "budokaiId": row[1]} for row in connection.execute(f"SELECT id, budokai_id FROM budokai_missions WHERE id IN ({mission_marks}) ORDER BY id", mission_ids)]
+        box_links = [{"boxRankingId": row[0], "budokaiId": row[1]} for row in connection.execute(f"SELECT id, budokai_id FROM budokai_box_rankings WHERE id IN ({box_marks}) ORDER BY id", box_ranking_ids)]
         map_table = "budokai_maps" in tables
         map_links = []
         if map_table:
-            map_links = [{"mapId": row[0], "budokaiId": row[1]} for row in connection.execute("SELECT id, budokai_id FROM budokai_maps WHERE id IN (631,632,633,634) ORDER BY id")]
+            map_links = [{"mapId": row[0], "budokaiId": row[1]} for row in connection.execute(f"SELECT id, budokai_id FROM budokai_maps WHERE id IN ({map_marks}) ORDER BY id", map_ids)]
         result = {
             "schemaVersion": 1,
             "contract": "dokkan-world-tournament-sqlite-structural-evidence",

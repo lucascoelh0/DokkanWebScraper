@@ -9,11 +9,11 @@ identity is 7,087,930 bytes, SHA-256
 with 106 entries. The ignored external source lock contains only that identity,
 the source ID and entry count.
 
-The branch started at exact `main`/`origin/main`
-`3222f2eeede2b70bafbf1b6c00f2c6a521b74485` and is isolated as
-`codex/database-world-tournament-capture-audit`. No request was replayed, no
-external game/API request was made, and Android, R2, publishers and production
-were not touched.
+The campaign ancestry is pinned to
+`3222f2eeede2b70bafbf1b6c00f2c6a521b74485`. The capture execution itself did
+not perform repository integration. No request was replayed, no external
+game/API request was made, and Android, R2, publishers and production were not
+touched.
 
 ## Gate results
 
@@ -22,21 +22,21 @@ were not touched.
   headers, tokens, query values, raw bodies, sign values and personal scalars.
 - WT1 made route schemas lossless by type occurrence and entry index. POST
   `/budokais/{id}/tournaments` remains observed structure only.
-- WT2 separated Budokai 63 identity/presentation/lifecycle, the four lifecycle
-  coordinates, account-scoped entry/status, maps 631-634 and rank definitions.
+- WT2 separated the observed Budokai identity/presentation/lifecycle, the four
+  lifecycle coordinates, account-scoped entry/status, map identities and rank definitions.
   Global event status remains unknown.
 - WT3 separated general ranking/pagination/`updated_at`, borders/`my_ranking`,
-  friends, box ranking 631 and bonus schedule 5. Ranking values and people are
+  friends, box ranking and bonus schedule identities. Ranking values and people are
   schema-only. No reward grant or claim was observed.
 - WT4 retained briefing, supporter/deck, teaming-power, advantageous-card and
-  mission schemas. Mission 63001 stays an account-scoped partial relation. The
+  mission schemas. The mission identity stays an account-scoped partial relation. The
   start response is an opaque `sign` envelope: HTTP 200 and ordering are proved;
   decoding, replay, internal semantics and crash causality are not.
 - WT5 joined only numeric structural coordinates against pinned E0-E9,
   H0-H13, S0-S7 and a private read-only SQLite snapshot. The result is one
-  identity agreement (bonus schedule 5), four coverage gaps, one unknown and
-  seven unjoinable cells. Budokai 63, mission 63001 and box ranking 631 are
-  absent from the older database/E/S roots. That absence is not a conflict.
+  identity agreement, four coverage gaps, one unknown and seven unjoinable
+  cells. The observed event, mission and box-ranking identities are absent from
+  the older database/E/S roots. That absence is not a conflict.
   Mission, box and map joins require both child ID and Budokai ID. Reward
   definitions remain distinct from grants.
 - WT6 records readiness, refresh policy, security scan, memory and deterministic
@@ -55,68 +55,76 @@ tracked.
 | WT2 | `wt2-event-entry-ranks.json` | 11,676 | `87742378720b05ac60fb43ebc4da9e36e764126dbc66e1014092bcd37e3c0539` |
 | WT3 | `wt3-rankings-box-schedules.json` | 40,529 | `cb438a3f166873d285a79fbe0ca626763c49cf872c89b1e03bb19d6ee087b840` |
 | WT4 | `wt4-briefing-missions-start.json` | 21,308 | `b5d8a7999ad2352e84090511b5e57c605a7c132d355cf35d05a540ead722ebff` |
-| WT5 | `wt5-shadow-parity.json` | 14,048 | `e92bf96337a58d2bb3cef0629e7d9a04b594320c9f465862d9174a90a4778c58` |
-| WT6 | `wt6-readiness.json` | 9,706 | `c0bc768062707b4895b68785a4f19450e1027c295c9a036565856729b22a3401` |
+| WT5 | `wt5-shadow-parity.json` | 14,043 | `9723fb520cc68a37a3ee75e07e9e277da9b1952b5e93df208e287c365ce0e0f1` |
+| WT6 | `wt6-readiness.json` | 10,600 | `8af37202cb78a9d406853e31b09ed2ce581fde0b5aa5527c9a69eafaf338e785` |
 
 WT6 pins 18 WT0-WT5 payload/manifest/validation members with aggregate SHA-256
-`6b9b1e9faf83c11e73e921b324f54262a01b10d4c41e0bb36efdaadbe5bfa5b2`.
+`0ed76199d05bf27bf90ef89c8aa474c09e6ea2d894060b577409b179fe9117df`.
 Two complete external generations of all 21 WT0-WT6 files were byte-identical;
 their aggregate SHA-256 was
-`7893b29943b8442800a91df724f66637cfce162ed22a286595075b494ee7aa48`.
+`4463b3343e57413c6d6f5e1880adbedbc5920f4f67d928e58b0bd97aa4fc3d88`.
 
 ## Security and resource evidence
 
-The offline scanner collected 1,289 sensitive captured values in memory from
-all HAR routes. Across 71 unique sanitized/versioned and generated scan inputs
-it found zero exact captured value matches and zero generic token/JWT matches.
-No `.har` file is tracked.
+The offline scanner collected 3,361 sensitive captured values in memory across
+headers, cookies, query values, URL credentials and request/response bodies. It
+examined 3,560 targets and 3,388 unique blobs: every one of the 3,329 files in
+the reviewed tip plus the old/new blobs of every changed path in the eight-commit
+range. It found zero sensitive matches and zero captured/raw HAR targets. Two
+historical targets are structurally HAR-shaped copies of the former wholly
+synthetic fixture. They are accepted only by two exact, category-bound structural
+fingerprints; any missing, additional or tip HAR-shaped target fails closed.
+Neither matches captured values, and no HAR-shaped file is present in the
+corrected tip. Specs, fixtures, `lib/`, arbitrary extensions and
+deleted historical blobs receive no exclusion.
 The source lock, diagnostics and generated artifacts remain ignored.
 
 Observed process-tree working-set peaks were:
 
 | Gate | Peak bytes |
 | --- | ---: |
-| WT0 | 105,861,120 |
-| WT1 | 63,803,392 |
-| WT2 | 48,201,728 |
-| WT3 | 49,168,384 |
-| WT4 | 49,483,776 |
-| WT5 | 525,422,592 |
-| WT6 | 589,828,096 |
+| WT0 | 84,836,352 |
+| WT1 | 49,209,344 |
+| WT2 | 49,414,144 |
+| WT3 | 51,400,704 |
+| WT4 | 39,075,840 |
+| WT5 | 518,160,384 |
+| WT6 | 589,512,704 |
 
 Every peak is below the strict 1 GiB limit. The final WT6 repeat measured
-589,828,096 bytes. The evidence is bound to the HAR identity, the aggregate of
-the 18 upstream artifacts and the aggregate of the 23 executable implementation
+589,512,704 bytes. The evidence is bound to the HAR identity, the aggregate of
+the 18 upstream artifacts and the aggregate of the 25 executable implementation
 files used by the campaign.
 
 ## Readiness
 
-GO is limited to additive offline/default-off TypeScript infrastructure and
-sanitized local fixtures.
+GO is limited to reviewed additive offline/default-off TypeScript infrastructure
+and completely synthetic local fixtures.
 
 NO-GO remains explicit for request replay, authenticated automation, missing
 finish/battle results, sign decoding or reproduction, Android, R2, publisher,
 production and replacement of current sources.
 
-A future refresh is manual and offline: keep a new HAR outside the repository,
-create a new ignored source lock, run WT0-WT6 serially, repeat the captured-value
-scan and contract review, and require byte-identical double generation plus a
-sub-1-GiB peak. No additional HAR is required for this campaign.
+A future refresh is manual and offline: provide an absolute external
+`--source-root` plus a strict `--source-relative-path`, create a new ignored
+source lock, run WT0-WT6 serially, repeat the full-tip/historical-blob scan and
+contract review, and require byte-identical double generation plus a sub-1-GiB
+peak. No additional HAR is required for this campaign.
 
 ## Risks and integration recommendation
 
 This is one bounded account capture, not sustainable availability authority.
-The static database checkpoint is older than Budokai 63. Runtime map parenting,
+The static database checkpoint predates the observed event. Runtime map parenting,
 rank/ranking semantics, global event status, finish/result payloads and internal
 `sign` meaning remain partial, unknown, opaque or unjoinable. Account-scoped
 schemas must never become global facts, and numeric namespaces must remain
 isolated.
 
-Integration is recommended only as reviewed, optional, default-off offline
-infrastructure. Preserve the seven gate commits during review, do not replace
-existing sources, and require a separate explicit decision for any consumer,
-network, publication or production work. This campaign performs no merge to
-`main`.
+Integration is GO only for the reviewed, optional, default-off offline
+infrastructure and completely synthetic fixtures. This does not authorize a
+consumer or any network, publication or production operation. Preserve the gate
+commits during review, do not replace existing sources, and require a separate
+explicit decision for every excluded scope.
 
 ## Commits
 
@@ -126,4 +134,6 @@ network, publication or production work. This campaign performs no merge to
 - WT3: `18194f6`
 - WT4: `85c594e`
 - WT5: `6b3bcdb`
-- WT6: the commit containing this report
+- WT6: `d1516f1`
+- Corrective hardening: the eighth commit containing the scanner, containment,
+  synthetic-fixture and post-integration readiness corrections

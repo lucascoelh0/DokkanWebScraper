@@ -5,6 +5,7 @@
   "collectionMode": "offline_pinned_structural_ids_only_no_requests",
   "productionMutation": false,
   "defaultEnabled": false,
+  "syntheticNamespace": "safe-integer-high-synthetic",
   "identityPolicy": "numeric_structural_ids_only_names_and_texts_never_identity",
   "sourceLockSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "lineage": [
@@ -28,22 +29,22 @@
     { "series": "SQLite", "status": "direct_and_pinned", "boundary": "synthetic read-only receipt" }
   ],
   "comparisons": [
-    { "key": "bonus_schedules", "left": "WT3", "right": "H3", "joinKey": "bonus_schedule.id", "structuralIds": [5], "classification": "global", "status": "agreement", "matchedCount": 1, "boundary": "synthetic identity only" },
-    { "key": "box_ranking", "left": "WT3", "right": "E5/SQLite", "joinKey": "budokai_box_rankings.id", "structuralIds": [631], "classification": "partial", "status": "coverage_gap", "matchedCount": 0, "boundary": "synthetic gap" },
-    { "key": "briefing_supporters_advantageous", "left": "WT4", "right": "E/H/S/SQLite", "joinKey": null, "structuralIds": [0], "classification": "unjoinable", "status": "unjoinable", "matchedCount": 0, "boundary": "synthetic schema only" },
-    { "key": "budokai_maps", "left": "WT2", "right": "SQLite", "joinKey": null, "structuralIds": [631, 632, 633, 634], "classification": "unjoinable", "status": "unjoinable", "matchedCount": 0, "boundary": "synthetic namespace isolation" },
-    { "key": "event_identity", "left": "WT2", "right": "E1/S2/H3/SQLite", "joinKey": "budokai.id", "structuralIds": [63], "classification": "global", "status": "coverage_gap", "matchedCount": 0, "boundary": "synthetic gap" },
-    { "key": "event_lifecycle", "left": "WT2", "right": "E1/H3", "joinKey": "budokai.id", "structuralIds": [63], "classification": "partial", "status": "coverage_gap", "matchedCount": 0, "boundary": "synthetic schema only" },
+    { "key": "bonus_schedules", "left": "WT3", "right": "H3", "joinKey": "bonus_schedule.id", "structuralIds": [9007190000000005], "classification": "global", "status": "agreement", "matchedCount": 1, "boundary": "synthetic identity only" },
+    { "key": "box_ranking", "left": "WT3", "right": "E5/SQLite", "joinKey": "budokai_box_rankings.id", "structuralIds": [9007190000000701], "classification": "partial", "status": "coverage_gap", "matchedCount": 0, "boundary": "synthetic gap" },
+    { "key": "briefing_supporters_advantageous", "left": "WT4", "right": "E/H/S/SQLite", "joinKey": null, "structuralIds": [9007190000000000], "classification": "unjoinable", "status": "unjoinable", "matchedCount": 0, "boundary": "synthetic schema only" },
+    { "key": "budokai_maps", "left": "WT2", "right": "SQLite", "joinKey": null, "structuralIds": [9007190000000701, 9007190000000702, 9007190000000703, 9007190000000704], "classification": "unjoinable", "status": "unjoinable", "matchedCount": 0, "boundary": "synthetic namespace isolation" },
+    { "key": "event_identity", "left": "WT2", "right": "E1/S2/H3/SQLite", "joinKey": "budokai.id", "structuralIds": [9007190000000007], "classification": "global", "status": "coverage_gap", "matchedCount": 0, "boundary": "synthetic gap" },
+    { "key": "event_lifecycle", "left": "WT2", "right": "E1/H3", "joinKey": "budokai.id", "structuralIds": [9007190000000007], "classification": "partial", "status": "coverage_gap", "matchedCount": 0, "boundary": "synthetic schema only" },
     { "key": "general_ranking", "left": "WT3", "right": "E/H/S/SQLite", "joinKey": null, "structuralIds": [], "classification": "account_scoped", "status": "unjoinable", "matchedCount": 0, "boundary": "synthetic account boundary" },
-    { "key": "global_event_status", "left": "WT2", "right": "E/H/S/SQLite", "joinKey": null, "structuralIds": [63], "classification": "unknown", "status": "unknown", "matchedCount": 0, "boundary": "synthetic unknown" },
-    { "key": "mission_relation", "left": "WT4", "right": "E5/SQLite", "joinKey": "budokai_missions.id", "structuralIds": [63001], "classification": "account_scoped", "status": "coverage_gap", "matchedCount": 0, "boundary": "synthetic gap" },
-    { "key": "opaque_start", "left": "WT4", "right": "E/H/S/SQLite", "joinKey": null, "structuralIds": [63], "classification": "opaque", "status": "unjoinable", "matchedCount": 0, "boundary": "synthetic opaque envelope" },
+    { "key": "global_event_status", "left": "WT2", "right": "E/H/S/SQLite", "joinKey": null, "structuralIds": [9007190000000007], "classification": "unknown", "status": "unknown", "matchedCount": 0, "boundary": "synthetic unknown" },
+    { "key": "mission_relation", "left": "WT4", "right": "E5/SQLite", "joinKey": "budokai_missions.id", "structuralIds": [9007190000007001], "classification": "account_scoped", "status": "coverage_gap", "matchedCount": 0, "boundary": "synthetic gap" },
+    { "key": "opaque_start", "left": "WT4", "right": "E/H/S/SQLite", "joinKey": null, "structuralIds": [9007190000000007], "classification": "opaque", "status": "unjoinable", "matchedCount": 0, "boundary": "synthetic opaque envelope" },
     { "key": "rank_definitions", "left": "WT2", "right": "E/H/S/SQLite", "joinKey": null, "structuralIds": [], "classification": "unjoinable", "status": "unjoinable", "matchedCount": 0, "boundary": "synthetic absent source" },
     { "key": "ranking_borders_my_ranking", "left": "WT3", "right": "E/H/S/SQLite", "joinKey": null, "structuralIds": [], "classification": "account_scoped", "status": "unjoinable", "matchedCount": 0, "boundary": "synthetic account boundary" },
     { "key": "ranking_friends", "left": "WT3", "right": "E/H/S/SQLite", "joinKey": null, "structuralIds": [], "classification": "account_scoped", "status": "unjoinable", "matchedCount": 0, "boundary": "synthetic account boundary" }
   ],
   "rewards": {
-    "definitions": { "status": "coverage_gap", "coordinates": [{ "kind": "budokai_mission", "id": 63001 }, { "kind": "budokai_box_ranking", "id": 631 }], "observedCount": 0 },
+    "definitions": { "status": "coverage_gap", "coordinates": [{ "kind": "budokai_mission", "id": 9007190000007001 }, { "kind": "budokai_box_ranking", "id": 9007190000000701 }], "observedCount": 0 },
     "granted": { "status": "unknown", "observed": false, "boundary": "no_reward_grant_or_claim_observed" }
   },
   "totals": { "agreement": 1, "coverage_gap": 4, "unknown": 1, "unjoinable": 7 }
