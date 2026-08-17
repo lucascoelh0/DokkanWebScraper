@@ -56,13 +56,13 @@ tracked.
 | WT3 | `wt3-rankings-box-schedules.json` | 40,529 | `cb438a3f166873d285a79fbe0ca626763c49cf872c89b1e03bb19d6ee087b840` |
 | WT4 | `wt4-briefing-missions-start.json` | 21,308 | `b5d8a7999ad2352e84090511b5e57c605a7c132d355cf35d05a540ead722ebff` |
 | WT5 | `wt5-shadow-parity.json` | 14,043 | `9723fb520cc68a37a3ee75e07e9e277da9b1952b5e93df208e287c365ce0e0f1` |
-| WT6 | `wt6-readiness.json` | 12,128 | `4dd9636d7e848409ee6a590880e2fd6daf1092d3b815e35a202d46ac94dc36e7` |
+| WT6 | `wt6-readiness.json` | 13,106 | `cf875977b7333569a9256a88416b0ee604cd221ace17164833c0c51a705d5a56` |
 
 WT6 pins 18 WT0-WT5 payload/manifest/validation members with aggregate SHA-256
 `0ed76199d05bf27bf90ef89c8aa474c09e6ea2d894060b577409b179fe9117df`.
 Two complete external generations of all 21 WT0-WT6 files were byte-identical;
 their aggregate SHA-256 was
-`92245a779e74abb2fbb323b8049b42080dfcfc592a87d1caa22361f4327f78f4`.
+`340e9fb02a48a5becf92383c09346b501c0e2439be50d052c39d741765b69eec`.
 
 ## Security and resource evidence
 
@@ -71,9 +71,9 @@ The offline scanner collected 19,572 captured scalar observations in memory:
 credentials, 16 request-body leaves and 16,760 response-body leaves. Every JSON
 leaf is retained in memory with request/response origin, sanitized endpoint,
 method, structural category, exact JSON path, JSON type and canonical value.
-It examined 3,662 targets and 3,439 unique blobs: all 3,332 files in the
-reviewed tip plus 107 old and 223 new historical targets across the
-eleven-commit range. The complete matcher classified 6,097 matches: 6,059
+It examined 3,708 targets and 3,462 unique blobs: all 3,335 files in the
+reviewed tip plus 127 old and 246 new historical targets across the
+twelve-commit candidate range. The complete matcher classified 6,097 matches: 6,059
 `permitted_protocol_structure`, 38
 `permitted_public_game_structure`, 0 `prohibited_sensitive` and 0 `unresolved`.
 The public-game total is 35 exact global `/ping` host coordinates plus three
@@ -116,17 +116,47 @@ rejects blobs above 16 MiB, empty catalogs/targets, malformed
 expected JSON/URL structures, unreadable blobs and captured categories without
 an implemented matcher.
 
-Forty observations removed by the previous correction were empty
-`application/octet-stream` bodies. They contain no scalar value and remain
+Forty observations removed by the previous correction were empty bodies with
+the `application/` + `octet-stream` media type. They contain no scalar value and remain
 ignored symmetrically for request and response; this is an explicit empty-body
 rule, not a missing matcher.
 
 The field-scoped rule `public_first_party_app_bundle_identity_v1` is supported
 independently by the pinned first-party APK (98,799,013 bytes, SHA-256
 `a51ba758e0555e0a756aa4f20278e6bec25ba6b0c7dcdcd0f4372e0fad159bc0`).
-`aapt dump badging` was run with Android Asset Packaging Tool
-`v0.2-12874835`; the executable SHA-256 is
+The pinned 1,646,688-byte Android Asset Packaging Tool
+`v0.2-12874835` has executable SHA-256
 `3a79b1b3f6e68d83a0eb5fe82bd557f51c6c02f07355ee0ad293c5ea43e32427`.
+The runner validates each external source root, opens the APK and tool once,
+records their realpath, file type, device/inode where available, link count,
+size, mode and timestamps, and streams each still-open handle into an
+exclusive directory below the ignored runner-controlled root. Destination
+files are create-only, incrementally hashed, fsynced with their directory when
+supported, required to be regular non-reparse single-link material and made
+read-only when supported. The external pathnames are never reopened for the
+copy.
+
+Only `privateSnapshot/aapt.exe` is launched, with no shell, an isolated working
+directory and environment, fixed productive arguments, bounded output and
+timeouts; only `privateSnapshot/source.apk` is passed to `dump badging`.
+Snapshot containment, material identity, stable timestamps, size and SHA-256
+are validated before and after both executions. Evidence schema 2 binds the
+private material contract and lineage SHA-256
+`de08a35c3410de426b9fce344e894623d0c5d1ab9ec45c7e3c686e41772adc72`,
+not either external pathname. Normal cleanup removes only the exact owned
+members and directory. Unexpected members are quarantined only while the
+operation-directory identity is still proved; an identity substitution makes
+cleanup refuse the unknown pathname.
+
+This guarantees that concurrent replacement or A-B-A restoration of either
+external pathname cannot cause B to be copied, inspected or executed; source
+identity changes instead fail closed. It rejects symlink, junction/reparse and
+unexpected hard-link material, detects snapshot changes before or after
+execution, and prevents ordinary path mistakes or external races from
+selecting bytes other than the pinned snapshots. It does not claim protection
+against a malicious process running as the same OS identity that discovers and
+mutates the private namespace, including an internal A-B-A; a compromised
+kernel/filesystem; or alteration of an executable already loaded by the OS.
 Only the extracted identity's size (32 bytes) and SHA-256
 `74d2f87b503e9ff38f27298af6942a1a1898d1aef543b6c85720205e92cd0888`
 are persisted. The clear identity and the HAR observation were compared only
@@ -145,13 +175,13 @@ Observed process-tree working-set peaks were:
 | WT3 | 51,400,704 |
 | WT4 | 39,075,840 |
 | WT5 | 518,160,384 |
-| WT6 | 625,582,080 |
+| WT6 | 595,144,704 |
 
 Every peak is below the strict 1 GiB limit. The final WT6 repeat measured
-625,582,080 bytes. The evidence is bound to the HAR identity, the aggregate of
+595,144,704 bytes. The evidence is bound to the HAR identity, the aggregate of
 the 18 upstream artifacts and the aggregate of the 26 executable implementation
 files used by the campaign, including the identity verifier
-`5a86ed746398db85b943a10bf383404a96a3cd61040197518acac77f60b74adc`).
+`51fbbb10544bfce93051399fdec642dc5bd0c2be66289651f92ac5cd49562391`).
 
 ## Readiness
 
@@ -202,3 +232,6 @@ explicit decision for every excluded scope.
 - First-party field classification: the eleventh corrective commit binds the
   exact auth bundle coordinate to independently pinned APK evidence, preserves
   credential precedence and reports every permitted/prohibited/unresolved class
+- Private proof snapshot: the twelfth corrective commit removes the APK/aapt
+  pathname TOCTOU boundary, binds evidence to exclusive private snapshots and
+  documents cleanup ownership and the exact threat model

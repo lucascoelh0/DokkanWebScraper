@@ -8,7 +8,7 @@
     "entryCount": 1
   },
   "security": {
-    "commitCount": 11,
+    "commitCount": 12,
     "targetCount": 3,
     "uniqueBlobCount": 3,
     "categoryTargetCounts": { "tip": 1, "history_old": 1, "history_new": 1 },
@@ -25,11 +25,22 @@
     "accountScopedPayloadMatchCount": 0,
     "opaqueCredentialMatchCount": 0,
     "firstPartyAppIdentityEvidence": {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "contract": "dokkan-wt-first-party-app-identity",
       "rule": "public_first_party_app_bundle_identity_v1",
       "apk": { "sizeBytes": 98799013, "sha256": "a51ba758e0555e0a756aa4f20278e6bec25ba6b0c7dcdcd0f4372e0fad159bc0" },
-      "tool": { "name": "aapt", "executableSha256": "3a79b1b3f6e68d83a0eb5fe82bd557f51c6c02f07355ee0ad293c5ea43e32427", "version": "Android Asset Packaging Tool, v0.2-12874835", "command": "aapt dump badging <pinned-apk>" },
+      "tool": { "name": "aapt", "sizeBytes": 1646688, "executableSha256": "3a79b1b3f6e68d83a0eb5fe82bd557f51c6c02f07355ee0ad293c5ea43e32427", "version": "Android Asset Packaging Tool, v0.2-12874835", "command": "privateSnapshot/aapt.exe dump badging privateSnapshot/source.apk" },
+      "snapshot": {
+        "contract": "private-open-filehandle-snapshot-execution-v1",
+        "apk": { "relativePath": "source.apk", "sizeBytes": 98799013, "sha256": "a51ba758e0555e0a756aa4f20278e6bec25ba6b0c7dcdcd0f4372e0fad159bc0" },
+        "tool": { "relativePath": "aapt.exe", "sizeBytes": 1646688, "sha256": "3a79b1b3f6e68d83a0eb5fe82bd557f51c6c02f07355ee0ad293c5ea43e32427" },
+        "sourceOpenCount": { "apk": 1, "tool": 1 },
+        "copy": "single_open_filehandle_stream_incremental_sha256",
+        "execution": "private_snapshots_only_no_shell",
+        "validation": "identity_size_stable_timestamps_type_sha256_before_after",
+        "cleanup": "owned_identity_only_or_quarantine",
+        "materialLineageSha256": "de08a35c3410de426b9fce344e894623d0c5d1ab9ec45c7e3c686e41772adc72"
+      },
       "identity": { "jsonType": "string", "sizeBytes": 32, "sha256": "74d2f87b503e9ff38f27298af6942a1a1898d1aef543b6c85720205e92cd0888" }
     },
     "harStructureTargetCount": 2,
@@ -51,7 +62,7 @@
   "memory": {
     "schemaVersion": 1,
     "contract": "dokkan-world-tournament-memory-evidence",
-    "contractVersion": "0.11.0",
+    "contractVersion": "0.12.0",
     "method": "windows_process_tree_working_set_poll_15ms",
     "limitBytes": 1073741824,
     "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

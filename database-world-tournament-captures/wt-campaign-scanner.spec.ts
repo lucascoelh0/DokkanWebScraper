@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { buildWtSensitiveCatalog, collectWtGitAuditTargets, scanWtAuditTargets, WT_LITERAL_CANONICAL_MIN_BYTES, WT_LITERAL_MATCHER_CONTRACT_VERSION, WT_LITERAL_STRING_MIN_BYTES, WtAuditTargetInput } from "./wt-campaign-scanner";
-import { WT_FIRST_PARTY_AAPT_SHA256, WT_FIRST_PARTY_AAPT_VERSION, WT_FIRST_PARTY_APK_SHA256, WT_FIRST_PARTY_APK_SIZE_BYTES, WT_FIRST_PARTY_APP_IDENTITY_RULE, WT_FIRST_PARTY_APP_IDENTITY_SHA256, WT_FIRST_PARTY_APP_IDENTITY_SIZE_BYTES, WtFirstPartyAppIdentityProof } from "./wt-first-party-app-identity";
+import { WT_FIRST_PARTY_AAPT_SHA256, WT_FIRST_PARTY_AAPT_SIZE_BYTES, WT_FIRST_PARTY_AAPT_VERSION, WT_FIRST_PARTY_APK_SHA256, WT_FIRST_PARTY_APK_SIZE_BYTES, WT_FIRST_PARTY_APP_IDENTITY_RULE, WT_FIRST_PARTY_APP_IDENTITY_SHA256, WT_FIRST_PARTY_APP_IDENTITY_SIZE_BYTES, WT_FIRST_PARTY_SNAPSHOT_CONTRACT, WT_FIRST_PARTY_SNAPSHOT_LINEAGE_SHA256, WtFirstPartyAppIdentityProof } from "./wt-first-party-app-identity";
 import { createHash } from "crypto";
 
 const values = {
@@ -42,8 +42,8 @@ function focusedHar(options: FocusedHarOptions): string {
         queryString: [],
     };
     const response: Record<string, unknown> = { status: 200, headers: options.responseHeaders ?? [], cookies: options.responseCookies ?? [] };
-    if (Object.prototype.hasOwnProperty.call(options, "requestBody") || options.requestText !== undefined) request.postData = { mimeType: options.requestMimeType ?? (Object.prototype.hasOwnProperty.call(options, "requestBody") ? "application/json" : "text/plain"), text: options.requestText ?? JSON.stringify(options.requestBody) };
-    if (Object.prototype.hasOwnProperty.call(options, "responseBody") || options.responseText !== undefined) response.content = { mimeType: options.responseMimeType ?? (Object.prototype.hasOwnProperty.call(options, "responseBody") ? "application/json" : "text/plain"), text: options.responseText ?? JSON.stringify(options.responseBody) };
+    if (Object.prototype.hasOwnProperty.call(options, "requestBody") || options.requestText !== undefined) request.postData = { mimeType: options.requestMimeType ?? (Object.prototype.hasOwnProperty.call(options, "requestBody") ? "application/wt-synthetic+json" : "text/plain"), text: options.requestText ?? JSON.stringify(options.requestBody) };
+    if (Object.prototype.hasOwnProperty.call(options, "responseBody") || options.responseText !== undefined) response.content = { mimeType: options.responseMimeType ?? (Object.prototype.hasOwnProperty.call(options, "responseBody") ? "application/wt-synthetic+json" : "text/plain"), text: options.responseText ?? JSON.stringify(options.responseBody) };
     return JSON.stringify({ log: { entries: [{ request, response }] } });
 }
 
@@ -57,13 +57,13 @@ function har(overrides?: { requestBody?: unknown; responseBody?: unknown; author
             headers: [{ name: "Authorization", value: overrides?.authorization ?? values.header }, { name: "Cookie", value: `session=${values.cookie}` }],
             cookies: [{ name: "session", value: values.cookie }],
             queryString: [{ name: "cursor", value: values.query }],
-            postData: { mimeType: "application/json", text: JSON.stringify(requestBody) },
+            postData: { mimeType: "application/wt-synthetic+json", text: JSON.stringify(requestBody) },
         },
         response: {
             status: 200,
             headers: [],
             cookies: [],
-            content: { mimeType: "application/json", text: JSON.stringify(responseBody) },
+            content: { mimeType: "application/wt-synthetic+json", text: JSON.stringify(responseBody) },
         },
     }] } });
 }
@@ -83,11 +83,17 @@ function appIdentityProof(identity = syntheticAppIdentity): WtFirstPartyAppIdent
     return {
         packageIdentity: identity,
         evidence: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             contract: "dokkan-wt-first-party-app-identity",
             rule: WT_FIRST_PARTY_APP_IDENTITY_RULE,
             apk: { sizeBytes: WT_FIRST_PARTY_APK_SIZE_BYTES, sha256: WT_FIRST_PARTY_APK_SHA256 },
-            tool: { name: "aapt", executableSha256: WT_FIRST_PARTY_AAPT_SHA256, version: WT_FIRST_PARTY_AAPT_VERSION, command: "aapt dump badging <pinned-apk>" },
+            tool: { name: "aapt", sizeBytes: WT_FIRST_PARTY_AAPT_SIZE_BYTES, executableSha256: WT_FIRST_PARTY_AAPT_SHA256, version: WT_FIRST_PARTY_AAPT_VERSION, command: "privateSnapshot/aapt.exe dump badging privateSnapshot/source.apk" },
+            snapshot: {
+                contract: WT_FIRST_PARTY_SNAPSHOT_CONTRACT,
+                apk: { relativePath: "source.apk", sizeBytes: WT_FIRST_PARTY_APK_SIZE_BYTES, sha256: WT_FIRST_PARTY_APK_SHA256 },
+                tool: { relativePath: "aapt.exe", sizeBytes: WT_FIRST_PARTY_AAPT_SIZE_BYTES, sha256: WT_FIRST_PARTY_AAPT_SHA256 },
+                sourceOpenCount: { apk: 1, tool: 1 }, copy: "single_open_filehandle_stream_incremental_sha256", execution: "private_snapshots_only_no_shell", validation: "identity_size_stable_timestamps_type_sha256_before_after", cleanup: "owned_identity_only_or_quarantine", materialLineageSha256: WT_FIRST_PARTY_SNAPSHOT_LINEAGE_SHA256,
+            },
             identity: { jsonType: "string", sizeBytes: WT_FIRST_PARTY_APP_IDENTITY_SIZE_BYTES, sha256: WT_FIRST_PARTY_APP_IDENTITY_SHA256 },
         },
     };
@@ -364,12 +370,12 @@ describe("World Tournament campaign scanner", () => {
     });
 
     it("fails closed for an expected malformed JSON body and an empty catalog", () => {
-        assert.throws(() => buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/", requestText: "{broken", requestMimeType: "application/json" })), /JSON body is malformed/);
-        assert.throws(() => buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/", requestText: "", requestMimeType: "application/json" })), /JSON body is malformed/);
+        assert.throws(() => buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/", requestText: "{broken", requestMimeType: "application/wt-synthetic+json" })), /JSON body is malformed/);
+        assert.throws(() => buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/", requestText: "", requestMimeType: "application/wt-synthetic+json" })), /JSON body is malformed/);
         assert.throws(() => buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/" })), /catalog is empty/);
         const catalog = buildWtSensitiveCatalog(focusedHar({ url: "https://example.invalid/", requestBody: { x: "q7" } }));
         assert.throws(() => scanWtAuditTargets(catalog, [target("invalid-url", "fixture", JSON.stringify({ url: "https://[" }))]), /invalid URL structure/);
-        assert.throws(() => scanWtAuditTargets(catalog, [target("invalid-json-body", "fixture", JSON.stringify({ postData: { mimeType: "application/json", text: "{broken" } }))]), /JSON body is malformed/);
+        assert.throws(() => scanWtAuditTargets(catalog, [target("invalid-json-body", "fixture", JSON.stringify({ postData: { mimeType: "application/wt-synthetic+json", text: "{broken" } }))]), /JSON body is malformed/);
         assert.throws(() => scanWtAuditTargets(catalog, [target("invalid-mime", "fixture", JSON.stringify({ postData: { mimeType: 17, text: "q7" } }))]), /MIME type is malformed/);
         assert.throws(() => scanWtAuditTargets(catalog, [{ targetId: "oversized", category: "fixture", content: Buffer.alloc(16 * 1024 * 1024 + 1) }]), /exceeds the bounded scanner size/);
     });
