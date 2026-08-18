@@ -198,11 +198,17 @@ async function verifyAndroidSource(
 export async function verifyCharacterLeaderSupportedCompatibilityAndroidSource(
     repositoryValue: string,
 ): Promise<CharacterLeaderCompatibilityAndroidSourceIdentity> {
-    return verifyAndroidSource(
+    return verifyCharacterLeaderCompatibilityAndroidSourcePin(
         repositoryValue,
-        boundedGitExecutor,
         CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_ANDROID_SOURCE_PIN,
     );
+}
+
+export async function verifyCharacterLeaderCompatibilityAndroidSourcePin(
+    repositoryValue: string,
+    pin: CharacterLeaderCompatibilityAndroidSourcePin,
+): Promise<CharacterLeaderCompatibilityAndroidSourceIdentity> {
+    return verifyAndroidSource(repositoryValue, boundedGitExecutor, pin);
 }
 
 export async function verifyCharacterLeaderSupportedCompatibilityAndroidSourceForTest(
