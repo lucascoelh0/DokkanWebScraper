@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import {
+    CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_CONTRACT_VERSION,
     CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_RSS_LIMIT_BYTES,
 } from "./leader-supported-compatibility-contract";
 import {
@@ -7,7 +8,9 @@ import {
     materializeCharacterLeaderSupportedCompatibility,
 } from "./leader-supported-compatibility";
 import {
+    CharacterLeaderSupportedCompatibilityExpectedArtifactBytes,
     CharacterLeaderSupportedCompatibilityRunOptions,
+    CharacterLeaderSupportedCompatibilitySourceReceipt,
     loadCharacterLeaderSupportedCompatibilityInputs,
     validateCharacterLeaderSupportedCompatibilityArtifact,
     validateCharacterLeaderSupportedCompatibilityRootSeparation,
@@ -37,7 +40,7 @@ function parseArgs(argv: string[]): CharacterLeaderSupportedCompatibilityRunOpti
     const required = [
         "--sidecar-root", "--production-root", "--fyi-root", "--k43-root", "--k46-root", "--k48-root",
         "--k56-root", "--k58-root", "--k57-report", "--k59-report", "--k60-report", "--k60-receipt",
-        "--k61-report", "--productive-characters", "--scraper-root", "--android-root", "--output-root",
+        "--k61-report", "--productive-characters", "--scraper-root", "--android-repository", "--output-root",
         "--native-runtime", "--database",
     ];
     const allowed = new Set(["--opt-in-k62", ...required]);
@@ -62,7 +65,7 @@ function parseArgs(argv: string[]): CharacterLeaderSupportedCompatibilityRunOpti
         k57Report: values.get("--k57-report")!, k59Report: values.get("--k59-report")!,
         k60Report: values.get("--k60-report")!, k60Receipt: values.get("--k60-receipt")!,
         k61Report: values.get("--k61-report")!, productiveCharacters: values.get("--productive-characters")!,
-        scraperRoot: values.get("--scraper-root")!, androidRoot: values.get("--android-root")!,
+        scraperRoot: values.get("--scraper-root")!, androidRepository: values.get("--android-repository")!,
         outputRoot: values.get("--output-root")!, nativeRuntime: values.get("--native-runtime")!,
         database: values.get("--database")!,
     };
@@ -75,30 +78,100 @@ function assertByteIdentical(left: ReturnType<typeof materializeCharacterLeaderS
     }
 }
 
+export interface CharacterLeaderSupportedCompatibilityFirstPassDependencies {
+    load: typeof loadCharacterLeaderSupportedCompatibilityInputs;
+    buildReport: typeof buildCharacterLeaderSupportedCompatibilityReport;
+    materialize: typeof materializeCharacterLeaderSupportedCompatibility;
+    write: typeof writeCharacterLeaderSupportedCompatibilityArtifacts;
+}
+
+export interface CharacterLeaderSupportedCompatibilityFirstPassResult {
+    readonly k55ValidationProcessPeakRssBytes: number;
+    readonly sourceReceipt: CharacterLeaderSupportedCompatibilitySourceReceipt;
+    readonly expected: CharacterLeaderSupportedCompatibilityExpectedArtifactBytes;
+}
+
+const firstPassDependencies: CharacterLeaderSupportedCompatibilityFirstPassDependencies = {
+    load: loadCharacterLeaderSupportedCompatibilityInputs,
+    buildReport: buildCharacterLeaderSupportedCompatibilityReport,
+    materialize: materializeCharacterLeaderSupportedCompatibility,
+    write: writeCharacterLeaderSupportedCompatibilityArtifacts,
+};
+
+export async function runCharacterLeaderSupportedCompatibilityFirstPass(
+    options: CharacterLeaderSupportedCompatibilityRunOptions,
+    dependencies: CharacterLeaderSupportedCompatibilityFirstPassDependencies = firstPassDependencies,
+): Promise<CharacterLeaderSupportedCompatibilityFirstPassResult> {
+    let loaded: Awaited<ReturnType<typeof loadCharacterLeaderSupportedCompatibilityInputs>> | undefined;
+    let first: ReturnType<typeof materializeCharacterLeaderSupportedCompatibility> | undefined;
+    let second: ReturnType<typeof materializeCharacterLeaderSupportedCompatibility> | undefined;
+    try {
+        loaded = await dependencies.load(options);
+        first = dependencies.materialize(dependencies.buildReport(loaded.inputs));
+        second = dependencies.materialize(dependencies.buildReport(loaded.inputs));
+        assertByteIdentical(first, second);
+        if (!first.validation.valid) throw new Error(`K62 validation failed: ${first.validation.failures.join("; ")}`);
+        await dependencies.write(options.outputRoot, first);
+        return {
+            k55ValidationProcessPeakRssBytes: loaded.k55ValidationProcessPeakRssBytes,
+            sourceReceipt: loaded.sourceReceipt,
+            expected: {
+                gzip: first.gzip,
+                coverageBytes: first.coverageBytes,
+                validationBytes: first.validationBytes,
+                manifestBytes: first.manifestBytes,
+            },
+        };
+    } finally {
+        loaded = undefined;
+        first = undefined;
+        second = undefined;
+    }
+}
+
+export interface CharacterLeaderSupportedCompatibilityLifecycleDependencies {
+    firstPass(options: CharacterLeaderSupportedCompatibilityRunOptions): Promise<CharacterLeaderSupportedCompatibilityFirstPassResult>;
+    collectGarbage(): void;
+    validate: typeof validateCharacterLeaderSupportedCompatibilityArtifact;
+}
+
+const lifecycleDependencies: CharacterLeaderSupportedCompatibilityLifecycleDependencies = {
+    firstPass: runCharacterLeaderSupportedCompatibilityFirstPass,
+    collectGarbage: () => global.gc!(),
+    validate: validateCharacterLeaderSupportedCompatibilityArtifact,
+};
+
+export async function runCharacterLeaderSupportedCompatibilityLifecycle(
+    options: CharacterLeaderSupportedCompatibilityRunOptions,
+    dependencies: CharacterLeaderSupportedCompatibilityLifecycleDependencies = lifecycleDependencies,
+): Promise<{
+    initialChildPeak: number;
+    validated: Awaited<ReturnType<typeof validateCharacterLeaderSupportedCompatibilityArtifact>>;
+}> {
+    const firstPass = await dependencies.firstPass(options);
+    dependencies.collectGarbage();
+    const validated = await dependencies.validate(options, firstPass.expected, firstPass.sourceReceipt);
+    return { initialChildPeak: firstPass.k55ValidationProcessPeakRssBytes, validated };
+}
+
 async function main(): Promise<void> {
     const options = parseArgs(process.argv.slice(2));
     const rss = new RssGuard();
     await validateCharacterLeaderSupportedCompatibilityRootSeparation(options);
-    let loaded = await loadCharacterLeaderSupportedCompatibilityInputs(options);
-    const first = materializeCharacterLeaderSupportedCompatibility(buildCharacterLeaderSupportedCompatibilityReport(loaded.inputs));
-    const second = materializeCharacterLeaderSupportedCompatibility(buildCharacterLeaderSupportedCompatibilityReport(loaded.inputs));
-    assertByteIdentical(first, second);
-    if (!first.validation.valid) throw new Error(`K62 validation failed: ${first.validation.failures.join("; ")}`);
-    await writeCharacterLeaderSupportedCompatibilityArtifacts(options.outputRoot, first);
-    const initialChildPeak = loaded.k55ValidationProcessPeakRssBytes;
-    loaded = undefined as any;
-    global.gc!();
-    const validated = await validateCharacterLeaderSupportedCompatibilityArtifact(options);
-    const finalChildPeak = validated.k55ValidationProcessPeakRssBytes;
+    const lifecycle = await runCharacterLeaderSupportedCompatibilityLifecycle(options);
+    const initialChildPeak = lifecycle.initialChildPeak;
+    const validated = lifecycle.validated;
     const parentPeak = rss.stop();
-    const maximum = Math.max(initialChildPeak, finalChildPeak, parentPeak);
+    const maximum = Math.max(initialChildPeak, parentPeak);
     if (maximum >= CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_RSS_LIMIT_BYTES) throw new Error(`K62 per-process RSS limit reached: ${maximum}`);
     const artifacts = validated.artifacts;
     console.log(JSON.stringify({
         schemaVersion: 1,
         contract: "dokkan-database-character-leader-supported-compatibility-run-result",
-        contractVersion: "1.0.0",
-        sourceBoundValidation: "GO",
+        contractVersion: CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_CONTRACT_VERSION,
+        checkpoint: "K62.1",
+        sourceBoundReconstruction: "GO",
+        sourceStability: "CHECKPOINTED_PERSISTENT_DRIFT_ONLY",
         doubleGenerationByteIdentical: true,
         artifacts: {
             payload: { fileName: artifacts.manifest.fileName, sizeBytes: artifacts.gzip.length, sha256: hash(artifacts.gzip) },
@@ -112,17 +185,23 @@ async function main(): Promise<void> {
         k63Decision: artifacts.report.k63Proposal.decision,
         rssAccounting: {
             scope: "per_process_not_process_tree",
-            initialK58K55ProcessPeakRssBytes: initialChildPeak,
-            finalK58K55ProcessPeakRssBytes: finalChildPeak,
+            k58K55ExecutionCount: 1,
+            k58K55ProcessPeakRssBytes: initialChildPeak,
+            finalK58K55Execution: "NOT_EXECUTED",
             k62ParentProcessPeakRssBytes: parentPeak,
             maximumIndividualProcessPeakRssBytes: maximum,
+            processTreeMeasurement: {
+                status: "NOT_EXECUTED",
+                requiredBoundary: "external_whole_process_tree_observer",
+                eligibleForGoClaim: false,
+            },
         },
         readiness: {
             offlineCompatibilityAudit: "GO",
             lineageK56ThroughK61: "GO",
             losslessReconstruction: "GO",
             perProcessRssUnder1GiB: "GO",
-            processTreeRssUnder1GiB: "NO-GO",
+            processTreeRssUnder1GiB: "NOT_EXECUTED",
             k63AdditiveShadowContract: "GO",
             currentContractDirectConsumption: "NO-GO",
             authority: "NO-GO",

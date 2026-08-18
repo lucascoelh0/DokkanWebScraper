@@ -15,7 +15,11 @@ import {
     CharacterLeaderSupportedCompatibilityReport,
     CharacterLeaderSupportedCompatibilityValidation,
 } from "./leader-supported-compatibility-contract";
-import { CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_DIMENSION_GOLDEN } from "./leader-supported-compatibility-golden";
+import {
+    CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_ANDROID_SOURCE_PIN,
+    CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_DIMENSION_GOLDEN,
+} from "./leader-supported-compatibility-golden";
+import type { CharacterLeaderCompatibilityAndroidSourceIdentity } from "./leader-supported-compatibility-git-source";
 import {
     characterLeaderSupportedShadowArtifactFingerprint,
     characterLeaderSupportedShadowLineageFingerprint,
@@ -23,6 +27,7 @@ import {
 } from "./leader-supported-shadow";
 
 const hash = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
+const json = (value: unknown): string => JSON.stringify(value);
 const jsonBytes = (value: unknown): Buffer => Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
 const order = (left: string, right: string): number => left.localeCompare(right, undefined, { numeric: true });
 
@@ -46,7 +51,7 @@ export interface CharacterLeaderSupportedCompatibilityInputs {
     k60Receipt: CharacterLeaderCompatibilityPinnedReport;
     k61: CharacterLeaderCompatibilityPinnedReport;
     productive: CharacterLeaderCompatibilityProductiveBaseline;
-    androidSourceFingerprintSha256: string;
+    androidSource: CharacterLeaderCompatibilityAndroidSourceIdentity;
 }
 
 function assertLineage(inputs: CharacterLeaderSupportedCompatibilityInputs): void {
@@ -151,6 +156,7 @@ export function buildCharacterLeaderSupportedCompatibilityReport(
         schemaVersion: 1,
         contract: "dokkan-database-character-leader-supported-compatibility-audit",
         contractVersion: CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_CONTRACT_VERSION,
+        checkpoint: "K62.1",
         mode: "explicit_opt_in_offline_default_off_non_authoritative",
         lineage: {
             k56: {
@@ -177,7 +183,8 @@ export function buildCharacterLeaderSupportedCompatibilityReport(
                 sourceBoundValidation: "GO",
                 requestReuseOnly: true,
             },
-            stableAcrossAudit: true,
+            sourceStability: "CHECKPOINTED_PERSISTENT_DRIFT_ONLY",
+            transientABADriftDetection: "NO-GO",
         },
         inventory: {
             effects: 3_836, references: 12_265, states: 7_248, cards: 3_434, publicIndexes: 4,
@@ -200,7 +207,11 @@ export function buildCharacterLeaderSupportedCompatibilityReport(
                 valueComparisonAuthority: false,
             },
             android: {
-                wireAndDomainSourceFingerprintSha256: inputs.androidSourceFingerprintSha256,
+                source: {
+                    ...inputs.androidSource,
+                    files: inputs.androidSource.files.map(file => ({ ...file })),
+                },
+                wireAndDomainSourceFingerprintSha256: inputs.androidSource.fingerprintSha256,
                 leaderStructuredModelPresent: true,
                 absentStructuredDetailsFallbackPresent: true,
                 supportedBoostForms: ["percentage", "flat"],
@@ -235,12 +246,14 @@ export function buildCharacterLeaderSupportedCompatibilityReport(
             runtimeInstrumentation: "NOT_EXECUTED", newTextParsing: "NOT_EXECUTED", authoritySelected: false,
             productionModified: false, androidModified: false, uiModified: false, networkRequestCount: 0,
             authenticatedRequestCount: 0, r2MutationCount: 0, publisherExecuted: false,
+            androidSourceBytesReadFromGitObjectDatabaseOnly: true, androidCheckoutBytesRead: false,
+            androidSourceCanAuthorizeMaterializedBytes: false,
         },
         readiness: {
             offlineCompatibilityAudit: "GO", lineageK56ThroughK61: "GO", losslessK62Reconstruction: "GO",
             k63AdditiveShadowContract: "GO", currentContractDirectConsumption: "NO-GO", authority: "NO-GO",
             production: "NO-GO", androidImplementation: "NO-GO", ui: "NO-GO", runtimeContext: "NO-GO",
-            processTreeRssUnder1GiB: "NO-GO", concurrentOutputAncestorReplacement: "NO-GO",
+            processTreeRssUnder1GiB: "NOT_EXECUTED", concurrentOutputAncestorReplacement: "NO-GO",
         },
     };
 }
@@ -249,6 +262,11 @@ export function validateCharacterLeaderSupportedCompatibilityReport(
     report: CharacterLeaderSupportedCompatibilityReport,
 ): string[] {
     const failures: string[] = [];
+    if (report.contractVersion !== CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_CONTRACT_VERSION
+        || report.checkpoint !== "K62.1") failures.push("K62.1 contract identity changed");
+    if (report.lineage.sourceStability !== "CHECKPOINTED_PERSISTENT_DRIFT_ONLY"
+        || report.lineage.transientABADriftDetection !== "NO-GO"
+        || "stableAcrossAudit" in report.lineage) failures.push("source stability overclaim");
     const dimensions = CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_DIMENSION_GOLDEN.map(item => item.dimension);
     if (JSON.stringify(report.dimensionMatrix.map(item => item.dimension)) !== JSON.stringify(dimensions)) failures.push("dimension set changed");
     if (JSON.stringify(report.dimensionMatrix) !== JSON.stringify(CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_DIMENSION_GOLDEN)) failures.push("dimension matrix changed");
@@ -269,6 +287,25 @@ export function validateCharacterLeaderSupportedCompatibilityReport(
     if (report.boundaries.networkRequestCount !== 0 || report.boundaries.authenticatedRequestCount !== 0
         || report.boundaries.r2MutationCount !== 0 || report.boundaries.publisherExecuted !== false
         || report.boundaries.authoritySelected !== false || report.boundaries.androidModified !== false) failures.push("forbidden boundary changed");
+    const androidSource = report.comparison.android.source;
+    if (!androidSource || androidSource.repositoryUrl !== CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_ANDROID_SOURCE_PIN.repositoryUrl
+        || androidSource.commit !== CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_ANDROID_SOURCE_PIN.commit
+        || androidSource.access !== "git_object_database_only" || androidSource.checkoutBytesRead !== false
+        || json(androidSource.files) !== json(CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_ANDROID_SOURCE_PIN.files)
+        || report.comparison.android.wireAndDomainSourceFingerprintSha256 !== androidSource.fingerprintSha256) {
+        failures.push("Android Git object source provenance changed");
+    } else {
+        const { fingerprintSha256, ...fingerprintInput } = androidSource;
+        if (fingerprintSha256 !== hash(json(fingerprintInput))) failures.push("Android Git object source provenance changed");
+    }
+    if (report.boundaries.androidSourceBytesReadFromGitObjectDatabaseOnly !== true
+        || report.boundaries.androidCheckoutBytesRead !== false
+        || report.boundaries.androidSourceCanAuthorizeMaterializedBytes !== false) {
+        failures.push("Android source authority boundary changed");
+    }
+    if (report.readiness.processTreeRssUnder1GiB !== "NOT_EXECUTED") {
+        failures.push("process-tree RSS requires external execution evidence");
+    }
     if (report.boundaries.deckIndex !== "unknown" || report.boundaries.leaderFriendComposition !== "unknown"
         || report.boundaries.finalStacking !== "unknown" || report.boundaries.finalRounding !== "unknown"
         || report.boundaries.transformationsDeathReviveExchangeStandby !== "unknown"
@@ -319,6 +356,9 @@ export function materializeCharacterLeaderSupportedCompatibility(
             noConditionalLeakage: report.boundaries.conditional17Included === false,
             noUnknownMaterializedAsZeroOrFalse: failures.every(value => value !== "runtime unknown boundary changed"),
             noNamesTitlesOrTextUsedAsIdentity: failures.every(value => value !== "text or presentation entered K62 identity report"),
+            androidGitObjectSourcePinned: failures.every(value => value !== "Android Git object source provenance changed"),
+            androidCheckoutExcluded: failures.every(value => value !== "Android source authority boundary changed"),
+            androidSourceDoesNotAuthorizeMaterializedBytes: failures.every(value => value !== "Android source authority boundary changed"),
             zeroConflictIsNotCompleteness: true,
             noNetworkOrPublisher: true,
         },

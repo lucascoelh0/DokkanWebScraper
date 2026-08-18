@@ -1,6 +1,6 @@
 # Dokkanpanion Project State
 
-**Last updated**: 2026-08-16
+**Last updated**: 2026-08-18
 
 This is the concise operational checkpoint for future sessions. Durable
 decisions live in [`adr/`](adr/), and current workflow instructions live in
@@ -18,9 +18,11 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   not a durable project-state assertion.
 - The historical `codex/database-character-productization` branch remains
   intact as the original campaign record.
-- `D:\Dokkan\Dokkanpanion` owns the Android consumer. Its synchronized
-  `master` checkpoint remains `fe58fe1`; no database-first shadow consumer is
-  implemented or authorized.
+- `D:\Dokkan\Dokkanpanion` owns the Android consumer. Remote `master` contains
+  the reviewed rematerialization checkpoint at
+  `5afa5ee3de25755c9fffdfcd2f1fc3293d56b26a`. The user's dirty original
+  checkout remains intentionally untouched at its earlier local commit; no
+  Leader shadow consumer is integrated or authorized.
 - The project uses Codex exclusively. Provider-neutral workflow, verification,
   repository and publication rules are defined in `AGENTS.md`.
 
@@ -1101,6 +1103,28 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   remain NO-GO. Focused K62 checks passed 5/5, the compiled
   `database-characters` suite passed 333 tests with 9 pending, and independent
   contract review found no P0-P2.
+- K62.1 replaces materialized Android-worktree pins with the exact repository
+  URL, commit `5afa5ee3de25755c9fffdfcd2f1fc3293d56b26a`, relative paths, Git blob
+  IDs, sizes and SHA-256 values for nine Android sources. Bytes are read only
+  from the local Git object database with lazy fetching disabled; checkout
+  bytes are neither evidence nor authority.
+- Contract `1.2.0` records source stability conservatively as
+  `CHECKPOINTED_PERSISTENT_DRIFT_ONLY`; transient A-B-A mutation detection is
+  `NO-GO`. One source-bound K58/K55 load is bracketed by fingerprinted receipts,
+  then two byte-identical K62 materializations are written create-only, read,
+  reconstructed and compared across payload, coverage, validation and manifest.
+- The accepted real K62.1 run exited 0 with empty stderr. It preserved 3,836
+  effects, 12,265 references, 8,893 joinable and 3,372 unjoinable references;
+  the 18-dimension classification remains 6 directly representable, 7 additive,
+  3 lossy, 1 blocked unknown and 1 runtime-context-required. Raw/gzip SHA-256 are
+  `1ba112d7b4e08ceebeb590976b8d1b7c1d726064cba094ef050db237aadaef4f`
+  and `b0a01eda8fedf56f6d7320d725fdcf45170f6ac380175bb8ea21f51fa00abd18`.
+- An external whole-process-tree observer measured a 1,071,194,112-byte peak,
+  2,547,712 bytes below the exclusive 1 GiB boundary, with exit 0 and no
+  measurement error. Focused K62 checks passed 14/14; the compiled
+  `database-characters` suite passed 341 tests with 11 pending. Contract review
+  found no P0-P2. Direct current-contract consumption, authority, production,
+  Android implementation, UI, R2 mutation and publication remain NO-GO.
 
 ## World Tournament WT0-WT6 checkpoint (2026-08-16)
 

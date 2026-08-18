@@ -5,7 +5,10 @@ import { link, lstat, mkdir, rm, symlink, writeFile } from "fs/promises";
 import { join, resolve } from "path";
 import { PassThrough } from "stream";
 import type { CharacterLeaderAssociationProjectionArtifactSet } from "./leader-association-projection-contract";
-import type { CharacterLeaderLifecycleSemanticsReport } from "./leader-lifecycle-semantics-contract";
+import {
+    CHARACTER_LEADER_LIFECYCLE_SEMANTICS_RSS_LIMIT_BYTES,
+    CharacterLeaderLifecycleSemanticsReport,
+} from "./leader-lifecycle-semantics-contract";
 import { CHARACTER_LEADER_CAUSALITY_PIN } from "./leader-causality-semantics-contract";
 import { CHARACTER_LEADER_CAUSALITY_COLLECTION_PIN } from "./leader-causality-collection-contract";
 import { CHARACTER_LEADER_CAUSALITY_DECK_INDEX_PIN } from "./leader-causality-deck-index-contract";
@@ -28,9 +31,12 @@ import {
 import {
     CHARACTER_LEADER_K55_SUBPROCESS_STDERR_LIMIT_BYTES,
     CHARACTER_LEADER_K55_SUBPROCESS_STDOUT_LIMIT_BYTES,
+    CHARACTER_LEADER_K55_SUBPROCESS_HEAP_LIMIT_MIB,
+    CHARACTER_LEADER_K55_SUBPROCESS_TIMEOUT_MS,
     CharacterLeaderK55ChildLike,
     CharacterLeaderK55SubprocessOutcome,
     characterLeaderK55SubprocessArgs,
+    characterLeaderK55SubprocessSpawnSpec,
     collectCharacterLeaderK55ChildOutcome,
     parseCharacterLeaderK55SubprocessOutcome,
 } from "./leader-supported-projection-k55-subprocess";
@@ -227,6 +233,29 @@ describe("K56 supported-only leader projection", function () {
         throws(() => parseCharacterLeaderK55SubprocessOutcome(childOutcome(`${JSON.stringify({ report: promoted, processPeakRssBytes })}\n`)), /conservative K55 leaderFriendComposition NO-GO/);
         equal(maximumIndividualCharacterLeaderSupportedProjectionProcessPeakRss(100, 300, 200), 300);
         throws(() => maximumIndividualCharacterLeaderSupportedProjectionProcessPeakRss(100, 1024 * 1024 * 1024, 200), /per-process RSS peak rejected/);
+    });
+
+    it("pins the K55 child to the bounded 608 MiB no-shell invocation", () => {
+        const options = {
+            sidecarRoot: "s", productionRoot: "p", fyiRoot: "f", k43Root: "43", k46Root: "46", k48Root: "48",
+            nativeRuntime: "elf", database: "db",
+        };
+        const invocation = characterLeaderK55SubprocessSpawnSpec(options, "compiled-helper.js");
+
+        equal(CHARACTER_LEADER_K55_SUBPROCESS_HEAP_LIMIT_MIB, 608);
+        equal(invocation.executable, process.execPath);
+        deepStrictEqual(invocation.args, [
+            "--expose-gc", "--max-old-space-size=608", "compiled-helper.js",
+            "--sidecar-root", "s", "--production-root", "p", "--fyi-root", "f", "--k43-root", "43",
+            "--k46-root", "46", "--k48-root", "48", "--native-runtime", "elf", "--database", "db",
+        ]);
+        deepStrictEqual(invocation.options, {
+            shell: false,
+            windowsHide: true,
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        equal(CHARACTER_LEADER_K55_SUBPROCESS_TIMEOUT_MS, 10 * 60 * 1000);
+        equal(CHARACTER_LEADER_LIFECYCLE_SEMANTICS_RSS_LIMIT_BYTES, 1024 * 1024 * 1024);
     });
 
     it("settles fail-closed when a terminated or errored child never emits close", async () => {
