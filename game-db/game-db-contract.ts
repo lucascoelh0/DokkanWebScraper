@@ -59,6 +59,34 @@ export interface GameDbActiveSkillSet {
     execLimit?: number,
     ultimateSpecialId?: string,
     specialViewId?: string,
+    effects: GameDbActiveSkillEffect[],
+    provenance: {
+        relation: {
+            table: "card_active_skills",
+            rowId: string,
+        },
+        set: {
+            table: "active_skill_sets",
+            rowId: string,
+        },
+    },
+}
+
+export interface GameDbActiveSkillEffect {
+    id: string,
+    activeSkillSetId: string,
+    targetType?: number,
+    subTargetTypeSetId?: string,
+    calcOption?: number,
+    efficacyType?: number,
+    values: Array<number | string | null>,
+    efficacyValues: Array<number | string | null>,
+    thumbEffectId?: string,
+    effectSeId?: string,
+    provenance: {
+        table: "active_skills",
+        rowId: string,
+    },
 }
 
 export interface GameDbStandbySkillSet {

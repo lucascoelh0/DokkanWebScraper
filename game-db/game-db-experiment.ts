@@ -2,7 +2,6 @@ import { mkdir, readFile } from "fs/promises";
 import { resolve } from "path";
 import { Classes, Rarities, Types } from "../character";
 import {
-    GameDbActiveSkillSet,
     GameDbAwakeningRoute,
     GameDbCharacterSnapshot,
     GameDbComparisonCardReport,
@@ -21,6 +20,7 @@ import {
     GameDbStandbySkillSet,
     GameDbSuperAttack,
 } from "./game-db-contract";
+import { mapActiveSkillSets } from "./game-db-active-skill";
 import {
     GameDbRow,
     normalizeDbId,
@@ -288,31 +288,6 @@ function mapAwakeningKind(routeType: string): GameDbFormRelationKind {
     }
 
     return "awakening-other";
-}
-
-function mapActiveSkillSets(rows: GameDbRow[], activeSkillSetById: Map<string, GameDbRow>): GameDbActiveSkillSet[] {
-    return rows.flatMap(row => {
-        const activeSkillSetId = normalizeDbId(row.active_skill_set_id);
-        if (!activeSkillSetId) {
-            return [];
-        }
-
-        const activeSkillSet = activeSkillSetById.get(activeSkillSetId);
-        if (!activeSkillSet) {
-            return [];
-        }
-
-        return [{
-            id: activeSkillSetId,
-            name: normalizeText(activeSkillSet.name),
-            effectDescription: normalizeText(activeSkillSet.effect_description),
-            conditionDescription: normalizeText(activeSkillSet.condition_description),
-            turn: parseDbInt(activeSkillSet.turn),
-            execLimit: parseDbInt(activeSkillSet.exec_limit),
-            ultimateSpecialId: normalizeDbId(activeSkillSet.ultimate_special_id),
-            specialViewId: normalizeDbId(activeSkillSet.special_view_id),
-        }];
-    });
 }
 
 function mapActiveFormRelations(
@@ -772,7 +747,11 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
             leaderSkill,
             passiveSkillSet,
             superAttacks: mapSuperAttacks(cardId, cardSpecialsByCardId.get(cardId) ?? [], specialSetById),
-            activeSkillSets: mapActiveSkillSets(activeSkillRelationsByCardId.get(cardId) ?? [], activeSkillSetById),
+            activeSkillSets: mapActiveSkillSets(
+                activeSkillRelationsByCardId.get(cardId) ?? [],
+                activeSkillSetById,
+                activeSkillEffectsBySetId,
+            ),
             standbySkillSets,
             finishSkillSets,
             formRelations,
