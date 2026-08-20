@@ -45,9 +45,32 @@ export interface GameDbSuperAttack {
     name: string,
     description: string,
     style?: string,
+    variant: "super" | "ultra" | "unit" | "extra" | "unknown",
     levelStart?: number,
     requiredKi?: number,
     viewId?: string,
+    increaseRate?: number,
+    levelBonus?: number,
+    cardCostumeConditionId?: string,
+    causalityConditionsRaw?: string,
+    specialAssetId?: string,
+    detailViewPriority?: number,
+    specialBonuses: Array<{
+        slot: 1 | 2,
+        id?: string,
+        level?: number,
+        viewId?: string,
+    }>,
+    provenance: {
+        cardSpecial: {
+            table: "card_specials",
+            rowId: string,
+        },
+        specialSet: {
+            table: "special_sets",
+            rowId: string,
+        },
+    },
 }
 
 export interface GameDbActiveSkillSet {

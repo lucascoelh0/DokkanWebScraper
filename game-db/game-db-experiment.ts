@@ -18,9 +18,9 @@ import {
     GameDbPassiveSkillSet,
     GameDbReference,
     GameDbStandbySkillSet,
-    GameDbSuperAttack,
 } from "./game-db-contract";
 import { mapActiveSkillSets } from "./game-db-active-skill";
+import { mapSuperAttacks } from "./game-db-super-attack";
 import {
     GameDbRow,
     normalizeDbId,
@@ -216,24 +216,6 @@ function mapPassiveSkills(rows: GameDbRow[], passiveSkillById: Map<string, GameD
             };
         })
         .filter((skill): skill is GameDbPassiveSkill => Boolean(skill));
-}
-
-function mapSuperAttacks(cardId: string, rows: GameDbRow[], specialSetById: Map<string, GameDbRow>): GameDbSuperAttack[] {
-    return sortByOptionalNumber(rows, row => parseDbInt(row.priority)).map(row => {
-        const specialSetId = normalizeDbId(row.special_set_id) ?? "";
-        const specialSet = specialSetById.get(specialSetId);
-
-        return {
-            cardSpecialId: normalizeDbId(row.id) ?? row.id,
-            specialSetId,
-            name: normalizeText(specialSet?.name ?? `${cardId}:${specialSetId}`),
-            description: normalizeText(specialSet?.description),
-            style: normalizeText(row.style),
-            levelStart: parseDbInt(row.lv_start),
-            requiredKi: parseDbInt(row.eball_num_start),
-            viewId: normalizeDbId(row.view_id),
-        };
-    });
 }
 
 function mapReferences(rows: GameDbRow[], relationField: string, lookup: Map<string, GameDbRow>): GameDbReference[] {
