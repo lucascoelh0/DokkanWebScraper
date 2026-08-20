@@ -214,12 +214,14 @@ The committed tables are broad and include the areas Dokkanpanion cares about:
   - `link_skill_efficacies.csv`
   - `card_categories.csv`
   - `card_card_categories.csv`
-- active/domain/standby/finish:
+- active/raw Dokkan-field/standby/finish:
   - `active_skills.csv`
   - `active_skill_sets.csv`
   - `card_active_skills.csv`
   - `dokkan_fields.csv`
+  - `dokkan_field_efficacy_sets.csv`
   - `dokkan_field_efficacies.csv`
+  - `dokkan_field_active_skill_set_relations.csv`
   - `dokkan_field_passive_skill_relations.csv`
   - `standby_skills.csv`
   - `standby_skill_sets.csv`
@@ -272,7 +274,8 @@ This coverage is broader than `dokkan.fyi` page scraping and much closer to sour
 - active skill parsing
 - standby parsing
 - finish skill parsing
-- domain parsing
+- raw Dokkan-field export; created-Domain ownership and efficacy semantics are
+  not established by these table names or relations alone
 - transformations
 - awakenings
 - link buffs at all levels
@@ -646,6 +649,10 @@ Prioritize the mechanics that were hardest in scraping:
 - domains
 - EZA/SEZA state selection
 - unit/EX super attacks
+
+Here, `domains` remains a target capability. The current first-party evidence
+proves only structural Dokkan-field associations; it does not yet prove which
+skill creates a Domain or how each field efficacy should be interpreted.
 
 Exit criteria:
 
