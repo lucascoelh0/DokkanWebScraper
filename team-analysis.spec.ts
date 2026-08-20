@@ -1558,6 +1558,7 @@ describe("team-analysis Gate A7.1 structural lifecycle evidence", function () {
         const unmarked = typedEffects.find(effect => effect.kind === fixtureCase.unmarkedEffectKind);
         ok(unmarked);
         equal(unmarked.activationLimit, undefined, "the next bullet must not inherit once");
+        equal(unmarked.applicationTrigger, undefined, "display-only markers must not invent lifecycle");
       }
       equal(passive.rawText, fixtureCase.displayText);
       equal(passive.structuralEvidence?.[0].anchor.structuralText.includes("passiveImg"), true);
@@ -1598,6 +1599,63 @@ describe("team-analysis Gate A7.1 structural lifecycle evidence", function () {
       });
     });
   }
+
+  it("accepts legacy passive evidence with lifecycle markers only", () => {
+    const details = passiveDetailsFromSkill({
+      id: 7251,
+      description: "*Basic effect(s)*\n- {passiveImg:once}ATK 20%{passiveImg:up_g}",
+    } as any, {
+      characterId: "7250001",
+      formId: "7250001",
+      releaseState: "initial",
+      sourceVersion,
+      payloadField: "props.character.passive_skill.description",
+    });
+    ok(details?.structuralSource);
+    const legacySource = JSON.parse(JSON.stringify(details.structuralSource)) as NonNullable<PassiveDetails["structuralSource"]>;
+    legacySource.evidence[0].markers = legacySource.evidence[0].markers.filter(marker => marker.markerKind === "once");
+    const passive = parsePassive(
+      "7250001:7250001:initial",
+      details.name,
+      details.text ?? "",
+      { ...details, structuralSource: legacySource },
+      { characterId: "7250001", formId: "7250001", releaseState: "initial" },
+    );
+
+    deepEqual(passive.structuralEvidence?.[0].markers.map(marker => marker.markerKind), ["once"]);
+    equal(passive.rules.flatMap(rule => rule.effects)[0].activationLimit?.kind, "once");
+  });
+
+  it("retains decrease markers as display annotations without inventing lifecycle", () => {
+    const details = passiveDetailsFromSkill({
+      id: 7252,
+      description: "*Basic effect(s)*\n- Damage reduction rate 2%{passiveImg:down_r}\n- ATK 30%{passiveImg:down_y}",
+    } as any, {
+      characterId: "7250002",
+      formId: "7250002",
+      releaseState: "initial",
+      sourceVersion,
+      payloadField: "props.character.passive_skill.description",
+    });
+    ok(details?.structuralSource);
+    const passive = parsePassive(
+      "7250002:7250002:initial",
+      details.name,
+      details.text ?? "",
+      details,
+      { characterId: "7250002", formId: "7250002", releaseState: "initial" },
+    );
+
+    deepEqual(
+      passive.structuralEvidence?.flatMap(evidence => evidence.markers.map(marker => marker.markerKind)),
+      ["value_down", "value_down"],
+    );
+    passive.rules.flatMap(rule => rule.effects).forEach(effect => {
+      equal(effect.activationLimit, undefined);
+      equal(effect.applicationTrigger, undefined);
+      equal(effect.duration?.source === "dokkan_fyi_structural_marker", false);
+    });
+  });
 
   it(gateA71Fixture.divergenceCase.name, () => {
     const details = passiveDetailsFromSkill({ id: 7301, description: gateA71Fixture.divergenceCase.rawSource } as any, {
@@ -1646,7 +1704,7 @@ describe("team-analysis Gate A7.1 structural lifecycle evidence", function () {
     );
     deepEqual(evidence.markers.map(marker =>
       details.structuralSource!.rawText.slice(marker.sourceSpan.start, marker.sourceSpan.end)), [
-      "{passiveImg:once}", "{passiveImg:forever}",
+      "{passiveImg:once}", "{passiveImg:forever}", "{passiveImg:up_g}",
     ]);
   });
 });
@@ -2388,7 +2446,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.7\.2/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.7\.3/);
   });
 });
 

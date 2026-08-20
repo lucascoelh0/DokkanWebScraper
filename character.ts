@@ -216,7 +216,12 @@ export interface PassiveDetails {
 }
 
 export type EffectStructuralChannel = "passive" | "super_attack";
-export type EffectStructuralMarkerKind = "once" | "forever" | "unknown";
+export type EffectStructuralMarkerKind =
+    | "once"
+    | "forever"
+    | "value_up"
+    | "value_down"
+    | "unknown";
 export type EffectStructuralAttackVariant = "normal" | "ultra" | "extra" | "unit";
 
 export interface EffectStructuralSource {

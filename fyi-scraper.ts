@@ -14,6 +14,7 @@ import {
     FinishSkillEffectKind,
     EffectStructuralAttackVariant,
     EffectStructuralEvidence,
+    EffectStructuralMarkerKind,
     EffectStructuralSource,
     PassiveConditionEvidence,
     PassiveDetails,
@@ -1189,6 +1190,12 @@ interface StructuralSourceLine {
     normalizedLineIndex?: number,
 }
 
+interface StructuralMarkerRun {
+    markerStartInLine: number,
+    markerSource: string,
+    markerMatches: RegExpMatchArray[],
+}
+
 function effectStructuralSource(
     rawValue: string | null | undefined,
     normalizedText: string,
@@ -1209,18 +1216,17 @@ function effectStructuralSource(
 
     for (let lineOffset = 0; lineOffset < lines.length; lineOffset += 1) {
         const line = lines[lineOffset];
-        const markerRuns = channel === "passive"
-            ? [line.rawText.match(/^(\s*-\s*)((?:\{passiveImg:[^}]+\}\s*)+)/)].filter(
-                (match): match is RegExpMatchArray => match !== null,
-            )
-            : [...line.rawText.matchAll(/(^|;\s*)((?:\{passiveImg:[^}]+\}\s*)+)/g)];
-        for (const markerRun of markerRuns) {
-            const markerStartInLine = (markerRun.index ?? 0) + markerRun[1].length;
-            const markerSource = markerRun[2];
-            const markerMatches = [...markerSource.matchAll(/\{passiveImg:([^}]+)\}/g)];
-            if (markerMatches.length === 0) {
-                continue;
-            }
+        const markerRuns: StructuralMarkerRun[] = channel === "passive"
+            ? passiveStructuralMarkerRuns(line.rawText)
+            : [...line.rawText.matchAll(/(^|;\s*)((?:\{passiveImg:[^}]+\}\s*)+)/g)].map(markerRun => {
+                const markerSource = markerRun[2];
+                return {
+                    markerStartInLine: (markerRun.index ?? 0) + markerRun[1].length,
+                    markerSource,
+                    markerMatches: [...markerSource.matchAll(/\{passiveImg:([^}]+)\}/g)],
+                };
+            });
+        for (const { markerStartInLine, markerSource, markerMatches } of markerRuns) {
 
             let endLineOffset = lineOffset;
             let anchorEnd = line.end;
@@ -1251,6 +1257,9 @@ function effectStructuralSource(
             }
             const anchorStart = line.start + markerStartInLine;
             const structuralText = rawValue.slice(anchorStart, anchorEnd).trimEnd();
+            const anchorMarkerMatches = channel === "passive"
+                ? [...structuralText.matchAll(/\{passiveImg:([^}]+)\}/g)]
+                : markerMatches;
             const normalizedAnchorText = cleanMultilineText(structuralText)
                 .replace(/^\s*-\s*/, "")
                 .replace(/\s*\n\s*/g, " ")
@@ -1261,11 +1270,9 @@ function effectStructuralSource(
             if (!normalizedAnchorText || coveredLines.length === 0) {
                 continue;
             }
-            const markers = markerMatches.map((match, order) => {
+            const markers = anchorMarkerMatches.map((match, order) => {
                 const sourceToken = match[1];
-                const markerKind: "once" | "forever" | "unknown" = sourceToken === "once" || sourceToken === "forever"
-                    ? sourceToken
-                    : "unknown";
+                const markerKind = effectStructuralMarkerKind(sourceToken);
                 const start = anchorStart + (match.index ?? 0);
                 return {
                     order,
@@ -1322,6 +1329,31 @@ function effectStructuralSource(
     }
 
     return evidence.length > 0 ? { rawText: rawValue, rawTextSha256, normalizedTextSha256, evidence } : undefined;
+}
+
+function passiveStructuralMarkerRuns(rawLine: string): StructuralMarkerRun[] {
+    const bullet = rawLine.match(/^(\s*-\s*)(.*)$/);
+    if (!bullet) {
+        return [];
+    }
+    const markerSource = bullet[2];
+    const markerMatches = [...markerSource.matchAll(/\{passiveImg:([^}]+)\}/g)];
+    return markerMatches.length > 0
+        ? [{ markerStartInLine: bullet[1].length, markerSource, markerMatches }]
+        : [];
+}
+
+function effectStructuralMarkerKind(sourceToken: string): EffectStructuralMarkerKind {
+    if (sourceToken === "once" || sourceToken === "forever") {
+        return sourceToken;
+    }
+    if (sourceToken === "up_g") {
+        return "value_up";
+    }
+    if (sourceToken === "down_r" || sourceToken === "down_y") {
+        return "value_down";
+    }
+    return "unknown";
 }
 
 function structuralSourceLines(rawText: string): StructuralSourceLine[] {

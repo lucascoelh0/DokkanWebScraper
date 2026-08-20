@@ -19,7 +19,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.7.2";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.7.3";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
@@ -1117,14 +1117,15 @@ function validStructuralMarkers(rawText: string, evidence: EffectStructuralEvide
             break;
         }
     }
-    if (prefixTokens.length !== evidence.markers.length) {
+    const expectedTokens = evidence.channel === "passive" && tokens.length === evidence.markers.length
+        ? tokens
+        : prefixTokens;
+    if (expectedTokens.length !== evidence.markers.length) {
         return false;
     }
     return evidence.markers.every((marker, order) => {
-        const expected = prefixTokens[order];
-        const markerKind = marker.sourceToken === "once" || marker.sourceToken === "forever"
-            ? marker.sourceToken
-            : "unknown";
+        const expected = expectedTokens[order];
+        const markerKind = structuralMarkerKind(marker.sourceToken);
         return marker.order === order
             && marker.sourceToken === expected[1]
             && marker.markerKind === markerKind
@@ -1133,6 +1134,13 @@ function validStructuralMarkers(rawText: string, evidence: EffectStructuralEvide
             && marker.sourceSpan.end === marker.sourceSpan.start + expected[0].length
             && rawText.slice(marker.sourceSpan.start, marker.sourceSpan.end) === expected[0];
     });
+}
+
+function structuralMarkerKind(sourceToken: string): EffectStructuralEvidence["markers"][number]["markerKind"] {
+    if (sourceToken === "once" || sourceToken === "forever") return sourceToken;
+    if (sourceToken === "up_g") return "value_up";
+    if (sourceToken === "down_r" || sourceToken === "down_y") return "value_down";
+    return "unknown";
 }
 
 function cleanStructuralText(value: string): string {
@@ -1197,6 +1205,9 @@ function applySuperAttackStructuralSemantics(
     const matching = evidenceEntries.filter(entry => evidenceMatchesEffect(entry, effect.sourceText, effect.source));
     const once = matching.find(entry => entry.markers.some(marker => marker.markerKind === "once"));
     const forever = matching.find(entry => entry.markers.some(marker => marker.markerKind === "forever"));
+    if (!once && !forever) {
+        return effect;
+    }
     if (once) {
         effect.activationLimit = markerActivationLimit(once);
     }
@@ -1759,6 +1770,9 @@ function applyPassiveStructuralSemantics(
     }
     const once = matching.find(entry => entry.markers.some(marker => marker.markerKind === "once"));
     const forever = matching.find(entry => entry.markers.some(marker => marker.markerKind === "forever"));
+    if (!once && !forever) {
+        return effect;
+    }
     if (once) {
         effect.activationLimit = markerActivationLimit(once);
     }

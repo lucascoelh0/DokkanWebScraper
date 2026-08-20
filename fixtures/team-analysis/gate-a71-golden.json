@@ -98,14 +98,14 @@
       "name": "forever isolated resolves duration without stacking",
       "rawSource": "*Basic effect(s)*\n- {passiveImg:forever}ATK 20%{passiveImg:up_g}",
       "displayText": "Basic effect(s)\n- ATK 20%",
-      "markers": ["forever"],
+      "markers": ["forever", "value_up"],
       "duration": "battle"
     },
     {
       "name": "once and forever on an entry effect stay separate",
       "rawSource": "*Upon entering the attacking turn*\n- {passiveImg:once}{passiveImg:forever}ATK & DEF 50%{passiveImg:up_g}",
       "displayText": "Upon entering the attacking turn\n- ATK & DEF 50%",
-      "markers": ["once", "forever"],
+      "markers": ["once", "forever", "value_up"],
       "activationLimit": "once",
       "duration": "battle",
       "applicationTrigger": "entry"
@@ -114,7 +114,7 @@
       "name": "multiple effects in one clause share the ordered markers",
       "rawSource": "*Basic effect(s)*\n- {passiveImg:once}{passiveImg:forever}Ki +3 and ATK & DEF 60%{passiveImg:up_g}",
       "displayText": "Basic effect(s)\n- Ki +3 and ATK & DEF 60%",
-      "markers": ["once", "forever"],
+      "markers": ["once", "forever", "value_up"],
       "activationLimit": "once",
       "duration": "battle",
       "minimumEffectCount": 2
@@ -123,7 +123,7 @@
       "name": "consecutive bullets do not leak markers",
       "rawSource": "*Basic effect(s)*\n- {passiveImg:once}ATK 20%{passiveImg:up_g}\n- DEF 30%{passiveImg:up_g}",
       "displayText": "Basic effect(s)\n- ATK 20%\n- DEF 30%",
-      "markers": ["once"],
+      "markers": ["once", "value_up"],
       "activationLimit": "once",
       "unmarkedEffectKind": "def"
     },
@@ -131,16 +131,16 @@
       "name": "broken multiline anchor stays inside one bullet",
       "rawSource": "*Basic effect(s)*\n- {passiveImg:forever}ATK 20% and\n  DEF 20%{passiveImg:up_g}\n- Ki +1",
       "displayText": "Basic effect(s)\n- ATK 20% and\nDEF 20%\n- Ki +1",
-      "markers": ["forever"],
+      "markers": ["forever", "value_up"],
       "duration": "battle",
       "endLineIndex": 2
     },
     {
-      "name": "unknown structural marker is preserved unresolved",
+      "name": "unknown structural marker remains partial beside a supported value annotation",
       "rawSource": "*Basic effect(s)*\n- {passiveImg:mystery_gate}ATK 20%{passiveImg:up_g}",
       "displayText": "Basic effect(s)\n- ATK 20%",
-      "markers": ["unknown"],
-      "evidenceResolution": "unresolved"
+      "markers": ["unknown", "value_up"],
+      "evidenceResolution": "partial"
     }
   ],
   "invalidEvidenceCases": [

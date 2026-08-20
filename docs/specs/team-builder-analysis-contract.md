@@ -202,6 +202,13 @@ condition, activation timing, or calculation bucket. Unknown leading effect
 markers remain `unresolved`; condition-status markers remain in the existing
 condition-evidence channel and are not reclassified as effect markers.
 
+Inline `{passiveImg:up_g}`, `{passiveImg:down_r}`, and
+`{passiveImg:down_y}` markers are retained respectively as typed `value_up` and
+`value_down` presentation annotations with exact source spans. They do not
+promote lifecycle, calculation, sign, target, stacking, or any other combat
+semantics. Legacy evidence containing only leading lifecycle markers remains
+valid for backward compatibility.
+
 ## 5. Boolean condition AST
 
 ```ts
