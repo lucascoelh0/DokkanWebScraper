@@ -1184,17 +1184,22 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 ## Release-specific Unit Super Attack checkpoint (2026-08-21)
 
 - Characters `2026-08-21T21:05:24.053Z` is public with payload SHA-256
-  `d00ed114cfcba3c9937d96cd82ae3fb009b1a53b040add465bed312d758b5836`.
+  `3ed38f273405fa4f06e73fdd4180143de6625d8cb721aeefc91f479b9f61c7bf`.
   The K28 publication uploaded 12 missing immutable objects, found zero
   conflicts or failed reads, verified 1,629 objects including the manifest,
   and promoted `characters-manifest.json` last. The dry-run projected
   374,257,659 bytes at peak against the 10 GB bucket limit.
 - Team Analysis `2026-08-21T21:05:24.053Z:parser-1.7.3` is public with payload
   SHA-256
-  `238a825f90cd2180985e21a5c575d17520ad227a42ec7b79b18a9d581b7cb4b8`.
+  `bfb6908fc9b5850fe6df5833d3bd7db9351b03e6c51b1549e87a8ffeed26aab3`.
   Its source Characters version and SHA-256 exactly match the public
-  Characters manifest. The post-publication recovery dry-run reports zero
-  writes and retains the immediately previous verified release for rollback.
+  Characters manifest. The first Unit Super Attack Team Analysis artifact was
+  incorrectly linked to the pre-delivery Characters payload hash; Android
+  rejected that auxiliary update and retained its compatible cache. The
+  artifact was regenerated from the exact public Characters payload and
+  manifest, republished, downloaded by Android without clearing app data, and
+  Pan (GT) EZA was then verified with all three Unit Super Attacks. The
+  immediately previous verified release remains available for rollback.
 - Wrangler 4.118.0 reported the newly uploaded Team Analysis payload missing
   through `r2 object get` immediately after its successful `r2 object put`.
   Publication failed closed before manifest promotion. Direct public HTTPS
