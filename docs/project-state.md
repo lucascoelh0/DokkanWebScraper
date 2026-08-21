@@ -1211,8 +1211,12 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   additive field through Room schema 11, preserves old caches through an
   additive 10-to-11 migration, and rematerializes Characters at marker 5.
   Focused migration instrumentation passed 6/6; domain/app unit tests and the
-  debug assembly pass. The user's dirty Android `master` worktree remains
-  untouched pending an explicit local-change consolidation decision.
+  debug assembly pass. An emulator upgrade exposed a nullable legacy-row
+  converter crash that schema-only migration tests did not exercise; the Unit
+  Super Attack converter now accepts null/blank columns, has a focused
+  regression test, and successfully reopens the same preserved database. The
+  user's dirty Android `master` worktree remains untouched pending an explicit
+  local-change consolidation decision.
 
 ## Operating Constraints
 
