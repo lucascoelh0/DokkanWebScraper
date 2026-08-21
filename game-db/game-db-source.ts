@@ -60,6 +60,33 @@ export function parseCsv(text: string): string[][] {
     return rows.filter(row => row.length > 1 || row[0] !== "");
 }
 
+export function parseGameDbTableCsvText(csvText: string): GameDbRow[] {
+    const rows = parseCsv(csvText);
+    if (rows.length === 0) {
+        return [];
+    }
+
+    const [headerRow, ...valueRows] = rows;
+    if (!headerRow || headerRow.length === 0) {
+        return [];
+    }
+
+    const headers = headerRow.map((header, index) => {
+        const normalizedHeader = index === 0 ? header.replace(/^\uFEFF/, "") : header;
+        return normalizedHeader.trim();
+    });
+
+    return valueRows
+        .filter(row => row.some(cell => cell.trim().length > 0))
+        .map(row => {
+            const mappedRow: GameDbRow = {};
+            headers.forEach((header, index) => {
+                mappedRow[header] = row[index] ?? "";
+            });
+            return mappedRow;
+        });
+}
+
 export function normalizeDbId(value?: string | null): string | undefined {
     if (!value) {
         return undefined;
@@ -166,30 +193,6 @@ export function resolveGameDbSourceConfig(sourceRootOverride?: string): GameDbSo
 export async function readGameDbTable(config: GameDbSourceConfig, tableName: string): Promise<GameDbRow[]> {
     const tablePath = resolve(config.dataDir, `${tableName}.csv`);
     const csvText = await readFile(tablePath, { encoding: "utf8" });
-    const rows = parseCsv(csvText);
-
-    if (rows.length === 0) {
-        return [];
-    }
-
-    const [headerRow, ...valueRows] = rows;
-    if (!headerRow || headerRow.length === 0) {
-        return [];
-    }
-
-    const headers = headerRow.map((header, index) => {
-        const normalizedHeader = index === 0 ? header.replace(/^\uFEFF/, "") : header;
-        return normalizedHeader.trim();
-    });
-
-    return valueRows
-        .filter(row => row.some(cell => cell.trim().length > 0))
-        .map(row => {
-            const mappedRow: GameDbRow = {};
-            headers.forEach((header, index) => {
-                mappedRow[header] = row[index] ?? "";
-            });
-            return mappedRow;
-        });
+    return parseGameDbTableCsvText(csvText);
 }
 
