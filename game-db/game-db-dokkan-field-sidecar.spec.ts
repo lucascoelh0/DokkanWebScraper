@@ -8,12 +8,17 @@ import {
     DOKKAN_FIELD_SIDECAR_TABLES,
     loadGameDbDokkanFieldSidecarTablesIfPresent,
 } from "./game-db-dokkan-field-sidecar";
-import { CORE_GAME_DB_TABLES, FIRST_PARTY_EXPORT_GAME_DB_TABLES } from "./game-db-table-inventory";
+import {
+    CORE_GAME_DB_TABLES,
+    FIRST_PARTY_EXPORT_GAME_DB_TABLES,
+    SUPER_ATTACK_EFFECT_GAME_DB_TABLES,
+} from "./game-db-table-inventory";
 
 describe("buildGameDbDokkanFieldSidecar", function () {
     it("keeps legacy core imports separate from the all-or-none first-party sidecar inventory", () => {
         deepEqual(FIRST_PARTY_EXPORT_GAME_DB_TABLES, [
             ...CORE_GAME_DB_TABLES,
+            ...SUPER_ATTACK_EFFECT_GAME_DB_TABLES,
             ...DOKKAN_FIELD_SIDECAR_TABLES,
         ]);
         equal(new Set(FIRST_PARTY_EXPORT_GAME_DB_TABLES).size, FIRST_PARTY_EXPORT_GAME_DB_TABLES.length);

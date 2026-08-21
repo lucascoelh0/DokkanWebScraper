@@ -1,4 +1,4 @@
-import { GameDbSuperAttack } from "./game-db-contract";
+import { GameDbSuperAttack, GameDbSuperAttackEffect } from "./game-db-contract";
 import { GameDbRow, normalizeDbId, parseDbInt } from "./game-db-source";
 
 function normalizeText(value?: string): string {
@@ -33,10 +33,59 @@ function specialBonus(row: GameDbRow, slot: 1 | 2): GameDbSuperAttack["specialBo
         : undefined;
 }
 
+function rawOperand(value?: string): string | null {
+    const trimmed = value?.trim() ?? "";
+    return trimmed.length > 0 ? value ?? null : null;
+}
+
+function rawOptionalText(value?: string): string | undefined {
+    const trimmed = value?.trim() ?? "";
+    return trimmed.length > 0 ? value : undefined;
+}
+
+function mapSuperAttackEffects(rows: GameDbRow[], expectedSpecialSetId: string): GameDbSuperAttackEffect[] {
+    const seenIds = new Set<string>();
+    return [...rows].sort((left, right) => compareIds(
+        normalizeDbId(left.id) ?? "",
+        normalizeDbId(right.id) ?? "",
+    )).map(row => {
+        const id = normalizeDbId(row.id);
+        const specialSetId = normalizeDbId(row.special_set_id);
+        if (!id || !specialSetId) {
+            throw new Error("specials contains an effect without an id or special_set_id");
+        }
+        if (specialSetId !== expectedSpecialSetId) {
+            throw new Error(`specials row ${id} belongs to special_set_id ${specialSetId}, expected ${expectedSpecialSetId}`);
+        }
+        if (seenIds.has(id)) {
+            throw new Error(`specials contains duplicate row id ${id}`);
+        }
+        seenIds.add(id);
+
+        return {
+            id,
+            specialSetId,
+            type: rawOptionalText(row.type),
+            efficacyType: parseDbInt(row.efficacy_type),
+            targetType: parseDbInt(row.target_type),
+            calcOption: parseDbInt(row.calc_option),
+            turn: parseDbInt(row.turn),
+            probability: parseDbInt(row.prob),
+            causalityConditionsRaw: row.causality_conditions,
+            values: [rawOperand(row.eff_value1), rawOperand(row.eff_value2), rawOperand(row.eff_value3)],
+            provenance: {
+                table: "specials" as const,
+                rowId: id,
+            },
+        };
+    });
+}
+
 export function mapSuperAttacks(
     cardId: string,
     rows: GameDbRow[],
     specialSetById: Map<string, GameDbRow>,
+    specialEffectsBySetId: Map<string, GameDbRow[]> = new Map(),
 ): GameDbSuperAttack[] {
     const seenCardSpecialIds = new Set<string>();
     return [...rows].sort((left, right) => {
@@ -80,6 +129,7 @@ export function mapSuperAttacks(
             detailViewPriority: parseDbInt(row.detail_view_priority),
             specialBonuses: ([specialBonus(row, 1), specialBonus(row, 2)]
                 .filter((bonus): bonus is GameDbSuperAttack["specialBonuses"][number] => bonus !== undefined)),
+            effects: mapSuperAttackEffects(specialEffectsBySetId.get(specialSetId) ?? [], specialSetId),
             provenance: {
                 cardSpecial: { table: "card_specials", rowId: cardSpecialId },
                 specialSet: { table: "special_sets", rowId: specialSetId },

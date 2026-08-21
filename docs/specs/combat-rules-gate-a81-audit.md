@@ -40,6 +40,7 @@ the reproduction queries.
 | Exact skill-level cap source | Super Attack | Read exact card or awakening-growth record | `cards`, `optimal_awakening_growths` | Direct caps and steps; no EZA/SEZA enum | verified, normative | low |
 | Variant selection | Super Attack | Normal/Hyper/Condition/Extra/FullPower to Super/Ultra/Unit/EX | `card_specials` and Team Analysis | Source styles and Ki thresholds exist; semantic mapping incomplete | unresolved | high |
 | Exact effect-row selection | Super Attack | Join all effect rows sharing the resolved Super Attack definition, then filter typed channel/target | `card_specials`, `specials` | Direct identity and one-to-many join | verified, normative | low |
+| Action-disable row identity | Super Attack | Preserve efficacy 111 as a raw effect; do not yet label it Action Break | `card_specials`, `special_sets`, `specials` | Omega joins `17379 -> 7731 -> 1007731`; Special execution path not yet proved | structural join verified; behavior unresolved | high |
 | Exact ATK/DEF raise source | Super Attack | efficacy 1 -> ATK/`eff_value1`; 2 -> DEF/`eff_value1`; 3 -> ATK+DEF/`eff_value1,2`; duration=`turn` | `specials` joined to `special_sets` | Direct fields and descriptions | verified, normative | low |
 | Qualitative raise defaults | Super Attack | raise 30, greatly 50, massively 100; persistent ATK+DEF raise 20 | `specials`; Ultimate Guide | Canonical rows corroborate; explicit and mixed-stat exceptions exist | candidate | high |
 | Hidden Potential SA Boost lookup | Super Attack | skill level x 5 percentage points | `potential_skills`, `potential_skill_lv_values`; Ultimate Guide | 50/50 rows match; first-party description excludes additional effects | verified, normative | medium |
@@ -51,6 +52,29 @@ the reproduction queries.
 
 Community documents remain corroboration. No community-only value became
 normative.
+
+### Omega action-disable boundary
+
+The current first-party export closes the structural identity for Omega
+Shenron without closing the behavior mapping:
+
+- `card_specials.id=17379`, `card_id=1031501`, `special_set_id=7731`,
+  `style=Hyper`, `eball_num_start=18`;
+- `special_sets.id=7731`, name `Demon Death Ball`;
+- `specials.id=1007731`, `special_set_id=7731`,
+  `type=Special::ExtraEfficacySpecial`, `efficacy_type=111`,
+  `target_type=3`, `calc_option=0`, `turn=1`, `prob=100`, and zero-valued
+  operands.
+
+The native DB29 evidence proves efficacy 111 as an attack-break marker only
+for the audited passive execution path. Gate A7 forbids reusing a passive
+mapping for a Super Attack without proving that its Special dispatcher reaches
+the same handler and consumer. The snapshot therefore preserves a mechanically
+normalized projection of the behavior-relevant row columns and exact
+provenance, but does not serialize `action_break`, target,
+duration, recurrence, or probability semantics from it. The localized phrase
+“disables enemy's action once within the turn” remains corroboration rather
+than a typed lifecycle rule.
 
 ## Tier and coefficient audit
 

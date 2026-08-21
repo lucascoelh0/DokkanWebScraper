@@ -32,7 +32,20 @@ describe("mapSuperAttacks", function () {
             causality_conditions: "[{\"raw\":true}]",
             special_asset_id: "400",
             detail_view_priority: "2",
-        }], specialSets);
+        }], specialSets, new Map([["20", [{
+            id: "1007731",
+            special_set_id: "20",
+            type: "Special::ExtraEfficacySpecial",
+            efficacy_type: "111",
+            target_type: "3",
+            calc_option: "0",
+            turn: "1",
+            prob: "100",
+            causality_conditions: "{\"compiled\":1}",
+            eff_value1: "0",
+            eff_value2: "0",
+            eff_value3: "0",
+        }]]]));
 
         deepEqual(attack, {
             cardSpecialId: "100",
@@ -54,6 +67,19 @@ describe("mapSuperAttacks", function () {
                 { slot: 1, id: "8", level: 15, viewId: "9" },
                 { slot: 2, id: "0", level: 0, viewId: "0" },
             ],
+            effects: [{
+                id: "1007731",
+                specialSetId: "20",
+                type: "Special::ExtraEfficacySpecial",
+                efficacyType: 111,
+                targetType: 3,
+                calcOption: 0,
+                turn: 1,
+                probability: 100,
+                causalityConditionsRaw: "{\"compiled\":1}",
+                values: ["0", "0", "0"],
+                provenance: { table: "specials", rowId: "1007731" },
+            }],
             provenance: {
                 cardSpecial: { table: "card_specials", rowId: "100" },
                 specialSet: { table: "special_sets", rowId: "20" },
@@ -92,6 +118,65 @@ describe("mapSuperAttacks", function () {
                 { id: "10", special_set_id: "2" },
             ], new Map([["2", { id: "2", name: "Attack" }]])),
             /card_specials contains duplicate row id 10/,
+        );
+    });
+
+    it("orders raw effects without assigning unproven behavior", () => {
+        const [attack] = mapSuperAttacks(
+            "1",
+            [{ id: "10", special_set_id: "2" }],
+            new Map([["2", { id: "2", name: "Attack" }]]),
+            new Map([["2", [
+                { id: "11", special_set_id: "2", efficacy_type: "111", eff_value1: "" },
+                { id: "2", special_set_id: "2", efficacy_type: "1", eff_value1: "12.5", eff_value2: "opaque" },
+            ]]]),
+        );
+
+        deepEqual(attack.effects.map(effect => ({
+            id: effect.id,
+            efficacyType: effect.efficacyType,
+            values: effect.values,
+        })), [
+            { id: "2", efficacyType: 1, values: ["12.5", "opaque", null] },
+            { id: "11", efficacyType: 111, values: [null, null, null] },
+        ]);
+        deepEqual("kind" in attack.effects[1], false);
+        deepEqual("multiplier" in attack, false);
+    });
+
+    it("fails closed when duplicate raw effect ids would make selection ambiguous", () => {
+        throws(
+            () => mapSuperAttacks(
+                "1",
+                [{ id: "10", special_set_id: "2" }],
+                new Map([["2", { id: "2", name: "Attack" }]]),
+                new Map([["2", [
+                    { id: "11", special_set_id: "2", efficacy_type: "111" },
+                    { id: "11", special_set_id: "2", efficacy_type: "1" },
+                ]]]),
+            ),
+            /specials contains duplicate row id 11/,
+        );
+    });
+
+    it("fails closed instead of hiding a malformed or mis-grouped raw effect", () => {
+        throws(
+            () => mapSuperAttacks(
+                "1",
+                [{ id: "10", special_set_id: "2" }],
+                new Map([["2", { id: "2", name: "Attack" }]]),
+                new Map([["2", [{ special_set_id: "2" }]]]),
+            ),
+            /specials contains an effect without an id or special_set_id/,
+        );
+        throws(
+            () => mapSuperAttacks(
+                "1",
+                [{ id: "10", special_set_id: "2" }],
+                new Map([["2", { id: "2", name: "Attack" }]]),
+                new Map([["2", [{ id: "20", special_set_id: "3" }]]]),
+            ),
+            /specials row 20 belongs to special_set_id 3, expected 2/,
         );
     });
 });

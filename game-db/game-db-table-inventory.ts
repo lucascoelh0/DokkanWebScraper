@@ -24,6 +24,10 @@ export const CORE_GAME_DB_TABLES = [
     "standby_skill_sets",
 ] as const;
 
+export const SUPER_ATTACK_EFFECT_GAME_DB_TABLES = [
+    "specials",
+] as const;
+
 export const DOKKAN_FIELD_SIDECAR_TABLES = [
     "dokkan_fields",
     "dokkan_field_efficacy_sets",
@@ -34,5 +38,6 @@ export const DOKKAN_FIELD_SIDECAR_TABLES = [
 
 export const FIRST_PARTY_EXPORT_GAME_DB_TABLES = [
     ...CORE_GAME_DB_TABLES,
+    ...SUPER_ATTACK_EFFECT_GAME_DB_TABLES,
     ...DOKKAN_FIELD_SIDECAR_TABLES,
 ] as const;

@@ -62,6 +62,7 @@ export interface GameDbSuperAttack {
         level?: number,
         viewId?: string,
     }>,
+    effects: GameDbSuperAttackEffect[],
     provenance: {
         cardSpecial: {
             table: "card_specials",
@@ -71,6 +72,23 @@ export interface GameDbSuperAttack {
             table: "special_sets",
             rowId: string,
         },
+    },
+}
+
+export interface GameDbSuperAttackEffect {
+    id: string,
+    specialSetId: string,
+    type?: string,
+    efficacyType?: number,
+    targetType?: number,
+    calcOption?: number,
+    turn?: number,
+    probability?: number,
+    causalityConditionsRaw?: string,
+    values: Array<number | string | null>,
+    provenance: {
+        table: "specials",
+        rowId: string,
     },
 }
 

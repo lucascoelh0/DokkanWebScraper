@@ -21,7 +21,7 @@ import {
 } from "./game-db-contract";
 import { mapActiveSkillSets } from "./game-db-active-skill";
 import { mapSuperAttacks } from "./game-db-super-attack";
-import { CORE_GAME_DB_TABLES } from "./game-db-table-inventory";
+import { CORE_GAME_DB_TABLES, SUPER_ATTACK_EFFECT_GAME_DB_TABLES } from "./game-db-table-inventory";
 import {
     GameDbRow,
     normalizeDbId,
@@ -550,6 +550,13 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
     const activeSkillRelationsByCardId = groupBy(tables.card_active_skills, "card_id");
     const activeSkillEffectsBySetId = groupBy(tables.active_skills, "active_skill_set_id");
     const cardSpecialsByCardId = groupBy(tables.card_specials, "card_id");
+    const specialEffectRows = tables.specials ?? [];
+    for (const row of specialEffectRows) {
+        if (!normalizeDbId(row.id) || !normalizeDbId(row.special_set_id)) {
+            throw new Error("specials contains an effect without an id or special_set_id");
+        }
+    }
+    const specialEffectsBySetId = groupBy(specialEffectRows, "special_set_id");
     const categoriesByCardId = groupBy(tables.card_card_categories, "card_id");
     const standbyRelationsByCardId = groupBy(tables.card_standby_skill_set_relations, "card_id");
     const finishRelationsByCardId = groupBy(tables.card_finish_skill_set_relations, "card_id");
@@ -689,7 +696,12 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
             categories,
             leaderSkill,
             passiveSkillSet,
-            superAttacks: mapSuperAttacks(cardId, cardSpecialsByCardId.get(cardId) ?? [], specialSetById),
+            superAttacks: mapSuperAttacks(
+                cardId,
+                cardSpecialsByCardId.get(cardId) ?? [],
+                specialSetById,
+                specialEffectsBySetId,
+            ),
             activeSkillSets: mapActiveSkillSets(
                 activeSkillRelationsByCardId.get(cardId) ?? [],
                 activeSkillSetById,
@@ -830,7 +842,20 @@ export async function loadRequiredGameDbTables(
         REQUIRED_GAME_DB_TABLES.map(async tableName => [tableName, await readGameDbTable(sourceConfig, tableName)] as const),
     );
 
-    return Object.fromEntries(tableEntries) as Record<string, GameDbRow[]>;
+    const optionalEntries = await Promise.all(
+        SUPER_ATTACK_EFFECT_GAME_DB_TABLES.map(async tableName => {
+            try {
+                return [tableName, await readGameDbTable(sourceConfig, tableName)] as const;
+            } catch (error: any) {
+                if (error?.code === "ENOENT") {
+                    return [tableName, []] as const;
+                }
+                throw error;
+            }
+        }),
+    );
+
+    return Object.fromEntries([...tableEntries, ...optionalEntries]) as Record<string, GameDbRow[]>;
 }
 
 async function main() {
