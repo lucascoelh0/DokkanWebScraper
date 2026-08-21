@@ -274,6 +274,8 @@ describe("mapDokkanFyiCharacter versioned combat fields", function () {
               { id: 2, name: "Perfect Attack (Extreme)", description: "EZA SA", condition: "EZA SA condition", ki: 12, level: 1 },
               { id: 3, name: "Perfect Ultra", description: "Base Ultra SA", condition: "Base Ultra condition", ki: 18, level: 0 },
               { id: 4, name: "Perfect Ultra (Extreme)", description: "EZA Ultra SA", condition: "EZA Ultra condition", ki: 18, level: 1 },
+              { id: 5, name: "Unit Attack", description: "Base Unit effect", condition: "Base Unit condition", ki: 12, level: 0, style: "Unit Super Attack" },
+              { id: 6, name: "Unit Attack (Extreme)", description: "EZA Unit effect", condition: "EZA Unit condition", ki: 12, level: 1, style: "Unit Super Attack" },
             ],
             extreme_z_awakening: {
               max_level: 150,
@@ -301,6 +303,8 @@ describe("mapDokkanFyiCharacter versioned combat fields", function () {
     equal(character.ezaUltraSuperAttack, "EZA Ultra SA");
     equal(character.ultraSuperAttackDetails?.condition, "Base Ultra condition");
     equal(character.ezaUltraSuperAttackDetails?.condition, "EZA Ultra condition");
+    deepEqual(character.unitSuperAttacks?.map(attack => attack.effect), ["Base Unit effect"]);
+    deepEqual(character.ezaUnitSuperAttacks?.map(attack => attack.effect), ["EZA Unit effect"]);
     equal(character.passiveDetails?.text, "Base passive effect");
     equal(character.ezaPassiveDetails?.text, "EZA passive effect");
   });
@@ -341,6 +345,8 @@ describe("mapDokkanFyiCharacter versioned combat fields", function () {
               { id: 12, name: "Dragon Fist (Extreme)", description: "{passiveImg:once}EZA SA", condition: "EZA SA condition", ki: 12, level: 1 },
               { id: 13, name: "Dragon Fist Ultra", description: "Base Ultra SA", condition: "Base Ultra condition", ki: 18, level: 0 },
               { id: 14, name: "Dragon Fist Ultra (Extreme)", description: "EZA Ultra SA", condition: "EZA Ultra condition", ki: 18, level: 1 },
+              { id: 15, name: "Unit Attack", description: "Base Unit effect", condition: "Base Unit condition", ki: 12, level: 0, style: "Unit Super Attack" },
+              { id: 16, name: "Unit Attack (Extreme)", description: "EZA Unit effect", condition: "EZA Unit condition", ki: 12, level: 1, style: "Unit Super Attack" },
             ],
             extreme_z_awakening: {
               max_level: 140,
@@ -376,11 +382,24 @@ describe("mapDokkanFyiCharacter versioned combat fields", function () {
     equal(character.ultraSuperAttack, "Base Ultra SA");
     equal(character.ezaUltraSuperAttack, "EZA Ultra SA");
     equal(character.ezaUltraSuperAttackDetails?.condition, "EZA Ultra condition");
+    deepEqual(character.unitSuperAttacks?.map(attack => attack.effect), ["Base Unit effect"]);
+    deepEqual(character.ezaUnitSuperAttacks?.map(attack => attack.effect), ["EZA Unit effect"]);
   });
 });
 
 describe("preferredSuperAttacks", function () {
-  it("selects one entry per attack slot and prefers awakened variants for the latest awakened state", () => {
+  it("keeps all three Pan-style Unit Super Attack slots distinct by release", () => {
+    const attacks = [
+      ...["Unit A", "Unit B", "Unit C"].map((name, index) => ({ name, description: `Base ${name} effect`, ki: 12 + index, level: 0, style: "Unit Super Attack", condition: "Base condition" })),
+      ...["Unit A", "Unit B", "Unit C"].map((name, index) => ({ name, description: `EZA ${name} effect`, ki: 12 + index, level: 1, style: "Unit Super Attack", condition: "EZA condition" })),
+    ];
+    const base = preferredSuperAttacks(attacks as any, false).filter(item => item.style === "Unit Super Attack");
+    const eza = preferredSuperAttacks(attacks as any, true).filter(item => item.style === "Unit Super Attack");
+    deepEqual(base.map(item => item.description), ["Base Unit A effect", "Base Unit B effect", "Base Unit C effect"]);
+    deepEqual(eza.map(item => item.description), ["EZA Unit A effect", "EZA Unit B effect", "EZA Unit C effect"]);
+  });
+
+  it("selects awakened attack slots without leaking a base-only Unit attack", () => {
     const selected = preferredSuperAttacks([
       {
         name: "Burst Rush",
@@ -423,12 +442,10 @@ describe("preferredSuperAttacks", function () {
     deepEqual(selected.map(attack => attack.name), [
       "Burst Rush (Extreme)",
       "Meteor Burst (Extreme)",
-      "Unit Combo",
     ]);
     deepEqual(selected.map(attack => attack.description), [
       "Awakened normal",
       "Awakened ultra",
-      "Unit effect",
     ]);
   });
 

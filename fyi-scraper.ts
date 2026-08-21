@@ -33,7 +33,7 @@ import { parseLeaderSkillDetails, splitPassiveSections } from "./scraper";
 
 const DOKKAN_FYI_BASE_URL = "https://dokkan.fyi";
 const DOKKAN_FYI_CDN_URL = "https://cdn.dokkan.fyi";
-const DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION = 9;
+const DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION = 10;
 
 export const DEFAULT_DOKKAN_FYI_EXPERIMENT_CHARACTER_IDS = [
     1032521, 1033761, 1032771, 1026251, 1033941,
@@ -669,6 +669,12 @@ export async function mapDokkanFyiCharacter(
             releaseState: "initial",
             sourceVersion: page.version,
         }),
+        ezaUnitSuperAttacks: releaseState !== "initial"
+            ? unitSuperAttacksFromFyi(awakenedState?.currentSuperAttacks ?? [], {
+                characterId: character.id.toString(), formId: character.id.toString(),
+                releaseState: "eza", sourceVersion: page.version,
+            })
+            : undefined,
         passive: passive?.text ?? "",
         passiveDetails: passive,
         ezaPassive: releaseState === "eza" ? awakenedPassive?.text : undefined,
@@ -950,6 +956,16 @@ function mapDokkanFyiTransformation(
         ezaExSuperAttackDetails: mapSuperAttackDetails(ezaExtraSuperAttack, superAttackEvidenceContext(
             baseCharacterId.toString(), character.id.toString(), releaseState, sourceVersion, "extra",
         )),
+        unitSuperAttacks: unitSuperAttacksFromFyi(initialSuperAttacks, {
+            characterId: baseCharacterId.toString(), formId: character.id.toString(),
+            releaseState: "initial", sourceVersion,
+        }),
+        ezaUnitSuperAttacks: releaseState !== "initial"
+            ? unitSuperAttacksFromFyi(awakenedSuperAttacks, {
+                characterId: baseCharacterId.toString(), formId: character.id.toString(),
+                releaseState: "eza", sourceVersion,
+            })
+            : undefined,
         passive: passive?.text ?? "",
         passiveDetails: passive,
         ezaPassive: releaseState === "eza" ? awakenedPassive?.text : undefined,
@@ -1018,12 +1034,18 @@ export function preferredSuperAttacks(
     useExtremeState: boolean,
 ): FyiSuperAttack[] {
     const grouped = new Map<string, FyiSuperAttack[]>();
+    const unitAttacks: FyiSuperAttack[] = [];
 
     for (const superAttack of superAttacks) {
         const kind = superAttackKind(superAttack);
-        const key = kind === "unit"
-            ? `${kind}:${cleanInlineText(superAttack.name)}:${toNumber(superAttack.ki)}`
-            : `${kind}:${toNumber(superAttack.ki)}`;
+        if (kind === "unit") {
+            const level = toNumber(superAttack.level);
+            if ((useExtremeState && level > 0) || (!useExtremeState && level === 0)) {
+                unitAttacks.push(superAttack);
+            }
+            continue;
+        }
+        const key = `${kind}:${toNumber(superAttack.ki)}`;
         const current = grouped.get(key);
         if (current) {
             current.push(superAttack);
@@ -1032,27 +1054,25 @@ export function preferredSuperAttacks(
         }
     }
 
-    return Array.from(grouped.values())
+    const standardAttacks = Array.from(grouped.values())
         .map(group => selectPreferredAttack(
             group,
             useExtremeState,
-            superAttackKind(group[0]) === "unit",
         ))
         .filter((superAttack): superAttack is FyiSuperAttack => Boolean(superAttack));
+    return [...standardAttacks, ...unitAttacks];
 }
 
 function selectPreferredAttack(
     group: FyiSuperAttack[],
     useExtremeState: boolean,
-    allowBaseFallback: boolean,
 ): FyiSuperAttack | undefined {
     const sorted = [...group].sort((left, right) => toNumber(right.level) - toNumber(left.level));
     if (!useExtremeState) {
         return sorted.find(superAttack => toNumber(superAttack.level) === 0);
     }
 
-    return sorted.find(superAttack => toNumber(superAttack.level) > 0) ??
-        (allowBaseFallback ? sorted[0] : undefined);
+    return sorted.find(superAttack => toNumber(superAttack.level) > 0);
 }
 
 function matchingFyiSuperAttack(

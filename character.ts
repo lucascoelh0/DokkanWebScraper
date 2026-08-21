@@ -31,6 +31,8 @@ export interface Character {
     exSuperAttack?: string,
     ezaExSuperAttack?: string,
     unitSuperAttacks?: UnitSuperAttack[]; 
+    /** Unit attacks for the EZA release; additive to the legacy base field. */
+    ezaUnitSuperAttacks?: UnitSuperAttack[];
     passive: string,
     passiveDetails?: PassiveDetails,
     ezaPassive?: string,
@@ -549,6 +551,8 @@ export interface Transformation {
     ezaUltraSuperAttackDetails?: SuperAttackDetails,
     exSuperAttackDetails?: SuperAttackDetails,
     ezaExSuperAttackDetails?: SuperAttackDetails,
+    unitSuperAttacks?: UnitSuperAttack[],
+    ezaUnitSuperAttacks?: UnitSuperAttack[],
     passive: string,
     passiveDetails?: PassiveDetails,
     ezaPassive?: string,

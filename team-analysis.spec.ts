@@ -1347,6 +1347,25 @@ describe("team-analysis Gate A7 Super Attack effect channel", function () {
     deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
   });
 
+  it("selects release-specific Unit Super Attacks and never leaks base attacks into EZA or SEZA", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters.find(item => item.id === "1005001") as Character;
+    character.ezaReleaseDate = "2026-01-01T00:00:00.000Z";
+    character.sezaReleaseDate = "2027-01-01T00:00:00.000Z";
+    character.unitSuperAttacks = ["Base A", "Base B", "Base C"].map(name => ({ name, effect: `${name} effect`, unitSuperAttack: name, unitSuperAttackCondition: "Base condition" }));
+    character.ezaUnitSuperAttacks = ["EZA A", "EZA B", "EZA C"].map(name => ({ name, effect: `${name} effect`, unitSuperAttack: name, unitSuperAttackCondition: "EZA condition" }));
+    const ezaDataset = buildTeamAnalysisDataset(JSON.parse(JSON.stringify(characters)).map((item: Character) => {
+      delete item.sezaReleaseDate;
+      return item;
+    }), fixture.catalogEntries, options);
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    const eza = state(ezaDataset.states, "1005001:1005001:eza");
+    const seza = state(dataset.states, "1005001:1005001:seza");
+    deepEqual(eza.superAttacks?.filter(item => item.variant === "unit").map(item => item.name), ["EZA A", "EZA B", "EZA C"]);
+    deepEqual(seza.superAttacks?.filter(item => item.variant === "unit").map(item => item.name), ["EZA A", "EZA B", "EZA C"]);
+    equal(seza.superAttacks?.some(item => item.name?.startsWith("Base")), false);
+  });
+
   it("keeps SEZA passive details and the still-applicable EZA Super Attacks on the SEZA state", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
     const character = characters.find(item => item.id === "1005001") as Character;

@@ -649,6 +649,7 @@ interface AnalysisFormSource {
     exSuperAttackDetails?: SuperAttackDetails,
     ezaExSuperAttackDetails?: SuperAttackDetails,
     unitSuperAttacks?: UnitSuperAttack[],
+    ezaUnitSuperAttacks?: UnitSuperAttack[],
     ezaReleaseDate?: string,
     sezaReleaseDate?: string,
 }
@@ -942,8 +943,11 @@ function analysisSuperAttackSources(
         });
     }
 
-    if (releaseState === "initial" || singleReleaseState) {
-        (form.unitSuperAttacks ?? []).forEach((unit, ordinal) => {
+    const units = releaseState === "initial"
+        ? form.unitSuperAttacks
+        : form.ezaUnitSuperAttacks;
+    if (units) {
+        units.forEach((unit, ordinal) => {
             const effectText = unit.effect ?? "";
             if (!effectText) {
                 return;
