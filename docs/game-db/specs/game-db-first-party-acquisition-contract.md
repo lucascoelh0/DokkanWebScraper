@@ -76,7 +76,13 @@ themselves, prove created-Domain ownership or efficacy semantics.
 
 The legacy character importer intentionally continues to load only its core
 table inventory. Sidecar discovery is a separate all-or-none operation and is
-not yet materialized into the character dataset.
+not materialized into the character dataset. When present, it may instead be
+materialized as `dokkan-field-sidecar.json.gz` plus
+`dokkan-field-sidecar-manifest.json`. That additive artifact is source-snapshot
+bound, hash/size/count validated and explicitly structural-only. Incomplete
+included-table joins remain preserved as evidence but are ineligible for
+structural consumption. Absence produces zero output files, and neither the
+artifact nor its relation indexes assert created-Domain ownership or effects.
 
 Build and promotion utilities install only into a new output directory. They
 stage and validate the closed inventory, claim the destination directory
