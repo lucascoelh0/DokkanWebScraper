@@ -52,6 +52,7 @@ export interface GameDbSnapshotAuditedCreatedDomain {
         id: string,
         name: string,
         resourceId: string,
+        description: string,
     },
     provenance: {
         activeSkillSet: { table: "active_skill_sets", rowId: string },
@@ -65,7 +66,7 @@ export interface GameDbSnapshotAuditedCreatedDomainProjectionV1 {
     sourceSnapshotId: typeof CREATED_DOMAIN_AUDITED_SNAPSHOT_ID,
     semanticStatus: "snapshot-audited",
     scope: "active-skills-only",
-    excludedSemantics: ["duration", "field-effects", "passive-created-domain"],
+    excludedSemantics: ["duration", "structured-field-efficacies", "passive-created-domain"],
     byActiveSkillSetId: Record<string, GameDbSnapshotAuditedCreatedDomain>,
 }
 
@@ -74,7 +75,7 @@ export interface GameDbUntrustedCreatedDomainProjectionForTest {
     sourceSnapshotId: string,
     semanticStatus: "test-only-untrusted",
     scope: "active-skills-only",
-    excludedSemantics: ["duration", "field-effects", "passive-created-domain"],
+    excludedSemantics: ["duration", "structured-field-efficacies", "passive-created-domain"],
     byActiveSkillSetId: Record<string, Omit<GameDbSnapshotAuditedCreatedDomain, "semanticStatus"> & {
         semanticStatus: "test-only-untrusted",
     }>,
@@ -132,6 +133,10 @@ function buildSnapshotAuditedCreatedDomainProjectionFromParsedSources(
         if (!normalizeDisplayText(activeSkillSet.effect_description).includes(expectedPhrase)) {
             throw new Error(`Created Domain description proof drift for active skill set ${audited.activeSkillSetId}`);
         }
+        const fieldDescription = field.values.description?.trim();
+        if (!fieldDescription) {
+            throw new Error(`Created Domain field description drift for active skill set ${audited.activeSkillSetId}`);
+        }
         if (byActiveSkillSetId[audited.activeSkillSetId]) {
             throw new Error(`Created Domain duplicate active skill set ${audited.activeSkillSetId}`);
         }
@@ -144,6 +149,7 @@ function buildSnapshotAuditedCreatedDomainProjectionFromParsedSources(
                 id: audited.fieldId,
                 name: audited.fieldName,
                 resourceId: audited.resourceId,
+                description: fieldDescription,
             },
             provenance: {
                 activeSkillSet: { table: "active_skill_sets", rowId: audited.activeSkillSetId },
@@ -161,7 +167,7 @@ function buildSnapshotAuditedCreatedDomainProjectionFromParsedSources(
         sourceSnapshotId: CREATED_DOMAIN_AUDITED_SNAPSHOT_ID,
         semanticStatus: "snapshot-audited",
         scope: "active-skills-only",
-        excludedSemantics: ["duration", "field-effects", "passive-created-domain"],
+        excludedSemantics: ["duration", "structured-field-efficacies", "passive-created-domain"],
         byActiveSkillSetId,
     };
 }

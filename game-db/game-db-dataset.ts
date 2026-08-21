@@ -33,7 +33,7 @@ import {
 const PRIMARY_CARD_ID_MAX = 4_000_000;
 const MINIMUM_HP_INIT = 300;
 const DEFAULT_OUTPUT_DIR = resolve(__dirname, "data", "game-db-dataset", "latest");
-export const GAME_DB_DATASET_CONTENT_REVISION = "created-domain-v1";
+export const GAME_DB_DATASET_CONTENT_REVISION = "created-domain-effect-v2";
 
 export function resolveCreatedDomainSourceSnapshotId(
     sourceSettings?: GameDbDatasetReport["sourceSettings"],

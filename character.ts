@@ -368,6 +368,7 @@ export interface CreatedDomainDetails {
         id: string,
         name: string,
         resourceId: string,
+        description?: string,
     },
     provenance: {
         activeSkillSet: { table: "active_skill_sets", rowId: string },

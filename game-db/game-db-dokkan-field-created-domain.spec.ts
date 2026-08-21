@@ -18,6 +18,7 @@ function fixture() {
             dokkan_field_efficacy_set_id: link.fieldId,
             name: link.fieldName,
             resource_id: link.resourceId,
+            description: `${link.fieldName} field effect`,
         })),
         dokkan_field_efficacy_sets: fields.map(link => ({ id: link.fieldId })),
         dokkan_field_efficacies: [],
@@ -47,14 +48,25 @@ describe("buildSnapshotAuditedCreatedDomainProjection", function () {
 
         equal(Object.keys(projection.byActiveSkillSetId).length, 14);
         equal(projection.semanticStatus, "test-only-untrusted");
-        deepEqual(projection.excludedSemantics, ["duration", "field-effects", "passive-created-domain"]);
+        deepEqual(
+            projection.excludedSemantics,
+            ["duration", "structured-field-efficacies", "passive-created-domain"],
+        );
         equal("duration" in projection.byActiveSkillSetId["323"], false);
-        equal("description" in projection.byActiveSkillSetId["323"].field, false);
+        equal(
+            projection.byActiveSkillSetId["323"].field.description,
+            "Earth Shrouded in Minus Energy field effect",
+        );
         deepEqual(projection.byActiveSkillSetId["323"], {
             semanticStatus: "test-only-untrusted",
             sourceSnapshotId: CREATED_DOMAIN_AUDITED_SNAPSHOT_ID,
             activeSkillSetId: "323",
-            field: { id: "11", name: "Earth Shrouded in Minus Energy", resourceId: "3010" },
+            field: {
+                id: "11",
+                name: "Earth Shrouded in Minus Energy",
+                resourceId: "3010",
+                description: "Earth Shrouded in Minus Energy field effect",
+            },
             provenance: {
                 activeSkillSet: { table: "active_skill_sets", rowId: "323" },
                 relation: { table: "dokkan_field_active_skill_set_relations", rowId: "13" },
@@ -84,6 +96,16 @@ describe("buildSnapshotAuditedCreatedDomainProjection", function () {
         throws(
             () => buildSnapshotAuditedCreatedDomainProjectionForTest(fieldDrift.sidecar, fieldDrift.activeSkillSets),
             /audited link drift/,
+        );
+
+        const fieldDescriptionDrift = fixture();
+        fieldDescriptionDrift.sidecar.rows.dokkan_fields[0].values.description = "";
+        throws(
+            () => buildSnapshotAuditedCreatedDomainProjectionForTest(
+                fieldDescriptionDrift.sidecar,
+                fieldDescriptionDrift.activeSkillSets,
+            ),
+            /field description drift/,
         );
 
         const descriptionDrift = fixture();
