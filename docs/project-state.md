@@ -1181,6 +1181,39 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   sources. Focused scraper tests pass 312/312; the Android wire-model test and
   debug assembly pass.
 
+## Release-specific Unit Super Attack checkpoint (2026-08-21)
+
+- Characters `2026-08-21T21:05:24.053Z` is public with payload SHA-256
+  `d00ed114cfcba3c9937d96cd82ae3fb009b1a53b040add465bed312d758b5836`.
+  The K28 publication uploaded 12 missing immutable objects, found zero
+  conflicts or failed reads, verified 1,629 objects including the manifest,
+  and promoted `characters-manifest.json` last. The dry-run projected
+  374,257,659 bytes at peak against the 10 GB bucket limit.
+- Team Analysis `2026-08-21T21:05:24.053Z:parser-1.7.3` is public with payload
+  SHA-256
+  `238a825f90cd2180985e21a5c575d17520ad227a42ec7b79b18a9d581b7cb4b8`.
+  Its source Characters version and SHA-256 exactly match the public
+  Characters manifest. The post-publication recovery dry-run reports zero
+  writes and retains the immediately previous verified release for rollback.
+- Wrangler 4.118.0 reported the newly uploaded Team Analysis payload missing
+  through `r2 object get` immediately after its successful `r2 object put`.
+  Publication failed closed before manifest promotion. Direct public HTTPS
+  then proved HTTP 200, the exact 2,735,738 bytes and SHA-256, gzip content
+  type, and immutable cache metadata. The documented
+  `--skip-upload-verification` recovery path was used only after that proof;
+  the manifest was then promoted and independently re-read with `no-store`.
+- `unitSuperAttacks` remains the base list and the additive
+  `ezaUnitSuperAttacks` field carries the EZA list. SEZA inherits the EZA list;
+  EZA and SEZA never fall back to base Unit Super Attacks. Pan (GT) `1024991`
+  was verified with three distinct base and three distinct EZA Unit Super
+  Attacks in both Characters and Team Analysis artifacts.
+- The Android integration branch `codex/master-consolidation-k66` consumes the
+  additive field through Room schema 11, preserves old caches through an
+  additive 10-to-11 migration, and rematerializes Characters at marker 5.
+  Focused migration instrumentation passed 6/6; domain/app unit tests and the
+  debug assembly pass. The user's dirty Android `master` worktree remains
+  untouched pending an explicit local-change consolidation decision.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
