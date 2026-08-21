@@ -54,6 +54,11 @@ first-party-export/
     active_skill_sets.csv
     active_skills.csv
     card_active_skills.csv
+    dokkan_fields.csv
+    dokkan_field_efficacy_sets.csv
+    dokkan_field_efficacies.csv
+    dokkan_field_active_skill_set_relations.csv
+    dokkan_field_passive_skill_relations.csv
     standby_skill_sets.csv
     standby_skills.csv
     card_standby_skill_set_relations.csv
@@ -62,6 +67,33 @@ first-party-export/
     card_finish_skill_set_relations.csv
     standby_skill_set_finish_skill_set_relations.csv
 ```
+
+The five `dokkan_field_*` tables form one additive sidecar inventory. Older
+exports that contain none of them remain readable by the character importer.
+New first-party exports must contain all five; a partial sidecar fails closed.
+Their relations establish structural associations only and do not, by
+themselves, prove created-Domain ownership or efficacy semantics.
+
+The legacy character importer intentionally continues to load only its core
+table inventory. Sidecar discovery is a separate all-or-none operation and is
+not yet materialized into the character dataset.
+
+Build and promotion utilities install only into a new output directory. They
+stage and validate the closed inventory, claim the destination directory
+exclusively, copy members without replacement, and copy `metadata.json` last as
+the validity marker. They never replace or delete an existing export; callers
+must choose a fresh versioned output directory. A crash before metadata leaves
+an invalid incomplete generation, not an authoritative export.
+
+These transitional utilities must run below a private, caller-controlled output
+parent. They reject ordinary path replacement, links and concurrent writers
+observed at their validation boundaries, but Node does not provide a portable
+descriptor-relative `openat`/no-follow copy primitive. They therefore do not
+claim confinement against a hostile same-OS-identity process that replaces a
+validated parent entry in the check-to-copy interval. That stronger in-operation
+race guarantee belongs to the AQ/DQ/C4 controlled acquisition path described
+below; shared or adversarial output parents are **NO-GO** for the transitional
+utilities.
 
 ## Metadata contract
 

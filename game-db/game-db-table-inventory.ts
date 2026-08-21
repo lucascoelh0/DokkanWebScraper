@@ -1,0 +1,38 @@
+export const CORE_GAME_DB_TABLES = [
+    "active_skill_sets",
+    "active_skills",
+    "card_active_skills",
+    "card_awakening_routes",
+    "card_card_categories",
+    "card_categories",
+    "card_finish_skill_set_relations",
+    "card_specials",
+    "card_standby_skill_set_relations",
+    "cards",
+    "finish_skill_sets",
+    "finish_skills",
+    "leader_skill_sets",
+    "leader_skills",
+    "link_skills",
+    "optimal_awakening_growths",
+    "passive_skill_set_relations",
+    "passive_skill_sets",
+    "passive_skills",
+    "special_sets",
+    "standby_skill_set_finish_skill_set_relations",
+    "standby_skills",
+    "standby_skill_sets",
+] as const;
+
+export const DOKKAN_FIELD_SIDECAR_TABLES = [
+    "dokkan_fields",
+    "dokkan_field_efficacy_sets",
+    "dokkan_field_efficacies",
+    "dokkan_field_active_skill_set_relations",
+    "dokkan_field_passive_skill_relations",
+] as const;
+
+export const FIRST_PARTY_EXPORT_GAME_DB_TABLES = [
+    ...CORE_GAME_DB_TABLES,
+    ...DOKKAN_FIELD_SIDECAR_TABLES,
+] as const;

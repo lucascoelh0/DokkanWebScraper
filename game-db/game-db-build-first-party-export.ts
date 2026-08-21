@@ -1,8 +1,12 @@
 import { spawn } from "child_process";
-import { mkdir, writeFile } from "fs/promises";
 import { resolve } from "path";
 import { DEFAULT_FIRST_PARTY_DIR, GameDbFirstPartyExportMetadata } from "./game-db-acquisition";
-import { REQUIRED_GAME_DB_TABLES, readSourceSettings } from "./game-db-experiment";
+import {
+    assertNoFirstPartyExportPathOverlap,
+    commitFirstPartyExport,
+} from "./game-db-first-party-export-commit";
+import { readSourceSettings } from "./game-db-experiment";
+import { FIRST_PARTY_EXPORT_GAME_DB_TABLES } from "./game-db-table-inventory";
 
 export interface GameDbBuildFirstPartyExportOptions {
     sqlitePath: string,
@@ -121,7 +125,7 @@ async function exportSqliteTables(sqlitePath: string, outputDir: string): Promis
         sqlitePath,
         "--output-dir",
         outputDir,
-        ...REQUIRED_GAME_DB_TABLES.flatMap(tableName => ["--table", tableName]),
+        ...FIRST_PARTY_EXPORT_GAME_DB_TABLES.flatMap(tableName => ["--table", tableName]),
     ];
 
     if (process.platform === "win32") {
@@ -137,12 +141,8 @@ export async function buildFirstPartyExport(options: GameDbBuildFirstPartyExport
     metadataPath: string,
     exportedTableCount: number,
 }> {
-    const dataDir = resolve(options.outputDir, "data");
-    const metadataPath = resolve(options.outputDir, "metadata.json");
+    await assertNoFirstPartyExportPathOverlap(options.sqlitePath, options.outputDir);
     const sourceSettings = options.settingsJson ? await readSourceSettings(options.settingsJson) : undefined;
-
-    await mkdir(dataDir, { recursive: true });
-    await exportSqliteTables(options.sqlitePath, dataDir);
 
     const metadata: GameDbFirstPartyExportMetadata = {
         source: "first-party-export",
@@ -154,12 +154,16 @@ export async function buildFirstPartyExport(options: GameDbBuildFirstPartyExport
         notes: options.note,
     };
 
-    await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+    const committed = await commitFirstPartyExport({
+        outputDir: options.outputDir,
+        metadata,
+        materializeData: dataDir => exportSqliteTables(options.sqlitePath, dataDir),
+    });
 
     return {
-        outputDir: options.outputDir,
-        metadataPath,
-        exportedTableCount: REQUIRED_GAME_DB_TABLES.length,
+        outputDir: committed.outputDir,
+        metadataPath: committed.metadataPath,
+        exportedTableCount: FIRST_PARTY_EXPORT_GAME_DB_TABLES.length,
     };
 }
 

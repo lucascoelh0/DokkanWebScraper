@@ -1,11 +1,17 @@
-import { copyFile, mkdir, writeFile } from "fs/promises";
 import { resolve } from "path";
 import {
     DEFAULT_FIRST_PARTY_DIR,
     GameDbFirstPartyExportMetadata,
     resolveGameDbAcquisitionOptions,
 } from "./game-db-acquisition";
-import { REQUIRED_GAME_DB_TABLES, readSourceSettings } from "./game-db-experiment";
+import {
+    assertFirstPartyExportSourceInventory,
+    assertNoFirstPartyExportPathOverlap,
+    commitFirstPartyExport,
+    copyFirstPartyExportSourceInventory,
+} from "./game-db-first-party-export-commit";
+import { readSourceSettings } from "./game-db-experiment";
+import { FIRST_PARTY_EXPORT_GAME_DB_TABLES } from "./game-db-table-inventory";
 import { resolveGameDbSourceConfig } from "./game-db-source";
 
 export interface GameDbPromoteOptions {
@@ -61,20 +67,9 @@ export async function promoteToFirstPartyExport(options?: GameDbPromoteOptions):
     const acquisitionDefaults = resolveGameDbAcquisitionOptions();
     const sourceConfig = resolveGameDbSourceConfig(parsed.sourceRoot || acquisitionDefaults.sourceRootOverride || undefined);
     const outputDir = resolve(parsed.outputDir);
-    const dataDir = resolve(outputDir, "data");
-    const metadataPath = resolve(outputDir, "metadata.json");
     const sourceSettings = await readSourceSettings(sourceConfig.settingsPath);
-
-    await mkdir(dataDir, { recursive: true });
-
-    await Promise.all(
-        REQUIRED_GAME_DB_TABLES.map(tableName =>
-            copyFile(
-                resolve(sourceConfig.dataDir, `${tableName}.csv`),
-                resolve(dataDir, `${tableName}.csv`),
-            ),
-        ),
-    );
+    await assertNoFirstPartyExportPathOverlap(sourceConfig.dataDir, outputDir);
+    await assertFirstPartyExportSourceInventory(sourceConfig.dataDir);
 
     const metadata: GameDbFirstPartyExportMetadata = {
         source: "first-party-export",
@@ -86,12 +81,16 @@ export async function promoteToFirstPartyExport(options?: GameDbPromoteOptions):
         notes: parsed.note,
     };
 
-    await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+    const committed = await commitFirstPartyExport({
+        outputDir,
+        metadata,
+        materializeData: dataDir => copyFirstPartyExportSourceInventory(sourceConfig.dataDir, dataDir),
+    });
 
     return {
-        outputDir,
-        metadataPath,
-        copiedTableCount: REQUIRED_GAME_DB_TABLES.length,
+        outputDir: committed.outputDir,
+        metadataPath: committed.metadataPath,
+        copiedTableCount: FIRST_PARTY_EXPORT_GAME_DB_TABLES.length,
     };
 }
 

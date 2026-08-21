@@ -1,12 +1,9 @@
-import { GameDbRow, normalizeDbId } from "./game-db-source";
+import { existsSync } from "fs";
+import { resolve } from "path";
+import { GameDbRow, GameDbSourceConfig, normalizeDbId, readGameDbTable } from "./game-db-source";
+import { DOKKAN_FIELD_SIDECAR_TABLES } from "./game-db-table-inventory";
 
-export const DOKKAN_FIELD_SIDECAR_TABLES = [
-    "dokkan_fields",
-    "dokkan_field_efficacy_sets",
-    "dokkan_field_efficacies",
-    "dokkan_field_active_skill_set_relations",
-    "dokkan_field_passive_skill_relations",
-] as const;
+export { DOKKAN_FIELD_SIDECAR_TABLES } from "./game-db-table-inventory";
 
 export type GameDbDokkanFieldTable = typeof DOKKAN_FIELD_SIDECAR_TABLES[number];
 
@@ -39,7 +36,29 @@ export interface GameDbDokkanFieldSidecarV1 {
     },
 }
 
-type SidecarTables = Record<GameDbDokkanFieldTable, GameDbRow[]>;
+export type GameDbDokkanFieldSidecarTables = Record<GameDbDokkanFieldTable, GameDbRow[]>;
+
+export async function loadGameDbDokkanFieldSidecarTablesIfPresent(
+    sourceConfig: GameDbSourceConfig,
+): Promise<GameDbDokkanFieldSidecarTables | undefined> {
+    const presence = DOKKAN_FIELD_SIDECAR_TABLES.map(table => ({
+        table,
+        exists: existsSync(resolve(sourceConfig.dataDir, `${table}.csv`)),
+    }));
+    if (presence.every(member => !member.exists)) {
+        return undefined;
+    }
+    const missing = presence.filter(member => !member.exists).map(member => member.table);
+    if (missing.length > 0) {
+        throw new Error(`Incomplete Dokkan field sidecar table inventory; missing: ${missing.join(", ")}`);
+    }
+
+    const entries = await Promise.all(DOKKAN_FIELD_SIDECAR_TABLES.map(async table => [
+        table,
+        await readGameDbTable(sourceConfig, table),
+    ] as const));
+    return Object.fromEntries(entries) as GameDbDokkanFieldSidecarTables;
+}
 
 function compareIds(left: string, right: string): number {
     if (/^\d+$/.test(left) && /^\d+$/.test(right)) {
@@ -99,7 +118,7 @@ function unresolvedReferences(sourceIds: string[], availableIds: Set<string>): s
 
 export function buildGameDbDokkanFieldSidecar(
     snapshotId: string,
-    tables: SidecarTables,
+    tables: GameDbDokkanFieldSidecarTables,
 ): GameDbDokkanFieldSidecarV1 {
     const normalizedSnapshotId = snapshotId.trim();
     if (normalizedSnapshotId.length === 0) {

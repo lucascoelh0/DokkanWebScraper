@@ -1,8 +1,24 @@
-import { deepEqual, equal, throws } from "assert";
+import { deepEqual, equal, rejects, throws } from "assert";
+import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
 import { describe, it } from "mocha";
-import { buildGameDbDokkanFieldSidecar, DOKKAN_FIELD_SIDECAR_TABLES } from "./game-db-dokkan-field-sidecar";
+import { tmpdir } from "os";
+import { join } from "path";
+import {
+    buildGameDbDokkanFieldSidecar,
+    DOKKAN_FIELD_SIDECAR_TABLES,
+    loadGameDbDokkanFieldSidecarTablesIfPresent,
+} from "./game-db-dokkan-field-sidecar";
+import { CORE_GAME_DB_TABLES, FIRST_PARTY_EXPORT_GAME_DB_TABLES } from "./game-db-table-inventory";
 
 describe("buildGameDbDokkanFieldSidecar", function () {
+    it("keeps legacy core imports separate from the all-or-none first-party sidecar inventory", () => {
+        deepEqual(FIRST_PARTY_EXPORT_GAME_DB_TABLES, [
+            ...CORE_GAME_DB_TABLES,
+            ...DOKKAN_FIELD_SIDECAR_TABLES,
+        ]);
+        equal(new Set(FIRST_PARTY_EXPORT_GAME_DB_TABLES).size, FIRST_PARTY_EXPORT_GAME_DB_TABLES.length);
+    });
+
     it("preserves raw rows and exposes associations without claiming Domain ownership", () => {
         const sidecar = buildGameDbDokkanFieldSidecar("glb-db-2026-08-20", {
             dokkan_fields: [{
@@ -96,5 +112,30 @@ describe("buildGameDbDokkanFieldSidecar", function () {
         equal(sidecar.source.snapshotId, "snapshot");
         equal(sidecar.includedTableIntegrity.status, "complete");
         equal("unresolvedActiveSkillSetIds" in sidecar.includedTableIntegrity, false);
+    });
+
+    it("loads the optional inventory only when all five CSV members are present", async () => {
+        const root = await mkdtemp(join(tmpdir(), "dokkan-field-sidecar-"));
+        const dataDir = join(root, "data");
+        await mkdir(dataDir);
+        try {
+            const sourceConfig = { sourceRoot: root, dataDir };
+            equal(await loadGameDbDokkanFieldSidecarTablesIfPresent(sourceConfig), undefined);
+
+            await writeFile(join(dataDir, `${DOKKAN_FIELD_SIDECAR_TABLES[0]}.csv`), "id\n", "utf8");
+            await rejects(
+                () => loadGameDbDokkanFieldSidecarTablesIfPresent(sourceConfig),
+                /Incomplete Dokkan field sidecar table inventory/,
+            );
+
+            await Promise.all(DOKKAN_FIELD_SIDECAR_TABLES.slice(1).map(table =>
+                writeFile(join(dataDir, `${table}.csv`), "id\n", "utf8"),
+            ));
+            const loaded = await loadGameDbDokkanFieldSidecarTablesIfPresent(sourceConfig);
+            deepEqual(Object.keys(loaded ?? {}), [...DOKKAN_FIELD_SIDECAR_TABLES]);
+            deepEqual(Object.values(loaded ?? {}), DOKKAN_FIELD_SIDECAR_TABLES.map(() => []));
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
     });
 });

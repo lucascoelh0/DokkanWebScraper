@@ -21,6 +21,7 @@ import {
 } from "./game-db-contract";
 import { mapActiveSkillSets } from "./game-db-active-skill";
 import { mapSuperAttacks } from "./game-db-super-attack";
+import { CORE_GAME_DB_TABLES } from "./game-db-table-inventory";
 import {
     GameDbRow,
     normalizeDbId,
@@ -42,31 +43,7 @@ export const DEFAULT_GOLDEN_CARD_IDS = [
     "1022781",
 ];
 
-export const REQUIRED_GAME_DB_TABLES = [
-    "active_skill_sets",
-    "active_skills",
-    "card_active_skills",
-    "card_awakening_routes",
-    "card_card_categories",
-    "card_categories",
-    "card_finish_skill_set_relations",
-    "card_specials",
-    "card_standby_skill_set_relations",
-    "cards",
-    "finish_skill_sets",
-    "finish_skills",
-    "leader_skill_sets",
-    "leader_skills",
-    "link_skills",
-    "optimal_awakening_growths",
-    "passive_skill_set_relations",
-    "passive_skill_sets",
-    "passive_skills",
-    "special_sets",
-    "standby_skill_set_finish_skill_set_relations",
-    "standby_skills",
-    "standby_skill_sets",
-];
+export const REQUIRED_GAME_DB_TABLES = [...CORE_GAME_DB_TABLES];
 
 export function parseCardIds(value?: string): string[] {
     if (!value) {
