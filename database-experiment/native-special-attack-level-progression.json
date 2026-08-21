@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "special-attack-increase-rate-and-level-bonus-progression",
+  "sqliteBinding": {
+    "table": "special_sets",
+    "increaseRateColumn": "increase_rate",
+    "levelBonusColumn": "lv_bonus",
+    "increaseRateObjectOffset": 116,
+    "levelBonusObjectOffset": 120
+  },
+  "runtimeFormula": {
+    "skillLevelSource": "UserCard.skill_lv",
+    "skillLevelObjectOffset": 60,
+    "coefficientBeforeRuntimeModifiers": "increase_rate + max(skill_lv - 1, 0) * lv_bonus",
+    "runtimeModifierStep": "coefficient_before_runtime_modifiers + calcModifierSpecialAtkRate(deck_index, SkillCategoryType::Special)",
+    "projection": "level-1 and max-level endpoints of coefficient_before_runtime_modifiers"
+  },
+  "runtimeChain": [
+    "CardSpecial::EfficacySet reads special_sets.increase_rate and special_sets.lv_bonus into adjacent typed fields",
+    "AbilityManager::createSpecialSkill forwards those fields to calcAttackIncreaseForParty",
+    "calcAttackIncreaseForParty loads UserCard.skill_lv and clamps levels below 1 to the level-1 coefficient",
+    "for skill levels at least 1, MADD computes increase_rate + (skill_lv - 1) * lv_bonus",
+    "calcModifierSpecialAtkRate is called afterward and its result is added separately"
+  ],
+  "stringLiterals": [
+    { "vma": 32666617, "value": "increase_rate" }
+  ],
+  "codeRegions": [
+    {
+      "role": "special_set_sqlite_constructor",
+      "symbol": "_ZN11CardSpecial11EfficacySetC1EPN7SQLite33RowE",
+      "vma": 47067980,
+      "sizeBytes": 1108,
+      "codeSha256": "ed6a5b9e1d5035c25276f94bb9ec69985e6e7e54d4b6e2a44809f63d027bd01c"
+    },
+    {
+      "role": "create_special_skill",
+      "symbol": "_ZN14AbilityManager18createSpecialSkillEii17SkillCategoryTypeRKNSt6__ndk110shared_ptrIN11CardSpecial11EfficacySetEEEibbb",
+      "vma": 64392112,
+      "sizeBytes": 1400,
+      "codeSha256": "40731b7b2e1f0e864a726794ea628d4961b56cd67ead69658af79373570110a1"
+    },
+    {
+      "role": "calculate_party_special_attack_increase",
+      "symbol": "_ZN14AbilityManager26calcAttackIncreaseForPartyEiii",
+      "vma": 64393512,
+      "sizeBytes": 292,
+      "codeSha256": "e2b9535c30dc99b04a0c6fa105d47f4cbb3c4d2e162e368a924bbfa31a4292d8"
+    }
+  ],
+  "structuralAssertions": [
+    { "role": "increase_rate_literal_page", "vma": 47068308, "hex": "2992ff90" },
+    { "role": "increase_rate_literal_offset", "vma": 47068312, "hex": "29e50f91" },
+    { "role": "store_increase_rate_offset_116", "vma": 47068384, "hex": "767600b9" },
+    { "role": "construct_lv_bonus_part_1", "vma": 47068376, "hex": "89cd8ed2" },
+    { "role": "construct_lv_bonus_part_2", "vma": 47068388, "hex": "e94bacf2" },
+    { "role": "construct_lv_bonus_part_3", "vma": 47068396, "hex": "e9cdcdf2" },
+    { "role": "construct_lv_bonus_part_4", "vma": 47068404, "hex": "a96eeef2" },
+    { "role": "store_lv_bonus_offset_120", "vma": 47068472, "hex": "767a00b9" },
+    { "role": "load_adjacent_rate_and_bonus", "vma": 64392244, "hex": "018d4e29" },
+    { "role": "load_user_card_skill_level_offset_60", "vma": 64393624, "hex": "083d40b9" },
+    { "role": "subtract_level_one", "vma": 64393628, "hex": "08050071" },
+    { "role": "skip_negative_level_delta", "vma": 64393632, "hex": "4b000054" },
+    { "role": "multiply_add_level_progression", "vma": 64393636, "hex": "134d151b" },
+    { "role": "add_runtime_modifier_after_progression", "vma": 64393720, "hex": "8002130b" }
+  ],
+  "directCalls": [
+    {
+      "role": "create_special_to_party_progression",
+      "callVma": 64392252,
+      "callHex": "39815d94",
+      "targetPltVma": 88903968,
+      "gotRelocationOffset": 95414072,
+      "targetSymbol": "_ZN14AbilityManager26calcAttackIncreaseForPartyEiii",
+      "targetVma": 64393512
+    },
+    {
+      "role": "progression_to_runtime_modifier",
+      "callVma": 64393648,
+      "callHex": "c4d25b94",
+      "targetPltVma": 88464576,
+      "gotRelocationOffset": 95194376,
+      "targetSymbol": "_ZN19DPuzzleGameCalcData26calcModifierSpecialAtkRateEi17SkillCategoryType",
+      "targetVma": 46830568
+    }
+  ],
+  "unknowns": [
+    "final_damage_multiplier_base",
+    "special_bonus_application_order",
+    "runtime_modifier_sources_and_order",
+    "integer_rounding_boundaries"
+  ]
+}

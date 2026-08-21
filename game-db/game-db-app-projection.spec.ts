@@ -175,6 +175,11 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
         equal(attack.name, "Demon Death Ball");
         equal(attack.variant, "ultra");
         equal(attack.requiredKi, 18);
+        deepEqual(attack.attackIncrease, {
+            level1Percent: 250,
+            maxLevelPercent: 440,
+            maxLevel: 20,
+        });
         const serialized = JSON.stringify(projection.superAttackDetails);
         equal(serialized.includes("Special::"), false);
         equal(serialized.includes("specialSetId"), false);
@@ -183,6 +188,85 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
         equal(serialized.includes("levelStart"), false);
         equal(serialized.includes("action_break"), false);
         equal(serialized.includes("provenance"), false);
+    });
+
+    it("projects the native Super Attack level curve without exposing source columns", () => {
+        const projection = projectGameDbCharacterToDokkanpanion({
+            ...makeBaseSnapshot(),
+            baseMaxSaLevel: 10,
+            superAttacks: [{
+                cardSpecialId: "15001",
+                specialSetId: "5001",
+                name: "Smart Shot",
+                description: "Causes supreme damage to enemy",
+                variant: "super",
+                requiredKi: 12,
+                increaseRate: 150,
+                levelBonus: 20,
+                specialBonuses: [],
+                effects: [],
+                provenance: {
+                    cardSpecial: { table: "card_specials", rowId: "15001" },
+                    specialSet: { table: "special_sets", rowId: "5001" },
+                },
+            }],
+        });
+
+        deepEqual(projection.superAttackDetails?.[0].attackIncrease, {
+            level1Percent: 150,
+            maxLevelPercent: 330,
+            maxLevel: 10,
+        });
+        const serialized = JSON.stringify(projection.superAttackDetails);
+        equal(serialized.includes("increaseRate"), false);
+        equal(serialized.includes("levelBonus"), false);
+    });
+
+    it("omits an incomplete Super Attack level curve", () => {
+        const projection = projectGameDbCharacterToDokkanpanion({
+            ...makeBaseSnapshot(),
+            superAttacks: [{
+                cardSpecialId: "15001",
+                specialSetId: "5001",
+                name: "Unknown curve",
+                description: "Causes damage to enemy",
+                variant: "super",
+                increaseRate: 150,
+                specialBonuses: [],
+                effects: [],
+                provenance: {
+                    cardSpecial: { table: "card_specials", rowId: "15001" },
+                    specialSet: { table: "special_sets", rowId: "5001" },
+                },
+            }],
+        });
+
+        equal(projection.superAttackDetails?.[0].attackIncrease, undefined);
+    });
+
+    it("omits the endpoint when awakening states make the applicable SA cap ambiguous", () => {
+        const projection = projectGameDbCharacterToDokkanpanion({
+            ...makeBaseSnapshot(),
+            growthSteps: [{ id: "1", step: 1, maxSaLevel: 25 }],
+            superAttacks: [{
+                cardSpecialId: "20074",
+                specialSetId: "8999",
+                name: "Full-Metal Avalanche (Extreme)",
+                description: "Raises ATK and greatly raises DEF for 1 turn",
+                variant: "super",
+                levelStart: 24,
+                increaseRate: 200,
+                levelBonus: 5,
+                specialBonuses: [],
+                effects: [],
+                provenance: {
+                    cardSpecial: { table: "card_specials", rowId: "20074" },
+                    specialSet: { table: "special_sets", rowId: "8999" },
+                },
+            }],
+        });
+
+        equal(projection.superAttackDetails?.[0].attackIncrease, undefined);
     });
 
     it("falls back cleanly when optional mechanics are absent", () => {

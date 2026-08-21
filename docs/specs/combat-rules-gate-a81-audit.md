@@ -33,10 +33,11 @@ the reproduction queries.
 
 | Rule | Channel | Candidate value/order | Source | Evidence | Status | Risk |
 |---|---|---|---|---|---|---|
-| Exact coefficient source | Super Attack | Join exact `special_set`; read `increase_rate` and `lv_bonus`; formula unresolved | `card_specials`, `special_sets` | 19,142/19,142 exact joins; direct fields | verified, normative | low |
+| Exact coefficient source | Super Attack | Join exact `special_set`; read `increase_rate` and `lv_bonus` | `card_specials`, `special_sets` | 19,142/19,142 exact joins; direct fields and pinned native constructor offsets | verified, normative | low |
 | Canonical tier `increase_rate` | Super Attack | huge 100, extreme 120, supreme 150, immense 180, colossal 200, mega-colossal 250, destructive 100 | `special_sets` plus Ultimate Guide | Modal values, with first-party conflicts | candidate | high |
 | Canonical tier `lv_bonus` | Super Attack | huge 10, extreme 15, supreme 20, immense 25, colossal 5, mega-colossal 10, destructive 10 | `special_sets` plus Ultimate Guide | Modal values, with first-party conflicts | candidate | high |
-| Level progression formula | Super Attack | `100 + increase_rate + lv_bonus * (level - 1) + bonuses` | first-party input fields; Ultimate Guide formula | Inputs direct; combination/order community-only | candidate | high |
+| Display coefficient progression | Super Attack | `increase_rate + max(skill_lv - 1, 0) * lv_bonus` | `special_sets`, `UserCard.skill_lv`, pinned native runtime | Constructor stores the two fields at `EfficacySet +116/+120`; runtime loads them together and uses MADD after subtracting one from the skill level | verified, normative | low |
+| Final combat multiplier composition | Super Attack | Base term, runtime modifiers, special bonuses and rounding | pinned native runtime plus first-party inputs | The runtime adds `calcModifierSpecialAtkRate` after the verified level curve; the remaining composition and rounding boundaries are not closed | unresolved | high |
 | Exact skill-level cap source | Super Attack | Read exact card or awakening-growth record | `cards`, `optimal_awakening_growths` | Direct caps and steps; no EZA/SEZA enum | verified, normative | low |
 | Variant selection | Super Attack | Normal/Hyper/Condition/Extra/FullPower to Super/Ultra/Unit/EX | `card_specials` and Team Analysis | Source styles and Ki thresholds exist; semantic mapping incomplete | unresolved | high |
 | Exact effect-row selection | Super Attack | Join all effect rows sharing the resolved Super Attack definition, then filter typed channel/target | `card_specials`, `specials` | Direct identity and one-to-many join | verified, normative | low |
@@ -52,6 +53,24 @@ the reproduction queries.
 
 Community documents remain corroboration. No community-only value became
 normative.
+
+### Super Attack level progression boundary
+
+The pinned `native-special-attack-level-progression.json` evidence closes the
+level-dependent coefficient shown for a Super Attack. The SQLite constructor
+stores `special_sets.increase_rate` and `special_sets.lv_bonus` in adjacent
+fields. `AbilityManager::createSpecialSkill` forwards both fields to
+`calcAttackIncreaseForParty`, which loads `UserCard.skill_lv`, subtracts one,
+and uses a native multiply-add to compute
+`increase_rate + (skill_lv - 1) * lv_bonus` for levels at least one. A separate
+runtime modifier is queried and added afterward.
+
+The app projection may therefore expose the level-1 and maximum-level endpoints
+of that pre-modifier curve when the character has one unambiguous SA-level cap.
+Characters with awakening-growth state caps remain omitted until the DB
+state-to-`card_special` selector is audited. This does not authorize a total
+damage formula: the base multiplier, special-bonus placement, runtime modifier
+sources and integer rounding remain unresolved.
 
 ### Omega action-disable boundary
 

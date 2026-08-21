@@ -38,11 +38,13 @@ runtime inputs. Direct numeric mechanics extracted from the first-party Global
 game-database tables use a distinct `first_party_game_db_table` provenance
 channel; structural joins and community corroboration cannot impersonate it.
 
-Five Super Attack facts are newly verified and normative:
+Six Super Attack facts are verified and normative:
 
 - exact `card_specials.special_set_id -> special_sets.id` selection of the
-  `increase_rate` and `lv_bonus` source fields, without asserting their final
-  formula;
+  `increase_rate` and `lv_bonus` source fields;
+- exact pre-modifier level progression
+  `increase_rate + max(skill_lv - 1, 0) * lv_bonus`, pinned from the SQLite
+  constructor through the native `UserCard.skill_lv` consumer and multiply-add;
 - exact `cards.skill_lv_max` or awakening-growth cap selection, without
   inferring an EZA/SEZA label from rarity;
 - exact one-to-many selection of typed effect rows that share the resolved
@@ -53,9 +55,10 @@ Five Super Attack facts are newly verified and normative:
   percentage points per skill level, without asserting its final multiplier
   bucket or rounding.
 
-Tier defaults, the level-progression formula, Normal/Ultra/Unit/EX selection,
-EZA/SEZA state mapping, special-bonus placement, qualitative raise defaults,
-and the permanent-ATK stacking penalty remain candidate or unresolved. The
+Tier defaults, the final combat-multiplier composition, Normal/Ultra/Unit/EX
+selection, EZA/SEZA state mapping, special-bonus placement, qualitative raise
+defaults, and the permanent-ATK stacking penalty remain candidate or
+unresolved. The
 full matrix, first-party conflicts, representative IDs, and before/after
 coverage are in
 [`combat-rules-gate-a81-audit.md`](combat-rules-gate-a81-audit.md).

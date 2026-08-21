@@ -35,6 +35,11 @@ export interface GameDbProjectionSuperAttackDetails {
     description: string,
     variant: GameDbCharacterSnapshot["superAttacks"][number]["variant"],
     requiredKi?: number,
+    attackIncrease?: {
+        level1Percent: number,
+        maxLevelPercent: number,
+        maxLevel: number,
+    },
 }
 
 export interface GameDbDokkanpanionProjection {
@@ -296,13 +301,41 @@ function mapTransformations(character: GameDbCharacterSnapshot): GameDbProjectio
 }
 
 function mapSuperAttackDetails(character: GameDbCharacterSnapshot): GameDbProjectionSuperAttackDetails[] {
-    return character.superAttacks.map(attack => ({
-        id: attack.cardSpecialId,
-        name: attack.name,
-        description: attack.description,
-        variant: attack.variant,
-        requiredKi: attack.requiredKi,
-    }));
+    return character.superAttacks.map(attack => {
+        const level1Percent = attack.increaseRate;
+        const levelBonus = attack.levelBonus;
+        // A card with awakening-growth steps has more than one exact SA-level
+        // cap. Until the DB state-to-card-special selector is audited, choosing
+        // one of those caps here would attach a real curve to the wrong state.
+        const maxLevel = character.growthSteps.length === 0
+            ? character.baseMaxSaLevel
+            : undefined;
+        const maxLevelPercent = level1Percent !== undefined && levelBonus !== undefined
+            && maxLevel !== undefined
+            ? level1Percent + Math.max(maxLevel - 1, 0) * levelBonus
+            : undefined;
+        const attackIncrease = Number.isSafeInteger(level1Percent)
+            && Number.isSafeInteger(levelBonus)
+            && Number.isSafeInteger(maxLevel)
+            && maxLevel !== undefined
+            && maxLevel >= 1
+            && Number.isSafeInteger(maxLevelPercent)
+            ? {
+                level1Percent: level1Percent as number,
+                maxLevelPercent: maxLevelPercent as number,
+                maxLevel,
+            }
+            : undefined;
+
+        return {
+            id: attack.cardSpecialId,
+            name: attack.name,
+            description: attack.description,
+            variant: attack.variant,
+            requiredKi: attack.requiredKi,
+            ...(attackIncrease ? { attackIncrease } : {}),
+        };
+    });
 }
 
 export function projectGameDbCharacterToDokkanpanion(character: GameDbCharacterSnapshot): GameDbDokkanpanionProjection {
