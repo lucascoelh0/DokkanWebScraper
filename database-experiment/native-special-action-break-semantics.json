@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+  "auditScope": "special-extra-efficacy-111-to-native-action-break-consumer",
+  "sqliteBinding": {
+    "table": "specials",
+    "typeColumn": "type",
+    "efficacyColumn": "efficacy_type",
+    "specialTypeString": "Special::ExtraEfficacySpecial",
+    "specialTypeEnum": 1,
+    "efficacyType": 111,
+    "objectTypeOffset": 8,
+    "objectEfficacyOffset": 12
+  },
+  "runtimeChain": [
+    "CardSpecial::Efficacy maps Special::ExtraEfficacySpecial to SpecialType 1",
+    "AbilityManager::createSpecialSkill takes the SpecialType 1 branch and calls createAbilityForSpecialEfficacy",
+    "createAbilityForSpecialEfficacy copies efficacy_type 111 into CreateAbilityStatusEfficacy and creates AbilityStatusActive",
+    "AbilityStatusActive inherits AbilityStatusCausality::exec through its vtable",
+    "AbilityStatusCausality::process loads the unchanged efficacy type and calls AbilityEfficacyCore::callEfficacyFunc",
+    "dispatch slot 111 resolves to callChangeConditionAttackBreakFunc",
+    "the handler emits a type-111 AbilityEfficacyInfo marker and AbilityManager::getAttackBreakingActions consumes matching markers to select one eligible current enemy action per marker"
+  ],
+  "stringLiterals": [
+    { "vma": 32046335, "value": "Special::NormalEfficacySpecial", "enumValue": 0 },
+    { "vma": 32981261, "value": "Special::ExtraEfficacySpecial", "enumValue": 1 }
+  ],
+  "dispatch": {
+    "tableVma": 92049840,
+    "entrySizeBytes": 8,
+    "slot": 111,
+    "slotVma": 92050728,
+    "relocationType": 257,
+    "handlerSymbol": "_ZN31AbilityEfficacyBadConditionFunc34callChangeConditionAttackBreakFuncEPN19AbilityEfficacyCore15CallChangeParamE",
+    "handlerVma": 64279504
+  },
+  "activeVtable": {
+    "symbol": "_ZTV19AbilityStatusActive",
+    "vma": 92057872,
+    "sizeBytes": 360,
+    "rawSha256": "d3df611a0ed2e328b050d285287637c60643ba96ec09e4aaefaad7f2cd114b77",
+    "execRelocationOffset": 296,
+    "execSymbol": "_ZN22AbilityStatusCausality4execEv",
+    "execVma": 64485444
+  },
+  "codeRegions": [
+    { "role": "special_type_initializer", "symbol": "local@47084248", "vma": 47084248, "sizeBytes": 452, "codeSha256": "a15fdc64a6f0da424a2d01a7754003999f2c23541c39b5819dbc3e8159ec811a" },
+    { "role": "special_sqlite_constructor", "symbol": "_ZN11CardSpecial8EfficacyC1EPN7SQLite33RowE", "vma": 47079100, "sizeBytes": 1216, "codeSha256": "d9677f1d4be110222146d9388e0724dcef3eb1c6ae047ae9747de6d5d8046aec" },
+    { "role": "create_special_skill", "symbol": "_ZN14AbilityManager18createSpecialSkillEii17SkillCategoryTypeRKNSt6__ndk110shared_ptrIN11CardSpecial11EfficacySetEEEibbb", "vma": 64392112, "sizeBytes": 1400, "codeSha256": "40731b7b2e1f0e864a726794ea628d4961b56cd67ead69658af79373570110a1" },
+    { "role": "create_special_efficacy", "symbol": "_ZN14AbilityManager31createAbilityForSpecialEfficacyERKNSt6__ndk110shared_ptrIN11CardSpecial8EfficacyEEEiiiib", "vma": 64394092, "sizeBytes": 836, "codeSha256": "4b74c2ffe49998b18ea11b674eca6a69cfce4896d49c5adb060a096eb90b6888" },
+    { "role": "create_active_status", "symbol": "_ZN19AbilityStatusActive6createEP25CreateAbilityStatusActive", "vma": 64479468, "sizeBytes": 80, "codeSha256": "a90ddf4fb7fec950c3268c07bc5e45e2a73466783c0a7f698d337300bc7baef8" },
+    { "role": "copy_status_efficacy", "symbol": "_ZN21AbilityStatusEfficacyC1EP27CreateAbilityStatusEfficacy", "vma": 64493900, "sizeBytes": 820, "codeSha256": "8207716704da65ad571c7e4fc3eeeda6e7ab59552716bcbf8dbb9e9bf1069f64" },
+    { "role": "process_active_status", "symbol": "_ZN22AbilityStatusCausality7processEv", "vma": 64485824, "sizeBytes": 364, "codeSha256": "ad8c39e22d77d14da0a026e80e3e08a94dc7708fd62fb235149c8ff1e9f84303" },
+    { "role": "dispatch_efficacy", "symbol": "_ZN19AbilityEfficacyCore16callEfficacyFuncE17SkillEfficacyTypeNSt6__ndk110shared_ptrI22AbilityStatusCausalityEE", "vma": 64243608, "sizeBytes": 440, "codeSha256": "fbaed51c5902630885bb6de3db7555de65ea2ac83bcccb09bc2a0e4b9539fe2e" },
+    { "role": "attack_break_handler", "symbol": "_ZN31AbilityEfficacyBadConditionFunc34callChangeConditionAttackBreakFuncEPN19AbilityEfficacyCore15CallChangeParamE", "vma": 64279504, "sizeBytes": 496, "codeSha256": "edd7ab755c8dc39147dd977df316e79520cbaf1b54551c0355ad083f18791b88" },
+    { "role": "breaking_action_selector", "symbol": "_ZN14AbilityManager24getAttackBreakingActionsEi", "vma": 64449308, "sizeBytes": 684, "codeSha256": "085dcfa8e741672c182e17109c5f279937db5c598a1bb97bb78630ce350af896" }
+  ],
+  "structuralAssertions": [
+    { "role": "normal_special_enum_zero", "vma": 47084392, "hex": "ff1b00b9" },
+    { "role": "extra_special_enum_one", "vma": 47084440, "hex": "28008052" },
+    { "role": "extra_special_enum_store", "vma": 47084464, "hex": "e83b00b9" },
+    { "role": "sqlite_efficacy_store_offset_12", "vma": 47079368, "hex": "750e00b9" },
+    { "role": "special_type_map_value_load", "vma": 47079904, "hex": "082840b9" },
+    { "role": "special_type_store_offset_8", "vma": 47079912, "hex": "680a00b9" },
+    { "role": "create_special_load_type_offset_8", "vma": 64392716, "hex": "680b40b9" },
+    { "role": "create_special_compare_type_one", "vma": 64392724, "hex": "1f050071" },
+    { "role": "create_special_reject_non_one", "vma": 64392728, "hex": "21060054" },
+    { "role": "create_efficacy_load_raw_offset_12", "vma": 64394524, "hex": "0a0d40b9" },
+    { "role": "create_efficacy_store_create_offset_36", "vma": 64394540, "hex": "ea2f00b9" },
+    { "role": "status_copy_create_offset_36", "vma": 64493968, "hex": "a04242fc" },
+    { "role": "status_store_efficacy_offset_120", "vma": 64493984, "hex": "603e00fd" },
+    { "role": "process_load_efficacy_offset_120", "vma": 64485896, "hex": "747a40b9" },
+    { "role": "process_forward_efficacy_argument", "vma": 64485924, "hex": "e003142a" },
+    { "role": "dispatcher_table_page", "vma": 64243648, "hex": "28d400b0" },
+    { "role": "dispatcher_table_offset", "vma": 64243652, "hex": "08c10691" },
+    { "role": "dispatcher_index_by_efficacy", "vma": 64243656, "hex": "155960f8" },
+    { "role": "handler_literal_efficacy_111", "vma": 64279752, "hex": "e10d8052" },
+    { "role": "selector_load_efficacy_info_range", "vma": 64449360, "hex": "155844a9" },
+    { "role": "selector_compare_type_111", "vma": 64449544, "hex": "1fbc0171" },
+    { "role": "selector_compare_enemy_index", "vma": 64449568, "hex": "1f00146b" },
+    { "role": "selector_count_matching_marker", "vma": 64449572, "hex": "5a179a1a" },
+    { "role": "selector_require_marker", "vma": 64449640, "hex": "5f070071" },
+    { "role": "selector_action_nonzero_field", "vma": 64449656, "hex": "090940b9" },
+    { "role": "selector_action_bit_field", "vma": 64449664, "hex": "09b14039" },
+    { "role": "selector_consume_one_marker", "vma": 64449732, "hex": "5a070051" }
+  ],
+  "directCalls": [
+    { "role": "special_type_one_to_factory", "callVma": 64392768, "callHex": "bc805d94", "targetPltVma": 88903984, "gotRelocationOffset": 95414080, "targetSymbol": "_ZN14AbilityManager31createAbilityForSpecialEfficacyERKNSt6__ndk110shared_ptrIN11CardSpecial8EfficacyEEEiiiib", "targetVma": 64394092 },
+    { "role": "factory_to_active_status", "callVma": 64394648, "callHex": "e2be5c94", "targetPltVma": 88707360, "gotRelocationOffset": 95315768, "targetSymbol": "_ZN19AbilityStatusActive6createEP25CreateAbilityStatusActive", "targetVma": 64479468 },
+    { "role": "active_process_to_dispatcher", "callVma": 64485928, "callHex": "ca665c94", "targetPltVma": 88708432, "gotRelocationOffset": 95316304, "targetSymbol": "_ZN19AbilityEfficacyCore16callEfficacyFuncE17SkillEfficacyTypeNSt6__ndk110shared_ptrI22AbilityStatusCausalityEE", "targetVma": 64243608 },
+    { "role": "handler_to_type_111_marker", "callVma": 64279756, "callHex": "dded5d94", "targetPltVma": 88902720, "gotRelocationOffset": 95413448, "targetSymbol": "_ZN28AbilityEfficacyInfoGenerator31addAbilityEfficacyInfoNoneValueEPN19AbilityEfficacyCore15CallChangeParamE17SkillEfficacyType", "targetVma": 64266668 }
+  ],
+  "semanticProjection": {
+    "kind": "action_break",
+    "status": "partial",
+    "actionSelection": "one_eligible_current_enemy_action_per_marker",
+    "evidence": {
+      "fileName": "native-special-action-break-semantics.json",
+      "nativeRuntimeSha256": "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a"
+    }
+  },
+  "unknowns": [
+    "target_type_3_human_name",
+    "exact_duration_and_recurrence",
+    "probability_application_order",
+    "action_eligibility_field_names",
+    "efficacy_112_invalidation_interaction"
+  ]
+}

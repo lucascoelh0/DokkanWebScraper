@@ -40,7 +40,7 @@ the reproduction queries.
 | Exact skill-level cap source | Super Attack | Read exact card or awakening-growth record | `cards`, `optimal_awakening_growths` | Direct caps and steps; no EZA/SEZA enum | verified, normative | low |
 | Variant selection | Super Attack | Normal/Hyper/Condition/Extra/FullPower to Super/Ultra/Unit/EX | `card_specials` and Team Analysis | Source styles and Ki thresholds exist; semantic mapping incomplete | unresolved | high |
 | Exact effect-row selection | Super Attack | Join all effect rows sharing the resolved Super Attack definition, then filter typed channel/target | `card_specials`, `specials` | Direct identity and one-to-many join | verified, normative | low |
-| Action-disable row identity | Super Attack | Preserve efficacy 111 as a raw effect; do not yet label it Action Break | `card_specials`, `special_sets`, `specials` | Omega joins `17379 -> 7731 -> 1007731`; Special execution path not yet proved | structural join verified; behavior unresolved | high |
+| Action Break | Super Attack | Exact pair `Special::ExtraEfficacySpecial` + efficacy 111; one eligible current enemy action per executed marker | `card_specials`, `special_sets`, `specials`; pinned native runtime | Omega joins `17379 -> 7731 -> 1007731`; Special factory, active-status execution, efficacy dispatcher and marker consumer are pinned | partial native semantic; lifecycle dimensions unresolved | medium |
 | Exact ATK/DEF raise source | Super Attack | efficacy 1 -> ATK/`eff_value1`; 2 -> DEF/`eff_value1`; 3 -> ATK+DEF/`eff_value1,2`; duration=`turn` | `specials` joined to `special_sets` | Direct fields and descriptions | verified, normative | low |
 | Qualitative raise defaults | Super Attack | raise 30, greatly 50, massively 100; persistent ATK+DEF raise 20 | `specials`; Ultimate Guide | Canonical rows corroborate; explicit and mixed-stat exceptions exist | candidate | high |
 | Hidden Potential SA Boost lookup | Super Attack | skill level x 5 percentage points | `potential_skills`, `potential_skill_lv_values`; Ultimate Guide | 50/50 rows match; first-party description excludes additional effects | verified, normative | medium |
@@ -56,7 +56,7 @@ normative.
 ### Omega action-disable boundary
 
 The current first-party export closes the structural identity for Omega
-Shenron without closing the behavior mapping:
+Shenron:
 
 - `card_specials.id=17379`, `card_id=1031501`, `special_set_id=7731`,
   `style=Hyper`, `eball_num_start=18`;
@@ -66,15 +66,23 @@ Shenron without closing the behavior mapping:
   `target_type=3`, `calc_option=0`, `turn=1`, `prob=100`, and zero-valued
   operands.
 
-The native DB29 evidence proves efficacy 111 as an attack-break marker only
-for the audited passive execution path. Gate A7 forbids reusing a passive
-mapping for a Super Attack without proving that its Special dispatcher reaches
-the same handler and consumer. The snapshot therefore preserves a mechanically
-normalized projection of the behavior-relevant row columns and exact
-provenance, but does not serialize `action_break`, target,
-duration, recurrence, or probability semantics from it. The localized phrase
-“disables enemy's action once within the turn” remains corroboration rather
-than a typed lifecycle rule.
+The pinned `native-special-action-break-semantics.json` evidence now closes the
+previous table-boundary gap without borrowing the passive mapping. The native
+Special type initializer maps `Special::ExtraEfficacySpecial` to enum 1;
+`AbilityManager::createSpecialSkill` sends that branch through
+`createAbilityForSpecialEfficacy`, which copies efficacy 111 unchanged into an
+`AbilityStatusActive`. Its inherited causality execution loads that value into
+the common efficacy dispatcher. Slot 111 resolves to the attack-break handler,
+and `AbilityManager::getAttackBreakingActions` selects one eligible current
+enemy action per matching marker.
+
+The app snapshot therefore types only this exact pair as partial
+`action_break` semantics. It does not reinterpret `target_type=3`, `turn=1`, or
+`prob=100` into human target, duration, recurrence, or probability rules. The
+localized phrase “disables enemy's action once within the turn” remains
+corroboration for those unresolved lifecycle dimensions, not their source of
+truth. Native efficacy 119 belongs to the separate `DisableAttack` family and
+is not used for this projection.
 
 ## Tier and coefficient audit
 

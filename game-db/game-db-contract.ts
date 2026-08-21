@@ -86,6 +86,15 @@ export interface GameDbSuperAttackEffect {
     probability?: number,
     causalityConditionsRaw?: string,
     values: Array<number | string | null>,
+    semantic?: {
+        kind: "action_break",
+        status: "partial",
+        actionSelection: "one_eligible_current_enemy_action_per_marker",
+        evidence: {
+            fileName: "native-special-action-break-semantics.json",
+            nativeRuntimeSha256: string,
+        },
+    },
     provenance: {
         table: "specials",
         rowId: string,

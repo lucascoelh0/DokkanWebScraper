@@ -78,6 +78,15 @@ describe("mapSuperAttacks", function () {
                 probability: 100,
                 causalityConditionsRaw: "{\"compiled\":1}",
                 values: ["0", "0", "0"],
+                semantic: {
+                    kind: "action_break",
+                    status: "partial",
+                    actionSelection: "one_eligible_current_enemy_action_per_marker",
+                    evidence: {
+                        fileName: "native-special-action-break-semantics.json",
+                        nativeRuntimeSha256: "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+                    },
+                },
                 provenance: { table: "specials", rowId: "1007731" },
             }],
             provenance: {
@@ -141,7 +150,22 @@ describe("mapSuperAttacks", function () {
             { id: "11", efficacyType: 111, values: [null, null, null] },
         ]);
         deepEqual("kind" in attack.effects[1], false);
+        deepEqual("semantic" in attack.effects[1], false);
         deepEqual("multiplier" in attack, false);
+    });
+
+    it("does not promote efficacy 111 across an unaudited Special type boundary", () => {
+        const [attack] = mapSuperAttacks(
+            "1",
+            [{ id: "10", special_set_id: "2" }],
+            new Map([["2", { id: "2", name: "Attack" }]]),
+            new Map([["2", [
+                { id: "1", special_set_id: "2", type: "Special::NormalEfficacySpecial", efficacy_type: "111" },
+                { id: "2", special_set_id: "2", type: "Special::ExtraEfficacySpecial", efficacy_type: "112" },
+            ]]]),
+        );
+
+        deepEqual(attack.effects.map(effect => "semantic" in effect), [false, false]);
     });
 
     it("fails closed when duplicate raw effect ids would make selection ambiguous", () => {

@@ -43,6 +43,21 @@ function rawOptionalText(value?: string): string | undefined {
     return trimmed.length > 0 ? value : undefined;
 }
 
+function auditedSemantics(type: string | undefined, efficacyType: number | undefined): GameDbSuperAttackEffect["semantic"] {
+    if (type !== "Special::ExtraEfficacySpecial" || efficacyType !== 111) {
+        return undefined;
+    }
+    return {
+        kind: "action_break",
+        status: "partial",
+        actionSelection: "one_eligible_current_enemy_action_per_marker",
+        evidence: {
+            fileName: "native-special-action-break-semantics.json",
+            nativeRuntimeSha256: "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+        },
+    };
+}
+
 function mapSuperAttackEffects(rows: GameDbRow[], expectedSpecialSetId: string): GameDbSuperAttackEffect[] {
     const seenIds = new Set<string>();
     return [...rows].sort((left, right) => compareIds(
@@ -62,17 +77,21 @@ function mapSuperAttackEffects(rows: GameDbRow[], expectedSpecialSetId: string):
         }
         seenIds.add(id);
 
+        const type = rawOptionalText(row.type);
+        const efficacyType = parseDbInt(row.efficacy_type);
+        const semantic = auditedSemantics(type, efficacyType);
         return {
             id,
             specialSetId,
-            type: rawOptionalText(row.type),
-            efficacyType: parseDbInt(row.efficacy_type),
+            type,
+            efficacyType,
             targetType: parseDbInt(row.target_type),
             calcOption: parseDbInt(row.calc_option),
             turn: parseDbInt(row.turn),
             probability: parseDbInt(row.prob),
             causalityConditionsRaw: row.causality_conditions,
             values: [rawOperand(row.eff_value1), rawOperand(row.eff_value2), rawOperand(row.eff_value3)],
+            ...(semantic ? { semantic } : {}),
             provenance: {
                 table: "specials" as const,
                 rowId: id,
