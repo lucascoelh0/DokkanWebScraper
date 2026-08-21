@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { resolve } from "path";
 import {
+    ActiveSkillDetails,
     AttackTypes,
     Character,
     CharacterExclusiveSkillOrb,
@@ -583,6 +584,7 @@ export async function mapDokkanFyiCharacter(
     const reversibleExchange = reversibleExchangeDetailsFromFyi(character, enrichedTransformations);
     const exclusiveSkillOrbs = exclusiveSkillOrbsFromFyi(character.skill_orbs);
     const activeSkill = character.active_skills?.[0];
+    const activeSkillDetails = activeSkillDetailsFromFyi(character.active_skills, page.version);
     const releaseState = awakenedState
         ? releaseStateFromLatestType(awakenedState.latestType)
         : "initial";
@@ -683,6 +685,7 @@ export async function mapDokkanFyiCharacter(
         sezaPassiveDetails: releaseState === "seza" ? awakenedPassive : undefined,
         activeSkill: formatActiveSkill(activeSkill),
         activeSkillCondition: cleanMultilineText(activeSkill?.condition),
+        activeSkillDetails,
         transformationCondition: "",
         domain: "",
         links: (character.link_skills ?? []).map(linkSkill => cleanInlineText(linkSkill.name)).filter(Boolean),
@@ -915,6 +918,7 @@ function mapDokkanFyiTransformation(
     const ezaUltraSuperAttack = matchingFyiSuperAttack(awakenedSuperAttacks, "ultra");
     const ezaExtraSuperAttack = matchingFyiSuperAttack(awakenedSuperAttacks, "extra");
     const activeSkill = character.active_skills?.[0];
+    const activeSkillDetails = activeSkillDetailsFromFyi(character.active_skills, sourceVersion);
     const standby = standbyDetailsFromFyi(character.standby_skill);
     const obtainability = obtainabilityDetailsFromFyi(character);
 
@@ -974,6 +978,7 @@ function mapDokkanFyiTransformation(
         sezaPassiveDetails: releaseState === "seza" ? awakenedPassive : undefined,
         activeSkill: formatActiveSkill(activeSkill),
         activeSkillCondition: cleanMultilineText(activeSkill?.condition),
+        activeSkillDetails,
         transformationCondition: cleanMultilineText(entry.description),
         domain: "",
         links: (character.link_skills ?? []).map(linkSkill => cleanInlineText(linkSkill.name)).filter(Boolean),
@@ -2213,6 +2218,49 @@ function formatActiveSkill(skill: FyiActiveSkill | undefined): string {
     const name = cleanInlineText(skill.name);
     const description = cleanMultilineText(skill.description);
     return [name, description].filter(Boolean).join(": ");
+}
+
+function activeSkillDetailsFromFyi(
+    skills: FyiActiveSkill[] | undefined,
+    sourceVersion: string,
+): ActiveSkillDetails[] | undefined {
+    const seenIds = new Set<string>();
+    const details = (skills ?? []).flatMap(skill => {
+        const id = skill.id?.toString();
+        if (!id) return [];
+        if (seenIds.has(id)) return [];
+        seenIds.add(id);
+
+        const seenEffectIds = new Set<string>();
+        return [{
+            id,
+            name: cleanInlineText(skill.name),
+            description: cleanMultilineText(skill.description),
+            condition: cleanMultilineText(skill.condition) || undefined,
+            effects: (skill.effects ?? []).flatMap(effect => {
+                const effectId = effect.id?.toString();
+                if (!effectId) return [];
+                if (seenEffectIds.has(effectId)) return [];
+                seenEffectIds.add(effectId);
+                return [{
+                    id: effectId,
+                    efficacyType: effect.type,
+                    targetType: effect.target,
+                    calculationOption: effect.calculation ?? undefined,
+                    turns: effect.turns ?? undefined,
+                    chance: effect.chance ?? undefined,
+                    valuesJson: effect.values === undefined ? undefined : JSON.stringify(effect.values),
+                }];
+            }),
+            source: {
+                kind: "dokkan_fyi_payload" as const,
+                sourceVersion,
+                payloadField: "props.character.active_skills" as const,
+            },
+        }];
+    });
+
+    return details.length > 0 ? details : undefined;
 }
 
 function formatStandbySkill(skill: FyiStandbySkill | undefined | null): string {

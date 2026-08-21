@@ -1,5 +1,6 @@
 import {
     Classes,
+    ActiveSkillDetails,
     CharacterObtainabilityDetails,
     CreatedDomainDetails,
     FinishSkill,
@@ -67,6 +68,7 @@ export interface GameDbDokkanpanionProjection {
     superAttackDetails?: GameDbProjectionSuperAttackDetails[],
     activeSkill: string,
     activeSkillCondition: string,
+    activeSkillDetails?: ActiveSkillDetails[],
     createdDomain?: CreatedDomainDetails,
     domain: string,
     standbySkill: string,
@@ -163,6 +165,37 @@ function activeSkillText(character: GameDbCharacterSnapshot): string {
 
 function activeSkillCondition(character: GameDbCharacterSnapshot): string {
     return character.activeSkillSets[0]?.conditionDescription ?? "";
+}
+
+function activeSkillDetails(character: GameDbCharacterSnapshot): ActiveSkillDetails[] | undefined {
+    const details = character.activeSkillSets.map(activeSkillSet => ({
+        id: activeSkillSet.id,
+        name: activeSkillSet.name,
+        description: activeSkillSet.effectDescription,
+        condition: activeSkillSet.conditionDescription || undefined,
+        turn: activeSkillSet.turn,
+        executionLimit: activeSkillSet.execLimit,
+        ultimateSpecialId: activeSkillSet.ultimateSpecialId,
+        effects: activeSkillSet.effects.map(effect => ({
+            id: effect.id,
+            efficacyType: effect.efficacyType,
+            targetType: effect.targetType,
+            subTargetTypeSetId: effect.subTargetTypeSetId,
+            calculationOption: effect.calcOption,
+            valuesJson: effect.values === undefined ? undefined : JSON.stringify(effect.values),
+            efficacyValuesJson: effect.efficacyValues === undefined
+                ? undefined
+                : JSON.stringify(effect.efficacyValues),
+            provenance: { ...effect.provenance },
+        })),
+        source: {
+            kind: "game_db" as const,
+            relation: { ...activeSkillSet.provenance.relation },
+            set: { ...activeSkillSet.provenance.set },
+        },
+    }));
+
+    return details.length > 0 ? details : undefined;
 }
 
 function createdDomainDetails(character: GameDbCharacterSnapshot): CreatedDomainDetails | undefined {
@@ -376,6 +409,7 @@ export function projectGameDbCharacterToDokkanpanion(character: GameDbCharacterS
         superAttackDetails: mapSuperAttackDetails(character),
         activeSkill: activeSkillText(character),
         activeSkillCondition: activeSkillCondition(character),
+        activeSkillDetails: activeSkillDetails(character),
         createdDomain,
         domain: createdDomain?.field.name ?? "",
         standbySkill: standby?.legacyText ?? "",

@@ -41,9 +41,11 @@ export interface Character {
     sezaPassiveDetails?: PassiveDetails,
     activeSkill?: string,
     activeSkillCondition?: string,
+    activeSkillDetails?: ActiveSkillDetails[],
     createdDomain?: CreatedDomainDetails,
     ezaActiveSkill?: string,
     ezaActiveSkillCondition?: string,
+    ezaActiveSkillDetails?: ActiveSkillDetails[],
     transformationCondition?: string,
     domain: string,
     links: string[],
@@ -362,6 +364,46 @@ export interface SuperAttackDetails {
     sourceAttackId?: string,
 }
 
+export interface ActiveSkillDetails {
+    id: string,
+    name: string,
+    description: string,
+    condition?: string,
+    turn?: number,
+    executionLimit?: number,
+    ultimateSpecialId?: string,
+    effects: ActiveSkillEffectDetails[],
+    source: ActiveSkillDetailsSource,
+}
+
+export interface ActiveSkillEffectDetails {
+    id: string,
+    efficacyType?: number,
+    targetType?: number,
+    subTargetTypeSetId?: string,
+    calculationOption?: number,
+    turns?: number,
+    chance?: number,
+    valuesJson?: string,
+    efficacyValuesJson?: string,
+    provenance?: {
+        table: "active_skills",
+        rowId: string,
+    },
+}
+
+export type ActiveSkillDetailsSource =
+    | {
+        kind: "dokkan_fyi_payload",
+        sourceVersion: string,
+        payloadField: "props.character.active_skills",
+    }
+    | {
+        kind: "game_db",
+        relation: { table: "card_active_skills", rowId: string },
+        set: { table: "active_skill_sets", rowId: string },
+    };
+
 export interface CreatedDomainDetails {
     semanticStatus: "snapshot-audited",
     sourceSnapshotId: string,
@@ -561,6 +603,7 @@ export interface Transformation {
     sezaPassiveDetails?: PassiveDetails,
     activeSkill?: string,
     activeSkillCondition?: string,
+    activeSkillDetails?: ActiveSkillDetails[],
     transformationCondition?: string,
     domain: string,
     links:string[],

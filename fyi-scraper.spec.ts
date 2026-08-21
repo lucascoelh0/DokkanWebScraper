@@ -269,6 +269,20 @@ describe("mapDokkanFyiCharacter versioned combat fields", function () {
             },
             leader_skill: { name: "Base leader", description: "Base allies ATK +100%" },
             passive_skill: { name: "Base passive", description: "Base passive effect" },
+            active_skills: [{
+              id: 42,
+              name: "Perfect Active",
+              description: "Causes ultimate damage",
+              condition: "Can be activated once only",
+              effects: [
+                { id: 7, type: 90, target: 1, calculation: 0, turns: 1, chance: 100, values: [600, 0, 0] },
+                { id: 7, type: 90, target: 1, values: [999] },
+              ],
+            }, {
+              id: 42,
+              name: "Duplicate relation",
+              description: "Must not be projected twice",
+            }],
             super_attacks: [
               { id: 1, name: "Perfect Attack", description: "Base SA", condition: "Base SA condition", ki: 12, level: 0 },
               { id: 2, name: "Perfect Attack (Extreme)", description: "EZA SA", condition: "EZA SA condition", ki: 12, level: 1 },
@@ -307,6 +321,28 @@ describe("mapDokkanFyiCharacter versioned combat fields", function () {
     deepEqual(character.ezaUnitSuperAttacks?.map(attack => attack.effect), ["EZA Unit effect"]);
     equal(character.passiveDetails?.text, "Base passive effect");
     equal(character.ezaPassiveDetails?.text, "EZA passive effect");
+    equal(character.activeSkill, "Perfect Active: Causes ultimate damage");
+    equal(character.activeSkillDetails?.length, 1);
+    deepEqual(character.activeSkillDetails?.[0], {
+      id: "42",
+      name: "Perfect Active",
+      description: "Causes ultimate damage",
+      condition: "Can be activated once only",
+      effects: [{
+        id: "7",
+        efficacyType: 90,
+        targetType: 1,
+        calculationOption: 0,
+        turns: 1,
+        chance: 100,
+        valuesJson: "[600,0,0]",
+      }],
+      source: {
+        kind: "dokkan_fyi_payload",
+        sourceVersion: "fixture-version",
+        payloadField: "props.character.active_skills",
+      },
+    });
   });
 
   it("keeps BASE and applicable EZA fields distinct from the latest SEZA passive", async () => {

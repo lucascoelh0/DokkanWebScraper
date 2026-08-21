@@ -1230,6 +1230,24 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   on the emulator, including a 200% font-scale check of the identity block.
   Remote `master` remains unchanged pending a separate explicit push.
 
+## Typed Active Skill local checkpoint (2026-08-21)
+
+- The FYI and first-party game-DB projections now preserve every distinct
+  Active Skill by stable ID instead of collapsing the payload to the first
+  localized string. Ordered effect rows retain typed target/calculation fields,
+  raw `values` and `efficacyValues` JSON separately, and source provenance.
+- Projection-time deduplication is identity-based only. No effect, multiplier,
+  timing or display semantics are inferred from prose or regular expressions;
+  the legacy effect and condition strings remain available for old consumers.
+- Focused TypeScript compilation and the two projection suites pass 33/33.
+  Matching tracked `lib/` output is generated locally. No Characters artifact
+  or R2 object containing this additive contract has been published yet.
+- Android `master` consumes and persists the optional contract through Room
+  schema 12 and Characters materialization marker 6. Old cached payloads keep
+  using legacy strings, while stable IDs are normalized defensively on ingest.
+  The duplicate Active Skill block was removed from Character Details; the
+  existing Domain-aware block is now the single presentation owner.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
