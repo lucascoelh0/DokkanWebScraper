@@ -31,7 +31,6 @@ import {
     readGameDbTable,
     resolveGameDbSourceConfig,
 } from "./game-db-source";
-import { projectGameDbCharactersToDokkanpanion } from "./game-db-app-projection";
 import { writeFormattedJson } from "../format-json";
 import { readSourceSettings } from "./game-db-source-settings";
 
@@ -835,6 +834,7 @@ export async function loadRequiredGameDbTables(
 }
 
 async function main() {
+    const { projectGameDbCharactersToDokkanpanion } = await import("./game-db-app-projection");
     const sourceConfig = resolveGameDbSourceConfig();
     const cardIds = parseCardIds(process.env.DOKKAN_GAME_DB_CARD_IDS);
     const tables = await loadRequiredGameDbTables(sourceConfig);

@@ -200,6 +200,9 @@ export async function runGameDbUpdate(options?: {
         explicitCardIds: parsed.explicitCardIds,
         cardLimit: parsed.cardLimit,
         sourceConfig,
+        sourceSnapshotIdHint: acquisition.firstParty?.metadata.dbVersion
+            ? `glb-db-${acquisition.firstParty.metadata.dbVersion}`
+            : undefined,
         datasetVersionHint: acquisition.firstParty
             ? [
                 acquisition.firstParty.metadata.dbVersion ? `glb-db-${acquisition.firstParty.metadata.dbVersion}` : "",

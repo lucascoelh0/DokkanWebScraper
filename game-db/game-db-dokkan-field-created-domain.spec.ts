@@ -2,6 +2,7 @@ import { deepEqual, equal, throws } from "assert";
 import { describe, it } from "mocha";
 import {
     AUDITED_CREATED_DOMAIN_LINKS,
+    buildSnapshotAuditedCreatedDomainEnrichedCharacters,
     buildSnapshotAuditedCreatedDomainProjection,
     buildSnapshotAuditedCreatedDomainProjectionForTest,
     CREATED_DOMAIN_AUDITED_SNAPSHOT_ID,
@@ -102,5 +103,15 @@ describe("buildSnapshotAuditedCreatedDomainProjection", function () {
             }),
             /sidecar payload source identity drift/,
         );
+        throws(
+            () => buildSnapshotAuditedCreatedDomainEnrichedCharacters({
+                characters: [],
+                sidecarPayload: Buffer.from("synthetic"),
+                sidecarManifest: {} as never,
+                activeSkillSetsCsv: Buffer.from("id,effect_description\n198,synthetic\n"),
+            }),
+            /sidecar payload source identity drift/,
+        );
     });
+
 });

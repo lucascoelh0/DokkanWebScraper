@@ -1,6 +1,7 @@
 import {
     Classes,
     CharacterObtainabilityDetails,
+    CreatedDomainDetails,
     FinishSkill,
     FinishSkillEffectKind,
     LeaderSkillDetails,
@@ -17,7 +18,7 @@ import {
     GameDbFinishSkillSet,
     GameDbFormRelation,
 } from "./game-db-contract";
-import { cardArtUrlFromCardId, portraitOutputUrl, portraitSpecFromElement, portraitSpecFromTypeAndClass } from "./portrait-assets";
+import { cardArtUrlFromCardId, portraitOutputUrl, portraitSpecFromElement, portraitSpecFromTypeAndClass } from "./portrait-asset-contract";
 import { parseLeaderSkillDetails } from "../scraper";
 
 export interface GameDbProjectionTransformation {
@@ -52,6 +53,8 @@ export interface GameDbDokkanpanionProjection {
     passiveDetails?: PassiveDetails,
     activeSkill: string,
     activeSkillCondition: string,
+    createdDomain?: CreatedDomainDetails,
+    domain: string,
     standbySkill: string,
     standby?: StandbySkillDetails,
     finishSkills: FinishSkill[],
@@ -146,6 +149,24 @@ function activeSkillText(character: GameDbCharacterSnapshot): string {
 
 function activeSkillCondition(character: GameDbCharacterSnapshot): string {
     return character.activeSkillSets[0]?.conditionDescription ?? "";
+}
+
+function createdDomainDetails(character: GameDbCharacterSnapshot): CreatedDomainDetails | undefined {
+    const createdDomain = character.activeSkillSets.find(activeSkillSet => activeSkillSet.createdDomain)?.createdDomain;
+    if (!createdDomain) {
+        return undefined;
+    }
+    return {
+        semanticStatus: createdDomain.semanticStatus,
+        sourceSnapshotId: createdDomain.sourceSnapshotId,
+        activeSkillSetId: createdDomain.activeSkillSetId,
+        field: { ...createdDomain.field },
+        provenance: {
+            activeSkillSet: { ...createdDomain.provenance.activeSkillSet },
+            relation: { ...createdDomain.provenance.relation },
+            field: { ...createdDomain.provenance.field },
+        },
+    };
 }
 
 function transformationSourceFromRelation(relation: GameDbFormRelation): TransformationSource {
@@ -273,6 +294,7 @@ export function projectGameDbCharacterToDokkanpanion(character: GameDbCharacterS
     const finishSkills = mapFinishSkills(character);
     const standby = mapStandby(character, finishSkills);
     const reversibleExchange = mapReversibleExchange(character);
+    const createdDomain = createdDomainDetails(character);
     const obtainability = unknownObtainability();
     const portraitFilename = `portrait_${character.id}`;
     const portraitSpec = portraitSpecForCharacter(character);
@@ -301,6 +323,8 @@ export function projectGameDbCharacterToDokkanpanion(character: GameDbCharacterS
         passiveDetails,
         activeSkill: activeSkillText(character),
         activeSkillCondition: activeSkillCondition(character),
+        createdDomain,
+        domain: createdDomain?.field.name ?? "",
         standbySkill: standby?.legacyText ?? "",
         standby,
         finishSkills,

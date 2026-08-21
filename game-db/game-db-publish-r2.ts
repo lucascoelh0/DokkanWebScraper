@@ -3,7 +3,6 @@ import { readFile } from "fs/promises";
 import { resolve } from "path";
 import { GameDbDokkanpanionProjection } from "./game-db-app-projection";
 import { writeGameDbDataset } from "./game-db-dataset";
-import { savePortraitFile } from "./portrait-assets";
 
 export function hasFlag(argv: string[], flag: string): boolean {
     return argv.includes(flag);
@@ -36,6 +35,7 @@ async function spawnInherited(command: string, args: string[]): Promise<void> {
 }
 
 export async function ensureGameDbPortraits(characters: GameDbDokkanpanionProjection[]): Promise<void> {
+    const { savePortraitFile } = await import("./portrait-assets");
     for (let index = 0; index < characters.length; index += 1) {
         const character = characters[index];
         await savePortraitFile(character.portraitFilename, character.portraitSpec);

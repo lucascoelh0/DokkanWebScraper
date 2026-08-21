@@ -136,6 +136,50 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
         equal(projection.finishSkills.length, 0);
         equal(projection.reversibleExchange, undefined);
         equal(projection.passive, "");
+        equal(projection.createdDomain, undefined);
+        equal(projection.domain, "");
+    });
+
+    it("projects a snapshot-audited Created Domain without parsing Active Skill text", () => {
+        const base = makeBaseSnapshot();
+        const projection = projectGameDbCharacterToDokkanpanion({
+            ...base,
+            activeSkillSets: [{
+                id: "323",
+                name: "Devastating Minus Energy",
+                effectDescription: "Opaque localized text",
+                conditionDescription: "",
+                effects: [],
+                createdDomain: {
+                    semanticStatus: "snapshot-audited",
+                    sourceSnapshotId: "glb-db-1782367825",
+                    activeSkillSetId: "323",
+                    field: { id: "11", name: "Earth Shrouded in Minus Energy", resourceId: "3010" },
+                    provenance: {
+                        activeSkillSet: { table: "active_skill_sets", rowId: "323" },
+                        relation: { table: "dokkan_field_active_skill_set_relations", rowId: "13" },
+                        field: { table: "dokkan_fields", rowId: "11" },
+                    },
+                },
+                provenance: {
+                    relation: { table: "card_active_skills", rowId: "1" },
+                    set: { table: "active_skill_sets", rowId: "323" },
+                },
+            }],
+        });
+
+        equal(projection.domain, "Earth Shrouded in Minus Energy");
+        deepEqual(projection.createdDomain, {
+            semanticStatus: "snapshot-audited",
+            sourceSnapshotId: "glb-db-1782367825",
+            activeSkillSetId: "323",
+            field: { id: "11", name: "Earth Shrouded in Minus Energy", resourceId: "3010" },
+            provenance: {
+                activeSkillSet: { table: "active_skill_sets", rowId: "323" },
+                relation: { table: "dokkan_field_active_skill_set_relations", rowId: "13" },
+                field: { table: "dokkan_fields", rowId: "11" },
+            },
+        });
     });
 });
 

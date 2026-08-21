@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, readFile, writeFile } from "fs/promises";
 import { resolve } from "path";
 import { gzipSync } from "zlib";
 import { DatasetManifest } from "../dataset-artifacts";
@@ -13,6 +13,13 @@ import {
     parseCardIds,
 } from "./game-db-experiment";
 import { readSourceSettings } from "./game-db-source-settings";
+import {
+    buildSnapshotAuditedCreatedDomainEnrichedCharacters,
+    CREATED_DOMAIN_AUDITED_SNAPSHOT_ID,
+} from "./game-db-dokkan-field-created-domain";
+import { buildGameDbDokkanFieldSidecar, loadGameDbDokkanFieldSidecarTablesIfPresent } from "./game-db-dokkan-field-sidecar";
+import { buildGameDbDokkanFieldSidecarArtifact } from "./game-db-dokkan-field-sidecar-artifact";
+import { GameDbCharacterSnapshot } from "./game-db-contract";
 import { writeFormattedJson } from "../format-json";
 import {
     GameDbSourceConfig,
@@ -26,6 +33,20 @@ import {
 const PRIMARY_CARD_ID_MAX = 4_000_000;
 const MINIMUM_HP_INIT = 300;
 const DEFAULT_OUTPUT_DIR = resolve(__dirname, "data", "game-db-dataset", "latest");
+export const GAME_DB_DATASET_CONTENT_REVISION = "created-domain-v1";
+
+export function resolveCreatedDomainSourceSnapshotId(
+    sourceSettings?: GameDbDatasetReport["sourceSettings"],
+    sourceSnapshotIdHint?: string,
+): string | undefined {
+    const settingsSnapshotId = sourceSettings?.glbDbVersion
+        ? `glb-db-${sourceSettings.glbDbVersion}`
+        : undefined;
+    if (sourceSnapshotIdHint && settingsSnapshotId && sourceSnapshotIdHint !== settingsSnapshotId) {
+        throw new Error("Created Domain source snapshot hint conflicts with source settings");
+    }
+    return sourceSnapshotIdHint ?? settingsSnapshotId;
+}
 
 export interface GameDbDatasetReport {
     source: "game-db-dataset",
@@ -47,6 +68,59 @@ export interface GameDbDatasetReport {
         glbDbVersion?: number,
         glbApkVersion?: string,
     },
+    createdDomainEnrichment: {
+        status: "absent" | "snapshot-audited" | "unsupported-snapshot",
+        sourceSnapshotId?: string,
+        linkCount: number,
+    },
+}
+
+export async function enrichGameDbDatasetCreatedDomainsIfSupported(options: {
+    characters: GameDbCharacterSnapshot[],
+    sourceConfig: GameDbSourceConfig,
+    sourceSettings?: GameDbDatasetReport["sourceSettings"],
+    sourceSnapshotIdHint?: string,
+}): Promise<{
+    characters: GameDbCharacterSnapshot[],
+    report: GameDbDatasetReport["createdDomainEnrichment"],
+}> {
+    const fieldTables = await loadGameDbDokkanFieldSidecarTablesIfPresent(options.sourceConfig);
+    if (!fieldTables) {
+        return {
+            characters: options.characters,
+            report: { status: "absent", linkCount: 0 },
+        };
+    }
+
+    const sourceSnapshotId = resolveCreatedDomainSourceSnapshotId(
+        options.sourceSettings,
+        options.sourceSnapshotIdHint,
+    );
+    if (sourceSnapshotId !== CREATED_DOMAIN_AUDITED_SNAPSHOT_ID) {
+        return {
+            characters: options.characters,
+            report: { status: "unsupported-snapshot", sourceSnapshotId, linkCount: 0 },
+        };
+    }
+
+    const sidecarArtifact = buildGameDbDokkanFieldSidecarArtifact(
+        buildGameDbDokkanFieldSidecar(sourceSnapshotId, fieldTables),
+    );
+    const activeSkillSetsCsv = await readFile(resolve(options.sourceConfig.dataDir, "active_skill_sets.csv"));
+    const enriched = buildSnapshotAuditedCreatedDomainEnrichedCharacters({
+        characters: options.characters,
+        sidecarPayload: sidecarArtifact.payload,
+        sidecarManifest: sidecarArtifact.manifest,
+        activeSkillSetsCsv,
+    });
+    return {
+        characters: enriched.characters,
+        report: {
+            status: "snapshot-audited",
+            sourceSnapshotId,
+            linkCount: Object.keys(enriched.projection.byActiveSkillSetId).length,
+        },
+    };
 }
 
 function isReleasedAtOrBefore(openAt: string | undefined, now: Date): boolean {
@@ -116,7 +190,7 @@ export function applyOptionalCardLimit(cardIds: string[], limit?: number): strin
     return limit ? cardIds.slice(0, limit) : cardIds;
 }
 
-function datasetVersionFromSourceSettings(
+export function datasetVersionFromSourceSettings(
     generatedAt: string,
     sourceSettings?: GameDbDatasetReport["sourceSettings"],
     fallbackVersionParts?: string[],
@@ -125,14 +199,15 @@ function datasetVersionFromSourceSettings(
         return [
             sourceSettings.glbDbVersion ? `glb-db-${sourceSettings.glbDbVersion}` : "",
             sourceSettings.glbAssetVersion ? `asset-${sourceSettings.glbAssetVersion}` : "",
+            GAME_DB_DATASET_CONTENT_REVISION,
         ].filter(Boolean).join("__");
     }
 
     if (fallbackVersionParts && fallbackVersionParts.length > 0) {
-        return fallbackVersionParts.filter(Boolean).join("__");
+        return [...fallbackVersionParts.filter(Boolean), GAME_DB_DATASET_CONTENT_REVISION].join("__");
     }
 
-    return `generated-${generatedAt.replace(/[:]/g, "-")}`;
+    return `generated-${generatedAt.replace(/[:]/g, "-")}__${GAME_DB_DATASET_CONTENT_REVISION}`;
 }
 
 function buildProjectionDatasetArtifact(
@@ -171,6 +246,7 @@ export async function writeGameDbDataset(options?: {
     cardLimit?: number,
     sourceConfig?: GameDbSourceConfig,
     datasetVersionHint?: string[],
+    sourceSnapshotIdHint?: string,
 }): Promise<{
     outputDir: string,
     projectionPath: string,
@@ -194,7 +270,14 @@ export async function writeGameDbDataset(options?: {
         cardLimit,
     );
 
-    const sourceCharacters = buildGameDbCharacterSnapshots(selectedCardIds, tables);
+    const rawSourceCharacters = buildGameDbCharacterSnapshots(selectedCardIds, tables);
+    const createdDomainEnrichment = await enrichGameDbDatasetCreatedDomainsIfSupported({
+        characters: rawSourceCharacters,
+        sourceConfig,
+        sourceSettings,
+        sourceSnapshotIdHint: options?.sourceSnapshotIdHint,
+    });
+    const sourceCharacters = createdDomainEnrichment.characters;
     const projectionCharacters = projectGameDbCharactersToDokkanpanion(sourceCharacters);
     const datasetVersion = datasetVersionFromSourceSettings(generatedAt, sourceSettings, options?.datasetVersionHint);
     const artifact = buildProjectionDatasetArtifact(projectionCharacters, generatedAt, datasetVersion);
@@ -221,6 +304,7 @@ export async function writeGameDbDataset(options?: {
             selectedVariant: "highest-card-id",
         },
         sourceSettings,
+        createdDomainEnrichment: createdDomainEnrichment.report,
     };
 
     await mkdir(outputDir, { recursive: true });

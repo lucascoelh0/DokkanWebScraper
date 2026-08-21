@@ -1,4 +1,5 @@
 import { Classes, Rarities, Types } from "../character";
+import type { GameDbSnapshotAuditedCreatedDomain } from "./game-db-dokkan-field-created-domain";
 
 export type GameDbCharacterClass = Classes | "None";
 
@@ -83,6 +84,7 @@ export interface GameDbActiveSkillSet {
     ultimateSpecialId?: string,
     specialViewId?: string,
     effects: GameDbActiveSkillEffect[],
+    createdDomain?: GameDbSnapshotAuditedCreatedDomain,
     provenance: {
         relation: {
             table: "card_active_skills",

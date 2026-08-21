@@ -7,7 +7,7 @@ import {
     normalizeAssetId,
     portraitOutputUrl,
     portraitSpecFromElement,
-} from "./portrait-assets";
+} from "./portrait-asset-contract";
 
 describe("portrait asset helpers", function () {
     it("normalizes asset ids and portrait output urls", () => {

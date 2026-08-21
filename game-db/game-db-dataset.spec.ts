@@ -1,9 +1,12 @@
-import { deepEqual, equal } from "assert";
+import { deepEqual, equal, throws } from "assert";
 import { describe, it } from "mocha";
 import {
     applyOptionalCardLimit,
+    datasetVersionFromSourceSettings,
+    enrichGameDbDatasetCreatedDomainsIfSupported,
     isPrimaryPlayableCardRow,
     parseOptionalCardLimit,
+    resolveCreatedDomainSourceSnapshotId,
     selectPrimaryGameDbCardIds,
 } from "./game-db-dataset";
 import { GameDbRow } from "./game-db-source";
@@ -95,6 +98,48 @@ describe("applyOptionalCardLimit", function () {
     it("truncates ids only when a limit exists", () => {
         deepEqual(applyOptionalCardLimit(["1", "2", "3"], 2), ["1", "2"]);
         deepEqual(applyOptionalCardLimit(["1", "2", "3"]), ["1", "2", "3"]);
+    });
+});
+
+describe("enrichGameDbDatasetCreatedDomainsIfSupported", function () {
+    it("preserves old sources when optional Dokkan field tables are absent", async () => {
+        const characters = [];
+        const result = await enrichGameDbDatasetCreatedDomainsIfSupported({
+            characters,
+            sourceConfig: {
+                sourceRoot: __dirname,
+                dataDir: __dirname,
+            },
+        });
+
+        equal(result.characters, characters);
+        deepEqual(result.report, { status: "absent", linkCount: 0 });
+    });
+});
+
+describe("Created Domain dataset release identity", function () {
+    it("revisions both settings-backed and fallback dataset versions", () => {
+        equal(datasetVersionFromSourceSettings("2026-01-01T00:00:00.000Z", {
+            glbDbVersion: 1782367825,
+            glbAssetVersion: 1782367204,
+        }), "glb-db-1782367825__asset-1782367204__created-domain-v1");
+        equal(datasetVersionFromSourceSettings(
+            "2026-01-01T00:00:00.000Z",
+            undefined,
+            ["glb-db-1782367825"],
+        ), "glb-db-1782367825__created-domain-v1");
+    });
+
+    it("uses the explicit hint and rejects conflicting source settings", () => {
+        equal(resolveCreatedDomainSourceSnapshotId(undefined, "glb-db-1782367825"), "glb-db-1782367825");
+        equal(resolveCreatedDomainSourceSnapshotId({ glbDbVersion: 1782367825 }), "glb-db-1782367825");
+        throws(
+            () => resolveCreatedDomainSourceSnapshotId(
+                { glbDbVersion: 1782367824 },
+                "glb-db-1782367825",
+            ),
+            /conflicts with source settings/,
+        );
     });
 });
 

@@ -39,6 +39,7 @@ export interface Character {
     sezaPassiveDetails?: PassiveDetails,
     activeSkill?: string,
     activeSkillCondition?: string,
+    createdDomain?: CreatedDomainDetails,
     ezaActiveSkill?: string,
     ezaActiveSkillCondition?: string,
     transformationCondition?: string,
@@ -357,6 +358,22 @@ export interface SuperAttackDetails {
     extras?: string[],
     structuralSource?: EffectStructuralSource,
     sourceAttackId?: string,
+}
+
+export interface CreatedDomainDetails {
+    semanticStatus: "snapshot-audited",
+    sourceSnapshotId: string,
+    activeSkillSetId: string,
+    field: {
+        id: string,
+        name: string,
+        resourceId: string,
+    },
+    provenance: {
+        activeSkillSet: { table: "active_skill_sets", rowId: string },
+        relation: { table: "dokkan_field_active_skill_set_relations", rowId: string },
+        field: { table: "dokkan_fields", rowId: string },
+    },
 }
 
 export interface CharacterExtraInfo {

@@ -4,6 +4,7 @@ import {
     validateGameDbDokkanFieldSidecarArtifact,
 } from "./game-db-dokkan-field-sidecar-artifact";
 import { GameDbDokkanFieldSidecarV1 } from "./game-db-dokkan-field-sidecar";
+import type { GameDbCharacterSnapshot } from "./game-db-contract";
 import { GameDbRow, normalizeDbId, parseGameDbTableCsvText } from "./game-db-source";
 
 export const CREATED_DOMAIN_AUDITED_SNAPSHOT_ID = "glb-db-1782367825";
@@ -189,6 +190,40 @@ export function buildSnapshotAuditedCreatedDomainProjection(options: {
     const sidecar = validateGameDbDokkanFieldSidecarArtifact(options.sidecarPayload, options.sidecarManifest);
     const activeSkillSetRows = parseGameDbTableCsvText(options.activeSkillSetsCsv.toString("utf8"));
     return buildSnapshotAuditedCreatedDomainProjectionFromParsedSources(sidecar, activeSkillSetRows);
+}
+
+function enrichGameDbCharacterSnapshotsWithCreatedDomains(
+    characters: GameDbCharacterSnapshot[],
+    projection: GameDbSnapshotAuditedCreatedDomainProjectionV1,
+): GameDbCharacterSnapshot[] {
+    return characters.map(character => {
+        let changed = false;
+        const activeSkillSets = character.activeSkillSets.map(activeSkillSet => {
+            const createdDomain = projection.byActiveSkillSetId[activeSkillSet.id];
+            if (!createdDomain) {
+                return activeSkillSet;
+            }
+            changed = true;
+            return { ...activeSkillSet, createdDomain };
+        });
+        return changed ? { ...character, activeSkillSets } : character;
+    });
+}
+
+export function buildSnapshotAuditedCreatedDomainEnrichedCharacters(options: {
+    characters: GameDbCharacterSnapshot[],
+    sidecarPayload: Buffer,
+    sidecarManifest: GameDbDokkanFieldSidecarManifestV1,
+    activeSkillSetsCsv: Buffer,
+}): {
+    characters: GameDbCharacterSnapshot[],
+    projection: GameDbSnapshotAuditedCreatedDomainProjectionV1,
+} {
+    const projection = buildSnapshotAuditedCreatedDomainProjection(options);
+    return {
+        characters: enrichGameDbCharacterSnapshotsWithCreatedDomains(options.characters, projection),
+        projection,
+    };
 }
 
 export function buildSnapshotAuditedCreatedDomainProjectionForTest(
