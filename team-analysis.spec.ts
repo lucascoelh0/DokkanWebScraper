@@ -1397,7 +1397,7 @@ describe("team-analysis Gate A7 Super Attack effect channel", function () {
     deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
   });
 
-  it("prefers an explicit EZA attack over the generic fallback in a sole current EZA state", () => {
+  it("keeps an explicit EZA attack separate when no EZA passive is available", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
     const character = characters[0];
     character.ezaReleaseDate = "2026-01-01T00:00:00.000Z";
@@ -1407,9 +1407,102 @@ describe("team-analysis Gate A7 Super Attack effect channel", function () {
     character.ezaSuperAttackDetails = { name: "Explicit EZA", effect: character.ezaSuperAttack, ki: 12 };
 
     const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    const initial = state(dataset.states, "1001001:1001001:initial");
     const eza = state(dataset.states, "1001001:1001001:eza");
+    equal(initial.superAttacks?.[0]?.name, "Generic current fallback");
+    equal(eza.passive, undefined);
     equal(eza.superAttacks?.[0]?.name, "Explicit EZA");
     equal(eza.superAttacks?.[0]?.rawText, character.ezaSuperAttack);
+    deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
+  });
+
+  it("does not promote an EZA attack into SEZA without a material SEZA source", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters[0];
+    character.ezaReleaseDate = "2026-01-01T00:00:00.000Z";
+    character.sezaReleaseDate = "2027-01-01T00:00:00.000Z";
+    character.ezaPassive = undefined;
+    character.ezaPassiveDetails = undefined;
+    character.sezaPassive = undefined;
+    character.sezaPassiveDetails = undefined;
+    character.ezaSuperAttack = "Raises ATK for 3 turns";
+    character.ezaSuperAttackDetails = { name: "Explicit EZA", effect: character.ezaSuperAttack, ki: 12 };
+
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    equal(state(dataset.states, "1001001:1001001:eza").superAttacks?.[0]?.name, "Explicit EZA");
+    equal(dataset.states.some(item => item.stateKey === "1001001:1001001:seza"), false);
+    deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
+  });
+
+  it("ignores empty awakened detail objects as release-state evidence", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters[0];
+    character.ezaReleaseDate = "2099-01-01T00:00:00.000Z";
+    character.ezaPassive = undefined;
+    character.ezaPassiveDetails = undefined;
+    character.ezaSuperAttack = undefined;
+    character.ezaSuperAttackDetails = { name: "Pending EZA", effect: "", ki: 12 };
+
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    state(dataset.states, `${character.id}:${character.id}:initial`);
+    equal(dataset.states.some(item => item.stateKey === `${character.id}:${character.id}:eza`), false);
+    deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
+  });
+
+  it("uses a material legacy EZA attack when its detail object is empty", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters[0];
+    character.ezaReleaseDate = "2026-01-01T00:00:00.000Z";
+    character.ezaPassive = undefined;
+    character.ezaPassiveDetails = undefined;
+    character.ezaSuperAttack = "Raises ATK for 3 turns";
+    character.ezaSuperAttackDetails = { name: "Incomplete detail", effect: "   ", ki: 12 };
+
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    const eza = state(dataset.states, `${character.id}:${character.id}:eza`);
+    equal(eza.superAttacks?.[0]?.rawText, character.ezaSuperAttack);
+    deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
+  });
+
+  it("uses a material legacy EZA passive when its detail object is empty", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters[0];
+    character.ezaReleaseDate = "2026-01-01T00:00:00.000Z";
+    character.ezaPassive = "Basic effect(s)\n- ATK & DEF 180%";
+    character.ezaPassiveDetails = { name: "Incomplete detail", text: "   " };
+
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    const eza = state(dataset.states, `${character.id}:${character.id}:eza`);
+    equal(eza.passive?.rawText, character.ezaPassive);
+    equal(eza.passive?.name, undefined);
+    deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
+  });
+
+  it("does not promote base combat data to an unreleased EZA state from a date alone", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters[0];
+    character.ezaReleaseDate = "2099-01-01T00:00:00.000Z";
+    character.ezaPassive = undefined;
+    character.ezaPassiveDetails = undefined;
+    character.ezaSuperAttack = undefined;
+    character.ezaSuperAttackDetails = undefined;
+    character.passiveDetails = passiveDetailsFromSkill({
+      id: 5003,
+      name: "Base passive",
+      description: "*Basic effect(s)*\n- ATK & DEF 100%{passiveImg:up_g}",
+    } as any, {
+      characterId: character.id,
+      formId: character.id,
+      releaseState: "initial",
+      sourceVersion: "9b8400b8f2f713f705f9ee5b2c56470d",
+      payloadField: "props.character.passive_skill.description",
+    });
+    character.passive = character.passiveDetails?.text ?? "";
+
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    const initial = state(dataset.states, `${character.id}:${character.id}:initial`);
+    equal(dataset.states.some(item => item.stateKey === `${character.id}:${character.id}:eza`), false);
+    equal(initial.passive?.structuralEvidence?.[0].releaseState, "initial");
     deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
   });
 

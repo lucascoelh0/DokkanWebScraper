@@ -1160,6 +1160,27 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 - Consolidated evidence and integration guidance are in
   `docs/game-db/specs/database-world-tournament-capture-wt0-wt6.md`.
 
+## Typed passive-marker publication checkpoint (2026-08-21)
+
+- Characters `2026-08-21T18:18:39.394Z` is public with delivered payload
+  SHA-256 `97d8d7c90eb64af8c717bcdbaefc194406452f679f21142fc86770dba7d1b18b`.
+- Team Analysis `2026-08-21T18:18:39.394Z:parser-1.7.3` is public with
+  payload SHA-256
+  `8ab89556d0ecc8a339963519f9b23fd9723592200e1dc3e7a2b688f927d88dc1`.
+  Its source version and payload SHA match the public Characters manifest
+  exactly; the post-publication dry-run reports zero writes and retains the
+  immediately previous verified Team Analysis release for rollback.
+- Typed passive markers preserve exact display positions for `once`,
+  `forever`, `up_g`, `down_r`, and `down_y`. Android rejects unknown tokens or
+  contradictory token/kind pairs instead of inferring markers from display
+  text. Pan (GT) `1024991` EZA was verified on the emulator with value-up arrows
+  at their source positions.
+- Team Analysis release-state selection is conservative: release dates alone
+  never promote base combat text, EZA-only evidence never fabricates SEZA, and
+  empty detail fields fall back only to material release-specific legacy
+  sources. Focused scraper tests pass 312/312; the Android wire-model test and
+  debug assembly pass.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

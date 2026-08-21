@@ -94,6 +94,12 @@ EZA, SEZA, transformed, Unit, Ultra, or EX effect is never copied to another
 release merely because a display name matches. Current character payloads that
 expose only their current release may use that sole release's generic Super
 Attack fields; multi-release payloads require release-specific fields.
+An EZA/SEZA release date by itself does not promote base combat text into an
+awakened Team Analysis state. Until the character payload exposes an awakened
+passive or non-empty Super Attack source, the base text remains bound to
+`initial`. An EZA Super Attack without an EZA passive creates a separate EZA
+attack state and does not copy the base passive. It does not prove a SEZA state;
+SEZA still requires an explicit SEZA passive source.
 
 ## 4. Passive contract
 

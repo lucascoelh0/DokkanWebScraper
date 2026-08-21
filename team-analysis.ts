@@ -815,41 +815,62 @@ function resolveIdentity(
 }
 
 function analysisReleaseSources(form: AnalysisFormSource): AnalysisReleaseSource[] {
-    const initialPassiveText = form.passiveDetails?.text ?? form.passive;
-    const ezaPassiveText = form.ezaPassiveDetails?.text ?? form.ezaPassive ?? "";
-    const sezaPassiveText = form.sezaPassiveDetails?.text ?? form.sezaPassive ?? "";
+    const initialPassiveDetails = materialText(form.passiveDetails?.text) ? form.passiveDetails : undefined;
+    const ezaPassiveDetails = materialText(form.ezaPassiveDetails?.text) ? form.ezaPassiveDetails : undefined;
+    const sezaPassiveDetails = materialText(form.sezaPassiveDetails?.text) ? form.sezaPassiveDetails : undefined;
+    const initialPassiveText = materialText(initialPassiveDetails?.text) ?? materialText(form.passive) ?? "";
+    const ezaPassiveText = materialText(ezaPassiveDetails?.text) ?? materialText(form.ezaPassive) ?? "";
+    const sezaPassiveText = materialText(sezaPassiveDetails?.text) ?? materialText(form.sezaPassive) ?? "";
     if (!ezaPassiveText && !sezaPassiveText) {
-        return [{
-            releaseState: releaseStateFromForm(form),
+        const initial: AnalysisReleaseSource = {
+            releaseState: "initial",
             passiveText: initialPassiveText,
-            passiveName: form.passiveDetails?.name,
-            passiveDetails: form.passiveDetails,
-        }];
+            passiveName: initialPassiveDetails?.name,
+            passiveDetails: initialPassiveDetails,
+        };
+        return hasMaterialEzaSuperAttackSource(form)
+            ? [initial, { releaseState: "eza", passiveText: "" }]
+            : [initial];
     }
 
     const releases: AnalysisReleaseSource[] = [{
         releaseState: "initial",
         passiveText: initialPassiveText,
-        passiveName: form.passiveDetails?.name,
-        passiveDetails: form.passiveDetails,
+        passiveName: initialPassiveDetails?.name,
+        passiveDetails: initialPassiveDetails,
     }];
     if (ezaPassiveText) {
         releases.push({
             releaseState: "eza",
             passiveText: ezaPassiveText,
-            passiveName: form.ezaPassiveDetails?.name,
-            passiveDetails: form.ezaPassiveDetails,
+            passiveName: ezaPassiveDetails?.name,
+            passiveDetails: ezaPassiveDetails,
         });
     }
     if (sezaPassiveText) {
         releases.push({
             releaseState: "seza",
             passiveText: sezaPassiveText,
-            passiveName: form.sezaPassiveDetails?.name,
-            passiveDetails: form.sezaPassiveDetails,
+            passiveName: sezaPassiveDetails?.name,
+            passiveDetails: sezaPassiveDetails,
         });
     }
     return releases;
+}
+
+function hasMaterialEzaSuperAttackSource(form: AnalysisFormSource): boolean {
+    return [
+        form.ezaSuperAttackDetails?.effect,
+        form.ezaSuperAttack,
+        form.ezaUltraSuperAttackDetails?.effect,
+        form.ezaUltraSuperAttack,
+        form.ezaExSuperAttackDetails?.effect,
+        form.ezaExSuperAttack,
+    ].some(value => materialText(value) !== undefined);
+}
+
+function materialText(value: string | undefined): string | undefined {
+    return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 function analysisSuperAttackSources(
@@ -891,17 +912,19 @@ function analysisSuperAttackSources(
     const attacks: AnalysisSuperAttackSource[] = [];
 
     for (const slot of slots) {
+        const baseDetails = materialText(slot.baseDetails?.effect) ? slot.baseDetails : undefined;
+        const awakenedDetails = materialText(slot.ezaDetails?.effect) ? slot.ezaDetails : undefined;
         const details = useAwakenedFields
-            ? slot.ezaDetails ?? (singleReleaseState ? slot.baseDetails : undefined)
+            ? awakenedDetails ?? (singleReleaseState ? baseDetails : undefined)
             : useBaseFields
-                ? slot.baseDetails
+                ? baseDetails
                 : undefined;
         const fallbackText = useAwakenedFields
-            ? slot.ezaText ?? (singleReleaseState ? slot.baseText : undefined)
+            ? materialText(slot.ezaText) ?? (singleReleaseState ? materialText(slot.baseText) : undefined)
             : useBaseFields
-                ? slot.baseText
+                ? materialText(slot.baseText)
                 : undefined;
-        const effectText = details?.effect ?? fallbackText ?? "";
+        const effectText = materialText(details?.effect) ?? fallbackText ?? "";
         if (!effectText) {
             continue;
         }
