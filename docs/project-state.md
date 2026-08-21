@@ -1219,9 +1219,16 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   debug assembly pass. An emulator upgrade exposed a nullable legacy-row
   converter crash that schema-only migration tests did not exercise; the Unit
   Super Attack converter now accepts null/blank columns, has a focused
-  regression test, and successfully reopens the same preserved database. The
-  user's dirty Android `master` worktree remains untouched pending an explicit
-  local-change consolidation decision.
+  regression test, and successfully reopens the same preserved database.
+- Android `master` was consolidated locally on 2026-08-21. Its prior 10-file
+  working-tree delta was preserved first as commit `2ac119a` on
+  `codex/local-master-wip-20260821`, then reapplied without manual conflicts as
+  `ec1dd6e` after the 34-commit fast-forward through `a60a549`. The follow-up
+  `6dec6cc` removes redundant type, rarity, class and cost metadata from the
+  character-detail identity block while retaining the portrait and typed rail.
+  Domain/app unit tests and the debug assembly pass; Pan (GT) EZA was verified
+  on the emulator, including a 200% font-scale check of the identity block.
+  Remote `master` remains unchanged pending a separate explicit push.
 
 ## Operating Constraints
 
