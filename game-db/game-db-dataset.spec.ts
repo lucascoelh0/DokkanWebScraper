@@ -122,12 +122,12 @@ describe("Created Domain dataset release identity", function () {
         equal(datasetVersionFromSourceSettings("2026-01-01T00:00:00.000Z", {
             glbDbVersion: 1782367825,
             glbAssetVersion: 1782367204,
-        }), "glb-db-1782367825__asset-1782367204__created-domain-effect-v2");
+        }), "glb-db-1782367825__asset-1782367204__super-attack-details-v3");
         equal(datasetVersionFromSourceSettings(
             "2026-01-01T00:00:00.000Z",
             undefined,
             ["glb-db-1782367825"],
-        ), "glb-db-1782367825__created-domain-effect-v2");
+        ), "glb-db-1782367825__super-attack-details-v3");
     });
 
     it("uses the explicit hint and rejects conflicting source settings", () => {

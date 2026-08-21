@@ -112,12 +112,77 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
         equal(projection.finishSkills[0].targetTransformationId, "5029111");
         equal(projection.finishSkills[0].effectKind, "mixed");
         equal(projection.reversibleExchange?.targetCharacterId, "4033071");
+        equal(projection.superAttackDetails?.length, 0);
         equal(projection.transformations.length, 3);
         deepEqual(projection.transformations.map(item => item.source), [
             "reversible-exchange",
             "standby",
             "finish-skill",
         ]);
+    });
+
+    it("projects source-neutral Super Attack details without leaking audit-only evidence", () => {
+        const projection = projectGameDbCharacterToDokkanpanion({
+            ...makeBaseSnapshot(),
+            superAttacks: [{
+                cardSpecialId: "17379",
+                specialSetId: "7731",
+                name: "Demon Death Ball",
+                description: "Greatly raises DEF for 4 turns and causes mega-colossal damage to all enemies",
+                style: "Hyper",
+                variant: "ultra",
+                levelStart: 1,
+                requiredKi: 18,
+                viewId: "17379",
+                increaseRate: 250,
+                levelBonus: 10,
+                specialBonuses: [{ slot: 1, id: "12", level: 20, viewId: "3" }],
+                effects: [{
+                    id: "1007731",
+                    specialSetId: "7731",
+                    type: "Special::ExtraEfficacySpecial",
+                    efficacyType: 111,
+                    targetType: 1,
+                    calcOption: 0,
+                    turn: 1,
+                    probability: 100,
+                    causalityConditionsRaw: "[]",
+                    values: [null, "0", null],
+                    semantic: {
+                        kind: "action_break",
+                        status: "partial",
+                        actionSelection: "one_eligible_current_enemy_action_per_marker",
+                        evidence: {
+                            fileName: "native-special-action-break-semantics.json",
+                            nativeRuntimeSha256: "7d6c2c1e095fc20a71ec4764e88a17b4d4b82f3f12952b9ba8c6eb0405a7215a",
+                        },
+                    },
+                    provenance: { table: "specials", rowId: "1007731" },
+                }],
+                provenance: {
+                    cardSpecial: { table: "card_specials", rowId: "17379" },
+                    specialSet: { table: "special_sets", rowId: "7731" },
+                },
+            }],
+        });
+
+        equal(projection.superAttackDetails?.length, 1);
+        const attack = projection.superAttackDetails?.[0];
+        if (!attack) {
+            throw new Error("Expected one projected Super Attack");
+        }
+        equal(attack.id, "17379");
+        equal(attack.name, "Demon Death Ball");
+        equal(attack.variant, "ultra");
+        equal(attack.requiredKi, 18);
+        const serialized = JSON.stringify(projection.superAttackDetails);
+        equal(serialized.includes("Special::"), false);
+        equal(serialized.includes("specialSetId"), false);
+        equal(serialized.includes("increaseRate"), false);
+        equal(serialized.includes("levelBonus"), false);
+        equal(serialized.includes("levelStart"), false);
+        equal(serialized.includes("action_break"), false);
+        equal(serialized.includes("provenance"), false);
     });
 
     it("falls back cleanly when optional mechanics are absent", () => {

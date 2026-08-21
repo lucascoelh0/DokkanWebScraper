@@ -29,6 +29,14 @@ export interface GameDbProjectionTransformation {
     sourceLabel?: string,
 }
 
+export interface GameDbProjectionSuperAttackDetails {
+    id: string,
+    name: string,
+    description: string,
+    variant: GameDbCharacterSnapshot["superAttacks"][number]["variant"],
+    requiredKi?: number,
+}
+
 export interface GameDbDokkanpanionProjection {
     id: string,
     source: "game-db-projection",
@@ -51,6 +59,7 @@ export interface GameDbDokkanpanionProjection {
     leaderSkillDetails?: LeaderSkillDetails,
     passive: string,
     passiveDetails?: PassiveDetails,
+    superAttackDetails?: GameDbProjectionSuperAttackDetails[],
     activeSkill: string,
     activeSkillCondition: string,
     createdDomain?: CreatedDomainDetails,
@@ -286,6 +295,16 @@ function mapTransformations(character: GameDbCharacterSnapshot): GameDbProjectio
     }));
 }
 
+function mapSuperAttackDetails(character: GameDbCharacterSnapshot): GameDbProjectionSuperAttackDetails[] {
+    return character.superAttacks.map(attack => ({
+        id: attack.cardSpecialId,
+        name: attack.name,
+        description: attack.description,
+        variant: attack.variant,
+        requiredKi: attack.requiredKi,
+    }));
+}
+
 export function projectGameDbCharacterToDokkanpanion(character: GameDbCharacterSnapshot): GameDbDokkanpanionProjection {
     const leaderSkill = character.leaderSkill?.description ?? "";
     const leaderSkillDetails = parseLeaderSkillDetails(leaderSkill);
@@ -321,6 +340,7 @@ export function projectGameDbCharacterToDokkanpanion(character: GameDbCharacterS
         leaderSkillDetails,
         passive,
         passiveDetails,
+        superAttackDetails: mapSuperAttackDetails(character),
         activeSkill: activeSkillText(character),
         activeSkillCondition: activeSkillCondition(character),
         createdDomain,
