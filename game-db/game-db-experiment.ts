@@ -33,6 +33,9 @@ import {
 } from "./game-db-source";
 import { projectGameDbCharactersToDokkanpanion } from "./game-db-app-projection";
 import { writeFormattedJson } from "../format-json";
+import { readSourceSettings } from "./game-db-source-settings";
+
+export { readSourceSettings } from "./game-db-source-settings";
 
 export const DEFAULT_GOLDEN_CARD_IDS = [
     "1032521",
@@ -146,24 +149,6 @@ function groupBy(rows: GameDbRow[], key: string): Map<string, GameDbRow[]> {
 
 function sortByOptionalNumber<T>(items: T[], selector: (item: T) => number | undefined): T[] {
     return [...items].sort((left, right) => (selector(left) ?? Number.MAX_SAFE_INTEGER) - (selector(right) ?? Number.MAX_SAFE_INTEGER));
-}
-
-export async function readSourceSettings(settingsPath?: string): Promise<GameDbExperimentReport["sourceSettings"] | undefined> {
-    if (!settingsPath) {
-        return undefined;
-    }
-
-    try {
-        const rawSettings = await readFile(settingsPath, { encoding: "utf8" });
-        const settings = JSON.parse(rawSettings);
-        return {
-            glbAssetVersion: settings.GlbAssetVersion,
-            glbDbVersion: settings.GlbDbVersion,
-            glbApkVersion: settings.GlbApkVersion,
-        };
-    } catch {
-        return undefined;
-    }
 }
 
 function mapLeaderSkillEffects(rows: GameDbRow[]): GameDbLeaderSkillEffect[] {

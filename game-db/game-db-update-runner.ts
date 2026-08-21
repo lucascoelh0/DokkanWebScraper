@@ -8,8 +8,8 @@ import {
     loadRequiredGameDbTables,
     maybeReadFyiExperimentCharacters,
     parseCardIds,
-    readSourceSettings,
 } from "./game-db-experiment";
+import { readSourceSettings } from "./game-db-source-settings";
 import { writeFormattedJson } from "../format-json";
 import { writeGameDbDataset } from "./game-db-dataset";
 import { hasOption, publishGameDbDataset } from "./game-db-publish-r2";

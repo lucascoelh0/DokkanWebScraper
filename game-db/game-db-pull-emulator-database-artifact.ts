@@ -1,7 +1,7 @@
 import { spawnSync } from "child_process";
 import { mkdir, readFile } from "fs/promises";
 import { basename, resolve } from "path";
-import { readSourceSettings } from "./game-db-experiment";
+import { readSourceSettings } from "./game-db-source-settings";
 import { writeFormattedJson } from "../format-json";
 
 const DEFAULT_PACKAGE_NAME = "com.bandainamcogames.dbzdokkanww";

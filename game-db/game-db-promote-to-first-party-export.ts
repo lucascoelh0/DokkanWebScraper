@@ -10,7 +10,7 @@ import {
     commitFirstPartyExport,
     copyFirstPartyExportSourceInventory,
 } from "./game-db-first-party-export-commit";
-import { readSourceSettings } from "./game-db-experiment";
+import { readSourceSettings } from "./game-db-source-settings";
 import { FIRST_PARTY_EXPORT_GAME_DB_TABLES } from "./game-db-table-inventory";
 import { resolveGameDbSourceConfig } from "./game-db-source";
 

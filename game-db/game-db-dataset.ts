@@ -11,8 +11,8 @@ import {
     buildGameDbCharacterSnapshots,
     loadRequiredGameDbTables,
     parseCardIds,
-    readSourceSettings,
 } from "./game-db-experiment";
+import { readSourceSettings } from "./game-db-source-settings";
 import { writeFormattedJson } from "../format-json";
 import {
     GameDbSourceConfig,
