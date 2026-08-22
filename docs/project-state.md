@@ -1,6 +1,6 @@
 # Dokkanpanion Project State
 
-**Last updated**: 2026-08-18
+**Last updated**: 2026-08-22
 
 This is the concise operational checkpoint for future sessions. Durable
 decisions live in [`adr/`](adr/), and current workflow instructions live in
@@ -1431,8 +1431,43 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 - Focused scraper suites pass 347 tests; Android domain/app unit tests and the
   debug assembly pass. The support-memory disclosure and category round trip
   were visually verified on the emulator. Contract review found no remaining
-  P0-P2 issue. These commits are local only; no push or R2 publication was done
-  for this checkpoint.
+  P0-P2 issue. At that checkpoint the commits were still local and no R2
+  publication had been done; the following checkpoint records their delivery.
+
+## Super Attack level-curve delivery checkpoint (2026-08-22)
+
+- Scraper commit `02e95ef` and Android commit `45a4458` are pushed, together
+  with the preceding Character Details checkpoints, to `origin/main` and
+  `origin/master`. The FYI mapper now preserves the typed level-1 percentage,
+  maximum-level percentage and maximum Super Attack level for normal, Ultra,
+  Extra and Unit Super Attacks across initial, EZA and transformed states.
+  Team Analysis parser `1.9.0` carries this additive field without regex;
+  Android consumes it directly and retains the old exact-descriptor fallback
+  for cached datasets that predate the field.
+- Characters `2026-08-22T15:28:45.905Z` is public with payload SHA-256
+  `485a72ce7d89bb5c968a2c3d29b0bb6c24e2e58cf229daacc9a3513a4f0ad279`,
+  2,340,541 compressed bytes and 1,436 characters. The required dry-run found
+  1,626 matching objects, two missing objects, zero conflicts and zero failed
+  reads; it projected 2,350,569 new bytes and a conservative 381,350,569-byte
+  bucket upper bound. The post-publication dry-run found all 1,628 objects and
+  the mutable manifest matching, with zero planned uploads.
+- Team Analysis `2026-08-22T15:28:45.905Z:parser-1.9.0` is public with payload
+  SHA-256
+  `d2a50a366395b1499ebac11b6664beea013cf38b00f143a0069ba29f600693bd`,
+  2,934,016 compressed bytes and 2,287 states. It was generated from the exact
+  public Characters bytes and its source version and SHA-256 match the public
+  Characters manifest. Metal Cooler EZA carries `200 -> 320` at level 25 for
+  its normal Super Attack and `250 -> 490` for its Ultra; Pan EZA carries
+  `150 -> 500` at level 15 and each of its three Unit Super Attacks carries
+  `130 -> 480`.
+- The Team Analysis dry-run projected 2,934,716 new bytes, an 8,443,833-byte
+  managed peak and a conservative 381,934,016-byte bucket upper bound. Wrangler
+  again failed its immediate payload read-after-write before manifest
+  promotion. Public HTTPS independently proved status 200, exact size and
+  SHA-256, gzip content type and immutable cache metadata before the documented
+  skip-verification recovery promoted the manifest. A final public no-store
+  reread proved the manifest, payload and Characters lineage exactly; the
+  previous Team Analysis release remains retained for rollback.
 
 ## Operating Constraints
 
