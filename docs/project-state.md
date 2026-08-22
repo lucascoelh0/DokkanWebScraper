@@ -1330,6 +1330,28 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   in about one second and launched without an app fatal error. The prior
   duplicate repro character now renders one named `ACTIVE SKILL` block.
 
+## Passive continuation Team Analysis checkpoint (2026-08-22)
+
+- Team Analysis `2026-08-22T01:54:55.262Z:parser-1.7.4` is public with payload
+  SHA-256
+  `a26556bf2247c57450c164f70c1f7ff6afe8e0522bdafd9f3af36e3bcb2a8e2a`,
+  2,754,560 compressed bytes and 2,287 states. Its source Characters SHA-256
+  exactly matches the public `2026-08-22T01:54:55.262Z` payload.
+- The parser now consumes `passiveDetails.sections` only when those structured
+  entries form an ordered, non-overlapping, lossless partition of the raw
+  passive source. Invalid or incomplete section structure fails closed instead
+  of emitting an orphan condition such as `BASIC EFFECTS / when receiving an
+  attack`.
+- The required remote dry-run projected 2,755,260 new bytes, an 8,226,737-byte
+  managed peak and a conservative 378,754,560-byte global upper bound, below
+  the 10 GB limit. The active parser-1.7.3 payload remains retained for
+  rollback.
+- Wrangler again failed immediate payload read-after-write before manifest
+  promotion. Direct public HTTPS proved status 200, the exact payload size and
+  SHA-256, gzip content type and immutable cache metadata; only then was the
+  documented skip-verification recovery used. The promoted manifest was
+  independently re-read with `no-store` and exact content.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

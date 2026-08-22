@@ -19,7 +19,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.7.3";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.7.4";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
