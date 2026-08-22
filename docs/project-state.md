@@ -1411,6 +1411,29 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   rendered `CONDITION` before `DETAILS`, with `Increases ATK by 600%` sourced
   from the typed enrichment.
 
+## Character Details completion checkpoint (2026-08-22)
+
+- Scraper commit `764526c` adds typed Super Attack effect rows for exact stat
+  values, durations, stun, seal and action break while retaining row-level
+  provenance. Structured FYI/DB fields remain authoritative; a conservative
+  one-to-one merge fills only missing fields from explicit text and preserves
+  unmatched parsed effects instead of silently discarding them.
+- Android commit `64fbab4` carries that optional contract through the wire and
+  domain models and presents the approved effect rows with the supplied Dokkan
+  status icons. Old cached payloads without effects or provenance remain
+  compatible, and malformed provenance degrades to `UNKNOWN` without dropping
+  the effect.
+- Android commit `af45193` finishes the approved Character Details discovery
+  polish: Applicable Support Memories use a three-item progressive disclosure,
+  and category chips are consistently styled, accessible navigation controls
+  that open the existing category catalog and return to the preserved detail
+  position.
+- Focused scraper suites pass 347 tests; Android domain/app unit tests and the
+  debug assembly pass. The support-memory disclosure and category round trip
+  were visually verified on the emulator. Contract review found no remaining
+  P0-P2 issue. These commits are local only; no push or R2 publication was done
+  for this checkpoint.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
