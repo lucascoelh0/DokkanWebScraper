@@ -372,8 +372,21 @@ export interface ActiveSkillDetails {
     turn?: number,
     executionLimit?: number,
     ultimateSpecialId?: string,
+    ultimateAttack?: ActiveSkillUltimateAttackDetails,
     effects: ActiveSkillEffectDetails[],
     source: ActiveSkillDetailsSource,
+}
+
+export interface ActiveSkillUltimateAttackDetails {
+    id: string,
+    name?: string,
+    description?: string,
+    attackMultiplierPercent: number,
+    isMultiTarget: boolean,
+    provenance?: {
+        table: "ultimate_specials",
+        rowId: string,
+    },
 }
 
 export interface ActiveSkillEffectDetails {

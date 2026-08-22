@@ -176,6 +176,9 @@ function activeSkillDetails(character: GameDbCharacterSnapshot): ActiveSkillDeta
         turn: activeSkillSet.turn,
         executionLimit: activeSkillSet.execLimit,
         ultimateSpecialId: activeSkillSet.ultimateSpecialId,
+        ultimateAttack: activeSkillSet.ultimateAttack
+            ? { ...activeSkillSet.ultimateAttack, provenance: { ...activeSkillSet.ultimateAttack.provenance } }
+            : undefined,
         effects: activeSkillSet.effects.map(effect => ({
             id: effect.id,
             efficacyType: effect.efficacyType,

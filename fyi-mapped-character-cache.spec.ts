@@ -31,7 +31,7 @@ describe("mapped FYI character cache", function () {
             await writeFyiMappedCharacterCache(path, character, fetchedAt);
 
             const rewritten = JSON.parse(await readFile(path, "utf8"));
-            equal(rewritten.mappingVersion, 11);
+            equal(rewritten.mappingVersion, 12);
             deepEqual(
                 await readFyiMappedCharacterCache(path, 60_000, fetchedAt.getTime()),
                 character,

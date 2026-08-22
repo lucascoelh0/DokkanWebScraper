@@ -109,6 +109,7 @@ export interface GameDbActiveSkillSet {
     turn?: number,
     execLimit?: number,
     ultimateSpecialId?: string,
+    ultimateAttack?: GameDbUltimateAttack,
     specialViewId?: string,
     effects: GameDbActiveSkillEffect[],
     createdDomain?: GameDbSnapshotAuditedCreatedDomain,
@@ -121,6 +122,18 @@ export interface GameDbActiveSkillSet {
             table: "active_skill_sets",
             rowId: string,
         },
+    },
+}
+
+export interface GameDbUltimateAttack {
+    id: string,
+    name: string,
+    description: string,
+    attackMultiplierPercent: number,
+    isMultiTarget: boolean,
+    provenance: {
+        table: "ultimate_specials",
+        rowId: string,
     },
 }
 

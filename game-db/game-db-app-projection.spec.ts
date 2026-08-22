@@ -132,6 +132,14 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
                 turn: 1,
                 execLimit: 1,
                 ultimateSpecialId: "62",
+                ultimateAttack: {
+                    id: "62",
+                    name: "Ultimate attack",
+                    description: "Ultimate damage +50%",
+                    attackMultiplierPercent: 600,
+                    isMultiTarget: false,
+                    provenance: { table: "ultimate_specials", rowId: "62" },
+                },
                 effects: [{
                     id: "270",
                     activeSkillSetId: "216",
@@ -159,6 +167,14 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
             turn: 1,
             executionLimit: 1,
             ultimateSpecialId: "62",
+            ultimateAttack: {
+                id: "62",
+                name: "Ultimate attack",
+                description: "Ultimate damage +50%",
+                attackMultiplierPercent: 600,
+                isMultiTarget: false,
+                provenance: { table: "ultimate_specials", rowId: "62" },
+            },
             effects: [{
                 id: "270",
                 efficacyType: 90,

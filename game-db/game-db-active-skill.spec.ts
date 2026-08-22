@@ -4,6 +4,51 @@ import { mapActiveSkillSets } from "./game-db-active-skill";
 import { GameDbRow } from "./game-db-source";
 
 describe("mapActiveSkillSets", function () {
+    it("pins first-party ultimate attack semantics against real FYI cards", () => {
+        // Evidence snapshot (Global DB 1782367825):
+        // - card 1024991 -> active set 156 -> ultimate 36; ultimate_specials(36) = 600, aim_target 0
+        // - card 1020341 -> active set 83 -> ultimate 12; ultimate_specials(12) = 440, aim_target 1
+        // FYI caches for the same cards expose 600/false and 440/true respectively.
+        const mapped = mapActiveSkillSets(
+            [
+                { id: "115", card_id: "1020341", active_skill_set_id: "83" },
+                { id: "227", card_id: "1024991", active_skill_set_id: "156" },
+            ],
+            new Map([
+                ["83", { id: "83", name: "Final Explosion", ultimate_special_id: "12" }],
+                ["156", { id: "156", name: "Ace-in-the-Hole Kamehameha", ultimate_special_id: "36" }],
+            ]),
+            new Map(),
+            new Map([
+                ["12", { id: "12", increase_rate: "440", aim_target: "1" }],
+                ["36", { id: "36", increase_rate: "600", aim_target: "0" }],
+            ]),
+        );
+
+        deepEqual(
+            mapped.map(skill => ({
+                id: skill.id,
+                ultimateSpecialId: skill.ultimateSpecialId,
+                attackMultiplierPercent: skill.ultimateAttack?.attackMultiplierPercent,
+                isMultiTarget: skill.ultimateAttack?.isMultiTarget,
+            })),
+            [
+                {
+                    id: "83",
+                    ultimateSpecialId: "12",
+                    attackMultiplierPercent: 440,
+                    isMultiTarget: true,
+                },
+                {
+                    id: "156",
+                    ultimateSpecialId: "36",
+                    attackMultiplierPercent: 600,
+                    isMultiTarget: false,
+                },
+            ],
+        );
+    });
+
     it("preserves first-party active skill rows without assigning unproven semantics", () => {
         const activeSkillSetById = new Map<string, GameDbRow>([[
             "42",
@@ -55,6 +100,13 @@ describe("mapActiveSkillSets", function () {
             ],
             activeSkillSetById,
             effectsBySetId,
+            new Map([["9001", {
+                id: "9001",
+                name: "Ultimate attack",
+                description: "Ultimate damage +50%",
+                increase_rate: "600",
+                aim_target: "0",
+            }]]),
         );
 
         deepEqual(mapped, [{
@@ -65,6 +117,14 @@ describe("mapActiveSkillSets", function () {
             turn: 4,
             execLimit: 1,
             ultimateSpecialId: "9001",
+            ultimateAttack: {
+                id: "9001",
+                name: "Ultimate attack",
+                description: "Ultimate damage +50%",
+                attackMultiplierPercent: 600,
+                isMultiTarget: false,
+                provenance: { table: "ultimate_specials", rowId: "9001" },
+            },
             specialViewId: "7001",
             effects: [
                 {

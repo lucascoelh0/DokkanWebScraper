@@ -58,6 +58,7 @@ export function mapActiveSkillSets(
     rows: GameDbRow[],
     activeSkillSetById: Map<string, GameDbRow>,
     activeSkillEffectsBySetId: Map<string, GameDbRow[]>,
+    ultimateSpecialById: Map<string, GameDbRow> = new Map(),
 ): GameDbActiveSkillSet[] {
     const seenSetIds = new Set<string>();
     return [...rows].sort((left, right) => compareDbIds(left.id, right.id)).flatMap(row => {
@@ -76,6 +77,12 @@ export function mapActiveSkillSets(
             throw new Error(`card_active_skills row ${relationId} references missing active_skill_sets row ${activeSkillSetId}`);
         }
 
+        const ultimateSpecialId = normalizeDbId(activeSkillSet.ultimate_special_id);
+        const ultimateSpecial = ultimateSpecialId
+            ? ultimateSpecialById.get(ultimateSpecialId)
+            : undefined;
+        const attackMultiplierPercent = parseDbInt(ultimateSpecial?.increase_rate);
+
         return [{
             id: activeSkillSetId,
             name: normalizeText(activeSkillSet.name),
@@ -83,7 +90,21 @@ export function mapActiveSkillSets(
             conditionDescription: normalizeText(activeSkillSet.condition_description),
             turn: parseDbInt(activeSkillSet.turn),
             execLimit: parseDbInt(activeSkillSet.exec_limit),
-            ultimateSpecialId: normalizeDbId(activeSkillSet.ultimate_special_id),
+            ultimateSpecialId,
+            ultimateAttack: ultimateSpecialId && ultimateSpecial && attackMultiplierPercent !== undefined
+                && attackMultiplierPercent > 0
+                ? {
+                    id: ultimateSpecialId,
+                    name: normalizeText(ultimateSpecial.name),
+                    description: normalizeText(ultimateSpecial.description),
+                    attackMultiplierPercent,
+                    isMultiTarget: parseDbInt(ultimateSpecial.aim_target) === 1,
+                    provenance: {
+                        table: "ultimate_specials",
+                        rowId: ultimateSpecialId,
+                    },
+                }
+                : undefined,
             specialViewId: normalizeDbId(activeSkillSet.special_view_id),
             effects: mapActiveSkillEffects(activeSkillEffectsBySetId.get(activeSkillSetId) ?? []),
             provenance: {

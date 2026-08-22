@@ -179,6 +179,13 @@ interface FyiStandbySkill extends FyiSkill {
 }
 
 interface FyiActiveSkill extends FyiSkill {
+    ultimate_attack?: {
+        id?: number,
+        name?: string | null,
+        description?: string | null,
+        atk_multiplier?: number | null,
+        is_multi_target?: boolean | null,
+    } | null,
 }
 
 interface FyiFinishSkill extends FyiSkill {
@@ -2207,6 +2214,8 @@ function activeSkillDetailsFromFyi(
             name: cleanInlineText(skill.name),
             description: cleanMultilineText(skill.description),
             condition: cleanMultilineText(skill.condition) || undefined,
+            ultimateSpecialId: skill.ultimate_attack?.id?.toString(),
+            ultimateAttack: activeSkillUltimateAttackFromFyi(skill.ultimate_attack),
             effects: (skill.effects ?? []).flatMap(effect => {
                 const effectId = effect.id?.toString();
                 if (!effectId) return [];
@@ -2231,6 +2240,23 @@ function activeSkillDetailsFromFyi(
     });
 
     return details.length > 0 ? details : undefined;
+}
+
+function activeSkillUltimateAttackFromFyi(
+    ultimateAttack: FyiActiveSkill["ultimate_attack"],
+): ActiveSkillDetails["ultimateAttack"] {
+    const id = ultimateAttack?.id?.toString();
+    const attackMultiplierPercent = ultimateAttack?.atk_multiplier;
+    if (!id || !Number.isSafeInteger(attackMultiplierPercent) || attackMultiplierPercent <= 0) {
+        return undefined;
+    }
+    return {
+        id,
+        name: cleanInlineText(ultimateAttack.name) || undefined,
+        description: cleanMultilineText(ultimateAttack.description) || undefined,
+        attackMultiplierPercent,
+        isMultiTarget: ultimateAttack.is_multi_target === true,
+    };
 }
 
 function formatStandbySkill(skill: FyiStandbySkill | undefined | null): string {

@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import { dirname } from "path";
 import { Character } from "./character";
 
-const FYI_MAPPED_CHARACTER_CACHE_VERSION = 11;
+const FYI_MAPPED_CHARACTER_CACHE_VERSION = 12;
 
 export async function readFyiMappedCharacterCache(
     path: string,

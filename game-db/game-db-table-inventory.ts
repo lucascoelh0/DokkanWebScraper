@@ -22,6 +22,7 @@ export const CORE_GAME_DB_TABLES = [
     "standby_skill_set_finish_skill_set_relations",
     "standby_skills",
     "standby_skill_sets",
+    "ultimate_specials",
 ] as const;
 
 export const SUPER_ATTACK_EFFECT_GAME_DB_TABLES = [

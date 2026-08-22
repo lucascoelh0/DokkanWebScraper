@@ -1352,6 +1352,26 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   documented skip-verification recovery used. The promoted manifest was
   independently re-read with `no-store` and exact content.
 
+## Typed Active Skill ultimate-attack checkpoint (2026-08-22)
+
+- The additive Active Skill contract now preserves `ultimateAttack` with its
+  stable `ultimateSpecialId`, multiplier, target scope and first-party row
+  provenance. It remains optional so old Characters payloads and caches keep
+  materializing without the enrichment.
+- The DB semantics are pinned against Global database `1782367825` and the FYI
+  cache: Pan `1024991` joins active set `156` to ultimate `36`, whose
+  `increase_rate=600` and `aim_target=0` match FYI `600/false`; Vegeta
+  `1020341` joins set `83` to ultimate `12`, whose `440/1` match FYI
+  `440/true`. The first-party values were re-read from
+  `database.decrypted.sqlite`, not inferred from prose.
+- Android materialization marker 8 preserves the optional object and forces a
+  one-time rebuild where needed. Presentation is fail-closed: it exposes a
+  multiplier only when the outer and nested ultimate IDs are both nonblank,
+  equal and the multiplier is positive. No regex participates in the path.
+- The UI has not been changed yet. Intent + Impeccable recommend reusing the
+  existing Active Skill hierarchy with a compact `DETAILS` group between the
+  description and `CONDITION`, subject to product-owner approval.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

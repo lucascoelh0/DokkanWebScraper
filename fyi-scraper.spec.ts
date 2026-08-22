@@ -274,6 +274,13 @@ describe("mapDokkanFyiCharacter versioned combat fields", function () {
               name: "Perfect Active",
               description: "Causes ultimate damage",
               condition: "Can be activated once only",
+              ultimate_attack: {
+                id: 36,
+                name: "Ultimate attack",
+                description: "Ultimate damage +50%",
+                atk_multiplier: 600,
+                is_multi_target: false,
+              },
               effects: [
                 { id: 7, type: 90, target: 1, calculation: 0, turns: 1, chance: 100, values: [600, 0, 0] },
                 { id: 7, type: 90, target: 1, values: [999] },
@@ -328,6 +335,14 @@ describe("mapDokkanFyiCharacter versioned combat fields", function () {
       name: "Perfect Active",
       description: "Causes ultimate damage",
       condition: "Can be activated once only",
+      ultimateSpecialId: "36",
+      ultimateAttack: {
+        id: "36",
+        name: "Ultimate attack",
+        description: "Ultimate damage +50%",
+        attackMultiplierPercent: 600,
+        isMultiTarget: false,
+      },
       effects: [{
         id: "7",
         efficacyType: 90,
