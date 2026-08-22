@@ -440,6 +440,34 @@ describe("mapDokkanFyiCharacter versioned combat fields", function () {
 });
 
 describe("mapSuperAttackDetails structured effects", function () {
+  it("preserves the exact Super Attack level curve from typed FYI fields", () => {
+    const details = mapSuperAttackDetails({
+      id: 1007731,
+      name: "Full-Metal Avalanche (Extreme)",
+      description: "Raises ATK and greatly raises DEF for 1 turn",
+      atk_multiplier: 200,
+      atk_multiplier_level_bonus: 5,
+    } as any, undefined, 25);
+
+    deepEqual(details?.attackIncrease, {
+      level1Percent: 200,
+      maxLevelPercent: 320,
+      maxLevel: 25,
+    });
+  });
+
+  it("omits an incomplete or unsafe Super Attack level curve", () => {
+    equal(mapSuperAttackDetails({
+      id: 1,
+      atk_multiplier: 200,
+    } as any, undefined, 25)?.attackIncrease, undefined);
+    equal(mapSuperAttackDetails({
+      id: 2,
+      atk_multiplier: 200,
+      atk_multiplier_level_bonus: 5,
+    } as any, undefined, 0)?.attackIncrease, undefined);
+  });
+
   it("preserves exact stat values and status effects from the FYI payload", () => {
     const details = mapSuperAttackDetails({
       id: 99,

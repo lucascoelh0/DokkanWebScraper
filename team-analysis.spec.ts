@@ -1533,6 +1533,36 @@ describe("team-analysis Gate A7 Super Attack effect channel", function () {
     deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
   });
 
+  it("carries the typed Super Attack level curve on every release state", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters.find(item => item.id === "1004001") as Character;
+    character.superAttack = "Raises DEF for 1 turn";
+    character.superAttackDetails = {
+      name: "Base SA",
+      effect: character.superAttack,
+      ki: 12,
+      attackIncrease: { level1Percent: 150, maxLevelPercent: 375, maxLevel: 10 },
+    };
+    character.ezaSuperAttack = "Raises ATK & DEF for 3 turns";
+    character.ezaSuperAttackDetails = {
+      name: "EZA SA",
+      effect: character.ezaSuperAttack,
+      ki: 12,
+      attackIncrease: { level1Percent: 150, maxLevelPercent: 500, maxLevel: 15 },
+    };
+
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    deepEqual(
+      state(dataset.states, "1004001:1004001:initial").superAttacks?.[0]?.attackIncrease,
+      { level1Percent: 150, maxLevelPercent: 375, maxLevel: 10 },
+    );
+    deepEqual(
+      state(dataset.states, "1004001:1004001:eza").superAttacks?.[0]?.attackIncrease,
+      { level1Percent: 150, maxLevelPercent: 500, maxLevel: 15 },
+    );
+    deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
+  });
+
   it("selects release-specific Unit Super Attacks and never leaks base attacks into EZA or SEZA", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
     const character = characters.find(item => item.id === "1005001") as Character;
@@ -2744,7 +2774,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.8\.0/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.0/);
   });
 });
 

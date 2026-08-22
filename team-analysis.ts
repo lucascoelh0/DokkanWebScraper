@@ -7,6 +7,7 @@ import {
     PassiveDetails,
     SuperAttackDetails,
     SuperAttackEffectDetails,
+    SuperAttackIncreaseDetails,
     Transformation,
     UnitSuperAttack,
 } from "./character";
@@ -20,7 +21,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.8.0";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.0";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
@@ -273,6 +274,7 @@ export interface ParsedSuperAttack {
     ki?: number,
     attackType?: string,
     style?: string,
+    attackIncrease?: SuperAttackIncreaseDetails,
     effectOrigin: "super_attack",
     rawText: string,
     condition: ParsedSuperAttackCondition,
@@ -672,6 +674,7 @@ export interface AnalysisSuperAttackSource {
     ki?: number,
     attackType?: string,
     style?: string,
+    attackIncrease?: SuperAttackIncreaseDetails,
     effectText: string,
     conditionText: string,
     structuralSource?: EffectStructuralSource,
@@ -941,6 +944,7 @@ function analysisSuperAttackSources(
             ...(details?.ki !== undefined ? { ki: details.ki } : {}),
             ...(details?.type !== undefined ? { attackType: String(details.type) } : {}),
             ...(details?.style ? { style: details.style } : {}),
+            ...(details?.attackIncrease ? { attackIncrease: details.attackIncrease } : {}),
             effectText,
             conditionText: details?.condition ?? "",
             ...(details?.structuralSource ? { structuralSource: details.structuralSource } : {}),
@@ -965,6 +969,7 @@ function analysisSuperAttackSources(
                 ...(unit.ki !== undefined ? { ki: unit.ki } : {}),
                 ...(unit.type !== undefined ? { attackType: String(unit.type) } : {}),
                 ...(unit.style ? { style: unit.style } : {}),
+                ...(unit.attackIncrease ? { attackIncrease: unit.attackIncrease } : {}),
                 effectText,
                 conditionText: unit.unitSuperAttackCondition ?? "",
                 ...(unit.structuralSource ? { structuralSource: unit.structuralSource } : {}),
@@ -1046,6 +1051,7 @@ export function parseSuperAttack(
         ...(source.ki !== undefined ? { ki: source.ki } : {}),
         ...(source.attackType ? { attackType: source.attackType } : {}),
         ...(source.style ? { style: source.style } : {}),
+        ...(source.attackIncrease ? { attackIncrease: source.attackIncrease } : {}),
         effectOrigin: "super_attack",
         rawText,
         condition,
@@ -6330,6 +6336,7 @@ function validateSuperAttacks(
                 ["ki", attack.ki, expected.ki],
                 ["attackType", attack.attackType, expected.attackType],
                 ["style", attack.style, expected.style],
+                ["attackIncrease", JSON.stringify(attack.attackIncrease), JSON.stringify(expected.attackIncrease)],
                 ["rawText", attack.rawText, expected.effectText],
                 ["condition.rawText", attack.condition.rawText, expected.conditionText],
             ];
@@ -6373,6 +6380,13 @@ function validateSuperAttack(
     }
     if (attack.ki !== undefined && (!Number.isInteger(attack.ki) || attack.ki < 0 || attack.ki > 24)) {
         issues.push({ code: "super-attack-ki", message: `Super Attack Ki must be an integer within 0..24.`, stateKey: state.stateKey });
+    }
+    if (attack.attackIncrease !== undefined && !validSuperAttackIncrease(attack.attackIncrease)) {
+        issues.push({
+            code: "super-attack-increase",
+            message: "Super Attack increase must contain positive safe integer levels and non-decreasing percentages.",
+            stateKey: state.stateKey,
+        });
     }
     if (attack.effectOrigin !== "super_attack") {
         issues.push({ code: "super-attack-origin", message: `Super Attack channel cannot contain passive or Active Skill effects.`, stateKey: state.stateKey });
@@ -6426,6 +6440,15 @@ function validateSuperAttack(
         issues.push({ code: "super-attack-status", message: `Super Attack parseStatus does not match condition/effect/residual status.`, stateKey: state.stateKey });
     }
     attack.effects.forEach(effect => validateSuperAttackEffect(effect, attack, state, issues));
+}
+
+function validSuperAttackIncrease(increase: SuperAttackIncreaseDetails): boolean {
+    return Number.isSafeInteger(increase.level1Percent)
+        && increase.level1Percent > 0
+        && Number.isSafeInteger(increase.maxLevelPercent)
+        && increase.maxLevelPercent >= increase.level1Percent
+        && Number.isSafeInteger(increase.maxLevel)
+        && increase.maxLevel > 0;
 }
 
 function validateSuperAttackEffect(

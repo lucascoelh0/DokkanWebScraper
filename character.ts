@@ -202,6 +202,7 @@ export interface UnitSuperAttack {
     structuralSource?: EffectStructuralSource;
     sourceAttackId?: string;
     effects?: SuperAttackEffectDetails[];
+    attackIncrease?: SuperAttackIncreaseDetails;
 }
 
 export interface PortraitSpec {
@@ -364,6 +365,13 @@ export interface SuperAttackDetails {
     structuralSource?: EffectStructuralSource,
     sourceAttackId?: string,
     effects?: SuperAttackEffectDetails[],
+    attackIncrease?: SuperAttackIncreaseDetails,
+}
+
+export interface SuperAttackIncreaseDetails {
+    level1Percent: number,
+    maxLevelPercent: number,
+    maxLevel: number,
 }
 
 export type SuperAttackEffectDetailsKind =

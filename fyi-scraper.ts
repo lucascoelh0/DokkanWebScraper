@@ -25,6 +25,7 @@ import {
     StandbySkillDetails,
     SuperAttackDetails,
     SuperAttackEffectDetails,
+    SuperAttackIncreaseDetails,
     Transformation,
     TransformationSource,
     Types,
@@ -657,33 +658,33 @@ export async function mapDokkanFyiCharacter(
         ezaExSuperAttack: formatSuperAttackEffect(ezaExtraSuperAttack) || undefined,
         superAttackDetails: mapSuperAttackDetails(normalSuperAttack, superAttackEvidenceContext(
             character.id.toString(), character.id.toString(), "initial", page.version, "normal",
-        )),
+        ), initialState.maxSuperAttackLevel),
         ezaSuperAttackDetails: mapSuperAttackDetails(ezaNormalSuperAttack, superAttackEvidenceContext(
             character.id.toString(), character.id.toString(), releaseState, page.version, "normal",
-        )),
+        ), awakenedState?.maxSuperAttackLevel),
         ultraSuperAttackDetails: mapSuperAttackDetails(ultraSuperAttack, superAttackEvidenceContext(
             character.id.toString(), character.id.toString(), "initial", page.version, "ultra",
-        )),
+        ), initialState.maxSuperAttackLevel),
         ezaUltraSuperAttackDetails: mapSuperAttackDetails(ezaUltraSuperAttack, superAttackEvidenceContext(
             character.id.toString(), character.id.toString(), releaseState, page.version, "ultra",
-        )),
+        ), awakenedState?.maxSuperAttackLevel),
         exSuperAttackDetails: mapSuperAttackDetails(extraSuperAttack, superAttackEvidenceContext(
             character.id.toString(), character.id.toString(), "initial", page.version, "extra",
-        )),
+        ), initialState.maxSuperAttackLevel),
         ezaExSuperAttackDetails: mapSuperAttackDetails(ezaExtraSuperAttack, superAttackEvidenceContext(
             character.id.toString(), character.id.toString(), releaseState, page.version, "extra",
-        )),
+        ), awakenedState?.maxSuperAttackLevel),
         unitSuperAttacks: unitSuperAttacksFromFyi(initialState.currentSuperAttacks, {
             characterId: character.id.toString(),
             formId: character.id.toString(),
             releaseState: "initial",
             sourceVersion: page.version,
-        }),
+        }, initialState.maxSuperAttackLevel),
         ezaUnitSuperAttacks: releaseState !== "initial"
             ? unitSuperAttacksFromFyi(awakenedState?.currentSuperAttacks ?? [], {
                 characterId: character.id.toString(), formId: character.id.toString(),
                 releaseState: "eza", sourceVersion: page.version,
-            })
+            }, awakenedState?.maxSuperAttackLevel)
             : undefined,
         passive: passive?.text ?? "",
         passiveDetails: passive,
@@ -952,31 +953,31 @@ function mapDokkanFyiTransformation(
         ezaExSuperAttack: formatSuperAttackEffect(ezaExtraSuperAttack) || undefined,
         superAttackDetails: mapSuperAttackDetails(normalSuperAttack, superAttackEvidenceContext(
             baseCharacterId.toString(), character.id.toString(), "initial", sourceVersion, "normal",
-        )),
+        ), initialState.maxSuperAttackLevel),
         ezaSuperAttackDetails: mapSuperAttackDetails(ezaNormalSuperAttack, superAttackEvidenceContext(
             baseCharacterId.toString(), character.id.toString(), releaseState, sourceVersion, "normal",
-        )),
+        ), awakenedState?.maxSuperAttackLevel),
         ultraSuperAttackDetails: mapSuperAttackDetails(ultraSuperAttack, superAttackEvidenceContext(
             baseCharacterId.toString(), character.id.toString(), "initial", sourceVersion, "ultra",
-        )),
+        ), initialState.maxSuperAttackLevel),
         ezaUltraSuperAttackDetails: mapSuperAttackDetails(ezaUltraSuperAttack, superAttackEvidenceContext(
             baseCharacterId.toString(), character.id.toString(), releaseState, sourceVersion, "ultra",
-        )),
+        ), awakenedState?.maxSuperAttackLevel),
         exSuperAttackDetails: mapSuperAttackDetails(extraSuperAttack, superAttackEvidenceContext(
             baseCharacterId.toString(), character.id.toString(), "initial", sourceVersion, "extra",
-        )),
+        ), initialState.maxSuperAttackLevel),
         ezaExSuperAttackDetails: mapSuperAttackDetails(ezaExtraSuperAttack, superAttackEvidenceContext(
             baseCharacterId.toString(), character.id.toString(), releaseState, sourceVersion, "extra",
-        )),
+        ), awakenedState?.maxSuperAttackLevel),
         unitSuperAttacks: unitSuperAttacksFromFyi(initialSuperAttacks, {
             characterId: baseCharacterId.toString(), formId: character.id.toString(),
             releaseState: "initial", sourceVersion,
-        }),
+        }, initialState.maxSuperAttackLevel),
         ezaUnitSuperAttacks: releaseState !== "initial"
             ? unitSuperAttacksFromFyi(awakenedSuperAttacks, {
                 characterId: baseCharacterId.toString(), formId: character.id.toString(),
                 releaseState: "eza", sourceVersion,
-            })
+            }, awakenedState?.maxSuperAttackLevel)
             : undefined,
         passive: passive?.text ?? "",
         passiveDetails: passive,
@@ -1134,6 +1135,7 @@ function superAttackEvidenceContext(
 export function mapSuperAttackDetails(
     superAttack: FyiSuperAttack | undefined,
     evidenceContext?: SuperAttackDetailsEvidenceContext,
+    maxSuperAttackLevel?: number,
 ): SuperAttackDetails | undefined {
     if (!superAttack) {
         return undefined;
@@ -1153,7 +1155,25 @@ export function mapSuperAttackDetails(
         ...(structuralSource ? { structuralSource } : {}),
         ...(structuralSource ? { sourceAttackId: superAttack.id.toString() } : {}),
         effects: superAttackEffectsFromFyi(superAttack.effects, evidenceContext?.sourceVersion),
+        attackIncrease: superAttackIncreaseFromFyi(superAttack, maxSuperAttackLevel),
     };
+}
+
+function superAttackIncreaseFromFyi(
+    superAttack: FyiSuperAttack,
+    maxSuperAttackLevel: number | undefined,
+): SuperAttackIncreaseDetails | undefined {
+    const level1Percent = positiveInteger(superAttack.atk_multiplier);
+    const levelBonusPercent = nonNegativeInteger(superAttack.atk_multiplier_level_bonus);
+    const maxLevel = positiveInteger(maxSuperAttackLevel);
+    if (level1Percent === undefined || levelBonusPercent === undefined || maxLevel === undefined) {
+        return undefined;
+    }
+    const maxLevelPercent = level1Percent + (maxLevel - 1) * levelBonusPercent;
+    if (!Number.isSafeInteger(maxLevelPercent)) {
+        return undefined;
+    }
+    return { level1Percent, maxLevelPercent, maxLevel };
 }
 
 function superAttackEffectsFromFyi(
@@ -1247,9 +1267,14 @@ function positiveInteger(value: unknown): number | undefined {
     return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
+function nonNegativeInteger(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
 function unitSuperAttacksFromFyi(
     superAttacks: FyiSuperAttack[],
     evidenceContext?: Omit<SuperAttackDetailsEvidenceContext, "attackVariant" | "payloadField">,
+    maxSuperAttackLevel?: number,
 ): UnitSuperAttack[] {
     return superAttacks
         .filter(superAttack => superAttackKind(superAttack) === "unit")
@@ -1273,6 +1298,7 @@ function unitSuperAttacksFromFyi(
                 ...(structuralSource ? { structuralSource } : {}),
                 ...(structuralSource ? { sourceAttackId: superAttack.id.toString() } : {}),
                 effects: superAttackEffectsFromFyi(superAttack.effects, evidenceContext?.sourceVersion),
+                attackIncrease: superAttackIncreaseFromFyi(superAttack, maxSuperAttackLevel),
             };
         });
 }
