@@ -665,6 +665,113 @@ describe("team-analysis Gate A1 passive parser", function () {
     }
   });
 
+  it("preserves a lowercase effect continuation from structured sections for character 1029471", () => {
+    const sampleRelativePath = "docs/specs/examples/dokkan-fyi-character-sample.json";
+    const sourceSamplePath = resolve(__dirname, sampleRelativePath);
+    const samplePath = existsSync(sourceSamplePath)
+      ? sourceSamplePath
+      : resolve(__dirname, "..", sampleRelativePath);
+    const sample = JSON.parse(readFileSync(samplePath, "utf8")) as { characters: Character[] };
+    const character = sample.characters.find(item => item.id === "1029471");
+    ok(character?.passiveDetails?.sections);
+
+    const passive = parsePassive(
+      "1029471:1029471:initial",
+      character.passiveDetails.name,
+      character.passive ?? "",
+      character.passiveDetails,
+    );
+    const evadeRule = passive.rules.find(rule => rule.source.some(fragment =>
+      fragment.text.includes("High chance of evading enemy's attack")));
+    ok(evadeRule);
+    equal(passive.rules.some(rule => rule.source.length === 1
+      && rule.source[0].text === "when receiving an attack"), false);
+    equal(
+      evadeRule.source.slice(-2).map((fragment, index) => index === 0
+        ? fragment.text.replace(/^-\s+/, "")
+        : fragment.text).join(" "),
+      "High chance of evading enemy's attack if HP is 77% or less when receiving an attack",
+    );
+    match(JSON.stringify(evadeRule.condition), /"kind":"rotation_partner_category"/);
+    match(JSON.stringify(evadeRule.condition), /"kind":"incoming_attack"/);
+    deepEqual(evadeRule.source.slice(0, 2).map(fragment => fragment.text), [
+      "When there is another \"Kamehameha\" or \"Earth-Bred",
+      "Fighters\" Category ally attacking in the same turn",
+    ]);
+  });
+
+  it("fails closed when structured sections do not losslessly partition the passive source", () => {
+    const rawText = "Basic effect(s)\n- ATK & DEF 100%\nWhen receiving an attack";
+    const passive = parsePassive("gate-a1:invalid-sections:initial", undefined, rawText, {
+      text: rawText,
+      sections: [{ label: "Basic effect(s)", lines: ["ATK & DEF 100%", "missing effect"] }],
+    });
+
+    equal(passive.rules.length, 1);
+    equal(passive.rules[0].parseStatus, "unknown");
+    deepEqual(passive.rules[0].source.map(fragment => fragment.text), rawText.split("\n"));
+  });
+
+  it("fails closed when structured entries share the same raw source line", () => {
+    const rawText = "Basic effect(s) ATK & DEF 100%";
+    const passiveDetails: PassiveDetails = {
+      text: rawText,
+      sections: [{ label: "Basic effect(s)", lines: ["ATK & DEF 100%"] }],
+    };
+    const sourceMap = mapPassiveDetailsToSource(rawText, passiveDetails);
+    equal(sourceMap.sections[0].label?.mapped, true);
+    equal(sourceMap.sections[0].lines[0].mapped, true);
+    deepEqual(sourceMap.sections[0].label?.source.map(fragment => fragment.lineIndex), [0]);
+    deepEqual(sourceMap.sections[0].lines[0].source.map(fragment => fragment.lineIndex), [0]);
+
+    const passive = parsePassive(
+      "gate-a1:overlapping-sections:initial",
+      undefined,
+      rawText,
+      passiveDetails,
+    );
+
+    equal(passive.parseStatus, "unknown");
+    equal(passive.rules.length, 1);
+    equal(passive.rules[0].parseStatus, "unknown");
+    deepEqual(passive.rules[0].source.map(fragment => fragment.text), rawText.split("\n"));
+    deepEqual(passive.unparsedFragments.map(fragment => fragment.text), rawText.split("\n"));
+  });
+
+  it("fails closed when structured sections are reordered relative to the raw source", () => {
+    const rawText = [
+      "Basic effect(s)",
+      "- ATK & DEF 100%",
+      "When receiving an attack",
+      "- Guards all attacks",
+    ].join("\n");
+    const passiveDetails: PassiveDetails = {
+      text: rawText,
+      sections: [
+        { label: "When receiving an attack", lines: ["Guards all attacks"] },
+        { label: "Basic effect(s)", lines: ["ATK & DEF 100%"] },
+      ],
+    };
+    const sourceMap = mapPassiveDetailsToSource(rawText, passiveDetails);
+    equal(sourceMap.sections[0].label?.mapped, true);
+    equal(sourceMap.sections[0].lines[0].mapped, true);
+    equal(sourceMap.sections[1].label?.mapped, false);
+    equal(sourceMap.sections[1].lines[0].mapped, false);
+
+    const passive = parsePassive(
+      "gate-a1:reordered-sections:initial",
+      undefined,
+      rawText,
+      passiveDetails,
+    );
+
+    equal(passive.parseStatus, "unknown");
+    equal(passive.rules.length, 1);
+    equal(passive.rules[0].parseStatus, "unknown");
+    deepEqual(passive.rules[0].source.map(fragment => fragment.text), rawText.split("\n"));
+    deepEqual(passive.unparsedFragments.map(fragment => fragment.text), rawText.split("\n"));
+  });
+
   it("reconstructs every non-whitespace source token in original order", () => {
     for (const fixtureCase of gateA1Fixture.cases) {
       const passive = parsePassive("gate-a1:tokens:initial", undefined, fixtureCase.rawText, fixtureCase.passiveDetails);

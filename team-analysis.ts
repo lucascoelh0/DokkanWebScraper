@@ -1694,7 +1694,7 @@ export function parsePassive(
             passiveDetails?.sourceSkillId,
         )
         : [];
-    const blocks = buildLogicalPassiveBlocks(sourceMap.sourceFragments);
+    const blocks = buildLogicalPassiveBlocks(sourceMap);
     const rules: PassiveRule[] = [];
     const unparsedFragments: SourceFragment[] = [];
     let currentCondition: LogicalPassiveBlock | undefined;
@@ -2175,7 +2175,64 @@ function fragmentsFromAlignmentPositions(
     }));
 }
 
-function buildLogicalPassiveBlocks(sourceFragments: SourceFragment[]): LogicalPassiveBlock[] {
+function buildLogicalPassiveBlocks(sourceMap: PassiveSourceMap): LogicalPassiveBlock[] {
+    const hasCompleteStructuredSectionBoundaries = sourceMap.sections.length > 0
+        && sourceMap.sections.every(section => Boolean(section.label));
+    if (hasCompleteStructuredSectionBoundaries) {
+        return buildStructuredLogicalPassiveBlocks(sourceMap)
+            ?? failClosedLogicalPassiveBlocks(sourceMap.sourceFragments);
+    }
+
+    return buildHeuristicLogicalPassiveBlocks(sourceMap.sourceFragments);
+}
+
+function buildStructuredLogicalPassiveBlocks(sourceMap: PassiveSourceMap): LogicalPassiveBlock[] | undefined {
+    const entries = sourceMap.sections.flatMap(section => [
+        ...(section.label ? [{ kind: "condition" as const, mappedText: section.label }] : []),
+        ...section.lines.map(mappedText => ({ kind: "effect" as const, mappedText })),
+    ]);
+    if (entries.length === 0 || entries.some(entry => !entry.mappedText.mapped || entry.mappedText.source.length === 0)) {
+        return undefined;
+    }
+
+    const blocks: LogicalPassiveBlock[] = [];
+    const assignedLineIndexes = new Set<number>();
+    let previousLineIndex = -1;
+    for (const entry of entries) {
+        const lineIndexes = [...new Set(entry.mappedText.source.map(fragment => fragment.lineIndex))]
+            .sort((left, right) => left - right);
+        if (lineIndexes[0] <= previousLineIndex
+            || lineIndexes.some(lineIndex => assignedLineIndexes.has(lineIndex))) {
+            return undefined;
+        }
+
+        const source = sourceMap.sourceFragments.filter(fragment => lineIndexes.includes(fragment.lineIndex));
+        if (source.length !== lineIndexes.length) {
+            return undefined;
+        }
+        lineIndexes.forEach(lineIndex => assignedLineIndexes.add(lineIndex));
+        previousLineIndex = lineIndexes[lineIndexes.length - 1];
+        blocks.push({
+            kind: entry.kind,
+            text: logicalText(entry.kind, source),
+            source,
+        });
+    }
+
+    if (assignedLineIndexes.size !== sourceMap.sourceFragments.length
+        || sourceMap.sourceFragments.some(fragment => !assignedLineIndexes.has(fragment.lineIndex))) {
+        return undefined;
+    }
+    return blocks;
+}
+
+function failClosedLogicalPassiveBlocks(sourceFragments: SourceFragment[]): LogicalPassiveBlock[] {
+    return sourceFragments.length > 0
+        ? [{ kind: "condition", text: logicalText("condition", sourceFragments), source: sourceFragments }]
+        : [];
+}
+
+function buildHeuristicLogicalPassiveBlocks(sourceFragments: SourceFragment[]): LogicalPassiveBlock[] {
     const blocks: LogicalPassiveBlock[] = [];
     let current: { kind: "condition" | "effect", source: SourceFragment[] } | undefined;
     const flush = () => {
