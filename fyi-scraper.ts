@@ -24,6 +24,7 @@ import {
     ReversibleExchangeDetails,
     StandbySkillDetails,
     SuperAttackDetails,
+    SuperAttackEffectDetails,
     Transformation,
     TransformationSource,
     Types,
@@ -1151,7 +1152,99 @@ export function mapSuperAttackDetails(
         condition: cleanMultilineText(superAttack.condition),
         ...(structuralSource ? { structuralSource } : {}),
         ...(structuralSource ? { sourceAttackId: superAttack.id.toString() } : {}),
+        effects: superAttackEffectsFromFyi(superAttack.effects, evidenceContext?.sourceVersion),
     };
+}
+
+function superAttackEffectsFromFyi(
+    effects: FyiEffect[] | undefined,
+    sourceVersion?: string,
+): SuperAttackEffectDetails[] | undefined {
+    const mapped = (effects ?? []).reduce<SuperAttackEffectDetails[]>((result, effect) => {
+        const id = effect.id?.toString();
+        const type = effect.type;
+        const target = effect.target;
+        const calculation = effect.calculation;
+        const values = Array.isArray(effect.values) ? effect.values : [];
+        const value1 = finiteNonNegativeNumber(values[0]);
+        const value2 = finiteNonNegativeNumber(values[1]);
+        if (!id || type === undefined || target === undefined || calculation === undefined) {
+            return result;
+        }
+        const source = {
+            kind: "dokkan_fyi_payload" as const,
+            ...(sourceVersion ? { sourceVersion } : {}),
+            rowId: id,
+        };
+        const durationTurns = positiveInteger(effect.turns);
+        const base = {
+            id,
+            ...(durationTurns !== undefined ? { durationTurns } : {}),
+            source,
+        };
+
+        if (target === 1 && calculation === 2 && value1 !== undefined) {
+            if (type === 1) {
+                result.push({ ...base, kind: "atk_raise", target: "self", value: value1, status: "supported" });
+                return result;
+            }
+            if (type === 2) {
+                result.push({ ...base, kind: "def_raise", target: "self", value: value1, status: "supported" });
+                return result;
+            }
+            if (type === 3 && value2 !== undefined) {
+                result.push(
+                    { ...base, id: `${id}:atk`, kind: "atk_raise" as const, target: "self" as const, value: value1, status: "supported" as const },
+                    { ...base, id: `${id}:def`, kind: "def_raise" as const, target: "self" as const, value: value2, status: "supported" as const },
+                );
+                return result;
+            }
+        }
+
+        if (target === 3 && calculation === 3 && value1 !== undefined) {
+            if (type === 1) {
+                result.push({ ...base, kind: "enemy_atk_lowering", target: "current_target", value: value1, status: "supported" });
+                return result;
+            }
+            if (type === 2) {
+                result.push({ ...base, kind: "enemy_def_lowering", target: "current_target", value: value1, status: "supported" });
+                return result;
+            }
+            if (type === 3 && value2 !== undefined) {
+                result.push(
+                    { ...base, id: `${id}:atk`, kind: "enemy_atk_lowering" as const, target: "current_target" as const, value: value1, status: "supported" as const },
+                    { ...base, id: `${id}:def`, kind: "enemy_def_lowering" as const, target: "current_target" as const, value: value2, status: "supported" as const },
+                );
+                return result;
+            }
+        }
+
+        if (target === 3 && calculation === 0) {
+            if (type === 9) {
+                result.push({ ...base, kind: "stun", target: "current_target", status: "supported" });
+                return result;
+            }
+            if (type === 48) {
+                result.push({ ...base, kind: "super_attack_seal", target: "current_target", status: "supported" });
+                return result;
+            }
+            if (type === 111) {
+                result.push({ ...base, kind: "action_break", target: "current_target", status: "partial" });
+                return result;
+            }
+        }
+
+        return result;
+    }, []);
+    return mapped.length > 0 ? mapped : undefined;
+}
+
+function finiteNonNegativeNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function positiveInteger(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
 function unitSuperAttacksFromFyi(
@@ -1179,6 +1272,7 @@ function unitSuperAttacksFromFyi(
                 unitSuperAttackCondition: cleanMultilineText(superAttack.condition),
                 ...(structuralSource ? { structuralSource } : {}),
                 ...(structuralSource ? { sourceAttackId: superAttack.id.toString() } : {}),
+                effects: superAttackEffectsFromFyi(superAttack.effects, evidenceContext?.sourceVersion),
             };
         });
 }

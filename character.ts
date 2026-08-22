@@ -201,6 +201,7 @@ export interface UnitSuperAttack {
     unitSuperAttackCondition: string | undefined;
     structuralSource?: EffectStructuralSource;
     sourceAttackId?: string;
+    effects?: SuperAttackEffectDetails[];
 }
 
 export interface PortraitSpec {
@@ -362,6 +363,37 @@ export interface SuperAttackDetails {
     extras?: string[],
     structuralSource?: EffectStructuralSource,
     sourceAttackId?: string,
+    effects?: SuperAttackEffectDetails[],
+}
+
+export type SuperAttackEffectDetailsKind =
+    | "atk_raise"
+    | "def_raise"
+    | "enemy_atk_lowering"
+    | "enemy_def_lowering"
+    | "stun"
+    | "super_attack_seal"
+    | "action_break";
+
+export type SuperAttackEffectDetailsTarget =
+    | "self"
+    | "allies"
+    | "current_target"
+    | "all_enemies";
+
+export interface SuperAttackEffectDetails {
+    id: string,
+    kind: SuperAttackEffectDetailsKind,
+    target: SuperAttackEffectDetailsTarget,
+    selfInclusion?: "included" | "excluded" | "unknown",
+    value?: number,
+    durationTurns?: number,
+    status: "supported" | "partial",
+    source: {
+        kind: "dokkan_fyi_payload" | "first_party_game_db",
+        sourceVersion?: string,
+        rowId: string,
+    },
 }
 
 export interface ActiveSkillDetails {

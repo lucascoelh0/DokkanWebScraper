@@ -1436,6 +1436,85 @@ describe("team-analysis Gate A7 Super Attack effect channel", function () {
     }
   });
 
+  it("prefers typed payload effects over localized-text inference", () => {
+    const attack = parseSuperAttack("gate-a7:structured:initial", {
+      variant: "normal",
+      ordinal: 0,
+      effectText: "Opaque localized description without parseable magnitudes",
+      conditionText: "",
+      structuredEffects: [
+        { id: "1", kind: "atk_raise", target: "self", value: 30, durationTurns: 1, status: "supported", source: { kind: "dokkan_fyi_payload", rowId: "1" } },
+        { id: "2", kind: "enemy_def_lowering", target: "current_target", value: 20, durationTurns: 3, status: "supported", source: { kind: "dokkan_fyi_payload", rowId: "2" } },
+        { id: "3", kind: "stun", target: "current_target", durationTurns: 2, status: "supported", source: { kind: "dokkan_fyi_payload", rowId: "3" } },
+        { id: "4", kind: "super_attack_seal", target: "current_target", durationTurns: 1, status: "supported", source: { kind: "dokkan_fyi_payload", rowId: "4" } },
+        { id: "5", kind: "action_break", target: "current_target", durationTurns: 1, status: "partial", source: { kind: "dokkan_fyi_payload", rowId: "5" } },
+      ],
+    });
+
+    deepEqual(attack.effects.map(gateA7EffectShape), [
+      { kind: "atk_raise", target: "self", value: 30, unit: "percent", duration: { kind: "current_turn", source: "dokkan_fyi_payload" }, stacking: { kind: "stackable", source: "documented_domain_rule", scope: "current_turn" }, bucket: "super_attack_raise" },
+      { kind: "enemy_def_lowering", target: "current_target", value: 20, unit: "percent", duration: { kind: "turns", turns: 3, source: "dokkan_fyi_payload" }, stacking: { kind: "not_stackable", source: "dokkan_fyi_payload" }, bucket: "super_attack_enemy_stat_lowering" },
+      { kind: "stun", target: "current_target", duration: { kind: "turns", turns: 2, source: "dokkan_fyi_payload" } },
+      { kind: "super_attack_seal", target: "current_target", duration: { kind: "current_turn", source: "dokkan_fyi_payload" } },
+      { kind: "action_break", target: "current_target", duration: { kind: "current_turn", source: "dokkan_fyi_payload" } },
+    ]);
+    equal(attack.effects[0].magnitude, undefined);
+    equal(attack.effects[0].value, 30);
+    deepEqual(attack.effects.map(effect => effect.provenance), [
+      { source: "dokkan_fyi_payload", evidenceId: "1" },
+      { source: "dokkan_fyi_payload", evidenceId: "2" },
+      { source: "dokkan_fyi_payload", evidenceId: "3" },
+      { source: "dokkan_fyi_payload", evidenceId: "4" },
+      { source: "dokkan_fyi_payload", evidenceId: "5" },
+    ]);
+  });
+
+  it("retains parsed effects omitted by a selective structured payload", () => {
+    const attack = parseSuperAttack("gate-a7:structured-complement:initial", {
+      variant: "normal",
+      ordinal: 0,
+      effectText: "Raises ATK for 1 turn and seals Super Attack",
+      conditionText: "",
+      structuredEffects: [
+        { id: "atk-row", kind: "atk_raise", target: "self", value: 30, durationTurns: 1, status: "supported", source: { kind: "dokkan_fyi_payload", rowId: "atk-row" } },
+      ],
+    });
+
+    deepEqual(attack.effects.map(effect => effect.kind), ["atk_raise", "super_attack_seal"]);
+    equal(attack.effects[0].value, 30);
+    deepEqual(attack.effects[0].provenance, {
+      source: "dokkan_fyi_payload",
+      evidenceId: "atk-row",
+    });
+    equal(attack.effects[1].provenance, undefined);
+  });
+
+  it("fills missing structured magnitude and duration from explicit text", () => {
+    const attack = parseSuperAttack("gate-a7:structured-enrichment:initial", {
+      variant: "normal",
+      ordinal: 0,
+      effectText: "Raises ATK for 3 turns",
+      conditionText: "",
+      structuredEffects: [
+        { id: "incomplete-atk-row", kind: "atk_raise", target: "self", status: "supported", source: { kind: "dokkan_fyi_payload", rowId: "incomplete-atk-row" } },
+      ],
+    });
+
+    equal(attack.effects.length, 1);
+    deepEqual(gateA7EffectShape(attack.effects[0]), {
+      kind: "atk_raise",
+      target: "self",
+      magnitude: "raise",
+      duration: { kind: "turns", turns: 3, source: "explicit_text" },
+      stacking: { kind: "stackable", source: "documented_domain_rule", scope: "active_windows" },
+      bucket: "super_attack_raise",
+    });
+    deepEqual(attack.effects[0].provenance, {
+      source: "dokkan_fyi_payload",
+      evidenceId: "incomplete-atk-row",
+    });
+  });
+
   it("keeps base and EZA Super Attack sources on their matching release states", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
     const character = characters.find(item => item.id === "1004001") as Character;
@@ -2665,7 +2744,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.7\.4/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.8\.0/);
   });
 });
 

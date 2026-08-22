@@ -10,7 +10,7 @@ import {
 } from "./fyi-mapped-character-cache";
 
 describe("mapped FYI character cache", function () {
-    it("rejects a v10 entry and rewrites the character as v11", async () => {
+    it("rejects a v12 entry and rewrites the character as v13", async () => {
         const root = await mkdtemp(join(tmpdir(), "dokkanpanion-mapped-cache-"));
         const path = join(root, "mapped-character-1.json");
         const fetchedAt = new Date("2026-08-22T00:00:00.000Z");
@@ -19,7 +19,7 @@ describe("mapped FYI character cache", function () {
         try {
             await writeFile(path, JSON.stringify({
                 fetchedAt: fetchedAt.toISOString(),
-                mappingVersion: 10,
+                mappingVersion: 12,
                 character,
             }), "utf8");
 
@@ -31,7 +31,7 @@ describe("mapped FYI character cache", function () {
             await writeFyiMappedCharacterCache(path, character, fetchedAt);
 
             const rewritten = JSON.parse(await readFile(path, "utf8"));
-            equal(rewritten.mappingVersion, 12);
+            equal(rewritten.mappingVersion, 13);
             deepEqual(
                 await readFyiMappedCharacterCache(path, 60_000, fetchedAt.getTime()),
                 character,
