@@ -1,10 +1,23 @@
 import { deepEqual, equal } from "assert";
 import { describe, it } from "mocha";
 import { Rarities, Types, Classes } from "../character";
-import { GameDbCharacterSnapshot } from "./game-db-contract";
+import { GameDbCharacterSnapshot, GameDbSuperAttackEffect } from "./game-db-contract";
 import { projectGameDbCharacterToDokkanpanion } from "./game-db-app-projection";
 
 function makeBaseSnapshot(): GameDbCharacterSnapshot {
+    const leaderSkill = {
+        id: "10",
+        name: "Fated Showdown",
+        description: "All Types Ki +3 and HP, ATK & DEF +200%",
+        effects: [],
+    };
+    const passiveSkillSet = {
+        id: "4887",
+        name: "Power Boosted through Pride",
+        itemizedDescription: "*Basic effect(s)*\n- Guards all attacks",
+        passiveSkills: [],
+    };
+
     return {
         id: "1033061",
         source: "game-db",
@@ -28,18 +41,8 @@ function makeBaseSnapshot(): GameDbCharacterSnapshot {
         },
         links: [{ id: "1", name: "Prepared for Battle" }],
         categories: [{ id: "2", name: "Majin Buu Saga" }],
-        leaderSkill: {
-            id: "10",
-            name: "Fated Showdown",
-            description: "All Types Ki +3 and HP, ATK & DEF +200%",
-            effects: [],
-        },
-        passiveSkillSet: {
-            id: "4887",
-            name: "Power Boosted through Pride",
-            itemizedDescription: "*Basic effect(s)*\n- Guards all attacks",
-            passiveSkills: [],
-        },
+        leaderSkill,
+        passiveSkillSet,
         superAttacks: [],
         activeSkillSets: [],
         standbySkillSets: [
@@ -294,6 +297,123 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
         equal(serialized.includes("levelBonus"), false);
     });
 
+    it("adds a typed self-applicable ally ATK compensation to the displayed Super Attack curve", () => {
+        const projection = projectGameDbCharacterToDokkanpanion({
+            ...makeBaseSnapshot(),
+            baseMaxSaLevel: 25,
+            superAttacks: [{
+                cardSpecialId: "20432",
+                specialSetId: "9148",
+                name: "Rivalry Between Three Great Super Saiyans (Extreme)",
+                description: "Raises allies' ATK & DEF by 3% for 3 turns",
+                variant: "super",
+                requiredKi: 12,
+                increaseRate: 197,
+                levelBonus: 5,
+                specialBonuses: [],
+                effects: [{
+                    id: "1009148",
+                    specialSetId: "9148",
+                    type: "Special::NormalEfficacySpecial",
+                    efficacyType: 3,
+                    targetType: 2,
+                    calcOption: 2,
+                    turn: 3,
+                    probability: 100,
+                    values: ["3", "3", "0"],
+                    provenance: { table: "specials", rowId: "1009148" },
+                }],
+                provenance: {
+                    cardSpecial: { table: "card_specials", rowId: "20432" },
+                    specialSet: { table: "special_sets", rowId: "9148" },
+                },
+            }],
+        });
+
+        deepEqual(projection.superAttackDetails?.[0].attackIncrease, {
+            level1Percent: 200,
+            maxLevelPercent: 320,
+            maxLevel: 25,
+        });
+    });
+
+    it("does not adjust a Super Attack curve for conditional or ambiguous compensation effects", () => {
+        const matchingEffect: GameDbSuperAttackEffect = {
+            id: "1009148",
+            specialSetId: "9148",
+            type: "Special::NormalEfficacySpecial",
+            efficacyType: 3,
+            targetType: 2,
+            calcOption: 2,
+            turn: 3,
+            probability: 100,
+            values: ["3", "3", "0"],
+            provenance: { table: "specials" as const, rowId: "1009148" },
+        };
+        const project = (effects: typeof matchingEffect[]) => projectGameDbCharacterToDokkanpanion({
+            ...makeBaseSnapshot(),
+            baseMaxSaLevel: 25,
+            superAttacks: [{
+                cardSpecialId: "20432",
+                specialSetId: "9148",
+                name: "Rivalry Between Three Great Super Saiyans (Extreme)",
+                description: "Raises allies' ATK & DEF by 3% for 3 turns",
+                variant: "super",
+                requiredKi: 12,
+                increaseRate: 197,
+                levelBonus: 5,
+                specialBonuses: [],
+                effects,
+                provenance: {
+                    cardSpecial: { table: "card_specials", rowId: "20432" },
+                    specialSet: { table: "special_sets", rowId: "9148" },
+                },
+            }],
+        }).superAttackDetails?.[0].attackIncrease;
+
+        deepEqual(project([{ ...matchingEffect, causalityConditionsRaw: "[{\"condition\":1}]" }]), {
+            level1Percent: 197,
+            maxLevelPercent: 317,
+            maxLevel: 25,
+        });
+        deepEqual(project([
+            matchingEffect,
+            { ...matchingEffect, id: "1009149", provenance: { table: "specials", rowId: "1009149" } },
+        ]), {
+            level1Percent: 197,
+            maxLevelPercent: 317,
+            maxLevel: 25,
+        });
+    });
+
+    it("preserves first-party passive markers with game DB provenance", () => {
+        const base = makeBaseSnapshot();
+        const rawPassive = [
+            "*Basic effect(s)*",
+            "- {passiveImg:once}ATK & DEF 250%{passiveImg:up_g} for 7 turns",
+            "*When attacking*",
+            "- ATK 200%{passiveImg:up_g}",
+        ].join("\n");
+        const projection = projectGameDbCharacterToDokkanpanion({
+            ...base,
+            passiveSkillSet: {
+                id: "5036",
+                name: "Three Super Saiyans",
+                itemizedDescription: rawPassive,
+                passiveSkills: [],
+            },
+        }, { sourceVersion: "1787282006" });
+
+        const source = projection.passiveDetails?.structuralSource;
+        equal(source?.rawText, rawPassive);
+        equal(source?.evidence.length, 2);
+        deepEqual(source?.evidence[0].markers.map(marker => marker.markerKind), ["once", "value_up"]);
+        equal(source?.evidence[0].provenance.source, "first_party_game_db");
+        equal(source?.evidence[0].provenance.sourceVersion, "1787282006");
+        equal(source?.evidence[0].provenance.payloadField, "passive_skill_sets.itemized_description");
+        equal(source?.evidence[1].anchor.normalizedText, "ATK 200%");
+    });
+
     it("omits an incomplete Super Attack level curve", () => {
         const projection = projectGameDbCharacterToDokkanpanion({
             ...makeBaseSnapshot(),
@@ -339,6 +459,108 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
         });
 
         equal(projection.superAttackDetails?.[0].attackIncrease, undefined);
+    });
+
+    it("projects distinct initial, EZA, and SEZA fields from typed release states", () => {
+        const baseAttack = {
+            cardSpecialId: "13330",
+            specialSetId: "5147",
+            name: "Rivalry Between Three Great Super Saiyans",
+            description: "Greatly raises ATK for 3 turns and causes colossal damage",
+            variant: "super" as const,
+            levelStart: 0,
+            requiredKi: 12,
+            increaseRate: 200,
+            levelBonus: 5,
+            specialBonuses: [],
+            effects: [],
+            provenance: {
+                cardSpecial: { table: "card_specials" as const, rowId: "13330" },
+                specialSet: { table: "special_sets" as const, rowId: "5147" },
+            },
+        };
+        const ezaAttack = {
+            ...baseAttack,
+            cardSpecialId: "20432",
+            specialSetId: "9148",
+            name: "Rivalry Between Three Great Super Saiyans (Extreme)",
+            levelStart: 24,
+            provenance: {
+                cardSpecial: { table: "card_specials" as const, rowId: "20432" },
+                specialSet: { table: "special_sets" as const, rowId: "9148" },
+            },
+        };
+        const snapshot = makeBaseSnapshot();
+        const projection = projectGameDbCharacterToDokkanpanion({
+            ...snapshot,
+            hasEza: true,
+            hasSeza: true,
+            growthSteps: [
+                { id: "3", step: 3, maxLevel: 150, maxSaLevel: 25, passiveSkillSetId: "5036", leaderSkillSetId: "1028061" },
+                { id: "4", step: 4, maxLevel: 150, maxSaLevel: 25, passiveSkillSetId: "6000", leaderSkillSetId: "1028061" },
+            ],
+            superAttacks: [baseAttack, ezaAttack],
+            releaseStates: {
+                initial: {
+                    releaseState: "initial",
+                    maxLevel: 150,
+                    maxSaLevel: 20,
+                    leaderSkill: snapshot.leaderSkill,
+                    passiveSkillSet: snapshot.passiveSkillSet,
+                    superAttacks: [baseAttack],
+                },
+                eza: {
+                    releaseState: "eza",
+                    maxLevel: 150,
+                    maxSaLevel: 25,
+                    leaderSkill: {
+                        id: "1028061",
+                        name: "Extreme leader",
+                        description: "All Types Ki +3 and HP, ATK & DEF +200%",
+                        effects: [],
+                    },
+                    passiveSkillSet: {
+                        id: "5036",
+                        name: "Extreme passive",
+                        itemizedDescription: "ATK & DEF +250%",
+                        passiveSkills: [],
+                    },
+                    superAttacks: [ezaAttack],
+                    growthStep: { id: "3", step: 3, maxLevel: 150, maxSaLevel: 25 },
+                },
+                seza: {
+                    releaseState: "seza",
+                    maxLevel: 150,
+                    maxSaLevel: 25,
+                    passiveSkillSet: {
+                        id: "6000",
+                        name: "Super Extreme passive",
+                        itemizedDescription: "ATK & DEF +300%",
+                        passiveSkills: [],
+                    },
+                    superAttacks: [ezaAttack],
+                    growthStep: { id: "4", step: 4, maxLevel: 150, maxSaLevel: 25 },
+                },
+            },
+        });
+
+        equal(projection.leaderSkillBoost, 200);
+        equal(projection.ezaLeaderSkillBoost, 200);
+        equal(projection.passiveDetails?.name, "Power Boosted through Pride");
+        equal(projection.ezaPassiveDetails?.name, "Extreme passive");
+        equal(projection.sezaPassiveDetails?.name, "Super Extreme passive");
+        deepEqual(projection.superAttackDetails?.[0].attackIncrease, {
+            level1Percent: 200,
+            maxLevelPercent: 295,
+            maxLevel: 20,
+        });
+        deepEqual(projection.ezaSuperAttackDetails?.[0].attackIncrease, {
+            level1Percent: 200,
+            maxLevelPercent: 320,
+            maxLevel: 25,
+        });
+        equal(projection.superAttackDetails?.[0].id, "13330");
+        equal(projection.ezaSuperAttackDetails?.[0].id, "20432");
     });
 
     it("falls back cleanly when optional mechanics are absent", () => {

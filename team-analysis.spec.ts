@@ -1954,6 +1954,43 @@ describe("team-analysis Gate A7.1 structural lifecycle evidence", function () {
     equal(passive.rules.flatMap(rule => rule.effects)[0].activationLimit?.kind, "once");
   });
 
+  it("accepts first-party game DB passive markers without relabeling their provenance as FYI", () => {
+    const details = passiveDetailsFromSkill({
+      id: 7253,
+      description: "*Basic effect(s)*\n- {passiveImg:once}ATK 20%{passiveImg:up_g} for 3 turns",
+    } as any, {
+      characterId: "7250003",
+      formId: "7250003",
+      releaseState: "eza",
+      sourceVersion,
+      payloadField: "props.character.extreme_z_awakening.passive_skill.description",
+    });
+    ok(details?.structuralSource);
+    const firstPartySource = JSON.parse(JSON.stringify(details.structuralSource)) as NonNullable<PassiveDetails["structuralSource"]>;
+    firstPartySource.evidence.forEach(evidence => {
+      evidence.provenance = {
+        source: "first_party_game_db",
+        sourceVersion: "1787282006",
+        payloadField: "passive_skill_sets.itemized_description",
+        markerSyntax: "passiveImg",
+      };
+    });
+    const passive = parsePassive(
+      "7250003:7250003:eza",
+      details.name,
+      details.text ?? "",
+      { ...details, structuralSource: firstPartySource },
+      { characterId: "7250003", formId: "7250003", releaseState: "eza" },
+    );
+
+    equal(passive.structuralEvidence?.length, 1);
+    equal(passive.structuralEvidence?.[0].provenance.source, "first_party_game_db");
+    const effect = passive.rules.flatMap(rule => rule.effects).find(item => item.kind === "atk");
+    equal(effect?.activationLimit?.kind, "once");
+    equal(effect?.activationLimit?.source, "first_party_game_db");
+    equal(effect?.activationLimit?.provenance.source, "first_party_game_db");
+  });
+
   it("retains decrease markers as display annotations without inventing lifecycle", () => {
     const details = passiveDetailsFromSkill({
       id: 7252,

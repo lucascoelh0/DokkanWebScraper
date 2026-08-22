@@ -297,7 +297,7 @@ export interface EffectStructuralCorroboration {
     reason: string,
 }
 
-export interface EffectStructuralEvidenceProvenance {
+export type EffectStructuralEvidenceProvenance = {
     source: "dokkan_fyi_payload",
     sourceVersion: string,
     payloadField:
@@ -305,7 +305,16 @@ export interface EffectStructuralEvidenceProvenance {
         | "props.character.extreme_z_awakening.passive_skill.description"
         | "props.character.super_attacks[].description",
     markerSyntax: "passiveImg",
-}
+} | {
+    source: "first_party_game_db",
+    sourceVersion: string,
+    payloadField:
+        | "passive_skill_sets.itemized_description"
+        | "passive_skill_sets.group_itemized_description"
+        | "passive_skill_sets.character_itemized_description"
+        | "special_sets.description",
+    markerSyntax: "passiveImg",
+};
 
 export interface PassiveSection {
     label?: string,

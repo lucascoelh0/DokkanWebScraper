@@ -169,3 +169,151 @@ describe("Super Attack effect snapshot integration", function () {
     });
 });
 
+describe("release-state snapshot projection", function () {
+    it("keeps initial and final EZA skills separate using the official growth step", () => {
+        const tables = minimalTables();
+        tables.cards = [{
+            ...tables.cards[0],
+            id: "1028061",
+            name: "Super Saiyan Goku & Super Saiyan Vegeta & Super Saiyan Trunks (Teen)",
+            rarity: "5",
+            lv_max: "150",
+            skill_lv_max: "20",
+            leader_skill_set_id: "1028060",
+            passive_skill_set_id: "3984",
+            optimal_awakening_grow_type: "1147",
+        }];
+        tables.leader_skill_sets = [
+            { id: "1028060", name: "Base leader", description: "Ki +3 and HP, ATK & DEF +170%" },
+            { id: "1028061", name: "Extreme leader", description: "Ki +3 and HP, ATK & DEF +200%" },
+        ];
+        tables.passive_skill_sets = [
+            { id: "3984", name: "Base passive", itemized_description: "ATK & DEF +180%" },
+            { id: "5036", name: "Extreme passive", itemized_description: "ATK & DEF +250%" },
+        ];
+        tables.optimal_awakening_growths = [
+            { id: "1", optimal_awakening_grow_type: "1147", step: "1", lv_max: "150", skill_lv_max: "22", passive_skill_set_id: "3984", leader_skill_set_id: "1028061" },
+            { id: "2", optimal_awakening_grow_type: "1147", step: "2", lv_max: "150", skill_lv_max: "24", passive_skill_set_id: "3984", leader_skill_set_id: "1028061" },
+            { id: "3", optimal_awakening_grow_type: "1147", step: "3", lv_max: "150", skill_lv_max: "25", passive_skill_set_id: "5036", leader_skill_set_id: "1028061" },
+        ];
+        tables.card_specials = [
+            { id: "13330", card_id: "1028061", special_set_id: "5147", style: "Normal", lv_start: "0", eball_num_start: "12" },
+            { id: "13332", card_id: "1028061", special_set_id: "5148", style: "Hyper", lv_start: "0", eball_num_start: "18" },
+            { id: "20432", card_id: "1028061", special_set_id: "9148", style: "Normal", lv_start: "24", eball_num_start: "12" },
+            { id: "20434", card_id: "1028061", special_set_id: "9149", style: "Hyper", lv_start: "24", eball_num_start: "18" },
+        ];
+        tables.special_sets = [
+            { id: "5147", name: "Base Super Attack" },
+            { id: "5148", name: "Base Ultra Super Attack" },
+            { id: "9148", name: "Extreme Super Attack" },
+            { id: "9149", name: "Extreme Ultra Super Attack" },
+        ];
+
+        const [snapshot] = buildGameDbCharacterSnapshots(["1028061"], tables);
+
+        equal(snapshot.hasEza, true);
+        equal(snapshot.hasSeza, false);
+        equal(snapshot.releaseStates?.initial.passiveSkillSet?.id, "3984");
+        equal(snapshot.releaseStates?.eza?.passiveSkillSet?.id, "5036");
+        equal(snapshot.releaseStates?.initial.leaderSkill?.id, "1028060");
+        equal(snapshot.releaseStates?.eza?.leaderSkill?.id, "1028061");
+        equal(snapshot.releaseStates?.initial.maxSaLevel, 20);
+        equal(snapshot.releaseStates?.eza?.maxSaLevel, 25);
+        deepEqual(snapshot.releaseStates?.initial.superAttacks.map(attack => attack.cardSpecialId), ["13330", "13332"]);
+        deepEqual(snapshot.releaseStates?.eza?.superAttacks.map(attack => attack.cardSpecialId), ["20432", "20434"]);
+    });
+
+    it("does not claim an EZA from an incomplete growth sequence", () => {
+        const tables = minimalTables();
+        tables.cards[0].rarity = "5";
+        tables.cards[0].optimal_awakening_grow_type = "999";
+        tables.optimal_awakening_growths = [{
+            id: "1",
+            optimal_awakening_grow_type: "999",
+            step: "1",
+            lv_max: "150",
+            skill_lv_max: "22",
+        }];
+
+        const [snapshot] = buildGameDbCharacterSnapshots(["1031501"], tables);
+
+        equal(snapshot.hasEza, false);
+        equal(snapshot.releaseStates?.eza, undefined);
+    });
+
+    it("inherits unchanged leader and passive sets when the final EZA step omits them", () => {
+        const tables = minimalTables();
+        tables.cards[0] = {
+            ...tables.cards[0],
+            rarity: "5",
+            leader_skill_set_id: "base-leader",
+            passive_skill_set_id: "base-passive",
+            optimal_awakening_grow_type: "inherit-eza",
+        };
+        tables.leader_skill_sets = [{ id: "base-leader", name: "Leader", description: "Ki +3" }];
+        tables.passive_skill_sets = [{ id: "base-passive", name: "Passive", itemized_description: "ATK +100%" }];
+        tables.optimal_awakening_growths = [{
+            id: "eza-final",
+            optimal_awakening_grow_type: "inherit-eza",
+            step: "3",
+            lv_max: "150",
+            skill_lv_max: "25",
+            leader_skill_set_id: "",
+            passive_skill_set_id: "",
+        }];
+
+        const [snapshot] = buildGameDbCharacterSnapshots(["1031501"], tables);
+
+        equal(snapshot.releaseStates?.eza?.leaderSkill?.id, "base-leader");
+        equal(snapshot.releaseStates?.eza?.passiveSkillSet?.id, "base-passive");
+    });
+
+    it("replaces a Super Attack across release levels despite JSON formatting and display-priority changes", () => {
+        const tables = minimalTables();
+        tables.cards[0] = {
+            ...tables.cards[0],
+            rarity: "5",
+            skill_lv_max: "20",
+            optimal_awakening_grow_type: "canonical-slot",
+        };
+        tables.optimal_awakening_growths = [{
+            id: "eza-final",
+            optimal_awakening_grow_type: "canonical-slot",
+            step: "3",
+            lv_max: "150",
+            skill_lv_max: "25",
+        }];
+        tables.card_specials = [
+            {
+                id: "base-sa",
+                card_id: "1031501",
+                special_set_id: "base-set",
+                style: "Normal",
+                lv_start: "0",
+                eball_num_start: "12",
+                causality_conditions: "{\"source\":1,\"compiled\":{\"x\":2}}",
+                detail_view_priority: "1",
+            },
+            {
+                id: "eza-sa",
+                card_id: "1031501",
+                special_set_id: "eza-set",
+                style: "Normal",
+                lv_start: "24",
+                eball_num_start: "12",
+                causality_conditions: "{ \"compiled\": {\"x\": 2}, \"source\": 1 }",
+                detail_view_priority: "9",
+            },
+        ];
+        tables.special_sets = [
+            { id: "base-set", name: "Base Super Attack" },
+            { id: "eza-set", name: "EZA Super Attack" },
+        ];
+
+        const [snapshot] = buildGameDbCharacterSnapshots(["1031501"], tables);
+
+        deepEqual(snapshot.releaseStates?.initial.superAttacks.map(attack => attack.cardSpecialId), ["base-sa"]);
+        deepEqual(snapshot.releaseStates?.eza?.superAttacks.map(attack => attack.cardSpecialId), ["eza-sa"]);
+    });
+});
+

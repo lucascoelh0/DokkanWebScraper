@@ -3,6 +3,8 @@ import { resolve } from "path";
 import { Classes, Rarities, Types } from "../character";
 import {
     GameDbAwakeningRoute,
+    GameDbCharacterReleaseState,
+    GameDbCharacterReleaseStateName,
     GameDbCharacterSnapshot,
     GameDbComparisonCardReport,
     GameDbComparisonCheck,
@@ -18,6 +20,7 @@ import {
     GameDbPassiveSkillSet,
     GameDbReference,
     GameDbStandbySkillSet,
+    GameDbSuperAttack,
 } from "./game-db-contract";
 import { mapActiveSkillSets } from "./game-db-active-skill";
 import { mapSuperAttacks } from "./game-db-super-attack";
@@ -204,6 +207,164 @@ function mapGrowthSteps(rows: GameDbRow[]): GameDbGrowthStep[] {
         passiveSkillSetId: normalizeDbId(row.passive_skill_set_id),
         leaderSkillSetId: normalizeDbId(row.leader_skill_set_id),
     }));
+}
+
+function mapLeaderSkillSet(
+    leaderSkillSetId: string | undefined,
+    leaderSkillSetById: Map<string, GameDbRow>,
+    leaderSkillsBySetId: Map<string, GameDbRow[]>,
+): GameDbLeaderSkillSet | undefined {
+    if (!leaderSkillSetId) {
+        return undefined;
+    }
+
+    const row = leaderSkillSetById.get(leaderSkillSetId);
+    if (!row) {
+        return undefined;
+    }
+
+    return {
+        id: leaderSkillSetId,
+        name: normalizeText(row.name),
+        description: normalizeText(row.description),
+        effects: mapLeaderSkillEffects(leaderSkillsBySetId.get(leaderSkillSetId) ?? []),
+    };
+}
+
+function mapPassiveSkillSet(
+    passiveSkillSetId: string | undefined,
+    passiveSkillSetById: Map<string, GameDbRow>,
+    passiveRelationsBySetId: Map<string, GameDbRow[]>,
+    passiveSkillById: Map<string, GameDbRow>,
+): GameDbPassiveSkillSet | undefined {
+    if (!passiveSkillSetId) {
+        return undefined;
+    }
+
+    const row = passiveSkillSetById.get(passiveSkillSetId);
+    if (!row) {
+        return undefined;
+    }
+
+    return {
+        id: passiveSkillSetId,
+        name: normalizeText(row.name),
+        itemizedDescription: normalizeText(row.itemized_description) || undefined,
+        groupItemizedDescription: normalizeText(row.sougou_only_itemized_description) || undefined,
+        characterItemizedDescription: normalizeText(row.kobetu_only_itemized_description) || undefined,
+        passiveSkills: mapPassiveSkills(passiveRelationsBySetId.get(passiveSkillSetId) ?? [], passiveSkillById),
+    };
+}
+
+function canonicalJsonIdentity(raw: string | undefined): string {
+    if (!raw?.trim()) {
+        return "";
+    }
+
+    function canonicalize(value: unknown): unknown {
+        if (Array.isArray(value)) {
+            return value.map(canonicalize);
+        }
+        if (value !== null && typeof value === "object") {
+            return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(([key, nested]) => [key, canonicalize(nested)]));
+        }
+        return value;
+    }
+
+    try {
+        return JSON.stringify(canonicalize(JSON.parse(raw)));
+    } catch {
+        return `opaque:${raw.trim()}`;
+    }
+}
+
+function superAttackReleaseSlotKey(attack: GameDbSuperAttack): string {
+    return [
+        attack.variant,
+        attack.requiredKi ?? "",
+        attack.cardCostumeConditionId ?? "",
+        canonicalJsonIdentity(attack.causalityConditionsRaw),
+    ].join("|");
+}
+
+export function selectSuperAttacksAtMaxLevel(
+    superAttacks: GameDbSuperAttack[],
+    maxSaLevel: number,
+): GameDbSuperAttack[] {
+    const maximumZeroBasedLevel = Math.max(maxSaLevel - 1, 0);
+    const selectedBySlot = new Map<string, GameDbSuperAttack>();
+
+    for (const attack of superAttacks) {
+        const levelStart = attack.levelStart ?? 0;
+        if (levelStart > maximumZeroBasedLevel) {
+            continue;
+        }
+
+        const slotKey = superAttackReleaseSlotKey(attack);
+        const selected = selectedBySlot.get(slotKey);
+        if (!selected || (selected.levelStart ?? 0) <= levelStart) {
+            selectedBySlot.set(slotKey, attack);
+        }
+    }
+
+    return [...selectedBySlot.values()].sort((left, right) => {
+        const priorityDifference = (left.detailViewPriority ?? 0) - (right.detailViewPriority ?? 0);
+        if (priorityDifference !== 0) {
+            return priorityDifference;
+        }
+
+        const variantOrder = { super: 0, ultra: 1, unit: 2, extra: 3, unknown: 4 } as const;
+        const variantDifference = variantOrder[left.variant] - variantOrder[right.variant];
+        if (variantDifference !== 0) {
+            return variantDifference;
+        }
+
+        return Number(left.cardSpecialId) - Number(right.cardSpecialId);
+    });
+}
+
+function releaseGrowthStepNumbers(rarity: Rarities): { eza?: number, seza?: number } {
+    if (rarity === Rarities.LR) {
+        return { eza: 3, seza: 4 };
+    }
+
+    if (rarity === Rarities.UR) {
+        return { eza: 7, seza: 8 };
+    }
+
+    return {};
+}
+
+function buildReleaseState(args: {
+    releaseState: GameDbCharacterReleaseStateName,
+    maxLevel: number,
+    maxSaLevel: number,
+    leaderSkillSetId?: string,
+    passiveSkillSetId?: string,
+    allSuperAttacks: GameDbSuperAttack[],
+    growthStep?: GameDbGrowthStep,
+    leaderSkillSetById: Map<string, GameDbRow>,
+    leaderSkillsBySetId: Map<string, GameDbRow[]>,
+    passiveSkillSetById: Map<string, GameDbRow>,
+    passiveRelationsBySetId: Map<string, GameDbRow[]>,
+    passiveSkillById: Map<string, GameDbRow>,
+}): GameDbCharacterReleaseState {
+    return {
+        releaseState: args.releaseState,
+        maxLevel: args.maxLevel,
+        maxSaLevel: args.maxSaLevel,
+        leaderSkill: mapLeaderSkillSet(args.leaderSkillSetId, args.leaderSkillSetById, args.leaderSkillsBySetId),
+        passiveSkillSet: mapPassiveSkillSet(
+            args.passiveSkillSetId,
+            args.passiveSkillSetById,
+            args.passiveRelationsBySetId,
+            args.passiveSkillById,
+        ),
+        superAttacks: selectSuperAttacksAtMaxLevel(args.allSuperAttacks, args.maxSaLevel),
+        growthStep: args.growthStep,
+    };
 }
 
 function mapAwakeningRoutes(rows: GameDbRow[], direction: "incoming" | "outgoing"): GameDbAwakeningRoute[] {
@@ -579,32 +740,71 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
         const leaderSkillSetId = normalizeDbId(card.leader_skill_set_id);
         const passiveSkillSetId = normalizeDbId(card.passive_skill_set_id);
         const optimalAwakeningGrowType = normalizeDbId(card.optimal_awakening_grow_type);
-        const leaderSkillSetRow = leaderSkillSetId ? leaderSkillSetById.get(leaderSkillSetId) : undefined;
-        const passiveSkillSetRow = passiveSkillSetId ? passiveSkillSetById.get(passiveSkillSetId) : undefined;
         const growthRows = optimalAwakeningGrowType ? (optimalAwakeningsByGrowType.get(optimalAwakeningGrowType) ?? []) : [];
         const growthSteps = mapGrowthSteps(growthRows);
-        const highestGrowthStep = growthSteps[growthSteps.length - 1];
         const rarity = mapRarity(card.rarity);
-
-        const leaderSkill: GameDbLeaderSkillSet | undefined = leaderSkillSetId && leaderSkillSetRow
-            ? {
-                id: leaderSkillSetId,
-                name: normalizeText(leaderSkillSetRow.name),
-                description: normalizeText(leaderSkillSetRow.description),
-                effects: mapLeaderSkillEffects(leaderSkillsBySetId.get(leaderSkillSetId) ?? []),
-            }
+        const baseMaxLevel = parseDbInt(card.lv_max) ?? 0;
+        const baseMaxSaLevel = parseDbInt(card.skill_lv_max) ?? 0;
+        const allSuperAttacks = mapSuperAttacks(
+            cardId,
+            cardSpecialsByCardId.get(cardId) ?? [],
+            specialSetById,
+            specialEffectsBySetId,
+        );
+        const initialReleaseState = buildReleaseState({
+            releaseState: "initial",
+            maxLevel: baseMaxLevel,
+            maxSaLevel: baseMaxSaLevel,
+            leaderSkillSetId,
+            passiveSkillSetId,
+            allSuperAttacks,
+            leaderSkillSetById,
+            leaderSkillsBySetId,
+            passiveSkillSetById,
+            passiveRelationsBySetId,
+            passiveSkillById,
+        });
+        const releaseSteps = releaseGrowthStepNumbers(rarity);
+        const ezaGrowthStep = growthSteps.find(step => step.step === releaseSteps.eza);
+        const sezaGrowthStep = growthSteps.find(step => step.step === releaseSteps.seza);
+        const ezaReleaseState = ezaGrowthStep
+            ? buildReleaseState({
+                releaseState: "eza",
+                maxLevel: ezaGrowthStep.maxLevel ?? baseMaxLevel,
+                maxSaLevel: ezaGrowthStep.maxSaLevel ?? baseMaxSaLevel,
+                leaderSkillSetId: ezaGrowthStep.leaderSkillSetId ?? initialReleaseState.leaderSkill?.id,
+                passiveSkillSetId: ezaGrowthStep.passiveSkillSetId ?? initialReleaseState.passiveSkillSet?.id,
+                allSuperAttacks,
+                growthStep: ezaGrowthStep,
+                leaderSkillSetById,
+                leaderSkillsBySetId,
+                passiveSkillSetById,
+                passiveRelationsBySetId,
+                passiveSkillById,
+            })
             : undefined;
-
-        const passiveSkillSet: GameDbPassiveSkillSet | undefined = passiveSkillSetId && passiveSkillSetRow
-            ? {
-                id: passiveSkillSetId,
-                name: normalizeText(passiveSkillSetRow.name),
-                itemizedDescription: normalizeText(passiveSkillSetRow.itemized_description) || undefined,
-                groupItemizedDescription: normalizeText(passiveSkillSetRow.sougou_only_itemized_description) || undefined,
-                characterItemizedDescription: normalizeText(passiveSkillSetRow.kobetu_only_itemized_description) || undefined,
-                passiveSkills: mapPassiveSkills(passiveRelationsBySetId.get(passiveSkillSetId) ?? [], passiveSkillById),
-            }
+        const sezaReleaseState = sezaGrowthStep
+            ? buildReleaseState({
+                releaseState: "seza",
+                maxLevel: sezaGrowthStep.maxLevel ?? ezaReleaseState?.maxLevel ?? baseMaxLevel,
+                maxSaLevel: sezaGrowthStep.maxSaLevel ?? ezaReleaseState?.maxSaLevel ?? baseMaxSaLevel,
+                leaderSkillSetId: sezaGrowthStep.leaderSkillSetId
+                    ?? ezaReleaseState?.leaderSkill?.id
+                    ?? initialReleaseState.leaderSkill?.id,
+                passiveSkillSetId: sezaGrowthStep.passiveSkillSetId
+                    ?? ezaReleaseState?.passiveSkillSet?.id
+                    ?? initialReleaseState.passiveSkillSet?.id,
+                allSuperAttacks,
+                growthStep: sezaGrowthStep,
+                leaderSkillSetById,
+                leaderSkillsBySetId,
+                passiveSkillSetById,
+                passiveRelationsBySetId,
+                passiveSkillById,
+            })
             : undefined;
+        const leaderSkill = initialReleaseState.leaderSkill;
+        const passiveSkillSet = initialReleaseState.passiveSkillSet;
         const passiveRelationRows = passiveRelationsBySetId.get(passiveSkillSetId ?? "") ?? [];
 
         const links = [
@@ -664,12 +864,8 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
             ...mapFinishFormRelations(finishSkillSets, finishSkillRowsBySetId, cardId),
         ], cardById);
 
-        const hasEza = growthSteps.length > 0;
-        const hasSeza = rarity === Rarities.LR
-            ? highestGrowthStep?.step === 4
-            : rarity === Rarities.UR
-                ? highestGrowthStep?.step === 8
-                : false;
+        const hasEza = Boolean(ezaReleaseState);
+        const hasSeza = Boolean(sezaReleaseState);
 
         return {
             id: cardId,
@@ -683,8 +879,8 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
             characterClass: mapCharacterClass(card.element),
             cost: parseDbInt(card.cost) ?? 0,
             releaseDate: parseDbDate(card.open_at),
-            baseMaxLevel: parseDbInt(card.lv_max) ?? 0,
-            baseMaxSaLevel: parseDbInt(card.skill_lv_max) ?? 0,
+            baseMaxLevel,
+            baseMaxSaLevel,
             stats: {
                 hpInitial: parseDbInt(card.hp_init) ?? 0,
                 hpMax: parseDbInt(card.hp_max) ?? 0,
@@ -697,12 +893,7 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
             categories,
             leaderSkill,
             passiveSkillSet,
-            superAttacks: mapSuperAttacks(
-                cardId,
-                cardSpecialsByCardId.get(cardId) ?? [],
-                specialSetById,
-                specialEffectsBySetId,
-            ),
+            superAttacks: allSuperAttacks,
             activeSkillSets: mapActiveSkillSets(
                 activeSkillRelationsByCardId.get(cardId) ?? [],
                 activeSkillSetById,
@@ -713,6 +904,11 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
             finishSkillSets,
             formRelations,
             growthSteps,
+            releaseStates: {
+                initial: initialReleaseState,
+                ...(ezaReleaseState ? { eza: ezaReleaseState } : {}),
+                ...(sezaReleaseState ? { seza: sezaReleaseState } : {}),
+            },
             hasEza,
             hasSeza,
             awakeningRoutes: {

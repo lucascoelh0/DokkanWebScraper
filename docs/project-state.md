@@ -1469,6 +1469,60 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   reread proved the manifest, payload and Characters lineage exactly; the
   previous Team Analysis release remains retained for rollback.
 
+## First-party release-state refresh checkpoint (2026-08-22)
+
+- The official Global game DB pulled from LDPlayer was promoted as first-party
+  export `glb-db-1787282006` with asset version `1787281486`; no website
+  scraping was used. The final pull was byte-identical to the earlier complete
+  pull, proving that the missing EZA was a projection gap rather than an
+  incomplete download.
+- The game-DB projection now models `initial`, `eza` and `seza` as typed release
+  states. It selects the final growth step by rarity, inherits unchanged leader
+  and passive sets, and selects the Super Attacks valid at each state's maximum
+  SA level. First-party passive markers retain DB provenance, and the audited
+  typed `197 + 3` normal-SA compensation displays the intended `200 -> 320`
+  curve without changing the raw source operands.
+- A fresh, isolated candidate pipeline overlays only explicitly targeted cards
+  on the current Character payload, generates Team Analysis from those exact
+  bytes, verifies manifest version/SHA lineage, and writes its final report
+  marker only after both artifacts pass. Output is restricted to fresh children
+  of `game-db/data/game-db-character-release-candidate/`.
+- The published Characters release is
+  `2026-08-22T21:14:10.019Z`, SHA-256
+  `34b2ce3918d0497b458f106f4e00b50cb039f0a280ef6bfe45c0ca76ee1a84bd`,
+  2,342,162 compressed bytes and 1,436 characters. It was built over the exact
+  prior public SHA `485a72ce7d89bb5c968a2c3d29b0bb6c24e2e58cf229daacc9a3513a4f0ad279`;
+  only card `1028061` changed. The Character payload now uses the same
+  content-addressed object-key shape as the versioned publisher.
+- Team Analysis `2026-08-22T21:14:10.019Z:parser-1.9.0` is public with SHA-256
+  `d7a8461c41484b0e25f61131476006b18eadad71c6bac265e7f0e289e7a96237`,
+  2,937,851 compressed bytes and 2,288 states. It adds only
+  `1028061:eza`, is bound to the exact Characters SHA above, and exposes the
+  EZA normal/Ultra SA curves `200 -> 320` and `250 -> 490` at level 25.
+- The required dry-runs projected 2,342,607 managed Character bytes and
+  2,938,551 new Team Analysis bytes, with an 8,627,124-byte managed peak and a
+  conservative 383,937,851-byte bucket upper bound. Wrangler repeated its
+  known immediate payload verification delay; public HTTPS proved exact bytes,
+  SHA-256 and immutable metadata before the documented recovery promoted the
+  Team Analysis manifest. Final public reads proved both payloads and their
+  lineage, and the local `data/fyi-characters/latest` artifacts were synced to
+  the published bytes.
+- Character publication now supports an expected-public-baseline SHA guard and
+  fails closed if the mutable remote manifest no longer matches the payload
+  used to build a candidate. The publisher also validates the local gzip bytes,
+  sizes, count, checksum and canonical filename before deriving an object key,
+  requires an explicit value for that baseline guard, and retains prior
+  immutable Character releases plus their portraits for rollback. Cleanup now
+  requires a separate release-aware garbage-collection policy. Every remote
+  run now reads Wrangler's full bucket size and adds prospective uploads using
+  a conservative rounding bound, failing closed when usage is unavailable or
+  would reach 10 GB. Ordinary future EZA/SEZA data should therefore flow through
+  without per-card code; a game schema change or genuinely new mechanic still
+  requires a new audited mapper.
+- Publication authorization does not authorize Git integration or delivery;
+  committing and pushing the implementation and matching tracked `lib/`
+  output remain separate, explicitly authorized actions.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

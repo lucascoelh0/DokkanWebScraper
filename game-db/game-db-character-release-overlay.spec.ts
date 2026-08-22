@@ -1,0 +1,132 @@
+import { deepEqual, equal, throws } from "assert";
+import { describe, it } from "mocha";
+import type { Character } from "../character";
+import { Classes, Rarities, Types } from "../character";
+import type { GameDbDokkanpanionProjection } from "./game-db-app-projection";
+import { overlayGameDbCharacterReleaseStates } from "./game-db-character-release-overlay";
+
+function character(id: string): Character {
+    return {
+        id,
+        name: `Card ${id}`,
+        title: "",
+        maxLevel: 150,
+        maxSALevel: 20,
+        rarity: Rarities.LR,
+        characterClass: Classes.Super,
+        type: Types.INT,
+        cost: 77,
+        portraitURL: `images/v2/portrait_${id}.png`,
+        portraitFilename: `portrait_${id}`,
+        leaderSkill: "Base leader",
+        superAttack: "Base Super Attack",
+        ultraSuperAttack: "Base Ultra Super Attack",
+        exSuperAttack: "",
+        passive: "Base passive",
+        domain: "",
+        links: [],
+        categories: [],
+        kiMeter: [],
+        artURL: "",
+        artFilename: "",
+        baseHP: 0,
+        maxLevelHP: 0,
+        freeDupeHP: 0,
+        rainbowHP: 0,
+        baseAttack: 0,
+        maxLevelAttack: 0,
+        freeDupeAttack: 0,
+        rainbowAttack: 0,
+        baseDefence: 0,
+        maxDefence: 0,
+        freeDupeDefence: 0,
+        rainbowDefence: 0,
+        kiMultiplier: "",
+        standbySkill: "",
+    };
+}
+
+function projection(id: string): GameDbDokkanpanionProjection {
+    return {
+        id,
+        source: "game-db-projection",
+        name: `Card ${id}`,
+        title: "",
+        rarity: Rarities.LR,
+        type: Types.INT,
+        characterClass: Classes.Super,
+        cost: 77,
+        portraitURL: `images/v2/portrait_${id}.png`,
+        portraitFilename: `portrait_${id}`,
+        portraitSpec: { iconId: Number(id), frameColorId: 2, rarity: Rarities.LR, elementCode: "12" },
+        artURL: "",
+        artFilename: "",
+        maxLevel: 150,
+        maxSALevel: 20,
+        leaderSkill: "Base leader",
+        ezaLeaderSkill: "EZA leader",
+        ezaLeaderSkillDetails: { rawText: "EZA leader", displayBoost: 200, clauses: [] },
+        passive: "Base passive",
+        ezaPassive: "EZA passive",
+        ezaPassiveDetails: { name: "EZA passive name", text: "EZA passive", lines: ["EZA passive"] },
+        ezaSuperAttackDetails: [
+            { id: "20432", name: "EZA Super", description: "EZA Super effect", variant: "super", requiredKi: 12, attackIncrease: { level1Percent: 200, maxLevelPercent: 320, maxLevel: 25 } },
+            { id: "20434", name: "EZA Ultra", description: "EZA Ultra effect", variant: "ultra", requiredKi: 18, attackIncrease: { level1Percent: 250, maxLevelPercent: 490, maxLevel: 25 } },
+        ],
+        activeSkill: "",
+        activeSkillCondition: "",
+        domain: "",
+        standbySkill: "",
+        finishSkills: [],
+        obtainability: { type: "unknown", isFreeToPlay: false, hasDirectAcquisitionDetails: false },
+        isFreeToPlay: false,
+        links: [],
+        categories: [],
+        baseHP: 0,
+        maxLevelHP: 0,
+        baseAttack: 0,
+        maxLevelAttack: 0,
+        baseDefence: 0,
+        maxDefence: 0,
+        hasEza: true,
+        hasSeza: false,
+        transformations: [],
+    };
+}
+
+describe("game DB character release-state overlay", () => {
+    it("patches only release-specific fields and preserves the complete catalog", () => {
+        const baseline = [character("1"), character("1028061"), character("3")];
+        const baselineBytes = JSON.stringify(baseline);
+
+        const result = overlayGameDbCharacterReleaseStates(baseline, [projection("1028061")], ["1028061"]);
+
+        equal(result.characters.length, 3);
+        deepEqual(result.characters.map(item => item.id), ["1", "1028061", "3"]);
+        equal(result.characters[0].ezaPassive, undefined);
+        equal(result.characters[2].ezaPassive, undefined);
+        equal(result.characters[1].ezaLeaderSkill, "EZA leader");
+        equal(result.characters[1].ezaPassiveDetails?.name, "EZA passive name");
+        equal(result.characters[1].ezaSuperAttackDetails?.sourceAttackId, "20432");
+        equal(result.characters[1].ezaUltraSuperAttackDetails?.attackIncrease?.maxLevelPercent, 490);
+        deepEqual(result.checks, {
+            characterCountPreserved: true,
+            characterOrderPreserved: true,
+            untargetedCharactersUnchanged: true,
+            everyTargetFoundInBaseline: true,
+            everyTargetFoundInGameDb: true,
+        });
+        equal(JSON.stringify(baseline), baselineBytes);
+    });
+
+    it("fails closed when the requested card is absent from either source", () => {
+        throws(
+            () => overlayGameDbCharacterReleaseStates([character("1")], [projection("2")], ["2"]),
+            /missing from the baseline catalog/,
+        );
+        throws(
+            () => overlayGameDbCharacterReleaseStates([character("1")], [], ["1"]),
+            /missing from the game DB projection/,
+        );
+    });
+});

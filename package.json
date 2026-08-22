@@ -123,6 +123,7 @@
     "run:game-db-promote-first-party-export": "npx ts-node game-db/game-db-promote-to-first-party-export.ts",
     "publish:game-db-r2": "npx ts-node game-db/game-db-publish-r2.ts",
     "run:game-db-update": "npx ts-node game-db/game-db-update-runner.ts",
+    "run:game-db-character-release-candidate": "npx ts-node game-db/game-db-character-release-candidate.ts",
     "run:fyi-support-memories": "npx ts-node fyi-support-memories-run.ts",
     "run:fyi-event-missions": "npx ts-node fyi-event-missions-run.ts",
     "run:fyi-support-memory-details": "npx ts-node fyi-support-memory-details-run.ts",

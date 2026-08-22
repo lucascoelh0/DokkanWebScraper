@@ -45,6 +45,7 @@ export interface GameDbSuperAttack {
     specialSetId: string,
     name: string,
     description: string,
+    conditionDescription?: string,
     style?: string,
     variant: "super" | "ultra" | "unit" | "extra" | "unknown",
     levelStart?: number,
@@ -218,6 +219,24 @@ export interface GameDbGrowthStep {
     leaderSkillSetId?: string,
 }
 
+export type GameDbCharacterReleaseStateName = "initial" | "eza" | "seza";
+
+export interface GameDbCharacterReleaseState {
+    releaseState: GameDbCharacterReleaseStateName,
+    maxLevel: number,
+    maxSaLevel: number,
+    leaderSkill?: GameDbLeaderSkillSet,
+    passiveSkillSet?: GameDbPassiveSkillSet,
+    superAttacks: GameDbSuperAttack[],
+    growthStep?: GameDbGrowthStep,
+}
+
+export interface GameDbCharacterReleaseStates {
+    initial: GameDbCharacterReleaseState,
+    eza?: GameDbCharacterReleaseState,
+    seza?: GameDbCharacterReleaseState,
+}
+
 export interface GameDbCharacterSnapshot {
     id: string,
     source: "game-db",
@@ -250,6 +269,7 @@ export interface GameDbCharacterSnapshot {
     finishSkillSets: GameDbFinishSkillSet[],
     formRelations: GameDbFormRelation[],
     growthSteps: GameDbGrowthStep[],
+    releaseStates?: GameDbCharacterReleaseStates,
     hasEza: boolean,
     hasSeza: boolean,
     awakeningRoutes: {

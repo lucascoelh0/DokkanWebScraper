@@ -3,7 +3,7 @@ import { execFile } from "child_process";
 import { existsSync, statSync } from "fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
-import { dirname, resolve } from "path";
+import { basename, dirname, resolve } from "path";
 import { gunzipSync } from "zlib";
 import { Character } from "./character";
 import { DatasetManifest } from "./dataset-artifacts";
@@ -15,7 +15,10 @@ const DEFAULT_MANIFEST_PATH = "data/latest/characters-manifest.json";
 const DEFAULT_STATE_PATH = "data/latest/r2-publish-state.json";
 const DEFAULT_CONCURRENCY = 6;
 const DEFAULT_MAX_TOTAL_BYTES = 10_000_000_000;
-const WRANGLER_ENTRYPOINT = resolve(__dirname, "node_modules", "wrangler", "bin", "wrangler.js");
+const PACKAGE_ROOT = existsSync(resolve(__dirname, "package.json"))
+    ? __dirname
+    : resolve(__dirname, "..");
+const WRANGLER_ENTRYPOINT = resolve(PACKAGE_ROOT, "node_modules", "wrangler", "bin", "wrangler.js");
 
 export interface DatasetPublishState {
     schemaVersion: 1,
@@ -50,6 +53,7 @@ interface PublishCliOptions {
     forcePortraits: boolean,
     skipPortraits: boolean,
     skipRemoteManifestCheck: boolean,
+    expectedRemoteBaselineSha256?: string,
     target: "remote" | "local",
     concurrency: number,
     maxTotalBytes: number,
@@ -63,6 +67,11 @@ interface PublishSummary {
     projectedTotalBytes: number,
 }
 
+export interface BucketSizeReport {
+    reported: string,
+    conservativeUpperBoundBytes: number,
+}
+
 function datasetVersionSlug(datasetVersion: string): string {
     return datasetVersion
         .trim()
@@ -70,13 +79,65 @@ function datasetVersionSlug(datasetVersion: string): string {
         .replace(/[^\w./-]/g, "_");
 }
 
-function buildRemoteDatasetObjectKey(manifest: DatasetManifest): string {
-    const fileName = manifest.fileName.split("/").pop() ?? "characters.json.gz";
-    return `releases/${datasetVersionSlug(manifest.datasetVersion)}/${fileName}`;
+export function buildRemoteDatasetObjectKey(manifest: DatasetManifest): string {
+    if (!/^[a-f0-9]{64}$/i.test(manifest.sha256)) {
+        throw new Error("Character manifest SHA-256 is invalid.");
+    }
+    if (!manifest.datasetVersion || manifest.datasetVersion.trim().length === 0) {
+        throw new Error("Character manifest dataset version is missing.");
+    }
+
+    const fileName = basename(manifest.fileName.replace(/\\/g, "/"));
+    if (fileName !== "characters.json.gz") {
+        throw new Error(`Character manifest filename is invalid: ${manifest.fileName}`);
+    }
+
+    return `releases/${datasetVersionSlug(manifest.datasetVersion)}/${manifest.sha256.toLowerCase()}/${fileName}`;
+}
+
+export function assertExpectedRemoteBaselineSha256(
+    expectedSha256: string | undefined,
+    remoteManifest: DatasetManifest | undefined,
+): void {
+    if (!expectedSha256) return;
+    if (!/^[a-f0-9]{64}$/.test(expectedSha256)) {
+        throw new Error("Expected remote baseline SHA-256 is invalid.");
+    }
+    if (!remoteManifest) {
+        throw new Error("Cannot prove the expected remote baseline without the remote manifest.");
+    }
+    if (remoteManifest.sha256.toLowerCase() !== expectedSha256) {
+        throw new Error(
+            `Remote Character baseline changed: expected ${expectedSha256}, found ${remoteManifest.sha256.toLowerCase()}.`,
+        );
+    }
 }
 
 function sha256(buffer: Buffer): string {
     return createHash("sha256").update(buffer).digest("hex");
+}
+
+export function parseWranglerBucketSize(reported: string): BucketSizeReport {
+    const match = /^\s*(\d+(?:\.\d+)?)\s*(B|kB|MB|GB|TB)\s*$/.exec(reported);
+    if (!match) {
+        throw new Error(`Unsupported Wrangler bucket size: ${reported}`);
+    }
+
+    const units: Record<string, number> = {
+        B: 1,
+        kB: 1_000,
+        MB: 1_000_000,
+        GB: 1_000_000_000,
+        TB: 1_000_000_000_000,
+    };
+    const decimals = match[1].split(".")[1]?.length ?? 0;
+    const displayResolution = 10 ** -decimals;
+    const upperBound = Math.ceil((Number(match[1]) + displayResolution) * units[match[2]]);
+    if (!Number.isSafeInteger(upperBound)) {
+        throw new Error(`Wrangler bucket size is outside the safe integer range: ${reported}`);
+    }
+
+    return { reported, conservativeUpperBoundBytes: upperBound };
 }
 
 function normalizeObjectKey(value: string): string {
@@ -122,21 +183,16 @@ export function buildPortraitPublishPlan(
 ): PortraitPublishPlan {
     const previousPortraits = previousState?.portraits ?? {};
     const forcePortraits = options?.forcePortraits === true;
-    const currentPortraitMap = new Map(currentPortraits.map(entry => [entry.objectKey, entry]));
 
     const toUpload = forcePortraits
         ? [...currentPortraits]
         : currentPortraits.filter(entry => previousPortraits[entry.objectKey] !== entry.sha256);
 
-    const toDelete = previousState
-        ? Object.keys(previousPortraits)
-            .filter(objectKey => !currentPortraitMap.has(objectKey))
-            .sort((left, right) => left.localeCompare(right))
-        : [];
-
     return {
         toUpload: toUpload.sort((left, right) => left.objectKey.localeCompare(right.objectKey)),
-        toDelete,
+        // Portrait keys are immutable assets referenced by retained historical
+        // bundles. Deletion requires a separate, release-aware GC policy.
+        toDelete: [],
     };
 }
 
@@ -160,9 +216,74 @@ async function buildPortraitEntries(objectKeys: string[], dataRoot: string): Pro
     return entries;
 }
 
-async function readCharactersFromBundle(datasetPath: string): Promise<Character[]> {
-    const gzipBuffer = await readFile(datasetPath);
-    return JSON.parse(gunzipSync(gzipBuffer).toString("utf8")) as Character[];
+export function validateLocalCharacterBundle(
+    manifest: DatasetManifest,
+    gzipBuffer: Buffer,
+): Character[] {
+    if (manifest.schemaVersion !== 1) {
+        throw new Error(`Unsupported Character manifest schema version: ${manifest.schemaVersion}`);
+    }
+    if (manifest.compression !== "gzip") {
+        throw new Error(`Unsupported Character bundle compression: ${manifest.compression}`);
+    }
+    if (manifest.fileName !== "characters.json.gz") {
+        throw new Error(`Local Character manifest filename is invalid: ${manifest.fileName}`);
+    }
+    if (!/^[a-f0-9]{64}$/.test(manifest.sha256)) {
+        throw new Error("Local Character manifest SHA-256 is invalid.");
+    }
+    if (!manifest.datasetVersion || manifest.datasetVersion.trim().length === 0) {
+        throw new Error("Local Character manifest dataset version is missing.");
+    }
+    if (!manifest.generatedAt || manifest.generatedAt.trim().length === 0) {
+        throw new Error("Local Character manifest generation time is missing.");
+    }
+    if (!Number.isSafeInteger(manifest.sizeBytes) || manifest.sizeBytes < 1) {
+        throw new Error("Local Character manifest compressed size is invalid.");
+    }
+    if (!Number.isSafeInteger(manifest.uncompressedSizeBytes) || manifest.uncompressedSizeBytes < 1) {
+        throw new Error("Local Character manifest uncompressed size is invalid.");
+    }
+    if (!Number.isSafeInteger(manifest.characterCount) || manifest.characterCount < 0) {
+        throw new Error("Local Character manifest character count is invalid.");
+    }
+    if (gzipBuffer.byteLength !== manifest.sizeBytes) {
+        throw new Error(
+            `Local Character bundle size mismatch: expected ${manifest.sizeBytes}, found ${gzipBuffer.byteLength}.`,
+        );
+    }
+
+    const actualSha256 = sha256(gzipBuffer);
+    if (actualSha256 !== manifest.sha256) {
+        throw new Error(
+            `Local Character bundle SHA-256 mismatch: expected ${manifest.sha256}, found ${actualSha256}.`,
+        );
+    }
+
+    let uncompressedBuffer: Buffer;
+    try {
+        uncompressedBuffer = gunzipSync(gzipBuffer);
+    } catch (exception) {
+        const message = exception instanceof Error ? exception.message : String(exception);
+        throw new Error(`Local Character bundle is not valid gzip: ${message}`);
+    }
+    if (uncompressedBuffer.byteLength !== manifest.uncompressedSizeBytes) {
+        throw new Error(
+            `Local Character bundle uncompressed size mismatch: expected ${manifest.uncompressedSizeBytes}, found ${uncompressedBuffer.byteLength}.`,
+        );
+    }
+
+    const parsed = JSON.parse(uncompressedBuffer.toString("utf8")) as unknown;
+    if (!Array.isArray(parsed)) {
+        throw new Error("Local Character bundle payload must be an array.");
+    }
+    if (parsed.length !== manifest.characterCount) {
+        throw new Error(
+            `Local Character bundle count mismatch: expected ${manifest.characterCount}, found ${parsed.length}.`,
+        );
+    }
+
+    return parsed as Character[];
 }
 
 async function readManifest(manifestPath: string): Promise<DatasetManifest> {
@@ -200,6 +321,34 @@ async function execFileAsync(command: string, args: string[]): Promise<{ stdout:
 
 async function runWranglerCommand(args: string[]): Promise<void> {
     await execFileAsync(process.execPath, [WRANGLER_ENTRYPOINT, ...args]);
+}
+
+async function readRemoteBucketSizeReport(bucket: string): Promise<BucketSizeReport> {
+    let stdout: string;
+    try {
+        ({ stdout } = await execFileAsync(process.execPath, [
+            WRANGLER_ENTRYPOINT,
+            "r2",
+            "bucket",
+            "info",
+            bucket,
+            "--json",
+        ]));
+    } catch (exception) {
+        const message = exception instanceof Error ? exception.message : String(exception);
+        throw new Error(`Cannot prove the R2 bucket budget: ${message}`);
+    }
+
+    try {
+        const parsed = JSON.parse(stdout) as { bucket_size?: unknown };
+        if (typeof parsed.bucket_size !== "string") {
+            throw new Error("missing bucket_size");
+        }
+        return parseWranglerBucketSize(parsed.bucket_size);
+    } catch (exception) {
+        const message = exception instanceof Error ? exception.message : String(exception);
+        throw new Error(`Cannot prove the R2 bucket budget: ${message}`);
+    }
 }
 
 async function tryReadRemoteManifest(
@@ -252,20 +401,6 @@ async function uploadObject(
     ]);
 }
 
-async function deleteObject(
-    bucket: string,
-    objectKey: string,
-    target: "remote" | "local",
-): Promise<void> {
-    await runWranglerCommand([
-        "r2",
-        "object",
-        "delete",
-        `${bucket}/${objectKey}`,
-        target === "remote" ? "--remote" : "--local",
-    ]);
-}
-
 async function runWithConcurrency<T>(
     items: T[],
     concurrency: number,
@@ -293,9 +428,12 @@ async function runWithConcurrency<T>(
     await Promise.all(workers);
 }
 
-function parseArgs(argv: string[]): PublishCliOptions {
+export function parsePublishArgs(argv: string[]): PublishCliOptions {
     const values = new Map<string, string>();
     const flags = new Set<string>();
+    const valueRequiredOptions = new Set([
+        "--expected-remote-baseline-sha256",
+    ]);
 
     for (let index = 0; index < argv.length; index += 1) {
         const token = argv[index];
@@ -305,12 +443,18 @@ function parseArgs(argv: string[]): PublishCliOptions {
 
         const [name, inlineValue] = token.split("=", 2);
         if (inlineValue !== undefined) {
+            if (valueRequiredOptions.has(name) && inlineValue.length === 0) {
+                throw new Error(`${name} requires a value.`);
+            }
             values.set(name, inlineValue);
             continue;
         }
 
         const nextToken = argv[index + 1];
         if (!nextToken || nextToken.startsWith("--")) {
+            if (valueRequiredOptions.has(name)) {
+                throw new Error(`${name} requires a value.`);
+            }
             flags.add(name);
             continue;
         }
@@ -344,6 +488,16 @@ function parseArgs(argv: string[]): PublishCliOptions {
         throw new Error(`Invalid --max-total-bytes value: ${maxTotalBytesRaw}`);
     }
 
+    const expectedRemoteBaselineSha256 = values.get("--expected-remote-baseline-sha256")?.toLowerCase();
+    if (expectedRemoteBaselineSha256 && !/^[a-f0-9]{64}$/.test(expectedRemoteBaselineSha256)) {
+        throw new Error("Invalid --expected-remote-baseline-sha256 value.");
+    }
+    if (expectedRemoteBaselineSha256 && flags.has("--skip-remote-manifest-check")) {
+        throw new Error(
+            "--expected-remote-baseline-sha256 cannot be combined with --skip-remote-manifest-check.",
+        );
+    }
+
     return {
         bucket,
         dataRoot: resolve(values.get("--data-root") ?? DEFAULT_DATA_ROOT),
@@ -355,6 +509,7 @@ function parseArgs(argv: string[]): PublishCliOptions {
         forcePortraits: flags.has("--force-portraits"),
         skipPortraits: flags.has("--skip-portraits"),
         skipRemoteManifestCheck: flags.has("--skip-remote-manifest-check"),
+        expectedRemoteBaselineSha256,
         target: localFlag ? "local" : "remote",
         concurrency,
         maxTotalBytes,
@@ -383,17 +538,19 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     }
 
     const localManifest = await readManifest(options.manifestPath);
+    const localGzipBuffer = await readFile(options.datasetPath);
+    const characters = validateLocalCharacterBundle(localManifest, localGzipBuffer);
     const remoteDatasetObjectKey = buildRemoteDatasetObjectKey(localManifest);
     const remoteManifest: DatasetManifest = {
         ...localManifest,
         fileName: remoteDatasetObjectKey,
     };
-    const characters = await readCharactersFromBundle(options.datasetPath);
     const portraitKeys = collectReferencedPortraitKeys(characters);
     const previousState = await readPublishState(options.statePath);
     const publishedRemoteManifest = options.skipRemoteManifestCheck
         ? undefined
         : await tryReadRemoteManifest(options.bucket, options.target);
+    assertExpectedRemoteBaselineSha256(options.expectedRemoteBaselineSha256, publishedRemoteManifest);
     const datasetNeedsUpload = !manifestsMatch(remoteManifest, publishedRemoteManifest);
     const skippedBecauseRemoteMatches = !datasetNeedsUpload && !options.forcePortraits && !options.skipPortraits;
 
@@ -414,6 +571,23 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         );
     }
 
+    const prospectiveUploadBytes = (datasetNeedsUpload
+        ? localGzipBuffer.byteLength + manifestByteSize(remoteManifest)
+        : 0)
+        + portraitPlan.toUpload.reduce((total, entry) => total + statSync(entry.filePath).size, 0);
+    const bucketSizeReport = options.target === "remote"
+        ? await readRemoteBucketSizeReport(options.bucket)
+        : undefined;
+    const projectedBucketUpperBoundBytes = bucketSizeReport
+        ? bucketSizeReport.conservativeUpperBoundBytes + prospectiveUploadBytes
+        : undefined;
+    if (projectedBucketUpperBoundBytes !== undefined && projectedBucketUpperBoundBytes >= options.maxTotalBytes) {
+        throw new Error(
+            `Projected conservative bucket upper bound ${projectedBucketUpperBoundBytes} bytes reaches or exceeds `
+            + `the configured limit of ${options.maxTotalBytes} bytes.`,
+        );
+    }
+
     console.log(`Dataset version: ${remoteManifest.datasetVersion}`);
     console.log(`Dataset object key: ${remoteDatasetObjectKey}`);
     console.log(`Dataset upload needed: ${datasetNeedsUpload ? "yes" : "no"}`);
@@ -421,6 +595,12 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     console.log(`Portraits to upload: ${portraitPlan.toUpload.length}`);
     console.log(`Portraits to delete: ${portraitPlan.toDelete.length}`);
     console.log(`Projected managed size: ${projectedTotalBytes}/${options.maxTotalBytes} bytes`);
+    if (bucketSizeReport && projectedBucketUpperBoundBytes !== undefined) {
+        console.log(
+            `Wrangler bucket size: ${bucketSizeReport.reported}; conservative projected upper bound: `
+            + `${projectedBucketUpperBoundBytes}/${options.maxTotalBytes} bytes`,
+        );
+    }
 
     if (options.dryRun) {
         return {
@@ -478,31 +658,11 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         await rm(manifestTempDirectory, { recursive: true, force: true });
     }
 
-    // Keep old assets available until the new manifest is live.
-    if (portraitPlan.toDelete.length > 0) {
-        console.log("Deleting stale portraits from R2...");
-        await runWithConcurrency(portraitPlan.toDelete, options.concurrency, async (objectKey, index) => {
-            await deleteObject(options.bucket, objectKey, options.target);
-            if ((index + 1) % 25 === 0 || index + 1 === portraitPlan.toDelete.length) {
-                console.log(`Deleted ${index + 1}/${portraitPlan.toDelete.length} stale portrait(s)`);
-            }
-        });
-    }
-
-    if (
-        datasetNeedsUpload &&
-        previousState?.datasetObjectKey &&
-        previousState.datasetObjectKey.trim().length > 0 &&
-        previousState.datasetObjectKey !== remoteDatasetObjectKey
-    ) {
-        console.log(`Deleting previous dataset release ${previousState.datasetObjectKey}...`);
-        try {
-            await deleteObject(options.bucket, previousState.datasetObjectKey, options.target);
-        } catch (exception) {
-            const message = exception instanceof Error ? exception.message : String(exception);
-            console.warn(`Failed to delete previous dataset release: ${message}`);
-        }
-    }
+    // Character bundles are immutable and intentionally retained. Keeping the
+    // prior content-addressed object and its portraits preserves rollback and
+    // old-client reads. Every remote run measures the whole bucket and adds
+    // prospective uploads conservatively; cleanup still needs a separate,
+    // release-aware GC policy.
 
     const nextState: DatasetPublishState = {
         schemaVersion: 1,
@@ -531,7 +691,7 @@ function manifestByteSize(manifest: DatasetManifest): number {
 }
 
 async function main(): Promise<void> {
-    const options = parseArgs(process.argv.slice(2));
+    const options = parsePublishArgs(process.argv.slice(2));
     const summary = await publishDataset(options);
 
     if (options.dryRun) {

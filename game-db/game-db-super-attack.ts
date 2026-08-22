@@ -135,6 +135,9 @@ export function mapSuperAttacks(
             specialSetId,
             name: normalizeText(specialSet.name),
             description: normalizeText(specialSet.description),
+            ...(normalizeText(specialSet.causality_description)
+                ? { conditionDescription: normalizeText(specialSet.causality_description) }
+                : {}),
             style,
             variant: variantFromStyle(style),
             levelStart: parseDbInt(row.lv_start),

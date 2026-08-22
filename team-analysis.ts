@@ -1231,11 +1231,21 @@ function validStructuralEvidence(
         const anchor = entry.anchor;
         const start = anchor?.sourceSpan?.start;
         const end = anchor?.sourceSpan?.end;
-        const expectedPayloadField = channel === "passive"
-            ? entry.releaseState === "initial"
-                ? "props.character.passive_skill.description"
-                : "props.character.extreme_z_awakening.passive_skill.description"
-            : "props.character.super_attacks[].description";
+        const expectedPayloadField = entry.provenance?.source === "first_party_game_db"
+            ? channel === "passive"
+                ? [
+                    "passive_skill_sets.itemized_description",
+                    "passive_skill_sets.group_itemized_description",
+                    "passive_skill_sets.character_itemized_description",
+                ].includes(entry.provenance.payloadField)
+                : entry.provenance.payloadField === "special_sets.description"
+            : entry.provenance?.source === "dokkan_fyi_payload"
+                ? entry.provenance.payloadField === (channel === "passive"
+                    ? entry.releaseState === "initial"
+                        ? "props.character.passive_skill.description"
+                        : "props.character.extreme_z_awakening.passive_skill.description"
+                    : "props.character.super_attacks[].description")
+                : false;
         const stateIdentity = stateKey.split(":");
         const markerResolution = entry.markers.every(marker => marker.resolution === "supported")
             ? "supported"
@@ -1250,10 +1260,12 @@ function validStructuralEvidence(
             || entry.channel !== channel
             || entry.rawTextSha256 !== source.rawTextSha256
             || entry.normalizedTextSha256 !== source.normalizedTextSha256
-            || entry.provenance?.source !== "dokkan_fyi_payload"
+            || !entry.provenance
             || entry.provenance.markerSyntax !== "passiveImg"
-            || entry.provenance.payloadField !== expectedPayloadField
-            || !/^[a-f0-9]{32}$/i.test(entry.provenance.sourceVersion)
+            || !expectedPayloadField
+            || (entry.provenance.source === "dokkan_fyi_payload"
+                ? !/^[a-f0-9]{32}$/i.test(entry.provenance.sourceVersion)
+                : !/^\d+$/.test(entry.provenance.sourceVersion))
             || (channel === "super_attack" && entry.attackVariant !== attackVariant)
             || (channel === "passive" && entry.passiveSkillId !== sourceEntityId)
             || (channel === "super_attack" && entry.superAttackId !== sourceEntityId)
@@ -1408,7 +1420,7 @@ function applySuperAttackStructuralSemantics(
         if (effect.duration.kind === "unknown" || effect.duration.kind === "permanent") {
             effect.duration = {
                 kind: "permanent",
-                source: "dokkan_fyi_structural_marker",
+                source: markerResolutionSource(forever),
                 provenance: markerDecisionProvenance(forever),
             };
         } else {
@@ -1421,13 +1433,19 @@ function applySuperAttackStructuralSemantics(
 function markerActivationLimit(evidence: EffectStructuralEvidence): EffectActivationLimit {
     return {
         kind: "once",
-        source: "dokkan_fyi_structural_marker",
+        source: markerResolutionSource(evidence),
         provenance: markerDecisionProvenance(evidence),
     };
 }
 
+function markerResolutionSource(evidence: EffectStructuralEvidence): CalculationPhaseResolutionSource {
+    return evidence.provenance.source === "first_party_game_db"
+        ? "first_party_game_db"
+        : "dokkan_fyi_structural_marker";
+}
+
 function markerDecisionProvenance(evidence: EffectStructuralEvidence): EffectDecisionProvenance {
-    return { source: "dokkan_fyi_structural_marker", evidenceId: evidence.id };
+    return { source: markerResolutionSource(evidence), evidenceId: evidence.id };
 }
 
 function recordStructuralConflict(
@@ -1973,7 +1991,7 @@ function applyPassiveStructuralSemantics(
         if (!effect.duration || effect.duration.kind === "unknown" || effect.duration.kind === "battle") {
             effect.duration = {
                 kind: "battle",
-                source: "dokkan_fyi_structural_marker",
+                source: markerResolutionSource(forever),
                 provenance: markerDecisionProvenance(forever),
             };
         } else {
