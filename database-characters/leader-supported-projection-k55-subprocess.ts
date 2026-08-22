@@ -13,6 +13,7 @@ export const CHARACTER_LEADER_K55_SUBPROCESS_STDERR_LIMIT_BYTES = 16 * 1024;
 export const CHARACTER_LEADER_K55_SUBPROCESS_TIMEOUT_MS = 10 * 60 * 1000;
 export const CHARACTER_LEADER_K55_SUBPROCESS_TERMINATION_GRACE_MS = 250;
 export const CHARACTER_LEADER_K55_SUBPROCESS_FINAL_TERMINATION_DEADLINE_MS = 2_000;
+export const CHARACTER_LEADER_K55_SUBPROCESS_HEAP_LIMIT_MIB = 608;
 
 export interface CharacterLeaderK55SubprocessOptions {
     sidecarRoot: string;
@@ -50,6 +51,15 @@ export interface CharacterLeaderK55ChildLike {
     stderr: { on(event: "data", listener: (chunk: Buffer) => void): unknown };
     once(event: "error" | "close", listener: (...args: any[]) => void): unknown;
     kill(signal?: NodeJS.Signals): boolean;
+}
+export interface CharacterLeaderK55SubprocessSpawnSpec {
+    executable: string;
+    args: string[];
+    options: {
+        shell: false;
+        windowsHide: true;
+        stdio: ["ignore", "pipe", "pipe"];
+    };
 }
 
 function value(args: string[], name: string): string | undefined {
@@ -138,6 +148,23 @@ function compiledHelperPath(): string {
     return path;
 }
 
+export function characterLeaderK55SubprocessSpawnSpec(
+    options: CharacterLeaderK55SubprocessOptions,
+    helperPath: string,
+): CharacterLeaderK55SubprocessSpawnSpec {
+    if (!helperPath) throw new Error("K56 K55 helper path rejected");
+    return {
+        executable: process.execPath,
+        args: [
+            "--expose-gc",
+            `--max-old-space-size=${CHARACTER_LEADER_K55_SUBPROCESS_HEAP_LIMIT_MIB}`,
+            helperPath,
+            ...characterLeaderK55SubprocessArgs(options),
+        ],
+        options: { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+    };
+}
+
 export function collectCharacterLeaderK55ChildOutcome(
     child: CharacterLeaderK55ChildLike,
     limits: CharacterLeaderK55ChildLifecycleLimits = {
@@ -223,10 +250,8 @@ export function collectCharacterLeaderK55ChildOutcome(
 export async function runCharacterLeaderK55Subprocess(
     options: CharacterLeaderK55SubprocessOptions,
 ): Promise<CharacterLeaderK55SubprocessEnvelope> {
-    const executableArgs = [
-        "--expose-gc", "--max-old-space-size=768", compiledHelperPath(), ...characterLeaderK55SubprocessArgs(options),
-    ];
-    const child = spawn(process.execPath, executableArgs, { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const invocation = characterLeaderK55SubprocessSpawnSpec(options, compiledHelperPath());
+    const child = spawn(invocation.executable, invocation.args, invocation.options);
     const outcome = await collectCharacterLeaderK55ChildOutcome(child as unknown as CharacterLeaderK55ChildLike);
     return parseCharacterLeaderK55SubprocessOutcome(outcome);
 }

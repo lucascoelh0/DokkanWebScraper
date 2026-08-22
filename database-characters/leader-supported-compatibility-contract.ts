@@ -1,6 +1,7 @@
 import type { CharacterLeaderSupportedProjectionLineage } from "./leader-supported-projection-contract";
+import type { CharacterLeaderCompatibilityAndroidSourceIdentity } from "./leader-supported-compatibility-git-source";
 
-export const CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_CONTRACT_VERSION = "1.0.0" as const;
+export const CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_CONTRACT_VERSION = "1.2.0" as const;
 export const CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_RAW_LIMIT_BYTES = 4 * 1024 * 1024;
 export const CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_GZIP_LIMIT_BYTES = 1024 * 1024;
 export const CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_METADATA_LIMIT_BYTES = 256 * 1024;
@@ -89,6 +90,7 @@ export interface CharacterLeaderSupportedCompatibilityReport {
     schemaVersion: 1;
     contract: "dokkan-database-character-leader-supported-compatibility-audit";
     contractVersion: typeof CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_CONTRACT_VERSION;
+    checkpoint: "K62.1";
     mode: "explicit_opt_in_offline_default_off_non_authoritative";
     lineage: {
         k56: {
@@ -115,7 +117,8 @@ export interface CharacterLeaderSupportedCompatibilityReport {
             sourceBoundValidation: "GO";
             requestReuseOnly: true;
         };
-        stableAcrossAudit: true;
+        sourceStability: "CHECKPOINTED_PERSISTENT_DRIFT_ONLY";
+        transientABADriftDetection: "NO-GO";
     };
     inventory: {
         effects: 3_836;
@@ -150,6 +153,7 @@ export interface CharacterLeaderSupportedCompatibilityReport {
             valueComparisonAuthority: false;
         };
         android: {
+            source: CharacterLeaderCompatibilityAndroidSourceIdentity;
             wireAndDomainSourceFingerprintSha256: string;
             leaderStructuredModelPresent: true;
             absentStructuredDetailsFallbackPresent: true;
@@ -204,6 +208,9 @@ export interface CharacterLeaderSupportedCompatibilityReport {
         authenticatedRequestCount: 0;
         r2MutationCount: 0;
         publisherExecuted: false;
+        androidSourceBytesReadFromGitObjectDatabaseOnly: true;
+        androidCheckoutBytesRead: false;
+        androidSourceCanAuthorizeMaterializedBytes: false;
     };
     readiness: {
         offlineCompatibilityAudit: "GO";
@@ -216,7 +223,7 @@ export interface CharacterLeaderSupportedCompatibilityReport {
         androidImplementation: "NO-GO";
         ui: "NO-GO";
         runtimeContext: "NO-GO";
-        processTreeRssUnder1GiB: "NO-GO";
+        processTreeRssUnder1GiB: "NOT_EXECUTED";
         concurrentOutputAncestorReplacement: "NO-GO";
     };
 }
@@ -255,6 +262,9 @@ export interface CharacterLeaderSupportedCompatibilityValidation {
         noConditionalLeakage: boolean;
         noUnknownMaterializedAsZeroOrFalse: boolean;
         noNamesTitlesOrTextUsedAsIdentity: boolean;
+        androidGitObjectSourcePinned: boolean;
+        androidCheckoutExcluded: boolean;
+        androidSourceDoesNotAuthorizeMaterializedBytes: boolean;
         zeroConflictIsNotCompleteness: true;
         noNetworkOrPublisher: true;
     };

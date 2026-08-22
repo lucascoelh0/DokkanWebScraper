@@ -1,17 +1,52 @@
 import { strict as assert } from "assert";
-import { chmod, mkdtemp, rm, writeFile } from "fs/promises";
+import { createHash } from "crypto";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
-import { join } from "path";
+import { dirname, join, resolve } from "path";
 import { gunzipSync } from "zlib";
-import { CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_DIMENSION_GOLDEN, CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_SOURCE_PINS } from "./leader-supported-compatibility-golden";
+import {
+    CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_ANDROID_SOURCE_PIN,
+    CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_DIMENSION_GOLDEN,
+    CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_SOURCE_PINS,
+} from "./leader-supported-compatibility-golden";
+import {
+    CharacterLeaderCompatibilityAndroidSourcePin,
+    CharacterLeaderCompatibilityGitCommand,
+    CharacterLeaderCompatibilityGitExecutor,
+    characterLeaderSupportedCompatibilityGitEnvironmentForTest,
+    verifyCharacterLeaderSupportedCompatibilityAndroidSourceForTest,
+} from "./leader-supported-compatibility-git-source";
 import {
     materializeCharacterLeaderSupportedCompatibility,
     validateCharacterLeaderSupportedCompatibilityReport,
 } from "./leader-supported-compatibility";
 import {
+    assertCharacterLeaderSupportedCompatibilityPersistedBytes,
+    assertCharacterLeaderSupportedCompatibilitySelectedPinWithinRootForTest,
+    assertCharacterLeaderSupportedCompatibilitySourceReceiptStable,
+    captureCharacterLeaderSupportedCompatibilityReceiptBeforeHeavyValidation,
+    captureCharacterLeaderSupportedCompatibilitySelectedRootForTest,
     readCharacterLeaderSupportedCompatibilityArtifacts,
+    validateCharacterLeaderSupportedCompatibilityRootSeparation,
     writeCharacterLeaderSupportedCompatibilityArtifacts,
 } from "./leader-supported-compatibility-source";
+import {
+    runCharacterLeaderSupportedCompatibilityFirstPass,
+    runCharacterLeaderSupportedCompatibilityLifecycle,
+} from "./leader-supported-compatibility-run";
+
+const sha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
+
+function pinnedAndroidIdentity(): any {
+    const value = {
+        repositoryUrl: CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_ANDROID_SOURCE_PIN.repositoryUrl,
+        commit: CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_ANDROID_SOURCE_PIN.commit,
+        access: "git_object_database_only",
+        checkoutBytesRead: false,
+        files: CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_ANDROID_SOURCE_PIN.files.map(file => ({ ...file })),
+    };
+    return { ...value, fingerprintSha256: sha256(JSON.stringify(value)) };
+}
 
 function fixture(): any {
     const effects = Array.from({ length: 3_836 }, (_, index) => ({
@@ -20,9 +55,12 @@ function fixture(): any {
         reason: "lossless_supported_shadow_requires_separate_additive_contract",
     }));
     return {
-        schemaVersion: 1, contract: "dokkan-database-character-leader-supported-compatibility-audit", contractVersion: "1.0.0",
+        schemaVersion: 1, contract: "dokkan-database-character-leader-supported-compatibility-audit", contractVersion: "1.2.0", checkpoint: "K62.1",
         mode: "explicit_opt_in_offline_default_off_non_authoritative",
-        lineage: { k56: { source: {}, fullArtifactFingerprintSha256: "a".repeat(64), lineageFingerprintSha256: "b".repeat(64), sourceBoundViaK58: "GO" }, stableAcrossAudit: true },
+        lineage: {
+            k56: { source: {}, fullArtifactFingerprintSha256: "a".repeat(64), lineageFingerprintSha256: "b".repeat(64), sourceBoundViaK58: "GO" },
+            sourceStability: "CHECKPOINTED_PERSISTENT_DRIFT_ONLY", transientABADriftDetection: "NO-GO",
+        },
         inventory: { effects: 3_836, references: 12_265, states: 7_248, cards: 3_434, publicIndexes: 4, excludedEffects: 17, excludedReferences: 45, excludedReason: "runtime_deck_index_unresolved" },
         comparison: {
             productiveCharacterDataset: {
@@ -32,17 +70,319 @@ function fixture(): any {
                 distinctJoinableCards: 2_265, distinctUnjoinableCards: 1_169, textBaselinePresentReferences: 8_893,
                 structuredLeaderDetailsPresentReferences: 0, identityOnlyNoTextAuthority: true,
             },
-            scraperLeaderContract: {}, teamAnalysisContract: {}, android: {},
+            scraperLeaderContract: {}, teamAnalysisContract: {}, android: {
+                source: pinnedAndroidIdentity(),
+                wireAndDomainSourceFingerprintSha256: pinnedAndroidIdentity().fingerprintSha256,
+            },
         },
         dimensionMatrix: CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_DIMENSION_GOLDEN.map(item => ({ ...item })),
         effectCompatibility: { counts: { directly_representable: 0, additive_contract_required: 3_836, current_model_lossy: 0, runtime_context_required: 0, blocked_unknown: 0 }, effects },
         k63Proposal: { replacesEffectiveValues: false, existingFallback: "byte_and_semantically_identical", modifiesUi: false, modifiesCharacterEntity: false },
-        boundaries: { conditional17Included: false, deckIndex: "unknown", leaderFriendComposition: "unknown", finalStacking: "unknown", finalRounding: "unknown", transformationsDeathReviveExchangeStandby: "unknown", combatCalculation: "NOT_EXECUTED", runtimeInstrumentation: "NOT_EXECUTED", newTextParsing: "NOT_EXECUTED", networkRequestCount: 0, authenticatedRequestCount: 0, r2MutationCount: 0, publisherExecuted: false, authoritySelected: false, androidModified: false },
-        readiness: { lineageK56ThroughK61: "GO" },
+        boundaries: { conditional17Included: false, deckIndex: "unknown", leaderFriendComposition: "unknown", finalStacking: "unknown", finalRounding: "unknown", transformationsDeathReviveExchangeStandby: "unknown", combatCalculation: "NOT_EXECUTED", runtimeInstrumentation: "NOT_EXECUTED", newTextParsing: "NOT_EXECUTED", networkRequestCount: 0, authenticatedRequestCount: 0, r2MutationCount: 0, publisherExecuted: false, authoritySelected: false, androidModified: false, androidSourceBytesReadFromGitObjectDatabaseOnly: true, androidCheckoutBytesRead: false, androidSourceCanAuthorizeMaterializedBytes: false },
+        readiness: { lineageK56ThroughK61: "GO", processTreeRssUnder1GiB: "NOT_EXECUTED" },
+    };
+}
+
+function syntheticAndroidPin(bytes: Buffer): CharacterLeaderCompatibilityAndroidSourcePin {
+    return {
+        repositoryUrl: "https://example.test/android.git",
+        commit: "a".repeat(40),
+        files: [{
+            path: "domain/src/main/java/example/Source.kt",
+            blobId: "b".repeat(40),
+            sizeBytes: bytes.length,
+            sha256: sha256(bytes),
+        }],
+    };
+}
+
+function syntheticSourceReceipt(marker: string): any {
+    const androidBody = {
+        repositoryUrl: "https://example.test/android.git", commit: "a".repeat(40), access: "git_object_database_only",
+        checkoutBytesRead: false, files: [],
+    };
+    const body = {
+        schemaVersion: 1,
+        contract: "dokkan-database-character-leader-supported-compatibility-source-receipt",
+        roots: [{ role: "K58 artifacts", path: "root", realPath: "root", dev: 1, ino: 2, entries: [] }],
+        files: [{ role: "K55 database", path: "db", realPath: "db", dev: 1, ino: 3, sizeBytes: 1, sha256: marker.repeat(64) }],
+        android: { ...androidBody, fingerprintSha256: sha256(JSON.stringify(androidBody)) },
+    };
+    return { ...body, fingerprintSha256: sha256(JSON.stringify(body)) };
+}
+
+function fakeGitExecutor(
+    root: string,
+    pin: CharacterLeaderCompatibilityAndroidSourcePin,
+    bytes: Buffer,
+    mutate?: (command: CharacterLeaderCompatibilityGitCommand, output: Buffer) => Buffer | undefined,
+): CharacterLeaderCompatibilityGitExecutor {
+    return {
+        async run(command): Promise<Buffer> {
+            assert.equal(command.repository, root);
+            assert(!command.args.includes("checkout"));
+            assert(!command.args.includes("show"));
+            const source = pin.files[0];
+            let output: Buffer;
+            switch (command.label) {
+                case "repository root":
+                    assert.deepEqual(command.args, ["rev-parse", "--show-toplevel"]);
+                    output = Buffer.from(`${root}\n`, "utf8");
+                    break;
+                case "repository URL":
+                    assert.deepEqual(command.args, ["config", "--get", "remote.origin.url"]);
+                    output = Buffer.from(`${pin.repositoryUrl}\n`, "utf8");
+                    break;
+                case "commit":
+                    assert.deepEqual(command.args, ["rev-parse", "--verify", "--end-of-options", pin.commit]);
+                    output = Buffer.from(`${pin.commit}\n`, "utf8");
+                    break;
+                case "commit lineage":
+                    assert.deepEqual(command.args, ["rev-parse", "--verify", "--end-of-options", `${pin.commit}^{commit}`]);
+                    output = Buffer.from(`${pin.commit}\n`, "utf8");
+                    break;
+                case `tree entry ${source.path}`:
+                    assert.deepEqual(command.args, ["ls-tree", "-z", pin.commit, "--", source.path]);
+                    output = Buffer.from(`100644 blob ${source.blobId}\t${source.path}\0`, "utf8");
+                    break;
+                case `blob type ${source.path}`:
+                    assert.deepEqual(command.args, ["cat-file", "-t", source.blobId]);
+                    output = Buffer.from("blob\n", "utf8");
+                    break;
+                case `blob size ${source.path}`:
+                    assert.deepEqual(command.args, ["cat-file", "-s", source.blobId]);
+                    output = Buffer.from(`${source.sizeBytes}\n`, "utf8");
+                    break;
+                case `blob bytes ${source.path}`:
+                    assert.deepEqual(command.args, ["cat-file", "blob", source.blobId]);
+                    output = Buffer.from(bytes);
+                    break;
+                default:
+                    throw new Error(`unexpected Git command: ${command.label}`);
+            }
+            assert(output.length < command.maximumStdoutBytesExclusive);
+            const mutated = mutate?.(command, output);
+            return mutated ?? output;
+        },
     };
 }
 
 describe("K62 supported leader compatibility", () => {
+    it("captures the immutable receipt, collects garbage, then starts the single heavy validator", async () => {
+        const events: string[] = [];
+        const options = {
+            sidecarRoot: "sidecar", productionRoot: "production", fyiRoot: "fyi",
+            k43Root: "k43", k46Root: "k46", k48Root: "k48", nativeRuntime: "native", database: "database",
+            k56Root: "k56", k58Root: "k58",
+        } as any;
+        const android = pinnedAndroidIdentity();
+        const sourceReceipt = syntheticSourceReceipt("a");
+        const validatedK58 = { sourceBoundValidation: "GO", k55ValidationProcessPeakRssBytes: 123 } as any;
+
+        const result = await captureCharacterLeaderSupportedCompatibilityReceiptBeforeHeavyValidation(options, android, {
+            captureReceipt: (async (receivedOptions: any, receivedAndroid: any) => {
+                assert.equal(receivedOptions, options);
+                assert.equal(receivedAndroid, android);
+                events.push("receipt");
+                return sourceReceipt;
+            }) as any,
+            collectGarbage: () => events.push("gc"),
+            validateK58: (async (received: any) => {
+                assert.equal(received.artifactRoot, options.k58Root);
+                assert.equal(received.k56Root, options.k56Root);
+                events.push("heavy-validator");
+                return validatedK58;
+            }) as any,
+        });
+
+        assert.deepEqual(events, ["receipt", "gc", "heavy-validator"]);
+        assert.equal(result.sourceReceipt, sourceReceipt);
+        assert.equal(result.validatedK58, validatedK58);
+    });
+
+    it("finishes the single heavy load and double generation before GC and post-write receipt validation", async () => {
+        const events: string[] = [];
+        const options = { outputRoot: "unused-output-root" } as any;
+        const sourceReceipt = syntheticSourceReceipt("a");
+        const artifacts = () => ({
+            gzip: Buffer.from("payload"),
+            coverageBytes: Buffer.from("coverage"),
+            validationBytes: Buffer.from("validation"),
+            manifestBytes: Buffer.from("manifest"),
+            validation: { valid: true, failures: [] },
+        }) as any;
+        const validated = { sourceBoundReconstruction: "GO", sourceStability: "CHECKPOINTED_PERSISTENT_DRIFT_ONLY" } as any;
+
+        const result = await runCharacterLeaderSupportedCompatibilityLifecycle(options, {
+            firstPass: async () => {
+                events.push("first-pass:start");
+                const firstPass = await runCharacterLeaderSupportedCompatibilityFirstPass(options, {
+                    load: (async () => {
+                        events.push("load");
+                        return { inputs: { marker: "loaded" }, k55ValidationProcessPeakRssBytes: 123, sourceReceipt } as any;
+                    }) as any,
+                    buildReport: ((inputs: any) => {
+                        assert.equal(inputs.marker, "loaded");
+                        events.push("build");
+                        return { marker: "report" } as any;
+                    }) as any,
+                    materialize: ((report: any) => {
+                        assert.equal(report.marker, "report");
+                        events.push("materialize");
+                        return artifacts();
+                    }) as any,
+                    write: (async (outputRoot: string) => {
+                        assert.equal(outputRoot, options.outputRoot);
+                        events.push("write");
+                    }) as any,
+                });
+                events.push("first-pass:end");
+                return firstPass;
+            },
+            collectGarbage: () => events.push("gc"),
+            validate: (async (_options: any, expected: any, receipt: any) => {
+                assert.equal(receipt, sourceReceipt);
+                assert.equal(expected.gzip.toString(), "payload");
+                assert.equal(expected.coverageBytes.toString(), "coverage");
+                assert.equal(expected.validationBytes.toString(), "validation");
+                assert.equal(expected.manifestBytes.toString(), "manifest");
+                events.push("post-write-validation");
+                return validated;
+            }) as any,
+        });
+
+        assert.deepEqual(events, [
+            "first-pass:start", "load", "build", "materialize", "build", "materialize", "write",
+            "first-pass:end", "gc", "post-write-validation",
+        ]);
+        assert.equal(result.initialChildPeak, 123);
+        assert.equal(result.validated, validated);
+    });
+
+    it("compares all four persisted members and rejects source receipt drift", () => {
+        const expected = {
+            gzip: Buffer.from("payload"), coverageBytes: Buffer.from("coverage"),
+            validationBytes: Buffer.from("validation"), manifestBytes: Buffer.from("manifest"),
+        };
+        assert.doesNotThrow(() => assertCharacterLeaderSupportedCompatibilityPersistedBytes(expected, expected));
+        const cases: Array<[keyof typeof expected, string]> = [
+            ["gzip", "payload"], ["coverageBytes", "coverage"],
+            ["validationBytes", "validation"], ["manifestBytes", "manifest"],
+        ];
+        for (const [member, label] of cases) {
+            assert.throws(
+                () => assertCharacterLeaderSupportedCompatibilityPersistedBytes(
+                    { ...expected, [member]: Buffer.from("drift") }, expected,
+                ),
+                new RegExp(label),
+            );
+        }
+
+        const before = syntheticSourceReceipt("a");
+        assert.doesNotThrow(() => assertCharacterLeaderSupportedCompatibilitySourceReceiptStable(before, before));
+        assert.throws(
+            () => assertCharacterLeaderSupportedCompatibilitySourceReceiptStable(before, syntheticSourceReceipt("c")),
+            /persistent source identity drifted after write/,
+        );
+    });
+
+    it("rejects output overlap with every receipt source class", async () => {
+        const root = await mkdtemp(join(tmpdir(), "k621-separation-"));
+        try {
+            const directoryNames = ["output", "k56", "k58", "sidecar", "production", "fyi", "k43", "k46", "k48", "scraper", "android"];
+            const directories = Object.fromEntries(directoryNames.map(name => [name, join(root, name)]));
+            await Promise.all(Object.values(directories).map(path => mkdir(path as string)));
+            const sourceDirectory = join(root, "files");
+            await mkdir(sourceDirectory);
+            const sourceFile = async (name: string): Promise<string> => {
+                const path = join(sourceDirectory, name);
+                await writeFile(path, name);
+                return path;
+            };
+            const options: any = {
+                outputRoot: directories.output, k56Root: directories.k56, k58Root: directories.k58,
+                sidecarRoot: directories.sidecar, productionRoot: directories.production, fyiRoot: directories.fyi,
+                k43Root: directories.k43, k46Root: directories.k46, k48Root: directories.k48,
+                scraperRoot: directories.scraper, androidRepository: directories.android,
+                k57Report: await sourceFile("k57.json"), k59Report: await sourceFile("k59.json"),
+                k60Report: await sourceFile("k60.json"), k60Receipt: await sourceFile("k60-receipt.json"),
+                k61Report: await sourceFile("k61.json"), productiveCharacters: await sourceFile("characters.json"),
+                nativeRuntime: await sourceFile("native.so"), database: await sourceFile("database.db"),
+            };
+            await assert.doesNotReject(validateCharacterLeaderSupportedCompatibilityRootSeparation(options));
+
+            const receiptRoots: Array<[string, string]> = [
+                ["k56Root", "K56"], ["k58Root", "K58"], ["sidecarRoot", "K55 sidecar"],
+                ["productionRoot", "K55 production"], ["fyiRoot", "K55 FYI"], ["k43Root", "K55 K43"],
+                ["k46Root", "K55 K46"], ["k48Root", "K55 K48"], ["scraperRoot", "scraper"],
+                ["androidRepository", "Android repository"],
+            ];
+            for (const [field, label] of receiptRoots) {
+                await assert.rejects(
+                    validateCharacterLeaderSupportedCompatibilityRootSeparation({ ...options, outputRoot: options[field] }),
+                    new RegExp(`${label} root`, "i"),
+                );
+            }
+
+            const sourceFiles: Array<[string, string]> = [
+                ["k57Report", "K57 report"], ["k59Report", "K59 report"], ["k60Report", "K60 report"],
+                ["k60Receipt", "K60 receipt"], ["k61Report", "K61 report"],
+                ["productiveCharacters", "productive Character"], ["nativeRuntime", "K55 native runtime"],
+                ["database", "K55 database"],
+            ];
+            for (const [field, label] of sourceFiles) {
+                const overlapping = join(directories.output, `${field}.source`);
+                await writeFile(overlapping, field);
+                await assert.rejects(
+                    validateCharacterLeaderSupportedCompatibilityRootSeparation({ ...options, [field]: overlapping }),
+                    new RegExp(`${label}.*source file`, "i"),
+                );
+            }
+        } finally { await rm(root, { recursive: true, force: true }); }
+    });
+
+    it("rejects a selected scraper pin whose linked ancestor resolves outside the canonical root", () => {
+        const canonicalRoot = resolve(join(tmpdir(), "k621-scraper-root"));
+        assert.doesNotThrow(() => assertCharacterLeaderSupportedCompatibilitySelectedPinWithinRootForTest(
+            canonicalRoot, "nested/pin.ts", join(canonicalRoot, "nested", "pin.ts"),
+        ));
+        assert.throws(() => assertCharacterLeaderSupportedCompatibilitySelectedPinWithinRootForTest(
+            canonicalRoot, "linked/pin.ts", resolve(join(canonicalRoot, "..", "outside", "pin.ts")),
+        ), /escaped canonical root/);
+        assert.throws(() => assertCharacterLeaderSupportedCompatibilitySelectedPinWithinRootForTest(
+            canonicalRoot, "nested/../pin.ts", join(canonicalRoot, "pin.ts"),
+        ), /escaped canonical root/);
+    });
+
+    it("ignores more than ten thousand unrelated production files but detects consumed-member drift", async function () {
+        this.timeout(15_000);
+        const root = await mkdtemp(join(tmpdir(), "k621-selected-production-"));
+        try {
+            const consumed = join(root, "characters.json");
+            await writeFile(consumed, "pinned-consumed-bytes");
+            const unrelatedCount = 10_001;
+            for (let offset = 0; offset < unrelatedCount; offset += 250) {
+                await Promise.all(Array.from({ length: Math.min(250, unrelatedCount - offset) }, (_, index) =>
+                    writeFile(join(root, `unrelated-${String(offset + index).padStart(5, "0")}.tmp`), "x")));
+            }
+
+            const before = await captureCharacterLeaderSupportedCompatibilitySelectedRootForTest(
+                root, "K55 production inputs", ["characters.json"],
+            );
+            const afterUnrelatedInventory = await captureCharacterLeaderSupportedCompatibilitySelectedRootForTest(
+                root, "K55 production inputs", ["characters.json"],
+            );
+            assert.deepEqual(afterUnrelatedInventory, before);
+            assert.deepEqual(before.entries.map(entry => entry.relativePath), ["characters.json"]);
+
+            await writeFile(consumed, "drifted-consumed-bytes");
+            const afterConsumedDrift = await captureCharacterLeaderSupportedCompatibilitySelectedRootForTest(
+                root, "K55 production inputs", ["characters.json"],
+            );
+            assert.notDeepEqual(afterConsumedDrift, before);
+        } finally { await rm(root, { recursive: true, force: true }); }
+    });
+
     it("materializes byte-identically and reconstructs losslessly", () => {
         const first = materializeCharacterLeaderSupportedCompatibility(fixture());
         const second = materializeCharacterLeaderSupportedCompatibility(fixture());
@@ -77,16 +417,122 @@ describe("K62 supported leader compatibility", () => {
         const runtime = fixture();
         runtime.boundaries.finalRounding = false;
         assert(validateCharacterLeaderSupportedCompatibilityReport(runtime).includes("runtime unknown boundary changed"));
+        const android = fixture();
+        android.comparison.android.source.repositoryUrl = "https://example.test/wrong.git";
+        assert(validateCharacterLeaderSupportedCompatibilityReport(android).includes("Android Git object source provenance changed"));
+        const authority = fixture();
+        authority.boundaries.androidSourceCanAuthorizeMaterializedBytes = true;
+        assert(validateCharacterLeaderSupportedCompatibilityReport(authority).includes("Android source authority boundary changed"));
+        const rss = fixture();
+        rss.readiness.processTreeRssUnder1GiB = "GO";
+        assert(validateCharacterLeaderSupportedCompatibilityReport(rss).includes("process-tree RSS requires external execution evidence"));
+        const overclaim = fixture();
+        overclaim.lineage.stableAcrossAudit = true;
+        assert(validateCharacterLeaderSupportedCompatibilityReport(overclaim).includes("source stability overclaim"));
+        const immutable = fixture();
+        immutable.lineage.sourceStability = "IMMUTABLE_ACROSS_AUDIT";
+        assert(validateCharacterLeaderSupportedCompatibilityReport(immutable).includes("source stability overclaim"));
+        const abaOverclaim = fixture();
+        abaOverclaim.lineage.transientABADriftDetection = "GO";
+        assert(validateCharacterLeaderSupportedCompatibilityReport(abaOverclaim).includes("source stability overclaim"));
     });
 
     it("keeps source pins relative and the K63 proposal absent-compatible", () => {
-        for (const tuple of [...CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_SOURCE_PINS.scraper, ...CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_SOURCE_PINS.android]) {
-            assert(!tuple[0].includes(":"));
-            assert(!tuple[0].startsWith("/"));
+        for (const [path] of CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_SOURCE_PINS.scraper) {
+            assert(!path.includes(":"));
+            assert(!path.startsWith("/"));
+        }
+        for (const source of CHARACTER_LEADER_SUPPORTED_COMPATIBILITY_ANDROID_SOURCE_PIN.files) {
+            assert(!source.path.includes(":"));
+            assert(!source.path.startsWith("/"));
         }
         const value = fixture();
         assert.equal(value.k63Proposal.existingFallback, "byte_and_semantically_identical");
         assert.equal(value.k63Proposal.replacesEffectiveValues, false);
+    });
+
+    it("reads pinned Android bytes only from a mocked Git object database", async () => {
+        const root = await mkdtemp(join(tmpdir(), "k621-android-git-"));
+        try {
+            const bytes = Buffer.from("object database bytes", "utf8");
+            const pin = syntheticAndroidPin(bytes);
+            const checkoutPath = join(root, pin.files[0].path);
+            await mkdir(dirname(checkoutPath), { recursive: true });
+            await writeFile(checkoutPath, "different untrusted checkout bytes");
+            const executor = fakeGitExecutor(root, pin, bytes);
+
+            const identity = await verifyCharacterLeaderSupportedCompatibilityAndroidSourceForTest(root, executor, pin);
+
+            assert.equal(identity.repositoryUrl, pin.repositoryUrl);
+            assert.equal(identity.commit, pin.commit);
+            assert.equal(identity.checkoutBytesRead, false);
+            assert.equal(identity.access, "git_object_database_only");
+            assert.deepEqual(identity.files, pin.files);
+            assert(!JSON.stringify(identity).includes("object database bytes"));
+            assert(!JSON.stringify(identity).includes("different untrusted checkout bytes"));
+        } finally { await rm(root, { recursive: true, force: true }); }
+    });
+
+    it("disables lazy object fetch after removing ambient Git overrides", () => {
+        const environment = characterLeaderSupportedCompatibilityGitEnvironmentForTest({
+            PATH: "fixed-path",
+            GIT_DIR: "untrusted-git-dir",
+            git_object_directory: "untrusted-object-directory",
+            GIT_NO_LAZY_FETCH: "0",
+            GIT_OPTIONAL_LOCKS: "1",
+        });
+
+        assert.equal(environment.PATH, "fixed-path");
+        assert.equal(environment.GIT_NO_LAZY_FETCH, "1");
+        assert.equal(environment.GIT_OPTIONAL_LOCKS, "0");
+        assert.equal(environment.LC_ALL, "C");
+        assert.equal(environment.GIT_DIR, undefined);
+        assert.equal(environment.git_object_directory, undefined);
+    });
+
+    it("fails closed on Android Git repository lineage and object divergence", async () => {
+        const root = await mkdtemp(join(tmpdir(), "k621-android-git-failure-"));
+        try {
+            const bytes = Buffer.from("object database bytes", "utf8");
+            const pin = syntheticAndroidPin(bytes);
+            const cases: Array<[string, (command: CharacterLeaderCompatibilityGitCommand, output: Buffer) => Buffer]> = [
+                ["repository", (command, output) => command.label === "repository root" ? Buffer.from(`${join(root, "other")}\n`) : output],
+                ["URL", (command, output) => command.label === "repository URL" ? Buffer.from("https://example.test/wrong.git\n") : output],
+                ["commit", (command, output) => command.label === "commit" ? Buffer.from(`${"f".repeat(40)}\n`) : output],
+                ["lineage", (command, output) => command.label === "commit lineage" ? Buffer.from(`${"e".repeat(40)}\n`) : output],
+                ["path", (command, output) => command.label.startsWith("tree entry") ? Buffer.alloc(0) : output],
+                ["blob", (command, output) => command.label.startsWith("tree entry") ? Buffer.from(`100644 blob ${"d".repeat(40)}\t${pin.files[0].path}\0`) : output],
+                ["type", (command, output) => command.label.startsWith("blob type") ? Buffer.from("tree\n") : output],
+                ["size", (command, output) => command.label.startsWith("blob size") ? Buffer.from(`${bytes.length + 1}\n`) : output],
+                ["bytes", (command, output) => command.label.startsWith("blob bytes") ? Buffer.alloc(bytes.length, 0) : output],
+            ];
+            for (const [label, mutate] of cases) {
+                await assert.rejects(
+                    verifyCharacterLeaderSupportedCompatibilityAndroidSourceForTest(
+                        root,
+                        fakeGitExecutor(root, pin, bytes, mutate),
+                        pin,
+                    ),
+                    new RegExp(label, "i"),
+                );
+            }
+            const missingCommit = fakeGitExecutor(root, pin, bytes, command => {
+                if (command.label === "commit") throw new Error("missing commit");
+                return undefined;
+            });
+            await assert.rejects(
+                verifyCharacterLeaderSupportedCompatibilityAndroidSourceForTest(root, missingCommit, pin),
+                /missing commit/,
+            );
+            const missingPromisorObject = fakeGitExecutor(root, pin, bytes, command => {
+                if (command.label.startsWith("blob bytes")) throw new Error("missing promisor object");
+                return undefined;
+            });
+            await assert.rejects(
+                verifyCharacterLeaderSupportedCompatibilityAndroidSourceForTest(root, missingPromisorObject, pin),
+                /missing promisor object/,
+            );
+        } finally { await rm(root, { recursive: true, force: true }); }
     });
 
     it("writes create-only with manifest last and rejects tampering", async () => {
