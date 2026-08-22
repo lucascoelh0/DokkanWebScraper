@@ -1375,6 +1375,42 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   no empty group. The instrumented compact-width fixture passes and was
   visually inspected on the Pixel 10 Pro emulator.
 
+## Typed Active Skill ultimate-attack publication checkpoint (2026-08-22)
+
+- Scraper commits `0ebbabe` and `e49f1bd` are on `origin/main`; Android commits
+  `59c564d` and `61d5c25` are on `origin/master`.
+- Characters `2026-08-22T12:48:30.694Z` is public with delivered payload
+  SHA-256
+  `e635aed4abe5b4afba37b9f7d09182513470c9d1b85ea235aa2228436917ca88`,
+  2,184,898 compressed bytes and 1,436 characters. Its public manifest and
+  immutable payload were independently fetched with `no-store`; size, SHA-256,
+  gzip content type and cache metadata match exactly. Pan `1024991` carries
+  typed ultimate ID `36`, multiplier `600` and single-target scope.
+- The required Characters dry-run found 1,622 matching objects, six missing
+  objects, zero conflicts and zero failed reads. It projected 2,237,895 new
+  bytes and a conservative 378,237,895-byte bucket upper bound. K28 uploaded
+  all six objects, directly verified 1,629 objects and promoted the manifest
+  last.
+- Team Analysis `2026-08-22T12:48:30.694Z:parser-1.7.4` is public with payload
+  SHA-256
+  `d2e0a8dceff42eb7c1522a706c914f2bfa3591e6450ce934c22ad252c13d4c88`,
+  2,754,557 compressed bytes and 2,287 states. It was regenerated from the
+  exact public Characters bytes; its source version and SHA-256 match the
+  promoted Characters manifest.
+- The Team Analysis dry-run projected 2,755,257 new bytes, an 8,245,556-byte
+  managed peak and a conservative 378,754,557-byte global upper bound. The
+  publisher retained both parser-1.7.4 releases and removed the older
+  parser-1.7.3 rollback payload after manifest promotion.
+- Wrangler again failed immediate payload read-after-write before manifest
+  promotion. Direct public HTTPS proved status 200, the exact payload bytes and
+  SHA-256, gzip content type and immutable cache metadata; only then was the
+  documented skip-verification recovery used. The final public manifest and
+  payload were independently re-read with `no-store` and exact content.
+- The current Android `master` debug APK was rebuilt and installed over the
+  existing emulator app. It downloaded the promoted datasets and Pan (GT) EZA
+  rendered `CONDITION` before `DETAILS`, with `Increases ATK by 600%` sourced
+  from the typed enrichment.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
