@@ -1248,6 +1248,38 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   The duplicate Active Skill block was removed from Character Details; the
   existing Domain-aware block is now the single presentation owner.
 
+## Typed Active Skill publication checkpoint (2026-08-21)
+
+- The mapped-character cache contract is now centralized in
+  `fyi-mapped-character-cache.ts` at exact version 11. Version 10 entries are
+  rejected and rebuilt so newly projected typed Active Skills cannot be hidden
+  behind structurally valid stale mapped characters. The focused cache,
+  scraper, and game-DB projection suites pass 34/34; contract review found no
+  remaining P0-P2 issue.
+- Characters `2026-08-22T01:54:55.262Z` is public with delivered payload
+  SHA-256
+  `e02372a12d0cab5950635c448f0ca9ad04fabc5cd7cc40c4c4edf97a7cf95f8e`,
+  2,167,952 compressed bytes and 1,436 characters. The payload has 202 base
+  states with typed Active Skills; the current source has no EZA-specific or
+  multi-Active-Skill state, so multi-skill behavior remains covered by
+  fixtures rather than production data.
+- Team Analysis `2026-08-22T01:54:55.262Z:parser-1.7.3` is public with payload
+  SHA-256
+  `1ad274d14599a6249b83d0eb2122edea3b96ee73234b3a6fe8935be8139caabe`,
+  2,735,739 compressed bytes and 2,287 states. Its source Characters SHA-256
+  exactly matches the public delivered payload. Both releases passed the
+  required dry-runs and remain far below the 10 GB bucket allowance.
+- Wrangler 4.118.0 again failed its immediate Team Analysis read-after-write
+  verification after a successful put, before manifest promotion. Direct
+  public HTTPS proved the exact size, SHA-256, gzip content type and immutable
+  cache metadata; only then was the documented skip-verification recovery used.
+  The promoted manifest was independently re-read with `no-store`.
+- Android validated the release twice: first as an in-place cached upgrade and
+  then after clearing only the debug app's emulator data. Both paths fetched
+  the exact public Characters and Team Analysis hashes, validated Team Analysis
+  in about one second and launched without an app fatal error. The prior
+  duplicate repro character now renders one named `ACTIVE SKILL` block.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

@@ -30,11 +30,11 @@ import {
     UnitSuperAttack,
 } from "./character";
 import { writeFormattedJson } from "./format-json";
+import { readFyiMappedCharacterCache, writeFyiMappedCharacterCache } from "./fyi-mapped-character-cache";
 import { parseLeaderSkillDetails, splitPassiveSections } from "./scraper";
 
 const DOKKAN_FYI_BASE_URL = "https://dokkan.fyi";
 const DOKKAN_FYI_CDN_URL = "https://cdn.dokkan.fyi";
-const DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION = 10;
 
 export const DEFAULT_DOKKAN_FYI_EXPERIMENT_CHARACTER_IDS = [
     1032521, 1033761, 1032771, 1026251, 1033941,
@@ -465,7 +465,7 @@ export async function getDokkanFyiDataWithReport(characterIds?: number[]): Promi
     const results = await mapWithConcurrency(ids, requestedCharacterConcurrency(), async characterId => {
         const mappedCachePath = resolve(__dirname, "data/fyi-characters/cache", `mapped-character-${characterId}.json`);
         if (!client.shouldRefresh) {
-            const cachedCharacter = await readCachedMappedCharacter(mappedCachePath, client.cacheTtlMsValue);
+            const cachedCharacter = await readFyiMappedCharacterCache(mappedCachePath, client.cacheTtlMsValue);
             if (cachedCharacter) {
                 return {
                     id: characterId.toString(),
@@ -478,7 +478,7 @@ export async function getDokkanFyiDataWithReport(characterIds?: number[]): Promi
         try {
             const page = await client.fetchCharacterPage(characterId);
             const character = await mapDokkanFyiCharacter(page, client);
-            await writeCachedMappedCharacter(mappedCachePath, character);
+            await writeFyiMappedCharacterCache(mappedCachePath, character);
             return {
                 id: characterId.toString(),
                 character,
@@ -1886,36 +1886,6 @@ async function readCachedFyiPage(path: string, ttlMs: number): Promise<CachedFyi
     } catch {
         return undefined;
     }
-}
-
-async function readCachedMappedCharacter(path: string, ttlMs: number): Promise<Character | undefined> {
-    try {
-        const cached = JSON.parse(await readFile(path, "utf8")) as {
-            fetchedAt?: string,
-            mappingVersion?: number,
-            character?: Character,
-        };
-        const fetchedAt = Date.parse(cached.fetchedAt ?? "");
-        if (!cached.character
-            || cached.mappingVersion !== DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION
-            || !Number.isFinite(fetchedAt)
-            || Date.now() - fetchedAt > ttlMs) {
-            return undefined;
-        }
-
-        return cached.character;
-    } catch {
-        return undefined;
-    }
-}
-
-async function writeCachedMappedCharacter(path: string, character: Character): Promise<void> {
-    await mkdir(resolve(path, ".."), { recursive: true });
-    await writeFile(path, JSON.stringify({
-        fetchedAt: new Date().toISOString(),
-        mappingVersion: DOKKAN_FYI_MAPPED_CHARACTER_CACHE_VERSION,
-        character,
-    }), "utf8");
 }
 
 async function fetchDokkanFyiResponse(
