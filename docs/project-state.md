@@ -1368,9 +1368,12 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   one-time rebuild where needed. Presentation is fail-closed: it exposes a
   multiplier only when the outer and nested ultimate IDs are both nonblank,
   equal and the multiplier is positive. No regex participates in the path.
-- The UI has not been changed yet. Intent + Impeccable recommend reusing the
-  existing Active Skill hierarchy with a compact `DETAILS` group between the
-  description and `CONDITION`, subject to product-owner approval.
+- The approved Android UI reuses the existing Active Skill hierarchy with a
+  compact `DETAILS` group after `CONDITION`, matching the established Super
+  Attack grammar. It renders a normal-size bullet and highlights only the
+  typed percentage in warning amber; absent or ambiguous enrichment produces
+  no empty group. The instrumented compact-width fixture passes and was
+  visually inspected on the Pixel 10 Pro emulator.
 
 ## Operating Constraints
 
