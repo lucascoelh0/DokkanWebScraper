@@ -109,11 +109,46 @@ function applyEzaSuperAttacks(
     }
 }
 
+function applyActiveSkillActivationConditions(
+    character: Character,
+    projection: GameDbDokkanpanionProjection,
+    changedFields: Set<string>,
+): void {
+    const conditions = projection.activeSkillDetails
+        ?.filter(detail => detail.activationCondition)
+        .map(detail => ({ id: detail.id, activationCondition: detail.activationCondition }))
+        ?? [];
+    if (conditions.length === 0) return;
+    const details = character.activeSkillDetails;
+    if (!details?.length) {
+        throw new Error(`target ${character.id} has typed Active Skill conditions but no baseline Active Skill details`);
+    }
+    for (const source of conditions) {
+        const matches = details.filter(detail => detail.id === source.id);
+        if (matches.length !== 1) {
+            throw new Error(
+                `target ${character.id} Active Skill ${source.id} matched ${matches.length} baseline detail rows`,
+            );
+        }
+        const target = matches[0];
+        if (target.activationCondition
+            && JSON.stringify(target.activationCondition) !== JSON.stringify(source.activationCondition)) {
+            throw new Error(`target ${character.id} Active Skill ${source.id} activation condition diverges`);
+        }
+        if (!target.activationCondition) {
+            target.activationCondition = JSON.parse(JSON.stringify(source.activationCondition));
+            changedFields.add("activeSkillDetails");
+        }
+    }
+}
+
 function applyProjection(
     character: Character,
     projection: GameDbDokkanpanionProjection,
 ): string[] {
     const changedFields = new Set<string>();
+
+    applyActiveSkillActivationConditions(character, projection, changedFields);
 
     if (projection.ezaLeaderSkill) {
         character.ezaLeaderSkill = projection.ezaLeaderSkill;
@@ -176,7 +211,7 @@ export function overlayGameDbCharacterReleaseStates(
     for (const cardId of targetIds) {
         const index = baselineById.get(cardId) as number;
         const fields = applyProjection(characters[index], projectionById.get(cardId) as GameDbDokkanpanionProjection);
-        if (fields.length === 0) throw new Error(`target ${cardId} has no release-specific game DB fields`);
+        if (fields.length === 0) throw new Error(`target ${cardId} has no selected first-party game DB fields`);
         patches.push({ cardId, fields });
     }
 

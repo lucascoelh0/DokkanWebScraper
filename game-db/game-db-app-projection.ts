@@ -368,6 +368,9 @@ function activeSkillDetails(character: GameDbCharacterSnapshot): ActiveSkillDeta
         condition: activeSkillSet.conditionDescription || undefined,
         turn: activeSkillSet.turn,
         executionLimit: activeSkillSet.execLimit,
+        ...(activeSkillSet.activationCondition
+            ? { activationCondition: activeSkillSet.activationCondition }
+            : {}),
         ultimateSpecialId: activeSkillSet.ultimateSpecialId,
         ultimateAttack: activeSkillSet.ultimateAttack
             ? { ...activeSkillSet.ultimateAttack, provenance: { ...activeSkillSet.ultimateAttack.provenance } }

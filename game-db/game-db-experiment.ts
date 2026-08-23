@@ -704,6 +704,7 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
     const ultimateSpecialById = buildLookup(tables.ultimate_specials);
     const linkById = buildLookup(tables.link_skills);
     const categoryById = buildLookup(tables.card_categories);
+    const skillCausalityById = buildLookup(tables.skill_causalities);
     const standbySkillSetById = buildLookup(tables.standby_skill_sets);
     const finishSkillSetById = buildLookup(tables.finish_skill_sets);
 
@@ -899,6 +900,8 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
                 activeSkillSetById,
                 activeSkillEffectsBySetId,
                 ultimateSpecialById,
+                skillCausalityById,
+                categoryById,
             ),
             standbySkillSets,
             finishSkillSets,

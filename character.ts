@@ -420,10 +420,46 @@ export interface ActiveSkillDetails {
     condition?: string,
     turn?: number,
     executionLimit?: number,
+    activationCondition?: ActiveSkillActivationConditionDetails,
     ultimateSpecialId?: string,
     ultimateAttack?: ActiveSkillUltimateAttackDetails,
     effects: ActiveSkillEffectDetails[],
     source: ActiveSkillDetailsSource,
+}
+
+export interface ActiveSkillActivationConditionDetails {
+    status: "supported" | "partial" | "unknown",
+    expression: ActiveSkillActivationConditionExpression,
+    provenance: {
+        activeSkillSet: { table: "active_skill_sets", rowId: string },
+        causalities: Array<{ table: "skill_causalities", rowId: string }>,
+    },
+}
+
+export type ActiveSkillActivationConditionExpression =
+    | {
+        op: "all" | "any",
+        children: ActiveSkillActivationConditionExpression[],
+    }
+    | {
+        op: "predicate",
+        predicate: ActiveSkillActivationConditionPredicate,
+    };
+
+export interface ActiveSkillActivationConditionPredicate {
+    kind: "battle_turn" | "rotation_category_count" | "enemy_count" | "unknown",
+    comparator?: "eq" | "gte",
+    value?: number,
+    count?: number,
+    categories?: string[],
+    selfInclusion?: "included" | "excluded" | "unknown",
+    evidenceStatus: "supported" | "partial" | "unknown",
+    provenance: {
+        table: "skill_causalities",
+        rowId: string,
+        causalityType: number,
+        values: [number, number, number],
+    },
 }
 
 export interface ActiveSkillUltimateAttackDetails {

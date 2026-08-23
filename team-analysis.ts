@@ -1,5 +1,7 @@
 import { createHash } from "crypto";
 import {
+    ActiveSkillActivationConditionDetails,
+    ActiveSkillDetails,
     Character,
     EffectStructuralEvidence,
     EffectStructuralSource,
@@ -21,7 +23,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.0";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.2";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
@@ -262,6 +264,7 @@ export interface CharacterStateAnalysis {
     formId: string,
     releaseState: ReleaseState,
     displayName: string,
+    activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
     passive?: ParsedPassive,
     superAttacks?: ParsedSuperAttack[],
 }
@@ -642,6 +645,8 @@ interface AnalysisFormSource {
     ezaPassiveDetails?: PassiveDetails,
     sezaPassive?: string,
     sezaPassiveDetails?: PassiveDetails,
+    activeSkillDetails?: ActiveSkillDetails[],
+    ezaActiveSkillDetails?: ActiveSkillDetails[],
     superAttack?: string,
     ezaSuperAttack?: string,
     ultraSuperAttack?: string,
@@ -782,6 +787,10 @@ function buildCharacterStates(
             releaseSource.releaseState,
             releaseSources.length === 1,
         ).map(source => parseSuperAttack(stateKey, source));
+        const activeSkillActivationCondition = analysisActiveSkillActivationCondition(
+            form,
+            releaseSource.releaseState,
+        );
 
         return {
             stateKey,
@@ -795,11 +804,24 @@ function buildCharacterStates(
             formId: identity.formId,
             releaseState: identity.releaseState,
             displayName: form.name,
+            ...(activeSkillActivationCondition ? { activeSkillActivationCondition } : {}),
             ...(passive ? { passive } : {}),
             ...(superAttacks.length > 0 ? { superAttacks } : {}),
         };
         });
     });
+}
+
+function analysisActiveSkillActivationCondition(
+    form: AnalysisFormSource,
+    releaseState: ReleaseState,
+): ActiveSkillActivationConditionDetails | undefined {
+    const details = releaseState === "initial"
+        ? form.activeSkillDetails
+        : form.ezaActiveSkillDetails?.length
+            ? form.ezaActiveSkillDetails
+            : form.activeSkillDetails;
+    return details?.find(detail => detail.activationCondition)?.activationCondition;
 }
 
 function resolveIdentity(
@@ -2363,11 +2385,27 @@ function buildLogicalPassiveBlocks(sourceMap: PassiveSourceMap): LogicalPassiveB
     const hasCompleteStructuredSectionBoundaries = sourceMap.sections.length > 0
         && sourceMap.sections.every(section => Boolean(section.label));
     if (hasCompleteStructuredSectionBoundaries) {
-        return buildStructuredLogicalPassiveBlocks(sourceMap)
-            ?? failClosedLogicalPassiveBlocks(sourceMap.sourceFragments);
+        const structured = buildStructuredLogicalPassiveBlocks(sourceMap);
+        if (structured) {
+            return structured;
+        }
+        return structuredSectionsContainSwallowedLogicalHeader(sourceMap)
+            ? buildHeuristicLogicalPassiveBlocks(sourceMap.sourceFragments)
+            : failClosedLogicalPassiveBlocks(sourceMap.sourceFragments);
     }
 
     return buildHeuristicLogicalPassiveBlocks(sourceMap.sourceFragments);
+}
+
+function structuredSectionsContainSwallowedLogicalHeader(sourceMap: PassiveSourceMap): boolean {
+    return sourceMap.sections.some(section => section.lines.some(line => line.source.slice(1).some(fragment =>
+        isStructuredBoundaryHeader(fragment.text))));
+}
+
+function isStructuredBoundaryHeader(text: string): boolean {
+    return /^[A-Z0-9]/.test(text.trim())
+        && isLogicalHeaderStart(text)
+        && !isEffectModifierContinuation(text);
 }
 
 function buildStructuredLogicalPassiveBlocks(sourceMap: PassiveSourceMap): LogicalPassiveBlock[] | undefined {
@@ -2385,6 +2423,10 @@ function buildStructuredLogicalPassiveBlocks(sourceMap: PassiveSourceMap): Logic
     for (const entry of entries) {
         const lineIndexes = [...new Set(entry.mappedText.source.map(fragment => fragment.lineIndex))]
             .sort((left, right) => left - right);
+        if (entry.kind === "effect" && entry.mappedText.source.slice(1).some(fragment =>
+            isStructuredBoundaryHeader(fragment.text))) {
+            return undefined;
+        }
         if (lineIndexes[0] <= previousLineIndex
             || lineIndexes.some(lineIndex => assignedLineIndexes.has(lineIndex))) {
             return undefined;
@@ -2606,6 +2648,19 @@ function parseBooleanCondition(sourceText: string): ConditionExpression {
 }
 
 function parseExactConditionClause(text: string, sourceText: string): ConditionExpression | undefined {
+    const entrance = parseEntranceAnimationCondition(text, sourceText);
+    if (entrance) {
+        return entrance;
+    }
+
+    if (/^activating the Active Skill$/i.test(text)) {
+        return predicateExpression({
+            kind: "active_skill_used",
+            scope: "self",
+            sourceText,
+        });
+    }
+
     const combatEvent = parseExactCombatEventCondition(text, sourceText);
     if (combatEvent) {
         return combatEvent;
@@ -2714,6 +2769,17 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
     }
 
     return parseAllyConditionClause(text, sourceText);
+}
+
+function parseEntranceAnimationCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const entrance = /^Activates the Entrance Animation when (.+?) upon the character's entry$/i.exec(text);
+    if (!entrance) {
+        return undefined;
+    }
+    return parseAllyConditionClause(entrance[1], sourceText);
 }
 
 interface ParsedCombatEventIdentity {
@@ -6178,12 +6244,14 @@ function expectedStateSources(
     displayName: string,
     passiveText: string,
     passiveDetails?: PassiveDetails,
+    activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
     superAttacks: AnalysisSuperAttackSource[],
 }> {
     const expected = new Map<string, {
         displayName: string,
         passiveText: string,
         passiveDetails?: PassiveDetails,
+        activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
         superAttacks: AnalysisSuperAttackSource[],
     }>();
     for (const character of characters) {
@@ -6194,6 +6262,14 @@ function expectedStateSources(
                     displayName: form.name,
                     passiveText: releaseSource.passiveText,
                     ...(releaseSource.passiveDetails ? { passiveDetails: releaseSource.passiveDetails } : {}),
+                    ...(analysisActiveSkillActivationCondition(form, releaseSource.releaseState)
+                        ? {
+                            activeSkillActivationCondition: analysisActiveSkillActivationCondition(
+                                form,
+                                releaseSource.releaseState,
+                            ),
+                        }
+                        : {}),
                     superAttacks: analysisSuperAttackSources(
                         form,
                         releaseSource.releaseState,
@@ -6236,6 +6312,7 @@ function validateStateSource(
         displayName: string,
         passiveText: string,
         passiveDetails?: PassiveDetails,
+        activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
         superAttacks: AnalysisSuperAttackSource[],
     } | undefined,
     issues: TeamAnalysisValidationIssue[],
@@ -6245,6 +6322,13 @@ function validateStateSource(
     }
     if (state.displayName !== expected.displayName) {
         issues.push({ code: "display-name-source", message: `Display name does not match the character form.`, stateKey: state.stateKey });
+    }
+    if (JSON.stringify(state.activeSkillActivationCondition) !== JSON.stringify(expected.activeSkillActivationCondition)) {
+        issues.push({
+            code: "active-skill-condition-source",
+            message: "Active Skill activation condition does not exactly match the character payload.",
+            stateKey: state.stateKey,
+        });
     }
     if (expected.passiveText) {
         if (state.passive?.rawText !== expected.passiveText) {

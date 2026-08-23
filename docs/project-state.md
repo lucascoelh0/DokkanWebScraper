@@ -1523,6 +1523,82 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   committing and pushing the implementation and matching tracked `lib/`
   output remain separate, explicitly authorized actions.
 
+## Team passive-analysis clarity checkpoint (2026-08-23)
+
+- Local Team Analysis parser `1.9.1` recognizes the official Global passive
+  descriptions for Entrance Animation team-category requirements and Active
+  Skill activation as typed predicates. The grammar is deliberately exact and
+  fails closed for noncanonical wording. Ultimate Gohan EZA's Entrance now
+  resolves from another `Bond of Parent and Child` ally instead of being
+  reported as missing condition data; TEQ Beast's Active Skill/18 Ki
+  alternative remains honest runtime battle context.
+- The complete local artifact contains 2,288 states, 2,938,665 compressed
+  bytes, 54,393,578 uncompressed bytes and SHA-256
+  `f400fdd475d2e79119881ad21a75bc840da46dc9fc260e93772c471af7c96457`.
+  It is bound to public Characters version `2026-08-22T21:14:10.019Z` and SHA
+  `34b2ce3918d0497b458f106f4e00b50cb039f0a280ef6bfe45c0ca76ee1a84bd`.
+  This candidate was validated only in the local Android emulator; no R2
+  dry-run or publication has been authorized or performed.
+- Android presentation now keeps atomic rules for evaluation but groups them
+  back into their shared first-party source clause. The Team Builder counts
+  conditions rather than duplicated effects, distinguishes battle context
+  from missing typed data, shows typed matching-member evidence and application
+  timing, and reuses Character Details percentage emphasis plus once/forever
+  and value-direction icons. Incomplete drafts use lower/upper count bounds, so
+  a known matching ally can prove a presence condition without empty slots
+  forcing an unknown result.
+- Focused parser tests, the full 325-test Team Analysis suite, Android domain
+  and app unit suites, debug assembly and focused instrumentation passed before
+  final delivery review. The final cross-repository contract review found no
+  P0-P2 issue; its only residual risk is conservative fallback if future
+  official wording or malformed legacy source anchors no longer match the
+  current exact grammar. Git commit/push and R2 publication remain separate
+  operations requiring explicit authorization.
+
+## Team passive availability refinement checkpoint (2026-08-23)
+
+- Local Team Analysis parser `1.9.2` adds a first-party, recursive Active Skill
+  activation-condition contract sourced from the official Global game DB
+  `skill_causalities` rows. Battle-turn, rotation-category-count and enemy-count
+  predicates retain their exact DB operands and row provenance; unknown
+  causality types or modes remain unknown. Release-state selection and the
+  two-card overlay preserve existing localized Character content and add only a
+  matching typed condition, failing closed on missing, ambiguous or divergent
+  Active Skill identities.
+- Android keeps the conservative exact condition result and derives a separate
+  glance-first availability state. Normal progression and player actions such
+  as turns, attacking, Super Attacking, attack counts and Ki thresholds are
+  `AVAILABLE`; a proved team-composition blocker is `UNAVAILABLE`; incoming
+  attacks, enemies and other runtime facts are `BATTLE_CONTEXT`; incomplete
+  typed semantics are `CONDITION_DATA`. OR expressions become unavailable only
+  when every route is proved unavailable, preventing a battle-dependent Active
+  Skill alternative from becoming a false red result.
+- Ultimate Gohan EZA's Active Skill set `174` now has a deliberately narrow
+  first-party correlation for causality row `2025`: exact set, compiled AST,
+  category `88` (`Super Heroes`) and official condition description are all
+  pinned before the three-allies-in-rotation predicate becomes supported. This
+  does not promote type-34 mode-2 globally. Android consumes leaf evidence
+  independently, so the supported turn-3 + three-Super-Heroes route can prove
+  availability while the alternative enemy-count route remains incomplete.
+  Missing leaf evidence still fails closed.
+- The passive parser now detects a malformed structured section that swallowed
+  the following title-cased logical header and falls back to the lossless raw
+  header/bullet boundaries. This fixes TEQ Beast's `For every attack performed`
+  stack being attached to `When receiving a normal attack` while preserving a
+  known lowercase inline continuation fixture.
+- The complete local candidate is Characters
+  `2026-08-23T04:51:53.794Z`, SHA-256
+  `469e9df38f8ae35521bc4fca1324a5b47391ada2b0c0b79cdc34ea44d8d605cb`,
+  2,342,759 compressed bytes and 1,436 characters, plus Team Analysis
+  `2026-08-23T04:51:53.794Z:parser-1.9.2`, SHA-256
+  `8739a397e8e674026299b54e0977f04fcdb0655a1e61712cb16aea643551b27a`,
+  2,924,529 compressed bytes, 53,779,641 uncompressed bytes and 2,288 states.
+  It was installed only in the Android Studio emulator. The real TEQ Beast and
+  Ultimate Gohan draft showed attack/Ki/progression clauses as available and
+  incoming-attack or unresolved enemy/rotation routes as battle-dependent.
+  No R2 dry-run or publication, Git commit, or push was performed for this
+  checkpoint.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

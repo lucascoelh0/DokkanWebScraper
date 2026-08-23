@@ -700,6 +700,43 @@ describe("team-analysis Gate A1 passive parser", function () {
     ]);
   });
 
+  it("falls back to raw logical headers when a structured effect swallows the next section", () => {
+    const rawText = [
+      "For every attack performed",
+      "- Ki +2 (up to +16)",
+      "When receiving a normal attack",
+      "- Counters with tremendous power",
+    ].join("\n");
+    const passive = parsePassive("1034341:1034341:initial", undefined, rawText, {
+      text: rawText,
+      sections: [{
+        label: "For every attack performed",
+        lines: [
+          "Ki +2 (up to +16) When receiving a normal attack",
+          "Counters with tremendous power",
+        ],
+      }],
+    });
+
+    const kiRule = passive.rules.find(rule => rule.effects.some(effect => effect.kind === "ki"));
+    const counterRule = passive.rules.find(rule => rule.effects.some(effect =>
+      effect.sourceText === "Counters with tremendous power"));
+    ok(kiRule);
+    ok(counterRule);
+    equal(kiRule.condition.op, "always");
+    equal(kiRule.effects[0].scaling?.kind, "per_combat_event");
+    match(JSON.stringify(kiRule.effects[0].scaling), /"eventType":"attack_performed"/);
+    match(JSON.stringify(counterRule.condition), /"kind":"incoming_attack"/);
+    deepEqual(kiRule.source.map(fragment => fragment.text), [
+      "For every attack performed",
+      "- Ki +2 (up to +16)",
+    ]);
+    deepEqual(counterRule.source.map(fragment => fragment.text), [
+      "When receiving a normal attack",
+      "- Counters with tremendous power",
+    ]);
+  });
+
   it("fails closed when structured sections do not losslessly partition the passive source", () => {
     const rawText = "Basic effect(s)\n- ATK & DEF 100%\nWhen receiving an attack";
     const passive = parsePassive("gate-a1:invalid-sections:initial", undefined, rawText, {
@@ -1202,6 +1239,56 @@ describe("team-analysis Gate A4.1 structural enemy-status evidence", function ()
   });
 });
 
+describe("team-analysis first-party Entrance Animation conditions", function () {
+  it("types another category ally on the team without consuming the entry trigger", () => {
+    const rawText = [
+      "Activates the Entrance Animation when there is another",
+      "\"Bond of Parent and Child\" Category ally on the team",
+      "upon the character's entry",
+      "- Ki +24 for 1 turn",
+      "- ATK & DEF 200% and guards all attacks",
+    ].join("\n");
+
+    const passive = parsePassive("1025561:1025561:eza", "Beyond Ultimate Power", rawText);
+
+    equal(passive.rules.length, 2);
+    passive.rules.forEach(rule => {
+      equal(rule.conditionStatus, "supported");
+      deepEqual(conditionShape(rule.condition), {
+        op: "predicate",
+        kind: "ally_category_present",
+        scope: "team",
+        selfInclusion: "excluded",
+        categories: ["Bond of Parent and Child"],
+      });
+    });
+  });
+
+  it("fails closed for a non-canonical Entrance Animation condition", () => {
+    const passive = parsePassive(
+      "entrance:unknown:initial",
+      undefined,
+      "Activates the Entrance Animation under an opaque condition\n- ATK 100%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "unknown");
+  });
+
+  it("types Active Skill activation as battle context inside an alternative", () => {
+    const passive = parsePassive(
+      "1034341:1034341:initial",
+      undefined,
+      "When activating the Active Skill or when attacking with 18 or more Ki\n- ATK & DEF 350%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(
+      flattenPredicates(passive.rules[0].condition).map(predicate => predicate.kind),
+      ["active_skill_used", "ki_amount"],
+    );
+  });
+});
+
 describe("team-analysis Gate A5 Ki and Ki Sphere parser", function () {
   for (const fixtureCase of gateA5Fixture.cases) {
     it(`matches Gate A5 golden case: ${fixtureCase.name}`, () => {
@@ -1531,6 +1618,65 @@ describe("team-analysis Gate A7 Super Attack effect channel", function () {
     equal(eza.superAttacks?.[0]?.name, "EZA SA");
     equal(eza.superAttacks?.[0]?.rawText, character.ezaSuperAttack);
     deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
+  });
+
+  it("carries the release-specific typed Active Skill activation condition", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters.find(item => item.id === "1004001") as Character;
+    const condition = (rowId: string, turn: number) => ({
+      status: "supported" as const,
+      expression: {
+        op: "predicate" as const,
+        predicate: {
+          kind: "battle_turn" as const,
+          comparator: "gte" as const,
+          value: turn,
+          evidenceStatus: "supported" as const,
+          provenance: {
+            table: "skill_causalities" as const,
+            rowId,
+            causalityType: 5,
+            values: [turn - 1, 0, 0] as [number, number, number],
+          },
+        },
+      },
+      provenance: {
+        activeSkillSet: { table: "active_skill_sets" as const, rowId: "42" },
+        causalities: [{ table: "skill_causalities" as const, rowId }],
+      },
+    });
+    character.activeSkillDetails = [{
+      id: "42",
+      name: "Base Active Skill",
+      description: "Base effect",
+      activationCondition: condition("100", 4),
+      effects: [],
+      source: {
+        kind: "game_db",
+        relation: { table: "card_active_skills", rowId: "1" },
+        set: { table: "active_skill_sets", rowId: "42" },
+      },
+    }];
+    character.ezaActiveSkillDetails = [{
+      ...character.activeSkillDetails[0],
+      name: "EZA Active Skill",
+      activationCondition: condition("101", 3),
+    }];
+
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    deepEqual(
+      state(dataset.states, "1004001:1004001:initial").activeSkillActivationCondition,
+      condition("100", 4),
+    );
+    deepEqual(
+      state(dataset.states, "1004001:1004001:eza").activeSkillActivationCondition,
+      condition("101", 3),
+    );
+    deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries), []);
+
+    state(dataset.states, "1004001:1004001:eza").activeSkillActivationCondition = condition("102", 2);
+    ok(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries)
+      .some(issue => issue.code === "active-skill-condition-source"));
   });
 
   it("carries the typed Super Attack level curve on every release state", () => {
@@ -2811,7 +2957,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.0/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.2/);
   });
 });
 

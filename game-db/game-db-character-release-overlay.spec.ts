@@ -119,6 +119,68 @@ describe("game DB character release-state overlay", () => {
         equal(JSON.stringify(baseline), baselineBytes);
     });
 
+    it("adds only the typed Active Skill activation condition to a matching baseline detail", () => {
+        const baseline = character("1034341");
+        baseline.activeSkillDetails = [{
+            id: "378",
+            name: "Special Beam Cannon",
+            description: "Existing localized effect",
+            effects: [],
+            source: {
+                kind: "dokkan_fyi_payload",
+                sourceVersion: "fixture",
+                payloadField: "props.character.active_skills",
+            },
+        }];
+        const firstParty = projection("1034341");
+        firstParty.ezaLeaderSkill = undefined;
+        firstParty.ezaLeaderSkillDetails = undefined;
+        firstParty.ezaPassive = undefined;
+        firstParty.ezaPassiveDetails = undefined;
+        firstParty.ezaSuperAttackDetails = undefined;
+        firstParty.activeSkillDetails = [{
+            id: "378",
+            name: "First-party name",
+            description: "First-party effect",
+            activationCondition: {
+                status: "supported",
+                expression: {
+                    op: "predicate",
+                    predicate: {
+                        kind: "battle_turn",
+                        comparator: "gte",
+                        value: 4,
+                        evidenceStatus: "supported",
+                        provenance: {
+                            table: "skill_causalities",
+                            rowId: "3139",
+                            causalityType: 5,
+                            values: [3, 0, 0],
+                        },
+                    },
+                },
+                provenance: {
+                    activeSkillSet: { table: "active_skill_sets", rowId: "378" },
+                    causalities: [{ table: "skill_causalities", rowId: "3139" }],
+                },
+            },
+            effects: [],
+            source: {
+                kind: "game_db",
+                relation: { table: "card_active_skills", rowId: "378" },
+                set: { table: "active_skill_sets", rowId: "378" },
+            },
+        }];
+
+        const result = overlayGameDbCharacterReleaseStates([baseline], [firstParty], ["1034341"]);
+        const detail = result.characters[0].activeSkillDetails?.[0];
+        equal(detail?.name, "Special Beam Cannon");
+        equal(detail?.description, "Existing localized effect");
+        equal(detail?.activationCondition?.status, "supported");
+        deepEqual(result.patches, [{ cardId: "1034341", fields: ["activeSkillDetails"] }]);
+        equal(baseline.activeSkillDetails?.[0].activationCondition, undefined);
+    });
+
     it("fails closed when the requested card is absent from either source", () => {
         throws(
             () => overlayGameDbCharacterReleaseStates([character("1")], [projection("2")], ["2"]),

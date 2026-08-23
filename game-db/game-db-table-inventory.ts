@@ -18,6 +18,7 @@ export const CORE_GAME_DB_TABLES = [
     "passive_skill_set_relations",
     "passive_skill_sets",
     "passive_skills",
+    "skill_causalities",
     "special_sets",
     "standby_skill_set_finish_skill_set_relations",
     "standby_skills",

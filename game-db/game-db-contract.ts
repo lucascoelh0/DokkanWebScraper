@@ -1,4 +1,4 @@
-import { Classes, Rarities, Types } from "../character";
+import { ActiveSkillActivationConditionDetails, Classes, Rarities, Types } from "../character";
 import type { GameDbSnapshotAuditedCreatedDomain } from "./game-db-dokkan-field-created-domain";
 
 export type GameDbCharacterClass = Classes | "None";
@@ -109,6 +109,7 @@ export interface GameDbActiveSkillSet {
     conditionDescription: string,
     turn?: number,
     execLimit?: number,
+    activationCondition?: ActiveSkillActivationConditionDetails,
     ultimateSpecialId?: string,
     ultimateAttack?: GameDbUltimateAttack,
     specialViewId?: string,

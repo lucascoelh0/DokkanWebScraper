@@ -4,6 +4,236 @@ import { mapActiveSkillSets } from "./game-db-active-skill";
 import { GameDbRow } from "./game-db-source";
 
 describe("mapActiveSkillSets", function () {
+    it("maps a turn-only first-party Active Skill condition as supported", () => {
+        const [mapped] = mapActiveSkillSets(
+            [{ id: "378", card_id: "1034341", active_skill_set_id: "378" }],
+            new Map([[
+                "378",
+                { id: "378", name: "Special Beast Cannon", causality_conditions: '{"compiled":3139}' },
+            ]]),
+            new Map(),
+            new Map(),
+            new Map([[
+                "3139",
+                { id: "3139", causality_type: "5", cau_val1: "3", cau_val2: "0", cau_val3: "0" },
+            ]]),
+        );
+
+        deepEqual(mapped.activationCondition, {
+            status: "supported",
+            expression: {
+                op: "predicate",
+                predicate: {
+                    kind: "battle_turn",
+                    comparator: "gte",
+                    value: 4,
+                    evidenceStatus: "supported",
+                    provenance: {
+                        table: "skill_causalities",
+                        rowId: "3139",
+                        causalityType: 5,
+                        values: [3, 0, 0],
+                    },
+                },
+            },
+            provenance: {
+                activeSkillSet: { table: "active_skill_sets", rowId: "378" },
+                causalities: [{ table: "skill_causalities", rowId: "3139" }],
+            },
+        });
+    });
+
+    it("preserves the official OR-of-AND activation condition without flattening it", () => {
+        const [mapped] = mapActiveSkillSets(
+            [{ id: "174", card_id: "1025561", active_skill_set_id: "174" }],
+            new Map([[
+                "174",
+                {
+                    id: "174",
+                    name: "Beastly Awakening",
+                    condition_description: [
+                        'Can be activated when there are 3 "Super Heroes" ',
+                        "Category allies attacking in the same turn ",
+                        "starting from the 3rd turn from the start of battle, ",
+                        "or when facing only 1 enemy starting from the ",
+                        "6th turn from the start of battle (once only)",
+                    ].join("\n"),
+                    causality_conditions: '{"compiled":["|",["&",2024,2025],["&",2026,2027]]}',
+                },
+            ]]),
+            new Map(),
+            new Map(),
+            new Map([
+                ["2024", { id: "2024", causality_type: "5", cau_val1: "2", cau_val2: "0", cau_val3: "0" }],
+                ["2025", { id: "2025", causality_type: "34", cau_val1: "2", cau_val2: "88", cau_val3: "3" }],
+                ["2026", { id: "2026", causality_type: "5", cau_val1: "5", cau_val2: "0", cau_val3: "0" }],
+                ["2027", { id: "2027", causality_type: "16", cau_val1: "2", cau_val2: "0", cau_val3: "0" }],
+            ]),
+            new Map([["88", { id: "88", name: "Super Heroes" }]]),
+        );
+
+        deepEqual(mapped.activationCondition?.status, "partial");
+        deepEqual(mapped.activationCondition?.expression, {
+            op: "any",
+            children: [
+                {
+                    op: "all",
+                    children: [
+                        {
+                            op: "predicate",
+                            predicate: {
+                                kind: "battle_turn",
+                                comparator: "gte",
+                                value: 3,
+                                evidenceStatus: "supported",
+                                provenance: {
+                                    table: "skill_causalities",
+                                    rowId: "2024",
+                                    causalityType: 5,
+                                    values: [2, 0, 0],
+                                },
+                            },
+                        },
+                        {
+                            op: "predicate",
+                            predicate: {
+                                kind: "rotation_category_count",
+                                comparator: "gte",
+                                count: 3,
+                                categories: ["Super Heroes"],
+                                selfInclusion: "included",
+                                evidenceStatus: "supported",
+                                provenance: {
+                                    table: "skill_causalities",
+                                    rowId: "2025",
+                                    causalityType: 34,
+                                    values: [2, 88, 3],
+                                },
+                            },
+                        },
+                    ],
+                },
+                {
+                    op: "all",
+                    children: [
+                        {
+                            op: "predicate",
+                            predicate: {
+                                kind: "battle_turn",
+                                comparator: "gte",
+                                value: 6,
+                                evidenceStatus: "supported",
+                                provenance: {
+                                    table: "skill_causalities",
+                                    rowId: "2026",
+                                    causalityType: 5,
+                                    values: [5, 0, 0],
+                                },
+                            },
+                        },
+                        {
+                            op: "predicate",
+                            predicate: {
+                                kind: "enemy_count",
+                                comparator: "eq",
+                                count: 1,
+                                evidenceStatus: "partial",
+                                provenance: {
+                                    table: "skill_causalities",
+                                    rowId: "2027",
+                                    causalityType: 16,
+                                    values: [2, 0, 0],
+                                },
+                            },
+                        },
+                    ],
+                },
+            ],
+        });
+    });
+
+    it("does not generalize the audited rotation causality when first-party evidence drifts", () => {
+        const [mapped] = mapActiveSkillSets(
+            [{ id: "174", card_id: "1025561", active_skill_set_id: "174" }],
+            new Map([[
+                "174",
+                {
+                    id: "174",
+                    name: "Beastly Awakening",
+                    condition_description: "A different, unaudited description",
+                    causality_conditions: '{"compiled":["|",["&",2024,2025],["&",2026,2027]]}',
+                },
+            ]]),
+            new Map(),
+            new Map(),
+            new Map([
+                ["2024", { id: "2024", causality_type: "5", cau_val1: "2", cau_val2: "0", cau_val3: "0" }],
+                ["2025", { id: "2025", causality_type: "34", cau_val1: "2", cau_val2: "88", cau_val3: "3" }],
+                ["2026", { id: "2026", causality_type: "5", cau_val1: "5", cau_val2: "0", cau_val3: "0" }],
+                ["2027", { id: "2027", causality_type: "16", cau_val1: "2", cau_val2: "0", cau_val3: "0" }],
+            ]),
+            new Map([["88", { id: "88", name: "Super Heroes" }]]),
+        );
+        const expression = mapped.activationCondition?.expression;
+        if (!expression || expression.op !== "any") throw new Error("expected an any expression");
+        const teamRoute = expression.children[0];
+        if (teamRoute.op !== "all") throw new Error("expected the first route to be all");
+        const category = teamRoute.children[1];
+        if (category.op !== "predicate") throw new Error("expected the category predicate");
+
+        deepEqual(category.predicate.evidenceStatus, "partial");
+    });
+
+    it("requires the exact audited type-34 operands before marking the leaf supported", () => {
+        const conditionDescription = [
+            'Can be activated when there are 3 "Super Heroes" ',
+            "Category allies attacking in the same turn ",
+            "starting from the 3rd turn from the start of battle, ",
+            "or when facing only 1 enemy starting from the ",
+            "6th turn from the start of battle (once only)",
+        ].join("\n");
+        const drifts = [
+            { cau_val1: "1", cau_val2: "88", cau_val3: "3" },
+            { cau_val1: "2", cau_val2: "89", cau_val3: "3" },
+            { cau_val1: "2", cau_val2: "88", cau_val3: "4" },
+        ];
+
+        for (const drift of drifts) {
+            const [mapped] = mapActiveSkillSets(
+                [{ id: "174", card_id: "1025561", active_skill_set_id: "174" }],
+                new Map([[
+                    "174",
+                    {
+                        id: "174",
+                        name: "Beastly Awakening",
+                        condition_description: conditionDescription,
+                        causality_conditions: '{"compiled":["|",["&",2024,2025],["&",2026,2027]]}',
+                    },
+                ]]),
+                new Map(),
+                new Map(),
+                new Map([
+                    ["2024", { id: "2024", causality_type: "5", cau_val1: "2", cau_val2: "0", cau_val3: "0" }],
+                    ["2025", { id: "2025", causality_type: "34", ...drift }],
+                    ["2026", { id: "2026", causality_type: "5", cau_val1: "5", cau_val2: "0", cau_val3: "0" }],
+                    ["2027", { id: "2027", causality_type: "16", cau_val1: "2", cau_val2: "0", cau_val3: "0" }],
+                ]),
+                new Map([
+                    ["88", { id: "88", name: "Super Heroes" }],
+                    ["89", { id: "89", name: "Other Category" }],
+                ]),
+            );
+            const expression = mapped.activationCondition?.expression;
+            if (!expression || expression.op !== "any") throw new Error("expected an any expression");
+            const teamRoute = expression.children[0];
+            if (teamRoute.op !== "all") throw new Error("expected the first route to be all");
+            const category = teamRoute.children[1];
+            if (category.op !== "predicate") throw new Error("expected the category predicate");
+
+            deepEqual(category.predicate.evidenceStatus === "supported", false);
+        }
+    });
+
     it("pins first-party ultimate attack semantics against real FYI cards", () => {
         // Evidence snapshot (Global DB 1782367825):
         // - card 1024991 -> active set 156 -> ultimate 36; ultimate_specials(36) = 600, aim_target 0
