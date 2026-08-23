@@ -1316,6 +1316,96 @@ describe("team-analysis Gate A5 Ki and Ki Sphere parser", function () {
       equal(reconstructed, fixtureCase.rawText.replace(/\s/g, ""), fixtureCase.name);
     }
   });
+
+  it("types final attack Ki while the character is targeted by an attack", () => {
+    for (const value of [10, 12, 15, 18, 20]) {
+      const rawText = `When receiving an attack with ${value} or more Ki\n- DEF 200%`;
+      const passive = parsePassive(`receiving-attack-ki:${value}:initial`, undefined, rawText);
+      const rule = passive.rules[0];
+
+      equal(rule.conditionStatus, "supported");
+      deepEqual(conditionShape(rule.condition), {
+        op: "all",
+        children: [
+          {
+            op: "predicate",
+            kind: "incoming_attack",
+            scope: "self",
+            combatEvent: {
+              eventType: "incoming_attack",
+              actor: "enemy",
+              attackKind: "unknown",
+              mode: "current_event",
+              relativeTiming: "during_event",
+              provenance: {
+                eventType: "explicit_text",
+                actor: "documented_domain_rule",
+                attackKind: "unresolved",
+                mode: "explicit_text",
+                relativeTiming: "explicit_text",
+              },
+            },
+          },
+          {
+            op: "predicate",
+            kind: "ki_amount",
+            scope: "self",
+            comparator: "gte",
+            value,
+            kiContext: "final_attack_ki",
+            evaluationMoment: "when_targeted_by_attack",
+          },
+        ],
+      });
+    }
+  });
+
+  it("types the character's Ki Sphere collection order independently from battle slot", () => {
+    const cases = [
+      ["1st or 2nd", [1, 2]],
+      ["1st or 3rd", [1, 3]],
+      ["2nd or 3rd", [2, 3]],
+      ["3rd", [3]],
+    ] as const;
+
+    for (const [label, slots] of cases) {
+      const rawText = `When the character is the ${label} to obtain Ki Spheres in a turn\n- Ki +1`;
+      const passive = parsePassive(`ki-sphere-order:${label}:initial`, undefined, rawText);
+      const rule = passive.rules[0];
+
+      equal(rule.conditionStatus, "supported");
+      deepEqual(conditionShape(rule.condition), {
+        op: "predicate",
+        kind: "ki_sphere_collection_order",
+        scope: "self",
+        slots: [...slots],
+      });
+    }
+  });
+
+  it("types wrapped incoming-attack conditions combined with Ki Sphere and attack-Ki thresholds", () => {
+    const receivingWithSpheres = parsePassive(
+      "receiving-attack-spheres:initial",
+      undefined,
+      "When receiving an attack 5 or more Ki Spheres obtained\n- Ki +3",
+    ).rules[0];
+    const spheresThenReceivingWithKi = parsePassive(
+      "spheres-receiving-attack-ki:initial",
+      undefined,
+      "5 or more Ki Spheres obtained When receiving an attack with 12 or more Ki\n- DEF 200%",
+    ).rules[0];
+
+    equal(receivingWithSpheres.conditionStatus, "supported");
+    deepEqual(
+      flattenPredicates(receivingWithSpheres.condition).map(predicate => predicate.kind),
+      ["incoming_attack", "ki_spheres_obtained"],
+    );
+    equal(spheresThenReceivingWithKi.conditionStatus, "supported");
+    deepEqual(
+      flattenPredicates(spheresThenReceivingWithKi.condition).map(predicate => predicate.kind),
+      ["ki_spheres_obtained", "incoming_attack", "ki_amount"],
+    );
+  });
 });
 
 describe("team-analysis Gate A5.1 calculation-phase foundation", function () {
@@ -2957,7 +3047,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.2/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.3/);
   });
 });
 

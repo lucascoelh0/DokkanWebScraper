@@ -512,6 +512,7 @@ the required sibling proof.
 - `ki_amount`
 - `ki_spheres_obtained`
 - `ki_sphere_type_obtained`
+- `ki_sphere_collection_order`
 - `attacks_performed`
 - `incoming_attack`
 - `incoming_super_attack`
@@ -594,16 +595,23 @@ facts: targeting, being hit, or evading does not imply an On Attack bucket.
 
 ### Gate A5 Ki and Ki Sphere semantics
 
-The three Ki predicates are runtime inputs, not team-construction facts:
+The four Ki predicates are runtime inputs, not team-construction facts:
 
 - `ki_amount` is the character's final Ki for the current attack. It uses
   `scope: "self"`, `kiContext: "final_attack_ki"`, an explicit scalar
-  comparator, and `evaluationMoment: "when_attacking"` or `before_attack`.
+  comparator, and `evaluationMoment: "when_attacking"`, `before_attack`, or
+  `when_targeted_by_attack`. The last form combines with an
+  `incoming_attack` predicate when the source requires the character to hold a
+  Ki threshold while being targeted.
 - `ki_spheres_obtained` is an explicit count from the character's current
   collection. It uses `kiContext: "collected_ki_spheres"`; its
   `kiSphereTypes` restrict which collected spheres enter the count.
 - `ki_sphere_type_obtained` is presence shorthand and means `gte 1` for its
   declared sphere selector in the current collection.
+- `ki_sphere_collection_order` records whether the character is first, second,
+  or third to collect Ki Spheres in the turn. It uses `scope: "self"` and the
+  explicit ordinal positions in `slots`; it is not the character's battle
+  slot and does not imply one.
 
 Ki values and Ki Sphere counts are separate quantities. Closed intervals are
 serialized as an `all` AST containing lower and upper scalar predicates, so no
@@ -619,9 +627,10 @@ value is final attack Ki and remains unknown. Missing runtime context also
 evaluates to `Unknown`, never false or true.
 
 The future evaluator needs, at minimum, optional `finalAttackKi`, the exact
-counts collected in the current path by sphere color, and (only for board
-effects) the pre-conversion board state. It must not estimate an average path,
-assume 24 Ki, or infer unprovided sphere colors.
+counts collected in the current path by sphere color, the character's Ki
+Sphere collection order, and (only for board effects) the pre-conversion board
+state. It must not estimate an average path, assume 24 Ki, infer unprovided
+sphere colors, or conflate collection order with battle slot.
 
 ## 6. Effect contract
 

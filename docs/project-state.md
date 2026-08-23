@@ -1599,6 +1599,40 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   No R2 dry-run or publication, Git commit, or push was performed for this
   checkpoint.
 
+## Team passive runtime-reachability checkpoint (2026-08-23)
+
+- Team Builder now answers whether the selected composition permits a passive
+  clause, not whether every live battle fact is true at that instant. HP,
+  enemy state, attack targeting, Ki, slot/order and similar runtime conditions
+  are presented as `Available with this team`; an attached unmet character,
+  category, class or type requirement still wins as `Not available with this
+  team`. The exact domain evaluator remains tri-state for future scenario and
+  damage-calculation work, while genuinely unsupported typed data remains
+  `Condition data missing`.
+- Local Team Analysis parser `1.9.3` adds explicit source-neutral contracts for
+  final attack Ki while targeted and for the first/second/third Ki Sphere
+  collection order. It also preserves exact conjunctions between incoming
+  attacks, Ki Sphere thresholds and attack-Ki thresholds. In the complete
+  candidate, all 17 collection-order predicates, all 22 targeted attack-Ki
+  predicates and all five wrapped targeted/Ki-Sphere predicates are typed;
+  none of those audited phrase families remains an unknown condition.
+- The complete local candidate is Characters
+  `2026-08-23T05:35:48.096Z`, SHA-256
+  `469e9df38f8ae35521bc4fca1324a5b47391ada2b0c0b79cdc34ea44d8d605cb`,
+  2,342,759 compressed bytes and 1,436 characters, plus Team Analysis
+  `2026-08-23T05:35:48.096Z:parser-1.9.3`, SHA-256
+  `7e46293e7ebcf23dde1a7bb4889d6e94af5828c26f50a084a13b1b4d34d48fd0`,
+  2,926,764 compressed bytes, 53,816,979 uncompressed bytes and 2,288 states.
+  This is local validation material only; no R2 dry-run, upload, Git commit or
+  push was authorized by this checkpoint.
+- The preserved seven-character emulator draft now reports `45 Active`,
+  `0 Inactive` and `0 Needs info`; Piccolo (Red Ribbon Army) reports all seven
+  clauses available. Android rejects unknown/new attack-Ki moments and invalid
+  collection positions instead of promoting corrupt or future cache fields,
+  and a proved composition blocker wins over runtime reachability inside a
+  grouped source clause. Focused and broader Android checks passed, and the
+  final cross-repository contract re-review found no remaining P0-P2 issue.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

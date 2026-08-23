@@ -23,7 +23,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.2";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.3";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
@@ -40,7 +40,8 @@ export type PassiveEvaluationMoment =
     | "entry_turn"
     | "end_of_turn"
     | "before_attack"
-    | "when_attacking";
+    | "when_attacking"
+    | "when_targeted_by_attack";
 export type EnemySelection =
     | "any_enemy"
     | "all_enemies"
@@ -205,6 +206,7 @@ export type PassivePredicateKind =
     | "ki_amount"
     | "ki_spheres_obtained"
     | "ki_sphere_type_obtained"
+    | "ki_sphere_collection_order"
     | "incoming_attack"
     | "incoming_super_attack"
     | "attacks_performed"
@@ -2661,6 +2663,21 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
         });
     }
 
+    const receivingAttackWithKi = parseReceivingAttackWithKiCondition(text, sourceText);
+    if (receivingAttackWithKi) {
+        return receivingAttackWithKi;
+    }
+
+    const receivingAttackWithKiSpheres = parseReceivingAttackWithKiSpheresCondition(text, sourceText);
+    if (receivingAttackWithKiSpheres) {
+        return receivingAttackWithKiSpheres;
+    }
+
+    const kiSphereCollectionOrder = parseKiSphereCollectionOrderCondition(text, sourceText);
+    if (kiSphereCollectionOrder) {
+        return kiSphereCollectionOrder;
+    }
+
     const combatEvent = parseExactCombatEventCondition(text, sourceText);
     if (combatEvent) {
         return combatEvent;
@@ -2769,6 +2786,72 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
     }
 
     return parseAllyConditionClause(text, sourceText);
+}
+
+function parseReceivingAttackWithKiCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const match = /^receiving an? attack with (?:(exactly|at least|at most)\s+)?(\d+)(?:\s+or\s+(more|less))? Ki$/i.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    const value = Number(match[2]);
+    if (!isKiAmount(value)) {
+        return undefined;
+    }
+    const comparator: PassivePredicate["comparator"] = /^at least$/i.test(match[1] ?? "") || /^more$/i.test(match[3] ?? "")
+        ? "gte"
+        : /^at most$/i.test(match[1] ?? "") || /^less$/i.test(match[3] ?? "")
+            ? "lte"
+            : "eq";
+    const incomingAttack = parseExactCombatEventCondition("receiving an attack", sourceText);
+    if (!incomingAttack) {
+        return undefined;
+    }
+    return {
+        op: "all",
+        children: [
+            incomingAttack,
+            kiAmountPredicate(comparator, value, "when_targeted_by_attack", sourceText),
+        ],
+    };
+}
+
+function parseReceivingAttackWithKiSpheresCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const match = /^receiving an? attack\s+(.+ Ki Spheres? obtained)$/i.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    const incomingAttack = parseExactCombatEventCondition("receiving an attack", sourceText);
+    const kiSpheres = parseExactKiCondition(match[1], sourceText);
+    if (!incomingAttack || !kiSpheres) {
+        return undefined;
+    }
+    return {
+        op: "all",
+        children: [incomingAttack, kiSpheres],
+    };
+}
+
+function parseKiSphereCollectionOrderCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const pattern = new RegExp(`^(?:the|this) character is the\\s+(${SLOT_LIST_PATTERN})\\s+to obtain Ki Spheres in a turn$`, "i");
+    const match = pattern.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    return predicateExpression({
+        kind: "ki_sphere_collection_order",
+        scope: "self",
+        slots: parseSlotValues(match[1]),
+        sourceText,
+    });
 }
 
 function parseEntranceAnimationCondition(
@@ -3943,6 +4026,14 @@ function parseOrdinalValues(sourceText: string): number[] | undefined {
 }
 
 function parseTemporalSuffixCondition(text: string): ConditionExpression | undefined {
+    const receivingAttackWithKiSuffix = /^(.*?)\s+(when receiving an? attack with (?:(?:exactly|at least|at most)\s+)?\d+(?:\s+or\s+(?:more|less))? Ki)$/i.exec(text);
+    if (receivingAttackWithKiSuffix && receivingAttackWithKiSuffix[1].trim()) {
+        const prefix = parseBooleanCondition(receivingAttackWithKiSuffix[1]);
+        const suffix = parseBooleanCondition(receivingAttackWithKiSuffix[2]);
+        if (prefix.op !== "unknown" && suffix.op !== "unknown") {
+            return { op: "all", children: [prefix, suffix] };
+        }
+    }
     const suffix = /^(.*?)\s+(starting from the \d+(?:st|nd|rd|th) turn from (?:the start of battle|the character['â€™]s entry turn))$/i.exec(text);
     if (suffix && suffix[1].trim()) {
         const temporal = parseExactTemporalCondition(suffix[2], suffix[2]);
@@ -5950,7 +6041,7 @@ const SCENARIO_PREDICATES = new Set<PassivePredicateKind>([
 ]);
 
 const RUNTIME_PREDICATES = new Set<PassivePredicateKind>([
-    "ki_amount", "ki_spheres_obtained", "ki_sphere_type_obtained", "incoming_attack",
+    "ki_amount", "ki_spheres_obtained", "ki_sphere_type_obtained", "ki_sphere_collection_order", "incoming_attack",
     "incoming_super_attack", "attacks_performed",
     "attacks_received", "attacks_evaded", "super_attacks_performed", "super_attack_received",
     "final_blow_delivered", "chance_roll",
@@ -7313,15 +7404,17 @@ function validateCondition(
         validateCombatEventPredicate(condition.predicate, state, rule, issues);
         validateClassAndTypeValues(condition.predicate.classes, condition.predicate.types, state, rule, issues);
         validateScenarioPredicate(condition.predicate, state, rule, issues);
-        if (condition.predicate.kind === "battle_slot" && condition.predicate.scope !== "self") {
-            issues.push({ code: "slot-scope", message: `Battle slot must describe the current character.`, stateKey: state.stateKey, ruleId: rule.id });
+        if (["battle_slot", "ki_sphere_collection_order"].includes(condition.predicate.kind)
+            && condition.predicate.scope !== "self") {
+            issues.push({ code: "slot-scope", message: `Turn-order position must describe the current character.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (condition.predicate.kind === "battle_slot" && (condition.predicate.slots?.length ?? 0) === 0) {
-            issues.push({ code: "slot-values", message: `Battle slot must name at least one position.`, stateKey: state.stateKey, ruleId: rule.id });
+        if (["battle_slot", "ki_sphere_collection_order"].includes(condition.predicate.kind)
+            && (condition.predicate.slots?.length ?? 0) === 0) {
+            issues.push({ code: "slot-values", message: `Turn-order predicate must name at least one position.`, stateKey: state.stateKey, ruleId: rule.id });
         }
         for (const slot of condition.predicate.slots ?? []) {
             if (!Number.isInteger(slot) || slot < 1 || slot > 3) {
-                issues.push({ code: "slot-range", message: `Battle slot must be 1, 2, or 3.`, stateKey: state.stateKey, ruleId: rule.id });
+                issues.push({ code: "slot-range", message: `Turn-order position must be 1, 2, or 3.`, stateKey: state.stateKey, ruleId: rule.id });
             }
         }
     }
@@ -7407,7 +7500,9 @@ function validateKiPredicate(
         if (predicate.kiContext !== "final_attack_ki") {
             issues.push({ code: "ki-amount-context", message: `Attack Ki must use final_attack_ki context.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (predicate.evaluationMoment !== "when_attacking" && predicate.evaluationMoment !== "before_attack") {
+        if (predicate.evaluationMoment !== "when_attacking"
+            && predicate.evaluationMoment !== "before_attack"
+            && predicate.evaluationMoment !== "when_targeted_by_attack") {
             issues.push({ code: "ki-amount-moment", message: `Attack Ki requires an explicit attack evaluation moment.`, stateKey: state.stateKey, ruleId: rule.id });
         }
         if (predicate.kiSphereTypes !== undefined) {
@@ -7426,6 +7521,9 @@ function validateKiPredicate(
             && (predicate.comparator !== "gte" || predicate.value !== 1)) {
             issues.push({ code: "ki-sphere-presence", message: `Ki Sphere type presence must mean at least one obtained sphere.`, stateKey: state.stateKey, ruleId: rule.id });
         }
+    }
+    if (predicate.kind === "ki_sphere_collection_order" && predicate.scope !== "self") {
+        issues.push({ code: "ki-collection-order-scope", message: `Ki Sphere collection order must describe the current character.`, stateKey: state.stateKey, ruleId: rule.id });
     }
     if (!isKiPredicate && (predicate.kiContext !== undefined || predicate.kiSphereTypes !== undefined)) {
         issues.push({ code: "ki-fields-kind", message: `Ki context and Ki Sphere types are valid only on Ki predicates.`, stateKey: state.stateKey, ruleId: rule.id });
@@ -7706,6 +7804,7 @@ function validateScenarioPredicate(
 
     const knownMoments: PassiveEvaluationMoment[] = [
         "start_of_turn", "entry_turn", "end_of_turn", "before_attack", "when_attacking",
+        "when_targeted_by_attack",
     ];
     if (predicate.evaluationMoment !== undefined && !knownMoments.includes(predicate.evaluationMoment)) {
         issues.push({ code: "evaluation-moment", message: `Evaluation moment is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
