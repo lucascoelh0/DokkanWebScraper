@@ -10,7 +10,9 @@ import {
     EffectStructuralMarkerKind,
     EffectStructuralSource,
     LeaderSkillDetails,
+    PassiveConditionEvidence,
     PassiveDetails,
+    PassiveEnemyStatus,
     PortraitSpec,
     Rarities,
     ReversibleExchangeDetails,
@@ -162,6 +164,13 @@ type GameDbPassiveStructuralField = Extract<
     { source: "first_party_game_db" }
 >["payloadField"];
 
+type GameDbPassiveEvidenceField = Extract<
+    PassiveConditionEvidence["provenance"],
+    { source: "first_party_game_db" }
+>["payloadField"];
+
+type GameDbPassiveDescriptionField = Exclude<GameDbPassiveStructuralField, "special_sets.description">;
+
 interface StructuralSourceLine {
     rawText: string,
     start: number,
@@ -178,6 +187,31 @@ function structuralMarkerKind(sourceToken: string): EffectStructuralMarkerKind {
     if (sourceToken === "up_g") return "value_up";
     if (sourceToken === "down_r" || sourceToken === "down_y") return "value_down";
     return "unknown";
+}
+
+function passiveEnemyStatusFromMarker(sourceToken: string): PassiveEnemyStatus | undefined {
+    if (sourceToken === "atk_down") return "atk_down";
+    if (sourceToken === "def_down") return "def_down";
+    if (sourceToken === "stun") return "stunned";
+    if (sourceToken === "astute") return "super_attack_sealed";
+    return undefined;
+}
+
+function passiveEvidenceConnector(
+    statusSource: string,
+    markerCount: number,
+): "and" | "or" | undefined {
+    if (markerCount < 2) return undefined;
+    const normalizedSource = statusSource.replace(/\s+/g, " ");
+    const firstMarkerIndex = normalizedSource.search(/\{passiveImg:[^}]+\}/);
+    const lastMarkerIndex = normalizedSource.lastIndexOf("{passiveImg:");
+    const lastMarkerEnd = lastMarkerIndex >= 0 ? normalizedSource.indexOf("}", lastMarkerIndex) + 1 : -1;
+    if (firstMarkerIndex < 0 || lastMarkerEnd <= firstMarkerIndex) return undefined;
+    const markerList = normalizedSource.slice(firstMarkerIndex, lastMarkerEnd)
+        .replace(/\{passiveImg:[^}]+\}/g, "#");
+    const hasAnd = /\band\b/i.test(markerList);
+    const hasOr = /\bor\b/i.test(markerList);
+    return hasAnd === hasOr ? undefined : hasAnd ? "and" : "or";
 }
 
 function structuralSourceLines(rawText: string): StructuralSourceLine[] {
@@ -199,6 +233,117 @@ function structuralSourceLines(rawText: string): StructuralSourceLine[] {
         start = end + (rawText.slice(end, end + 2) === "\r\n" ? 2 : 1);
     }
     return lines;
+}
+
+function gameDbPassiveConditionEvidence(
+    rawText: string,
+    normalizedText: string,
+    context: {
+        characterId: string,
+        releaseState: GameDbCharacterReleaseState["releaseState"],
+        sourceVersion: string,
+        payloadField: GameDbPassiveEvidenceField,
+        passiveSkillId: string,
+    },
+): PassiveConditionEvidence[] {
+    const passiveTextSha256 = sha256Text(normalizedText);
+    const stateKey = `${context.characterId}:${context.characterId}:${context.releaseState}`;
+    const lines = structuralSourceLines(rawText);
+    const evidence: PassiveConditionEvidence[] = [];
+
+    for (let lineOffset = 0; lineOffset < lines.length; lineOffset += 1) {
+        const line = lines[lineOffset];
+        const bulletPrefix = /^(\s*-\s*)/.exec(line.rawText)?.[1];
+        const headerStart = /^\s*\*/.test(line.rawText);
+        if (!bulletPrefix && !headerStart) continue;
+
+        let endLineOffset = lineOffset;
+        let anchorEnd = line.end;
+        if (bulletPrefix) {
+            while (endLineOffset + 1 < lines.length) {
+                const nextLine = lines[endLineOffset + 1];
+                if (/^\s*(?:-|\*)/.test(nextLine.rawText)) break;
+                endLineOffset += 1;
+                anchorEnd = nextLine.end;
+            }
+        } else {
+            while (!/\*\s*$/.test(lines[endLineOffset].rawText) && endLineOffset + 1 < lines.length) {
+                const nextLine = lines[endLineOffset + 1];
+                if (/^\s*-/.test(nextLine.rawText)) break;
+                endLineOffset += 1;
+                anchorEnd = nextLine.end;
+            }
+        }
+        const anchorStart = line.start + (bulletPrefix?.length ?? 0);
+        const structuralText = rawText.slice(anchorStart, anchorEnd).trimEnd();
+        const semanticStructuralText = structuralText.replace(/\s+/g, " ");
+        if (!/following status:/i.test(semanticStructuralText)) {
+            lineOffset = endLineOffset;
+            continue;
+        }
+        const statusOffset = semanticStructuralText.toLowerCase().indexOf("following status:");
+        const statusSource = semanticStructuralText.slice(statusOffset + "following status:".length);
+        const markerMatches = [...statusSource.matchAll(/\{passiveImg:([^}]+)\}/g)];
+        if (markerMatches.length === 0) {
+            lineOffset = endLineOffset;
+            continue;
+        }
+
+        const normalizedAnchorText = cleanMultilineText(structuralText)
+            .replace(/^\s*-\s*/, "")
+            .replace(/\s*\n\s*/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        const coveredLines = lines.slice(lineOffset, endLineOffset + 1)
+            .filter(item => item.normalizedLineIndex !== undefined);
+        if (!normalizedAnchorText || coveredLines.length === 0) continue;
+
+        const statuses = markerMatches.map((match, order) => {
+            const sourceToken = match[1];
+            const status = passiveEnemyStatusFromMarker(sourceToken);
+            return {
+                order,
+                sourceToken,
+                ...(status ? { status } : {}),
+                resolution: status ? "supported" as const : "unresolved" as const,
+            };
+        });
+        const connector = passiveEvidenceConnector(statusSource, markerMatches.length);
+        const resolution = statuses.some(status => status.resolution === "unresolved")
+            || (statuses.length > 1 && !connector)
+            ? "partial" as const
+            : "supported" as const;
+
+        evidence.push({
+            kind: "enemy_status",
+            stateKey,
+            characterId: context.characterId,
+            formId: context.characterId,
+            releaseState: context.releaseState,
+            passiveSkillId: context.passiveSkillId,
+            passiveTextSha256,
+            anchor: {
+                lineIndex: coveredLines[0].normalizedLineIndex!,
+                ...(coveredLines.length > 1
+                    ? { endLineIndex: coveredLines[coveredLines.length - 1].normalizedLineIndex! }
+                    : {}),
+                normalizedText: normalizedAnchorText,
+                structuralText,
+            },
+            statuses,
+            ...(connector ? { connector } : {}),
+            resolution,
+            provenance: {
+                source: "first_party_game_db",
+                sourceVersion: context.sourceVersion,
+                payloadField: context.payloadField,
+                markerSyntax: "passiveImg",
+            },
+        });
+        lineOffset = endLineOffset;
+    }
+
+    return evidence;
 }
 
 function gameDbPassiveStructuralSource(
@@ -229,7 +374,7 @@ function gameDbPassiveStructuralSource(
         let anchorEnd = line.end;
         while (endLineOffset + 1 < lines.length) {
             const nextLine = lines[endLineOffset + 1];
-            if (/^\s*(?:-|\*)\s*/.test(nextLine.rawText)) break;
+            if (/^\s*(?:-|\*)/.test(nextLine.rawText)) break;
             endLineOffset += 1;
             anchorEnd = nextLine.end;
         }
@@ -299,7 +444,7 @@ function gameDbPassiveStructuralSource(
 
 function passiveDescription(passiveSkillSet?: GameDbPassiveSkillSet): {
     rawText: string,
-    payloadField: GameDbPassiveStructuralField,
+    payloadField: GameDbPassiveDescriptionField,
 } {
     if (passiveSkillSet?.itemizedDescription) {
         return { rawText: passiveSkillSet.itemizedDescription, payloadField: "passive_skill_sets.itemized_description" };
@@ -336,12 +481,20 @@ function passiveDetailsFromSkillSet(
             passiveSkillId: passiveSkillSet.id,
         })
         : undefined;
+    const conditionEvidence = context && passiveSkillSet
+        ? gameDbPassiveConditionEvidence(rawText, text, {
+            ...context,
+            payloadField,
+            passiveSkillId: passiveSkillSet.id,
+        })
+        : [];
 
     return {
         name: passiveSkillSet?.name,
         text,
         lines,
         sections: lines ? splitPassiveSections(lines) : undefined,
+        ...(conditionEvidence.length > 0 ? { conditionEvidence } : {}),
         ...(structuralSource ? { structuralSource } : {}),
         sourceSkillId: passiveSkillSet?.id,
     };

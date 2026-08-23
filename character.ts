@@ -354,12 +354,20 @@ export interface PassiveEnemyStatusEvidenceItem {
     resolution: "supported" | "unresolved",
 }
 
-export interface PassiveEvidenceProvenance {
+export type PassiveEvidenceProvenance = {
     source: "dokkan_fyi_payload",
     sourceVersion: string,
     payloadField:
         | "props.character.passive_skill.description"
         | "props.character.extreme_z_awakening.passive_skill.description",
+    markerSyntax: "passiveImg",
+} | {
+    source: "first_party_game_db",
+    sourceVersion: string,
+    payloadField:
+        | "passive_skill_sets.itemized_description"
+        | "passive_skill_sets.group_itemized_description"
+        | "passive_skill_sets.character_itemized_description",
     markerSyntax: "passiveImg",
 }
 

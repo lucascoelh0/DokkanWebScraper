@@ -23,7 +23,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.8";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.11";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 export const HP_REMAINING_SCALING_DOMAIN_RULE_VERSION = "hp-remaining-scaling-v1";
 const EFFECT_DECISION_DOMAIN_RULE_VERSIONS = new Set([
@@ -174,11 +174,13 @@ export type PassivePredicateKind =
     | "ally_type_present"
     | "ally_class_type_present"
     | "ally_category_class_present"
+    | "ally_category_or_class_present"
     | "team_category_count"
     | "team_class_count"
     | "team_type_count"
     | "all_rotation_allies_category"
     | "all_rotation_allies_class"
+    | "character_category"
     | "character_class"
     | "character_type"
     | "rotation_partner_category"
@@ -209,6 +211,9 @@ export type PassivePredicateKind =
     | "standby_active"
     | "active_skill_used"
     | "revive_triggered"
+    | "guard_activated"
+    | "finish_effect_activated"
+    | "character_ko"
     | "ki_amount"
     | "ki_spheres_obtained"
     | "ki_sphere_type_obtained"
@@ -437,6 +442,7 @@ export interface PassivePredicate {
     excludedNameMatch?: EnemyNameMatch,
     nameIdentitySetId?: string,
     canonicalIds?: string[],
+    domainNames?: string[],
     enemyReference?: EnemyReference,
     combatEvent?: CombatEventDescriptor,
     sourceText: string,
@@ -502,8 +508,16 @@ export interface PassiveCalculationBucketAssignment {
 export interface KiSphereEffectScaling {
     kind: "per_ki_sphere",
     kiSphereTypes: KiSphereType[],
+    excludedKiSphereTypes?: TeamAnalysisType[],
     spheresPerIncrement: number,
     kiContext: "collected_ki_spheres",
+}
+
+export interface KiAmountEffectScaling {
+    kind: "per_ki_amount",
+    kiPerIncrement: number,
+    kiContext: "final_attack_ki",
+    evaluationMoment: "when_attacking",
 }
 
 export interface CombatEventEffectScaling {
@@ -567,15 +581,31 @@ export interface HpRemainingEffectScaling {
     hpContext: "team_hp_percent",
 }
 
+export interface TurnPassedEffectScaling {
+    kind: "per_turn_passed",
+    turnsPerIncrement: number,
+    turnContext: "battle_turn",
+}
+
+export interface ExistingEnemyEffectScaling {
+    kind: "per_existing_enemy",
+    classes: TeamAnalysisClass[],
+    enemiesPerIncrement: number,
+    countStartsFrom: number,
+}
+
 export type PassiveEffectScaling =
     | KiSphereEffectScaling
+    | KiAmountEffectScaling
     | CombatEventEffectScaling
     | CategoryAllyEffectScaling
     | ClassAllyEffectScaling
     | CategoryNameAllyEffectScaling
     | NameAllyEffectScaling
     | CategoryOrClassAllyEffectScaling
-    | HpRemainingEffectScaling;
+    | HpRemainingEffectScaling
+    | TurnPassedEffectScaling
+    | ExistingEnemyEffectScaling;
 
 export interface KiSphereChange {
     sourceSelection: "listed_types" | "all" | "random_type",
@@ -1340,10 +1370,16 @@ function validStructuralEvidence(
     attackVariant?: SuperAttackVariant,
     sourceEntityId?: string,
 ): EffectStructuralEvidence[] {
+    const structuralDisplayText = source?.evidence?.length > 0
+        && source.evidence.every(entry => entry.provenance?.source === "first_party_game_db")
+        ? cleanStructuralText(source.rawText).split("\n")
+            .map(line => line.replace(/\s+/g, " ").trim())
+            .join("\n")
+        : source ? cleanStructuralText(source.rawText) : undefined;
     if (!source
         || source.rawTextSha256 !== sha256Text(source.rawText)
         || source.normalizedTextSha256 !== sha256Text(normalizedText)
-        || cleanStructuralText(source.rawText) !== normalizedText) {
+        || structuralDisplayText !== normalizedText) {
         return [];
     }
     let previousAnchorEnd = -1;
@@ -2024,21 +2060,30 @@ export function parsePassive(
             continue;
         }
 
+        const compositeScaling = currentCondition
+            ? parseCompositeScalingConditionHeader(currentCondition.text)
+            : undefined;
         const headerScaling = currentCondition
-            ? parseKiSphereScalingHeader(currentCondition.text)
+            ? compositeScaling?.scaling
+                ?? parseKiAmountScalingHeader(currentCondition.text)
+                ?? parseKiSphereScalingHeader(currentCondition.text)
                 ?? parseCombatEventScalingHeader(currentCondition.text)
                 ?? parseCategoryAllyScalingHeader(currentCondition.text)
                 ?? parseCategoryNameAllyScalingHeader(currentCondition.text)
                 ?? parseCategoryOrClassAllyScalingHeader(currentCondition.text)
                 ?? parseNameAllyScalingHeader(currentCondition.text)
                 ?? parseClassAllyScalingHeader(currentCondition.text)
+                ?? parseTurnPassedScalingHeader(currentCondition.text)
+                ?? parseExistingEnemyScalingHeader(currentCondition.text)
                 ?? parseHpRemainingScalingHeader(currentCondition.text)
             : undefined;
         const perTurnApplicationHeader = currentCondition
             ? isPerTurnApplicationHeader(currentCondition.text)
             : false;
         const headerConditionResult = currentCondition
-            ? headerScaling || perTurnApplicationHeader
+            ? compositeScaling
+                ? parseCondition(currentCondition.text, compositeScaling.conditionText, context)
+                : headerScaling || perTurnApplicationHeader
                 ? { condition: { op: "always" } as ConditionExpression, status: "supported" as ParseStatus }
                 : parseCondition(
                     currentCondition.text,
@@ -2046,21 +2091,38 @@ export function parsePassive(
                     context,
                 )
             : { condition: { op: "always" } as ConditionExpression, status: "supported" as ParseStatus };
-        const inlineTemporal = splitInlineTemporalCondition(block.text);
-        const conditionResult = inlineTemporal
-            ? combineConditionResults(headerConditionResult, parseCondition(inlineTemporal.conditionText, undefined, context))
-            : headerConditionResult;
-        const effectResult = parseEffects(inlineTemporal?.effectText ?? block.text, {
+        const inlineEnemyStatus = splitInlineEnemyStatusCondition(block, conditionEvidence);
+        const inlineTemporal = splitInlineTemporalCondition(inlineEnemyStatus?.effectText ?? block.text);
+        const inlineConditionResults = [
+            ...(inlineEnemyStatus
+                ? [parseCondition(inlineEnemyStatus.conditionText, undefined, context)]
+                : []),
+            ...(inlineTemporal
+                ? [parseCondition(inlineTemporal.conditionText, undefined, context)]
+                : []),
+        ];
+        const conditionResult = inlineConditionResults.reduce(
+            combineConditionResults,
+            headerConditionResult,
+        );
+        const effectResult = parseEffects(
+            inlineTemporal?.effectText ?? inlineEnemyStatus?.effectText ?? block.text,
+            {
             stateKey,
             rawText,
             ruleLineIndex: block.source[0]?.lineIndex ?? -1,
-            ...((currentCondition || inlineTemporal?.activationContextText) ? {
-                phaseContextText: [currentCondition?.text, inlineTemporal?.activationContextText]
+            ...((currentCondition || inlineTemporal?.activationContextText || inlineEnemyStatus) ? {
+                phaseContextText: [
+                    currentCondition?.text,
+                    inlineEnemyStatus?.conditionText,
+                    inlineTemporal?.activationContextText,
+                ]
                     .filter((value): value is string => Boolean(value))
                     .join(" "),
             } : {}),
             ...(headerScaling ? { headerScaling } : {}),
-        });
+            },
+        );
         effectResult.effects = effectResult.effects.map(effect => applyPassiveHeaderSemantics(
             applyPassiveStructuralSemantics(
                 effect,
@@ -2176,10 +2238,11 @@ function applyPassiveHeaderSemantics(
 ): PassiveEffect {
     const explicitPerTurn = isPerTurnApplicationHeader(headerText ?? "");
     const hpRemaining = headerScaling?.kind === "hp_remaining";
-    if (!explicitPerTurn && !hpRemaining) {
+    const turnPassed = headerScaling?.kind === "per_turn_passed";
+    if (!explicitPerTurn && !hpRemaining && !turnPassed) {
         return effect;
     }
-    const source: CalculationPhaseResolutionSource = explicitPerTurn
+    const source: CalculationPhaseResolutionSource = explicitPerTurn || turnPassed
         ? "explicit_text"
         : "documented_domain_rule";
     return {
@@ -2196,7 +2259,7 @@ function applyPassiveHeaderSemantics(
 }
 
 function isPerTurnApplicationHeader(sourceText: string): boolean {
-    return /^At the start of each turn$/i.test(sourceText.trim());
+    return /^At the start of (?:each )?turn$/i.test(sourceText.trim());
 }
 
 function passiveStackingScope(duration: PassiveDuration | undefined): EffectStackingScope {
@@ -2235,29 +2298,37 @@ function validConditionEvidence(
             || evidence.formId !== context.formId
             || evidence.releaseState !== context.releaseState
             || evidence.passiveTextSha256 !== passiveTextSha256
-            || evidence.provenance?.source !== "dokkan_fyi_payload"
+            || (evidence.provenance?.source !== "dokkan_fyi_payload"
+                && evidence.provenance?.source !== "first_party_game_db")
             || evidence.provenance.markerSyntax !== "passiveImg"
             || !evidence.provenance.sourceVersion
             || anchorLineIndexes.length === 0
             || anchorLineIndexes.some(lineIndex => seenLines.has(lineIndex))) {
             return false;
         }
-        const expectedPayloadField = context.releaseState === "initial"
-            ? "props.character.passive_skill.description"
-            : "props.character.extreme_z_awakening.passive_skill.description";
+        const expectedPayloadField = evidence.provenance.source === "dokkan_fyi_payload"
+            ? context.releaseState === "initial"
+                ? "props.character.passive_skill.description"
+                : "props.character.extreme_z_awakening.passive_skill.description"
+            : undefined;
         const anchorFragments = anchorLineIndexes
             .map(lineIndex => fragmentsByLine.get(lineIndex))
             .filter((fragment): fragment is SourceFragment => fragment !== undefined);
-        const normalizedAnchorText = logicalText("condition", anchorFragments);
+        const normalizedConditionAnchorText = logicalText("condition", anchorFragments);
+        const normalizedEffectAnchorText = logicalText("effect", anchorFragments);
         if (anchorFragments.length !== anchorLineIndexes.length
-            || evidence.provenance.payloadField !== expectedPayloadField
-            || normalizedAnchorText !== evidence.anchor.normalizedText
+            || (expectedPayloadField !== undefined && evidence.provenance.payloadField !== expectedPayloadField)
+            || (evidence.provenance.source === "first_party_game_db"
+                && evidence.passiveSkillId !== context.passiveSkillSetId)
+            || (normalizedConditionAnchorText !== evidence.anchor.normalizedText
+                && normalizedEffectAnchorText !== evidence.anchor.normalizedText)
             || stripPassiveMarkers(evidence.anchor.structuralText).replace(/\s+/g, " ")
                 !== evidence.anchor.normalizedText) {
             return false;
         }
-        const statusSource = evidence.anchor.structuralText.slice(
-            evidence.anchor.structuralText.toLowerCase().indexOf("following status:")
+        const semanticStructuralText = evidence.anchor.structuralText.replace(/\s+/g, " ");
+        const statusSource = semanticStructuralText.slice(
+            semanticStructuralText.toLowerCase().indexOf("following status:")
                 + "following status:".length,
         );
         const sourceTokens = [...statusSource.matchAll(/\{passiveImg:([^}]+)\}/g)]
@@ -2279,6 +2350,20 @@ function validConditionEvidence(
     }).sort((left, right) => left.anchor.lineIndex - right.anchor.lineIndex);
 }
 
+function conditionEvidenceForBlock(
+    block: LogicalPassiveBlock,
+    evidenceEntries: PassiveConditionEvidence[],
+): PassiveConditionEvidence[] {
+    const lineIndexes = new Set(block.source.map(fragment => fragment.lineIndex));
+    return evidenceEntries.filter(evidence => {
+        const endLineIndex = evidence.anchor.endLineIndex ?? evidence.anchor.lineIndex;
+        for (let lineIndex = evidence.anchor.lineIndex; lineIndex <= endLineIndex; lineIndex += 1) {
+            if (lineIndexes.has(lineIndex)) return true;
+        }
+        return false;
+    });
+}
+
 function stripPassiveMarkers(sourceText: string): string {
     return sourceText.replace(/\{[^}]+\}/g, "").trim();
 }
@@ -2290,8 +2375,9 @@ function evidenceConnector(
     if (markerCount < 2) {
         return undefined;
     }
-    const statusSource = structuralText.slice(
-        structuralText.toLowerCase().indexOf("following status:") + "following status:".length,
+    const semanticStructuralText = structuralText.replace(/\s+/g, " ");
+    const statusSource = semanticStructuralText.slice(
+        semanticStructuralText.toLowerCase().indexOf("following status:") + "following status:".length,
     );
     const firstMarkerIndex = statusSource.search(/\{passiveImg:[^}]+\}/);
     const lastMarkerIndex = statusSource.lastIndexOf("{passiveImg:");
@@ -2358,11 +2444,32 @@ function enrichedConditionText(
     return logicalText(block.kind, enrichedSource);
 }
 
+function splitInlineEnemyStatusCondition(
+    block: LogicalPassiveBlock,
+    evidenceEntries: PassiveConditionEvidence[],
+): { effectText: string, conditionText: string } | undefined {
+    const evidence = conditionEvidenceForBlock(block, evidenceEntries).find(entry =>
+        /following status:/i.test(entry.anchor.structuralText.replace(/\s+/g, " ")));
+    if (!evidence) return undefined;
+    const semanticText = semanticEvidenceText(evidence).replace(/\s+/g, " ").trim();
+    const statusOffset = semanticText.toLowerCase().indexOf("following status:");
+    if (statusOffset < 0) return undefined;
+    const prefix = semanticText.slice(0, statusOffset).toLowerCase();
+    const whenOffset = prefix.lastIndexOf(" when ");
+    const ifOffset = prefix.lastIndexOf(" if ");
+    const conditionOffset = Math.max(whenOffset, ifOffset);
+    if (conditionOffset <= 0) return undefined;
+    const effectText = semanticText.slice(0, conditionOffset).trim();
+    const conditionText = semanticText.slice(conditionOffset + 1).trim();
+    return effectText && conditionText ? { effectText, conditionText } : undefined;
+}
+
 function semanticEvidenceText(evidence: PassiveConditionEvidence): string {
     let order = 0;
-    const statusOffset = evidence.anchor.structuralText.toLowerCase().indexOf("following status:")
+    const structuralText = evidence.anchor.structuralText.replace(/\s+/g, " ");
+    const statusOffset = structuralText.toLowerCase().indexOf("following status:")
         + "following status:".length;
-    return evidence.anchor.structuralText.replace(/\{passiveImg:([^}]+)\}/g, (
+    return structuralText.replace(/\{passiveImg:([^}]+)\}/g, (
         _match,
         sourceToken: string,
         offset: number,
@@ -2726,7 +2833,7 @@ function bindNameIdentitySets(
         const expectedCategories = predicate.categories?.map(normalizeNameIdentityKey).sort() ?? [];
         const structuralMatches = contract.bindings.filter(binding =>
             binding.passiveSkillSetId === passiveSkillSetId
-            && binding.scope === expectedScope
+            && (predicate.kind === "enemy_name" ? binding.scope === "enemy" : binding.scope !== "enemy")
             && (predicate.kind === "ally_category_name_present"
                 ? expectedCategories.length > 0
                     && JSON.stringify(binding.categories?.map(normalizeNameIdentityKey).sort() ?? [])
@@ -2739,21 +2846,37 @@ function bindNameIdentitySets(
                     ? 1
                     : 0
             ));
-        const exactMatches = structuralMatches.filter(binding =>
-            binding.canonicalNames.some(name => normalizeNameIdentityKey(name) === expectedName));
-        const nameMatches = exactMatches.length > 0
-            ? exactMatches
-            : structuralMatches.filter(binding => binding.canonicalNames.some(name =>
-                normalizeNameIdentityKey(name).includes(expectedName)));
-        const preferredSize = predicate.nameMatch === "exact"
-            ? Math.min(...nameMatches.map(binding => binding.canonicalIds.length))
-            : Math.max(...nameMatches.map(binding => binding.canonicalIds.length));
-        const matches = nameMatches.filter(binding => binding.canonicalIds.length === preferredSize);
+        const preferredMatches = (bindings: TeamAnalysisNameIdentityBinding[]) => {
+            const exactMatches = bindings.filter(binding =>
+                binding.canonicalNames.some(name => normalizeNameIdentityKey(name) === expectedName));
+            const nameMatches = exactMatches.length > 0
+                ? exactMatches
+                : bindings.filter(binding => binding.canonicalNames.some(name =>
+                    normalizeNameIdentityKey(name).includes(expectedName)));
+            if (nameMatches.length === 0) {
+                return [];
+            }
+            const preferredSize = predicate.nameMatch === "exact"
+                ? Math.min(...nameMatches.map(binding => binding.canonicalIds.length))
+                : Math.max(...nameMatches.map(binding => binding.canonicalIds.length));
+            return nameMatches.filter(binding => binding.canonicalIds.length === preferredSize);
+        };
+        const scopedMatches = preferredMatches(structuralMatches.filter(binding => binding.scope === expectedScope));
+        const matches = scopedMatches.length === 1 ? scopedMatches : preferredMatches(structuralMatches);
         if (matches.length !== 1) {
             return predicateExpression(predicate);
         }
+        const officialScope = matches[0].scope;
+        const officialKind: PassivePredicateKind = predicate.kind === "ally_category_name_present"
+            || predicate.kind === "enemy_name"
+            ? predicate.kind
+            : officialScope === "rotation" && predicate.selfInclusion === "excluded"
+                ? "rotation_partner_name"
+                : "ally_name_present";
         return predicateExpression({
             ...predicate,
+            kind: officialKind,
+            scope: officialScope,
             nameIdentitySetId: matches[0].identitySetId,
             canonicalIds: matches[0].canonicalIds,
         });
@@ -2858,9 +2981,17 @@ function parseBooleanCondition(sourceText: string): ConditionExpression {
             return { op: "not", child };
         }
     }
+    const qualifiedEnemyStatus = parseQualifiedEnemyStatusCondition(text, original);
+    if (qualifiedEnemyStatus) {
+        return qualifiedEnemyStatus;
+    }
     const exact = parseExactConditionClause(text, original);
     if (exact) {
         return exact;
+    }
+    const sharedScopeAlly = parseSharedScopeCategoryAllyCondition(text, original);
+    if (sharedScopeAlly) {
+        return sharedScopeAlly;
     }
     const dualScopeName = parseNameEnemyOrTeamAlternative(text, original);
     if (dualScopeName) {
@@ -2885,10 +3016,57 @@ function parseBooleanCondition(sourceText: string): ConditionExpression {
     return parsePartialSlotCondition(text) ?? { op: "unknown", sourceText: original };
 }
 
+function parseQualifiedEnemyStatusCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const match = /^(.*?)(,?\s*(?:or\s+)?if)\s+((?:the )?(?:target|attacked|selected) enemy is in the following status:\s*.+)$/i.exec(text);
+    if (!match) return undefined;
+    const prefix = match[1].replace(/,\s*$/, "").trim();
+    if (!prefix) return undefined;
+    const base = parseBooleanCondition(prefix);
+    const status = parseEnemyStatusCondition(match[3], sourceText);
+    if (!status || base.op === "unknown") return undefined;
+    return {
+        op: /\bor\s+if\b/i.test(match[2]) ? "any" : "all",
+        children: [base, status],
+    };
+}
+
+function parseSharedScopeCategoryAllyCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const match = /^(there are \d+(?: or more)?\s+.+? Category allies)\s+(and|or)\s+(\d+(?: or more)?\s+.+? Category allies)\s+(on the team|attacking in the same turn)$/i.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    const children = [match[1], match[3]].map(part =>
+        parseAllyConditionClause(`${part} ${match[4]}`, sourceText));
+    if (children.some(child => child === undefined)) {
+        return undefined;
+    }
+    return {
+        op: match[2].toLowerCase() === "and" ? "all" : "any",
+        children: children as ConditionExpression[],
+    };
+}
+
 function parseNameEnemyOrTeamAlternative(
     text: string,
     sourceText: string,
 ): ConditionExpression | undefined {
+    const includes = /^there is an enemy or an ally whose name includes\s+(.+)$/i.exec(text);
+    if (includes) {
+        const enemy = buildEnemyNameExpression(includes[1], "includes", "any_enemy", sourceText);
+        const ally = parseAllyConditionClause(
+            `an ally whose name includes ${includes[1]} on the team`,
+            sourceText,
+        );
+        if (enemy && ally) {
+            return { op: "any", children: [enemy, ally] };
+        }
+    }
     const match = /^(.*?)(?:(?:,\s*)?or when\s+)?("[^"]+") is an enemy or on the team$/i.exec(text);
     if (!match) return undefined;
     const names = parseQuotedValues(match[2]);
@@ -2933,6 +3111,11 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
             scope: "self",
             sourceText,
         });
+    }
+
+    const runtimeFlag = parseExactRuntimeFlagCondition(text, sourceText);
+    if (runtimeFlag) {
+        return runtimeFlag;
     }
 
     const receivingAttackWithKi = parseReceivingAttackWithKiCondition(text, sourceText);
@@ -3039,6 +3222,32 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
         }
     }
 
+    const allTeamCategoryOrClass = /^all allies are (.+?) Category characters? or (Super|Extreme) Class characters?$/i.exec(text)
+        ?? /^all allies are (Super|Extreme) Class characters? or (.+?) Category characters?$/i.exec(text);
+    if (allTeamCategoryOrClass) {
+        const categorySource = allTeamCategoryOrClass[1]?.toLowerCase() === "super"
+            || allTeamCategoryOrClass[1]?.toLowerCase() === "extreme"
+            ? allTeamCategoryOrClass[2]
+            : allTeamCategoryOrClass[1];
+        const classSource = allTeamCategoryOrClass[1]?.toLowerCase() === "super"
+            || allTeamCategoryOrClass[1]?.toLowerCase() === "extreme"
+            ? allTeamCategoryOrClass[1]
+            : allTeamCategoryOrClass[2];
+        const categories = parseQuotedValues(categorySource);
+        if (categories && categories.connector !== "and" && /^(?:Super|Extreme)$/i.test(classSource)) {
+            return predicateExpression({
+                kind: "ally_category_or_class_present",
+                scope: "team",
+                selfInclusion: "included",
+                comparator: "eq",
+                count: 7,
+                categories: categories.values,
+                classes: [normalizeClass(classSource)],
+                sourceText,
+            });
+        }
+    }
+
     const allTeamClass = /^all allies are (Super|Extreme) Class characters?$/i.exec(text);
     if (allTeamClass) {
         return predicateExpression({
@@ -3055,7 +3264,7 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
     const allTeamCategory = /^all allies are (.+?) Category characters?$/i.exec(text);
     if (allTeamCategory) {
         const categories = parseQuotedValues(allTeamCategory[1]);
-        if (categories?.values.length === 1) {
+        if (categories && categories.connector !== "and") {
             return predicateExpression({
                 kind: "team_category_count",
                 scope: "team",
@@ -3065,6 +3274,33 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
                 categories: categories.values,
                 sourceText,
             });
+        }
+    }
+
+    const soleTeamCategory = /^the character is the only (.+?) Category character on the team$/i.exec(text);
+    if (soleTeamCategory) {
+        const categories = parseQuotedValues(soleTeamCategory[1]);
+        if (categories?.values.length === 1) {
+            return {
+                op: "all",
+                children: [
+                    predicateExpression({
+                        kind: "character_category",
+                        scope: "self",
+                        categories: categories.values,
+                        sourceText,
+                    }),
+                    predicateExpression({
+                        kind: "team_category_count",
+                        scope: "team",
+                        selfInclusion: "included",
+                        comparator: "eq",
+                        count: 1,
+                        categories: categories.values,
+                        sourceText,
+                    }),
+                ],
+            };
         }
     }
 
@@ -3136,7 +3372,113 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
         };
     }
 
+    const namedAlly = parseExactNamedAllyCondition(text, sourceText);
+    if (namedAlly) {
+        return namedAlly;
+    }
+
     return parseAllyConditionClause(text, sourceText);
+}
+
+function parseExactNamedAllyCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const rotation = /^(?:your team has )?(.+?)(?: is)? attacking in the same turn$/i.exec(text);
+    const team = /^(.+?) is on the team$/i.exec(text);
+    const match = rotation ?? team;
+    if (!match) {
+        return undefined;
+    }
+    const names = parseQuotedValues(match[1]);
+    if (!names) {
+        return undefined;
+    }
+    const scope = rotation ? "rotation" as const : "team" as const;
+    return combineQuotedPredicateExpressions(names, name => {
+        const expression = allyPredicate(
+            "name",
+            name,
+            scope,
+            "included",
+            undefined,
+            undefined,
+            sourceText,
+        ) as Extract<ConditionExpression, { op: "predicate" }>;
+        return predicateExpression({ ...expression.predicate, nameMatch: "exact" });
+    });
+}
+
+function parseExactRuntimeFlagCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const guard = /^After guard is activated(?: (\d+) times? in battle)?$/i.exec(text);
+    if (guard) {
+        const count = guard[1] ? Number(guard[1]) : undefined;
+        if (count !== undefined && (!Number.isInteger(count) || count < 1)) {
+            return undefined;
+        }
+        return predicateExpression({
+            kind: "guard_activated",
+            scope: "self",
+            ...(count !== undefined ? { comparator: "gte", value: count } as const : {}),
+            sourceText,
+        });
+    }
+
+    if (/^After the character's Revival Skill is activated$/i.test(text)) {
+        return predicateExpression({
+            kind: "revive_triggered",
+            scope: "self",
+            sourceText,
+        });
+    }
+    if (/^After the character's or an ally's Revival Skill is activated$/i.test(text)) {
+        return predicateExpression({
+            kind: "revive_triggered",
+            scope: "team",
+            selfInclusion: "included",
+            sourceText,
+        });
+    }
+    if (/^At the end of the turn in which the character's Revival Skill is activated$/i.test(text)) {
+        return predicateExpression({
+            kind: "revive_triggered",
+            scope: "self",
+            evaluationMoment: "end_of_turn",
+            sourceText,
+        });
+    }
+
+    const finish = /^(?:the )?Finish Effect is (not )?activated$/i.exec(text);
+    if (finish) {
+        const activated = predicateExpression({
+            kind: "finish_effect_activated",
+            scope: "self",
+            sourceText,
+        });
+        return finish[1] ? { op: "not", child: activated } : activated;
+    }
+
+    const domain = /^(?:the )?Domain "([^"]+)" is active$/i.exec(text);
+    if (domain) {
+        return predicateExpression({
+            kind: "domain_active",
+            scope: "battle",
+            domainNames: [domain[1]],
+            sourceText,
+        });
+    }
+
+    if (/^(?:the )?character is KO'd$/i.test(text)) {
+        return predicateExpression({
+            kind: "character_ko",
+            scope: "self",
+            sourceText,
+        });
+    }
+    return undefined;
 }
 
 function parseReceivingAttackWithKiCondition(
@@ -3215,6 +3557,32 @@ function parseEntranceAnimationCondition(
     const entrance = /^Activates the Entrance Animation when (.+?)(?: upon the character's entry)?$/i.exec(text);
     if (!entrance) {
         return undefined;
+    }
+    const categoryEnemyOrRotationAlly = /^(?:there is )?a?\s*(.+?) Category enemy or another (.+?) Category ally at the start of the character's attacking turn$/i.exec(entrance[1]);
+    if (categoryEnemyOrRotationAlly) {
+        const enemyCategories = parseQuotedValues(categoryEnemyOrRotationAlly[1]);
+        const allyCategories = parseQuotedValues(categoryEnemyOrRotationAlly[2]);
+        if (enemyCategories?.values.length === 1 && allyCategories?.values.length === 1) {
+            return {
+                op: "any",
+                children: [
+                    predicateExpression({
+                        kind: "enemy_category",
+                        scope: "enemy",
+                        categories: enemyCategories.values,
+                        enemySelection: "any_enemy",
+                        sourceText,
+                    }),
+                    predicateExpression({
+                        kind: "rotation_partner_category",
+                        scope: "rotation",
+                        selfInclusion: "excluded",
+                        categories: allyCategories.values,
+                        sourceText,
+                    }),
+                ],
+            };
+        }
     }
     const condition = parseBooleanCondition(entrance[1].replace(
         /\s+at the start of the character's attacking turn/gi,
@@ -3350,6 +3718,29 @@ function parseCombatCountScope(sourceText: string): {
 }
 
 function parseExactCombatEventCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    const repeatedExact = /^Every time the character (performs|receives|evades) (\d+) attack\(s\) in battle$/i.exec(text);
+    if (repeatedExact) {
+        const value = Number(repeatedExact[2]);
+        if (!Number.isInteger(value) || value < 1) {
+            return undefined;
+        }
+        const direction: CombatEventDirection = /^performs$/i.test(repeatedExact[1])
+            ? "performed"
+            : /^receives$/i.test(repeatedExact[1])
+                ? "landed"
+                : "evaded";
+        const identity = combatEventIdentity("attack", direction);
+        return combatPredicate(
+            identity,
+            combatEventDescriptor(identity, "repeated_threshold", "after_event", {
+                countScope: "battle",
+                countScopeSource: "explicit_text",
+            }),
+            sourceText,
+            "gte",
+            value,
+        );
+    }
     const repeatedPerformed = /^Every time the character performs (\d+) or more ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attacks?) ((?:in|throughout) (?:the )?battle)$/i.exec(text);
     if (repeatedPerformed) {
         const value = Number(repeatedPerformed[1]);
@@ -3445,12 +3836,13 @@ function parseExactCombatEventCondition(text: string, sourceText: string): Condi
         direction: CombatEventDirection,
         timing: CombatEventRelativeTiming,
     }> = [
-        { pattern: /^(?:attacking|performing an? attack)$/i, direction: "performed", timing: "during_event" },
+        { pattern: /^(?:when )?(?:attacking|performing an? attack)$/i, direction: "performed", timing: "during_event" },
         { pattern: /^before (?:attacking|performing an? attack)$/i, direction: "performed", timing: "before_event" },
         { pattern: /^after (?:attacking|performing an? attack)$/i, direction: "performed", timing: "after_event" },
         { pattern: /^(?:when )?performing an? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super|Ultra Super) Attack)$/i, direction: "performed", timing: "during_event" },
         { pattern: /^after performing an? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super|Ultra Super) Attack)$/i, direction: "performed", timing: "after_event" },
         { pattern: /^(?:when )?receiving an? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:normal|Super) attack)$/i, direction: "targeted", timing: "during_event" },
+        { pattern: /^after the enemy launches an? (Super Attack) at the character$/i, direction: "targeted", timing: "during_event" },
         { pattern: /^(?:receiving|when receiving) an? attack$/i, direction: "targeted", timing: "during_event" },
         { pattern: /^before receiving an? attack(?: within the turn)?$/i, direction: "targeted", timing: "before_event" },
         { pattern: /^after (?:receiving|being hit by) an? attack$/i, direction: "landed", timing: "after_event" },
@@ -3475,6 +3867,19 @@ function parseExactCombatEventCondition(text: string, sourceText: string): Condi
 }
 
 function parseExactKiCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    const currentAmount = /^(?:the character's )?Ki is (?:(exactly|at least|at most)\s+)?(\d+)(?:\s+or\s+(more|less))?$/i.exec(text);
+    if (currentAmount) {
+        const value = Number(currentAmount[2]);
+        if (!isKiAmount(value)) {
+            return undefined;
+        }
+        const comparator: PassivePredicate["comparator"] = /^at least$/i.test(currentAmount[1] ?? "") || /^more$/i.test(currentAmount[3] ?? "")
+            ? "gte"
+            : /^at most$/i.test(currentAmount[1] ?? "") || /^less$/i.test(currentAmount[3] ?? "")
+                ? "lte"
+                : "eq";
+        return kiAmountPredicate(comparator, value, "when_attacking", sourceText);
+    }
     const interval = /^(?:attacking|before attacking) with (?:between\s+)?(\d+)\s+(?:and|to)\s+(\d+) Ki$/i.exec(text);
     if (interval) {
         const lower = Number(interval[1]);
@@ -3637,16 +4042,12 @@ function parseExactEnemyCondition(text: string, sourceText: string): ConditionEx
             "current_target",
         );
         if (hp) {
-            return {
-                op: "all",
-                children: [
-                    { op: "unknown", sourceText: missingStatusWithHp[1] },
-                    hp,
-                    ...(missingStatusWithHp[3]
-                        ? [{ op: "unknown" as const, sourceText: missingStatusWithHp[3].trim() }]
-                        : []),
-                ],
-            };
+            return missingStatusWithHp[3]
+                ? {
+                    op: "all",
+                    children: [hp, { op: "unknown", sourceText: missingStatusWithHp[3].trim() }],
+                }
+                : hp;
         }
     }
 
@@ -4045,6 +4446,8 @@ function enemyStatusPredicate(
 function parseEnemyNameCondition(text: string, sourceText: string): ConditionExpression | undefined {
     const includesForms: Array<{ pattern: RegExp, selection: EnemySelection }> = [
         { pattern: /^there (?:is|are) an? enem(?:y|ies) whose name includes\s+(.+)$/i, selection: "any_enemy" },
+        { pattern: /^an? enemy whose name includes\s+(.+)$/i, selection: "any_enemy" },
+        { pattern: /^an? enemy includes\s+(.+)$/i, selection: "any_enemy" },
         { pattern: /^attacking an? enemy whose name includes\s+(.+)$/i, selection: "current_target" },
         { pattern: /^(?:the )?(?:target|attacked|selected) enemy['’]s name includes\s+(.+)$/i, selection: "current_target" },
         { pattern: /^the only enemy['’]s name includes\s+(.+)$/i, selection: "only_enemy" },
@@ -4229,6 +4632,7 @@ function parseExactHpCondition(text: string, sourceText: string): ConditionExpre
         { pattern: /\s+at the start of the character['â€™]s attacking turn$/i, moment: "start_of_turn" },
         { pattern: /\s+at the start of (?:the )?turn$/i, moment: "start_of_turn" },
         { pattern: /\s+at the end of (?:the )?turn$/i, moment: "end_of_turn" },
+        { pattern: /\s+when attacking$/i, moment: "when_attacking" },
     ];
     for (const suffix of momentSuffixes) {
         const match = suffix.pattern.exec(body);
@@ -4420,6 +4824,14 @@ function parseOrdinalValues(sourceText: string): number[] | undefined {
 }
 
 function parseTemporalSuffixCondition(text: string): ConditionExpression | undefined {
+    const attackingWithKiSuffix = /^(.*?)\s+(when attacking with (?:(?:exactly|at least|at most)\s+)?\d+(?:\s+or\s+(?:more|less))? Ki)$/i.exec(text);
+    if (attackingWithKiSuffix && attackingWithKiSuffix[1].trim()) {
+        const prefix = parseBooleanCondition(attackingWithKiSuffix[1]);
+        const suffix = parseBooleanCondition(attackingWithKiSuffix[2]);
+        if (prefix.op !== "unknown" && suffix.op !== "unknown") {
+            return { op: "all", children: [prefix, suffix] };
+        }
+    }
     const receivingAttackWithKiSuffix = /^(.*?)\s+(when receiving an? attack with (?:(?:exactly|at least|at most)\s+)?\d+(?:\s+or\s+(?:more|less))? Ki)$/i.exec(text);
     if (receivingAttackWithKiSuffix && receivingAttackWithKiSuffix[1].trim()) {
         const prefix = parseBooleanCondition(receivingAttackWithKiSuffix[1]);
@@ -4760,7 +5172,35 @@ function parseExcludedKiSphereTypes(sourceText: string): TeamAnalysisType[] | un
         : undefined;
 }
 
+function parseKiAmountScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const match = /^For every(?:\s+(\d+))?\s+Ki when attacking$/i.exec(sourceText.trim());
+    const kiPerIncrement = match ? Number(match[1] ?? 1) : NaN;
+    if (!Number.isInteger(kiPerIncrement) || kiPerIncrement < 1) {
+        return undefined;
+    }
+    return {
+        kind: "per_ki_amount",
+        kiPerIncrement,
+        kiContext: "final_attack_ki",
+        evaluationMoment: "when_attacking",
+    };
+}
+
 function parseKiSphereScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const excluded = /^For every(?:\s+(\d+))?\s+non-(AGL|TEQ|INT|STR|PHY) Ki Spheres? obtained$/i.exec(sourceText.trim());
+    if (excluded) {
+        const spheresPerIncrement = Number(excluded[1] ?? 1);
+        if (!Number.isInteger(spheresPerIncrement) || spheresPerIncrement < 1) {
+            return undefined;
+        }
+        return {
+            kind: "per_ki_sphere",
+            kiSphereTypes: ["any"],
+            excludedKiSphereTypes: [normalizeType(excluded[2])],
+            spheresPerIncrement,
+            kiContext: "collected_ki_spheres",
+        };
+    }
     const match = /^For every(?:\s+(\d+))?\s*(.*?)\s*Ki Spheres? obtained$/i.exec(sourceText.trim());
     if (!match) {
         return undefined;
@@ -4822,6 +5262,21 @@ function parseCombatEventScalingHeader(sourceText: string): PassiveEffectScaling
             },
         )),
     };
+}
+
+function parseCompositeScalingConditionHeader(sourceText: string): {
+    scaling: PassiveEffectScaling,
+    conditionText: string,
+} | undefined {
+    const match = /^(For every(?:\s+\d+)?\s+(?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack performed)\s+(.+)$/i.exec(sourceText.trim());
+    if (!match) {
+        return undefined;
+    }
+    const scaling = parseCombatEventScalingHeader(match[1]);
+    const condition = parseBooleanCondition(match[2]);
+    return scaling && condition.op !== "unknown"
+        ? { scaling, conditionText: match[2] }
+        : undefined;
 }
 
 function parseCategoryAllyScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
@@ -4970,6 +5425,36 @@ function scalingMaximumCount(scope: "team" | "rotation", selfInclusion: SelfIncl
     return selfInclusion === "excluded" ? capacity - 1 : capacity;
 }
 
+function parseTurnPassedScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const match = /^For every(?: (\d+))? turns? passed(?: from the start of battle)?$/i.exec(sourceText.trim());
+    const turnsPerIncrement = match ? Number(match[1] ?? 1) : NaN;
+    if (!Number.isInteger(turnsPerIncrement) || turnsPerIncrement < 1) {
+        return undefined;
+    }
+    return {
+        kind: "per_turn_passed",
+        turnsPerIncrement,
+        turnContext: "battle_turn",
+    };
+}
+
+function parseExistingEnemyScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const match = /^Per existing(?:(?: (Super|Extreme) Class)?) enemy(?: \(count starts from the (\d+)(?:st|nd|rd|th) enemy\))?$/i.exec(sourceText.trim());
+    if (!match) {
+        return undefined;
+    }
+    const countStartsFrom = Number(match[2] ?? 1);
+    if (!Number.isInteger(countStartsFrom) || countStartsFrom < 1) {
+        return undefined;
+    }
+    return {
+        kind: "per_existing_enemy",
+        classes: match[1] ? [normalizeClass(match[1])] : [],
+        enemiesPerIncrement: 1,
+        countStartsFrom,
+    };
+}
+
 function parseHpRemainingScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
     const match = /^The (more|less) HP remaining$/i.exec(sourceText.trim());
     if (!match) {
@@ -5000,7 +5485,16 @@ function parsePerEventIdentity(sourceText: string): ParsedCombatEventIdentity | 
 
 function clonePassiveEffectScaling(scaling: PassiveEffectScaling): PassiveEffectScaling {
     if (scaling.kind === "per_ki_sphere") {
-        return { ...scaling, kiSphereTypes: [...scaling.kiSphereTypes] };
+        return {
+            ...scaling,
+            kiSphereTypes: [...scaling.kiSphereTypes],
+            ...(scaling.excludedKiSphereTypes
+                ? { excludedKiSphereTypes: [...scaling.excludedKiSphereTypes] }
+                : {}),
+        };
+    }
+    if (scaling.kind === "per_ki_amount") {
+        return { ...scaling };
     }
     if (scaling.kind === "per_category_ally") {
         return { ...scaling, categories: [...scaling.categories] };
@@ -5020,6 +5514,12 @@ function clonePassiveEffectScaling(scaling: PassiveEffectScaling): PassiveEffect
     if (scaling.kind === "hp_remaining") {
         return { ...scaling };
     }
+    if (scaling.kind === "per_turn_passed") {
+        return { ...scaling };
+    }
+    if (scaling.kind === "per_existing_enemy") {
+        return { ...scaling, classes: [...scaling.classes] };
+    }
     return {
             ...scaling,
             events: scaling.events.map(event => ({
@@ -5035,7 +5535,7 @@ function parseSlotValues(sourceText: string): number[] {
 }
 
 function parseExactSlotCondition(text: string, sourceText: string): ConditionExpression | undefined {
-    const startOfTurnPattern = new RegExp(`^(?:the|this) character is the\\s+(${SLOT_LIST_PATTERN})\\s+attacker at the start of turn$`, "i");
+    const startOfTurnPattern = new RegExp(`^(?:(?:the|this) character is the|As the|attacking as the)\\s+(${SLOT_LIST_PATTERN})\\s+attacker(?: in a turn)? at the start of turn$`, "i");
     const startOfTurnMatch = startOfTurnPattern.exec(text);
     if (startOfTurnMatch) {
         return predicateExpression({
@@ -5598,7 +6098,7 @@ function parseEffectAtoms(body: string, context: EffectParseContext): {
             sourceText: match[0],
         }];
     });
-    addMatches(/\bPerforms a critical hit\b/gi, match => [{
+    addMatches(/\b(?:Performs a critical hit|All attacks become critical hits)\b/gi, match => [{
         kind: "critical_chance",
         value: 100,
         unit: "percent",
@@ -7103,6 +7603,9 @@ function validateStateSource(
                     characterId: state.characterId,
                     formId: state.formId,
                     releaseState: state.releaseState,
+                    ...(expected.passiveDetails.sourceSkillId
+                        ? { passiveSkillSetId: expected.passiveDetails.sourceSkillId }
+                        : {}),
                 },
             );
             if (validEvidence.length !== sourceEvidence.length) {
@@ -7140,7 +7643,14 @@ function validateStateSource(
                 expected.passiveDetails.name,
                 expected.passiveText,
                 expected.passiveDetails,
-                { characterId: state.characterId, formId: state.formId, releaseState: state.releaseState },
+                {
+                    characterId: state.characterId,
+                    formId: state.formId,
+                    releaseState: state.releaseState,
+                    ...(expected.passiveDetails.sourceSkillId
+                        ? { passiveSkillSetId: expected.passiveDetails.sourceSkillId }
+                        : {}),
+                },
             ).structuralEvidence ?? [];
             if (JSON.stringify(state.passive?.structuralEvidence ?? []) !== JSON.stringify(expectedStructuralOutput)) {
                 issues.push({
@@ -7750,7 +8260,7 @@ function aggregateStatuses(statuses: ParseStatus[]): ParseStatus {
 const ALLY_PREDICATE_KINDS = new Set<PassivePredicateKind>([
     "ally_category_present", "ally_name_present", "ally_category_name_present", "all_rotation_allies_category",
     "rotation_partner_category", "rotation_partner_name", "ally_class_present",
-    "ally_type_present", "ally_class_type_present", "ally_category_class_present",
+    "ally_type_present", "ally_class_type_present", "ally_category_class_present", "ally_category_or_class_present",
     "all_rotation_allies_class", "team_category_count", "team_class_count", "team_type_count",
 ]);
 
@@ -7808,6 +8318,20 @@ function validateEffectContract(
                 issues.push({ code: "effect-scaling-unit", message: `Ki Sphere scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
             }
             validateKiSphereTypes(effect.scaling.kiSphereTypes, "effect-scaling-sphere-types", state, rule, issues);
+            const excludedTypes = effect.scaling.excludedKiSphereTypes ?? [];
+            if (excludedTypes.some(type => !TEAM_ANALYSIS_TYPES.includes(type))
+                || (excludedTypes.length > 0
+                    && (effect.scaling.kiSphereTypes.length !== 1 || effect.scaling.kiSphereTypes[0] !== "any"))) {
+                issues.push({ code: "effect-scaling-excluded-sphere-types", message: `Excluded Ki Sphere scaling requires recognized Types and an any-sphere base.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+        } else if (effect.scaling.kind === "per_ki_amount") {
+            if (!Number.isInteger(effect.scaling.kiPerIncrement) || effect.scaling.kiPerIncrement < 1) {
+                issues.push({ code: "ki-scaling-unit", message: `Ki scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.kiContext !== "final_attack_ki"
+                || effect.scaling.evaluationMoment !== "when_attacking") {
+                issues.push({ code: "ki-scaling-context", message: `Ki scaling requires final attack Ki at attack time.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
         } else if (effect.scaling.kind === "per_combat_event") {
             if (!["single", "and", "or"].includes(effect.scaling.connector)) {
                 issues.push({ code: "combat-scaling-connector", message: `Combat-event scaling connector is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
@@ -7916,6 +8440,21 @@ function validateEffectContract(
             }
             if (effect.value === undefined || effect.unit === undefined) {
                 issues.push({ code: "hp-scaling-maximum", message: `Typed HP remaining scaling requires the maximum effect value and unit.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+        } else if (effect.scaling.kind === "per_turn_passed") {
+            if (!Number.isInteger(effect.scaling.turnsPerIncrement) || effect.scaling.turnsPerIncrement < 1) {
+                issues.push({ code: "turn-scaling-unit", message: `Turn scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.turnContext !== "battle_turn") {
+                issues.push({ code: "turn-scaling-context", message: `Turn scaling must use battle-turn context.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+        } else if (effect.scaling.kind === "per_existing_enemy") {
+            if (!Number.isInteger(effect.scaling.enemiesPerIncrement) || effect.scaling.enemiesPerIncrement < 1
+                || !Number.isInteger(effect.scaling.countStartsFrom) || effect.scaling.countStartsFrom < 1) {
+                issues.push({ code: "enemy-scaling-unit", message: `Enemy scaling requires positive integer count units.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.classes.some(value => !TEAM_ANALYSIS_CLASSES.includes(value))) {
+                issues.push({ code: "enemy-scaling-class", message: `Enemy scaling class is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
             }
         } else {
             issues.push({ code: "effect-scaling-kind", message: `Effect scaling kind is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
@@ -8140,7 +8679,7 @@ function validateCondition(
             && (!Number.isInteger(condition.predicate.count) || condition.predicate.count <= 0)) {
             issues.push({ code: "condition-count", message: `Ally count must be a positive integer.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (["ally_category_present", "ally_category_name_present", "ally_category_class_present", "all_rotation_allies_category", "rotation_partner_category", "team_category_count", "enemy_category"].includes(condition.predicate.kind)
+        if (["ally_category_present", "ally_category_name_present", "ally_category_class_present", "ally_category_or_class_present", "all_rotation_allies_category", "rotation_partner_category", "team_category_count", "character_category", "enemy_category"].includes(condition.predicate.kind)
             && (condition.predicate.categories?.length ?? 0) === 0) {
             issues.push({ code: "condition-categories", message: `Category condition must name at least one category.`, stateKey: state.stateKey, ruleId: rule.id });
         }
@@ -8148,7 +8687,7 @@ function validateCondition(
             && (condition.predicate.names?.length ?? 0) === 0) {
             issues.push({ code: "condition-names", message: `Name condition must name at least one character.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (["ally_class_present", "ally_class_type_present", "ally_category_class_present", "all_rotation_allies_class", "team_class_count", "character_class", "enemy_class", "enemy_class_type"].includes(condition.predicate.kind)
+        if (["ally_class_present", "ally_class_type_present", "ally_category_class_present", "ally_category_or_class_present", "all_rotation_allies_class", "team_class_count", "character_class", "enemy_class", "enemy_class_type"].includes(condition.predicate.kind)
             && (condition.predicate.classes?.length ?? 0) === 0) {
             issues.push({ code: "condition-classes", message: `Class condition must name at least one class.`, stateKey: state.stateKey, ruleId: rule.id });
         }
@@ -8156,10 +8695,25 @@ function validateCondition(
             && (condition.predicate.types?.length ?? 0) === 0) {
             issues.push({ code: "condition-types", message: `Type condition must name at least one type.`, stateKey: state.stateKey, ruleId: rule.id });
         }
+        if (condition.predicate.kind === "character_category"
+            && (condition.predicate.scope !== "self"
+                || condition.predicate.selfInclusion !== undefined
+                || condition.predicate.comparator !== undefined
+                || condition.predicate.count !== undefined)) {
+            issues.push({ code: "character-category-contract", message: `Character category conditions require an uncounted self scope.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+        if (condition.predicate.kind === "ally_category_or_class_present"
+            && (condition.predicate.scope !== "team"
+                || condition.predicate.selfInclusion !== "included"
+                || condition.predicate.comparator !== "eq"
+                || condition.predicate.count !== 7)) {
+            issues.push({ code: "team-category-or-class-contract", message: `Universal category-or-class conditions require all seven team members, including self.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
         validateEnemyPredicate(condition.predicate, state, rule, issues);
         validateNameIdentityPredicate(condition.predicate, state, rule, issues);
         validateKiPredicate(condition.predicate, state, rule, issues);
         validateCombatEventPredicate(condition.predicate, state, rule, issues);
+        validateRuntimeFlagPredicate(condition.predicate, state, rule, issues);
         validateClassAndTypeValues(condition.predicate.classes, condition.predicate.types, state, rule, issues);
         validateScenarioPredicate(condition.predicate, state, rule, issues);
         if (["battle_slot", "ki_sphere_collection_order"].includes(condition.predicate.kind)
@@ -8175,6 +8729,39 @@ function validateCondition(
                 issues.push({ code: "slot-range", message: `Turn-order position must be 1, 2, or 3.`, stateKey: state.stateKey, ruleId: rule.id });
             }
         }
+    }
+}
+
+function validateRuntimeFlagPredicate(
+    predicate: PassivePredicate,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    if (predicate.kind === "domain_active") {
+        if (predicate.scope !== "battle"
+            || predicate.domainNames?.length !== 1
+            || !predicate.domainNames[0].trim()) {
+            issues.push({ code: "domain-condition", message: `Domain conditions require one named battle domain.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+    } else if (predicate.domainNames !== undefined) {
+        issues.push({ code: "domain-condition-kind", message: `Domain names belong only to domain conditions.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.kind === "guard_activated") {
+        const counted = predicate.value !== undefined || predicate.comparator !== undefined;
+        if (predicate.scope !== "self"
+            || (counted && (predicate.comparator !== "gte"
+                || !Number.isInteger(predicate.value)
+                || (predicate.value ?? 0) < 1))) {
+            issues.push({ code: "guard-condition", message: `Guard activation requires self scope and an optional positive activation count.`, stateKey: state.stateKey, ruleId: rule.id });
+        }
+    }
+    if (["finish_effect_activated", "character_ko"].includes(predicate.kind)
+        && predicate.scope !== "self") {
+        issues.push({ code: "runtime-flag-scope", message: `Character runtime flags must use self scope.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.kind === "revive_triggered" && predicate.scope !== "self" && predicate.scope !== "team") {
+        issues.push({ code: "revive-condition-scope", message: `Revival activation must use self or team scope.`, stateKey: state.stateKey, ruleId: rule.id });
     }
 }
 

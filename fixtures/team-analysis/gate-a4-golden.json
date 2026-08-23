@@ -378,15 +378,8 @@
       "name": "missing status preserves independent enemy HP",
       "source": "real",
       "rawText": "When the target enemy is in the following status: HP is 40% or less\n- ATK 20%",
-      "expectedStatus": "partial",
-      "conditionStatus": "partial",
-      "condition": {
-        "op": "all",
-        "children": [
-          { "op": "unknown", "sourceText": "the target enemy is in the following status:" },
-          { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "current_target", "comparator": "lte", "value": 40 }
-        ]
-      }
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "enemy_hp_percent", "scope": "enemy", "enemySelection": "current_target", "comparator": "lte", "value": 40 }
     },
     {
       "name": "proportional enemy HP stays unknown",

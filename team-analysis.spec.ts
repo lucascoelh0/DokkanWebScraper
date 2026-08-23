@@ -1,4 +1,5 @@
 import { deepEqual, equal, match, ok } from "assert";
+import { createHash } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { describe, it } from "mocha";
 import { resolve } from "path";
@@ -1237,6 +1238,134 @@ describe("team-analysis Gate A4.1 structural enemy-status evidence", function ()
       );
     }
   });
+
+  it("combines a first-party Ki header with its typed enemy-status alternatives", () => {
+    const condition = "When attacking with 12 or more Ki if the target enemy is in the following status: , or";
+    const rawText = `${condition}\n- DEF 40% and attacks effective against all Types`;
+    const structuralText = "When attacking with 12 or more Ki if the target enemy is in the following status: {passiveImg:atk_down}, {passiveImg:def_down} or {passiveImg:astute}";
+    const context = {
+      characterId: "kyawei",
+      formId: "kyawei",
+      releaseState: "eza" as const,
+      passiveSkillSetId: "4216",
+    };
+    const details: PassiveDetails = {
+      text: rawText,
+      lines: rawText.split("\n"),
+      sections: [{ label: condition, lines: ["DEF 40% and attacks effective against all Types"] }],
+      sourceSkillId: "4216",
+      conditionEvidence: [{
+        kind: "enemy_status",
+        stateKey: "kyawei:kyawei:eza",
+        characterId: "kyawei",
+        formId: "kyawei",
+        releaseState: "eza",
+        passiveSkillId: "4216",
+        passiveTextSha256: createHash("sha256").update(rawText, "utf8").digest("hex"),
+        anchor: { lineIndex: 0, normalizedText: condition, structuralText },
+        statuses: [
+          { order: 0, sourceToken: "atk_down", status: "atk_down", resolution: "supported" },
+          { order: 1, sourceToken: "def_down", status: "def_down", resolution: "supported" },
+          { order: 2, sourceToken: "astute", status: "super_attack_sealed", resolution: "supported" },
+        ],
+        connector: "or",
+        resolution: "supported",
+        provenance: {
+          source: "first_party_game_db",
+          sourceVersion: "1787282006",
+          payloadField: "passive_skill_sets.itemized_description",
+          markerSyntax: "passiveImg",
+        },
+      }],
+    };
+
+    const passive = parsePassive("kyawei:kyawei:eza", "Keen Weapon", rawText, details, context);
+    const predicates = flattenPredicates(passive.rules[0].condition);
+    deepEqual(predicates.map(predicate => predicate.kind), [
+      "ki_amount",
+      "enemy_status",
+      "enemy_status",
+      "enemy_status",
+    ]);
+    deepEqual(predicates.flatMap(predicate => predicate.enemyStatuses ?? []), [
+      "atk_down",
+      "def_down",
+      "super_attack_sealed",
+    ]);
+    equal(passive.rules[0].conditionStatus, "supported");
+  });
+
+  it("splits first-party inline enemy-status requirements from their passive effects", () => {
+    const rawText = [
+      "Basic effect(s)",
+      "- DEF 40% and attacks effective against all Types when the target enemy is in the following status: , or",
+      "- All attacks become critical hits when the target enemy is in the following status:",
+    ].join("\n");
+    const structural = [
+      "DEF 40% and attacks effective against all Types when the target enemy is in the following status: {passiveImg:atk_down}, {passiveImg:def_down} or {passiveImg:astute}",
+      "All attacks become critical hits when the target enemy is in the following status: {passiveImg:stun}",
+    ];
+    const statusSets = [
+      [
+        { order: 0, sourceToken: "atk_down", status: "atk_down" as const, resolution: "supported" as const },
+        { order: 1, sourceToken: "def_down", status: "def_down" as const, resolution: "supported" as const },
+        { order: 2, sourceToken: "astute", status: "super_attack_sealed" as const, resolution: "supported" as const },
+      ],
+      [{ order: 0, sourceToken: "stun", status: "stunned" as const, resolution: "supported" as const }],
+    ];
+    const details: PassiveDetails = {
+      text: rawText,
+      lines: rawText.split("\n"),
+      sections: [{
+        label: "Basic effect(s)",
+        lines: rawText.split("\n").slice(1).map(line => line.replace(/^-\s+/, "")),
+      }],
+      sourceSkillId: "4216",
+      conditionEvidence: structural.map((structuralText, index) => ({
+        kind: "enemy_status" as const,
+        stateKey: "kyawei:kyawei:eza",
+        characterId: "kyawei",
+        formId: "kyawei",
+        releaseState: "eza" as const,
+        passiveSkillId: "4216",
+        passiveTextSha256: createHash("sha256").update(rawText, "utf8").digest("hex"),
+        anchor: {
+          lineIndex: index + 1,
+          normalizedText: rawText.split("\n")[index + 1].replace(/^-\s+/, ""),
+          structuralText,
+        },
+        statuses: statusSets[index],
+        ...(index === 0 ? { connector: "or" as const } : {}),
+        resolution: "supported" as const,
+        provenance: {
+          source: "first_party_game_db" as const,
+          sourceVersion: "1787282006",
+          payloadField: "passive_skill_sets.itemized_description" as const,
+          markerSyntax: "passiveImg" as const,
+        },
+      })),
+    };
+
+    const passive = parsePassive("kyawei:kyawei:eza", "Keen Weapon", rawText, details, {
+      characterId: "kyawei",
+      formId: "kyawei",
+      releaseState: "eza",
+      passiveSkillSetId: "4216",
+    });
+
+    equal(passive.rules.length, 2);
+    equal(passive.rules.every(rule => rule.conditionStatus === "supported"), true);
+    deepEqual(
+      passive.rules.map(rule => flattenPredicates(rule.condition).flatMap(predicate => predicate.enemyStatuses ?? [])),
+      [["atk_down", "def_down", "super_attack_sealed"], ["stunned"]],
+    );
+    equal(passive.rules[0].effects.some(effect => effect.sourceText.includes("following status")), false);
+    equal(passive.rules[1].effects.some(effect => effect.sourceText.includes("following status")), false);
+    deepEqual(
+      passive.rules[1].effects.map(effect => effect.kind).sort(),
+      ["critical_chance"],
+    );
+  });
 });
 
 describe("team-analysis first-party Entrance Animation conditions", function () {
@@ -1343,6 +1472,73 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
 
     equal(passive.rules[0].conditionStatus, "supported");
     equal(flattenPredicates(passive.rules[0].condition)[0].nameIdentitySetId, "60");
+  });
+
+  it("uses the unique official DB scope when localized name-condition scope diverges", () => {
+    const passive = parsePassive(
+      "1019091:1019091:eza",
+      "Glorious Charge",
+      'When there is an ally whose name includes "Bardock" on the team\n- Changes Ki Spheres: random Type to Rainbow',
+      undefined,
+      {
+        characterId: "1019091",
+        formId: "1019091",
+        canonicalId: "122",
+        releaseState: "eza",
+        passiveSkillSetId: "2789",
+        nameIdentityContract: {
+          source: "first_party_game_db",
+          bindings: [{
+            passiveSkillSetId: "2789",
+            scope: "rotation",
+            count: 1,
+            identitySetId: "75",
+            canonicalIds: ["4", "122", "455"],
+            canonicalNames: ["Bardock", "Super Saiyan Bardock", "Team Bardock"],
+          }],
+        },
+      },
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    const predicate = flattenPredicates(passive.rules[0].condition)[0];
+    equal(predicate.scope, "rotation");
+    equal(predicate.nameIdentitySetId, "75");
+    deepEqual(predicate.canonicalIds, ["4", "122", "455"]);
+    equal(predicate.sourceText, 'When there is an ally whose name includes "Bardock" on the team');
+  });
+
+  it("does not override localized scope when official cross-scope bindings are ambiguous", () => {
+    const binding = {
+      passiveSkillSetId: "ambiguous",
+      count: 1,
+      canonicalIds: ["4"],
+      canonicalNames: ["Bardock"],
+    };
+    const passive = parsePassive(
+      "name-scope-ambiguous:initial",
+      undefined,
+      'When there is an ally whose name includes "Bardock" on the team\n- ATK 100%',
+      undefined,
+      {
+        characterId: "name-scope-ambiguous",
+        formId: "name-scope-ambiguous",
+        releaseState: "initial",
+        passiveSkillSetId: "ambiguous",
+        nameIdentityContract: {
+          source: "first_party_game_db",
+          bindings: [
+            { ...binding, scope: "rotation", identitySetId: "75" },
+            { ...binding, scope: "rotation", identitySetId: "76" },
+          ],
+        },
+      },
+    );
+
+    equal(passive.rules[0].conditionStatus, "partial");
+    const predicate = flattenPredicates(passive.rules[0].condition)[0];
+    equal(predicate.scope, "team");
+    equal(predicate.nameIdentitySetId, undefined);
   });
 
   it("binds a same-member category and name condition only to its type-45 category", () => {
@@ -1656,6 +1852,135 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
     });
   });
 
+  it("types the character as the sole member of a team category", () => {
+    const passive = parsePassive(
+      "sole-category:initial",
+      undefined,
+      'When the character is the only "Defenders of Justice" Category character on the team\n- ATK & DEF 150%',
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => ({
+      kind: predicate.kind,
+      scope: predicate.scope,
+      selfInclusion: predicate.selfInclusion,
+      comparator: predicate.comparator,
+      count: predicate.count,
+      categories: predicate.categories,
+    })), [
+      {
+        kind: "character_category",
+        scope: "self",
+        selfInclusion: undefined,
+        comparator: undefined,
+        count: undefined,
+        categories: ["Defenders of Justice"],
+      },
+      {
+        kind: "team_category_count",
+        scope: "team",
+        selfInclusion: "included",
+        comparator: "eq",
+        count: 1,
+        categories: ["Defenders of Justice"],
+      },
+    ]);
+  });
+
+  it("types all-team category alternatives as a universal category union", () => {
+    const passive = parsePassive(
+      "all-category-union:initial",
+      undefined,
+      'When all allies are "Dragon Ball Heroes" or "Crossover" Category characters\n- ATK & DEF 150%',
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(conditionShape(passive.rules[0].condition), {
+      op: "predicate",
+      kind: "team_category_count",
+      scope: "team",
+      selfInclusion: "included",
+      comparator: "eq",
+      count: 7,
+      categories: ["Dragon Ball Heroes", "Crossover"],
+    });
+  });
+
+  it("types all-team category-or-Class alternatives as a same-member union", () => {
+    const passive = parsePassive(
+      "all-category-class-union:initial",
+      undefined,
+      'When all allies are "Space-Traveling Warriors" Category characters or Extreme Class characters\n- ATK & DEF 150%',
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(conditionShape(passive.rules[0].condition), {
+      op: "predicate",
+      kind: "ally_category_or_class_present",
+      scope: "team",
+      selfInclusion: "included",
+      comparator: "eq",
+      count: 7,
+      categories: ["Space-Traveling Warriors"],
+      classes: ["Extreme"],
+    });
+  });
+
+  it("types all-team Class-or-category alternatives independent of source order", () => {
+    const passive = parsePassive(
+      "all-class-category-union:initial",
+      undefined,
+      'When all allies are Extreme Class characters or "GT Bosses" Category characters\n- ATK & DEF 150%',
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(conditionShape(passive.rules[0].condition), {
+      op: "predicate",
+      kind: "ally_category_or_class_present",
+      scope: "team",
+      selfInclusion: "included",
+      comparator: "eq",
+      count: 7,
+      categories: ["GT Bosses"],
+      classes: ["Extreme"],
+    });
+  });
+
+  it("types an Entrance Animation enabled by an enemy or rotation partner category", () => {
+    const passive = parsePassive(
+      "entrance:enemy-or-rotation-category:initial",
+      undefined,
+      [
+        'Activates the Entrance Animation when there is a "Tournament Participants" Category enemy or another "Tournament Participants" Category ally at the start of the character\'s attacking turn',
+        "- ATK & DEF 150%",
+      ].join("\n"),
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => ({
+      kind: predicate.kind,
+      scope: predicate.scope,
+      selfInclusion: predicate.selfInclusion,
+      categories: predicate.categories,
+      enemySelection: predicate.enemySelection,
+    })), [
+      {
+        kind: "enemy_category",
+        scope: "enemy",
+        selfInclusion: undefined,
+        categories: ["Tournament Participants"],
+        enemySelection: "any_enemy",
+      },
+      {
+        kind: "rotation_partner_category",
+        scope: "rotation",
+        selfInclusion: "excluded",
+        categories: ["Tournament Participants"],
+        enemySelection: undefined,
+      },
+    ]);
+  });
+
   it("types an incoming attack from an enemy hit by the character's Super Attack", () => {
     const passive = parsePassive(
       "runtime:enemy-hit-by-sa:initial",
@@ -1751,6 +2076,248 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
         equal(effect.activationTiming?.moment, "start_of_turn");
       });
     });
+  });
+
+  it("types official guard, Revival, Finish, Domain and KO runtime conditions", () => {
+    const cases: Array<{
+      header: string,
+      kind: string,
+      scope: string,
+      comparator?: string,
+      value?: number,
+      domainNames?: string[],
+      negated?: boolean,
+    }> = [
+      { header: "After guard is activated", kind: "guard_activated", scope: "self" },
+      { header: "After guard is activated 2 times in battle", kind: "guard_activated", scope: "self", comparator: "gte", value: 2 },
+      { header: "After the character's Revival Skill is activated", kind: "revive_triggered", scope: "self" },
+      { header: "After the character's or an ally's Revival Skill is activated", kind: "revive_triggered", scope: "team" },
+      { header: "When the Finish Effect is activated", kind: "finish_effect_activated", scope: "self" },
+      { header: "When the Finish Effect is not activated", kind: "finish_effect_activated", scope: "self", negated: true },
+      { header: 'When the Domain "Tree of Might" is active', kind: "domain_active", scope: "battle", domainNames: ["Tree of Might"] },
+      { header: "When the character is KO'd", kind: "character_ko", scope: "self" },
+    ];
+
+    cases.forEach((fixture, index) => {
+      const passive = parsePassive(
+        `runtime-flag-${index}:initial`,
+        undefined,
+        `${fixture.header}\n- ATK 100%`,
+      );
+      equal(passive.rules[0].conditionStatus, "supported", fixture.header);
+      const condition = passive.rules[0].condition;
+      equal(condition.op, fixture.negated ? "not" : "predicate", fixture.header);
+      const predicate = flattenPredicates(condition)[0];
+      equal(predicate.kind, fixture.kind, fixture.header);
+      equal(predicate.scope, fixture.scope, fixture.header);
+      equal(predicate.comparator, fixture.comparator, fixture.header);
+      equal(predicate.value, fixture.value, fixture.header);
+      deepEqual(predicate.domainNames, fixture.domainNames, fixture.header);
+    });
+  });
+
+  it("types an enemy Super Attack launched at the character as a resolved incoming event", () => {
+    const passive = parsePassive(
+      "incoming-super-after:initial",
+      undefined,
+      "After the enemy launches a Super Attack at the character\n- DEF 100%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    const predicate = flattenPredicates(passive.rules[0].condition)[0];
+    equal(predicate.kind, "incoming_super_attack");
+    equal(predicate.combatEvent?.relativeTiming, "during_event");
+  });
+
+  it("types turn and existing-enemy scaling headers without turning them into conditions", () => {
+    const passive = parsePassive(
+      "runtime-scaling:initial",
+      undefined,
+      [
+        "For every 2 turns passed from the start of battle",
+        "- ATK 20% (up to 100%)",
+        "Per existing Extreme Class enemy (count starts from the 3rd enemy)",
+        "- DEF 50%",
+      ].join("\n"),
+    );
+
+    equal(passive.rules.length, 2);
+    passive.rules.forEach(rule => {
+      equal(rule.conditionStatus, "supported");
+      deepEqual(rule.condition, { op: "always" });
+    });
+    deepEqual(passive.rules[0].effects[0].scaling, {
+      kind: "per_turn_passed",
+      turnsPerIncrement: 2,
+      turnContext: "battle_turn",
+    });
+    deepEqual(passive.rules[1].effects[0].scaling, {
+      kind: "per_existing_enemy",
+      classes: ["Extreme"],
+      enemiesPerIncrement: 1,
+      countStartsFrom: 3,
+    });
+  });
+
+  it("types direct quoted team and rotation name clauses for official identity binding", () => {
+    const passive = parsePassive(
+      "legacy-name:initial",
+      undefined,
+      [
+        'When your team has "Android #17 (Future)" attacking in the same turn',
+        "- ATK 100%",
+        'When "Piccolo" is on the team',
+        "- DEF 100%",
+      ].join("\n"),
+      undefined,
+      {
+        characterId: "legacy-name",
+        formId: "legacy-name",
+        releaseState: "initial",
+        passiveSkillSetId: "legacy",
+        nameIdentityContract: {
+          source: "first_party_game_db",
+          bindings: [
+            { passiveSkillSetId: "legacy", scope: "rotation", count: 1, identitySetId: "17", canonicalIds: ["17"], canonicalNames: ["Android #17 (Future)"] },
+            { passiveSkillSetId: "legacy", scope: "team", count: 1, identitySetId: "30", canonicalIds: ["30"], canonicalNames: ["Piccolo"] },
+          ],
+        },
+      },
+    );
+
+    equal(passive.rules.length, 2);
+    deepEqual(passive.rules.map(rule => flattenPredicates(rule.condition)[0].nameIdentitySetId), ["17", "30"]);
+    deepEqual(passive.rules.map(rule => flattenPredicates(rule.condition)[0].scope), ["rotation", "team"]);
+  });
+
+  it("keeps shared rotation scope across category alternatives", () => {
+    const passive = parsePassive(
+      "shared-category-scope:initial",
+      undefined,
+      [
+        'When there are 3 "GT Heroes" Category allies or',
+        '3 "Giant Ape Power" Category allies attacking in the same turn',
+        "- Guards all attacks",
+      ].join("\n"),
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    const predicates = flattenPredicates(passive.rules[0].condition);
+    deepEqual(predicates.map(predicate => predicate.scope), ["rotation", "rotation"]);
+    deepEqual(predicates.map(predicate => predicate.categories), [["GT Heroes"], ["Giant Ape Power"]]);
+    deepEqual(predicates.map(predicate => predicate.count), [3, 3]);
+  });
+
+  it("types composite runtime qualifiers without leaving timing or HP fragments unknown", () => {
+    const slot = parsePassive(
+      "slot-at-start:initial",
+      undefined,
+      "As the 1st or 3rd attacker in a turn at the start of turn\n- DEF 100%",
+    );
+    const enemyHp = parsePassive(
+      "enemy-status-hp:initial",
+      undefined,
+      "When the target enemy is in the following status: HP is 80% or less\n- ATK 80%",
+    );
+    const hpAndKi = parsePassive(
+      "hp-and-ki:initial",
+      undefined,
+      "If HP is 80% or less when attacking with 12 or more Ki\n- ATK 80%",
+    );
+    const hpWhenAttacking = parsePassive(
+      "hp-when-attacking:initial",
+      undefined,
+      "If HP is 85% or more when attacking\n- ATK 85%",
+    );
+
+    equal(slot.rules[0].conditionStatus, "supported");
+    equal(flattenPredicates(slot.rules[0].condition)[0].evaluationMoment, "start_of_turn");
+    equal(enemyHp.rules[0].conditionStatus, "supported");
+    equal(flattenPredicates(enemyHp.rules[0].condition)[0].kind, "enemy_hp_percent");
+    equal(hpAndKi.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(hpAndKi.rules[0].condition).map(predicate => predicate.kind), ["hp_percent", "ki_amount"]);
+    equal(hpWhenAttacking.rules[0].conditionStatus, "supported");
+    deepEqual(
+      flattenPredicates(hpWhenAttacking.rules[0].condition).map(predicate => predicate.kind),
+      ["hp_percent"],
+    );
+  });
+
+  it("preserves attack scaling while evaluating an attached slot condition", () => {
+    const passive = parsePassive(
+      "scaled-slot:initial",
+      undefined,
+      "For every attack performed as the 2nd or 3rd attacker in a turn\n- ATK 22% (up to 66%)",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    equal(flattenPredicates(passive.rules[0].condition)[0].kind, "battle_slot");
+    equal(passive.rules[0].effects[0].scaling?.kind, "per_combat_event");
+  });
+
+  it("types attack-Ki and excluded-Type Ki Sphere scaling", () => {
+    const passive = parsePassive(
+      "ki-scaling:initial",
+      undefined,
+      [
+        "For every Ki when attacking",
+        "- ATK 10%",
+        "For every non-TEQ Ki Sphere obtained",
+        "- DEF 20%",
+      ].join("\n"),
+    );
+
+    deepEqual(passive.rules[0].effects[0].scaling, {
+      kind: "per_ki_amount",
+      kiPerIncrement: 1,
+      kiContext: "final_attack_ki",
+      evaluationMoment: "when_attacking",
+    });
+    deepEqual(passive.rules[1].effects[0].scaling, {
+      kind: "per_ki_sphere",
+      kiSphereTypes: ["any"],
+      excludedKiSphereTypes: ["TEQ"],
+      spheresPerIncrement: 1,
+      kiContext: "collected_ki_spheres",
+    });
+    passive.rules.forEach(rule => equal(rule.conditionStatus, "supported"));
+  });
+
+  it("types exact every-N combat event wording as a repeated threshold", () => {
+    for (const [verb, kind] of [
+      ["performs", "attacks_performed"],
+      ["receives", "attacks_received"],
+      ["evades", "attacks_evaded"],
+    ] as const) {
+      const passive = parsePassive(
+        `repeated-${verb}:initial`,
+        undefined,
+        `Every time the character ${verb} 3 attack(s) in battle\n- ATK 10%`,
+      );
+      const predicate = flattenPredicates(passive.rules[0].condition)[0];
+      equal(predicate.kind, kind);
+      equal(predicate.value, 3);
+      equal(predicate.combatEvent?.mode, "repeated_threshold");
+      equal(predicate.combatEvent?.countScope, "battle");
+    }
+  });
+
+  it("types official bare enemy-name and enemy-or-team name clauses", () => {
+    const passive = parsePassive(
+      "name-variants:initial",
+      undefined,
+      [
+        'When there is an enemy or an ally whose name includes "Goku" (Youth, Captain Ginyu, Jr., etc. excluded)',
+        "- ATK 100%",
+        'When an enemy includes "Goku" (Captain Ginyu, Jr., etc. excluded)',
+        "- DEF 100%",
+      ].join("\n"),
+    );
+
+    equal(passive.rules.length, 2);
+    equal(passive.rules[0].condition.op, "any");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => predicate.scope), ["enemy", "team"]);
+    equal(flattenPredicates(passive.rules[1].condition)[0].scope, "enemy");
   });
 
   it("types bounded HP-remaining scaling without misclassifying its maximum as a stack cap", () => {
@@ -2959,10 +3526,10 @@ describe("team-analysis validation and artifacts", function () {
     const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
     const coverage = buildTeamAnalysisCoverageReport(dataset);
 
-    deepEqual(coverage.passiveStatusCounts, { supported: 11, partial: 1, unknown: 1 });
+    deepEqual(coverage.passiveStatusCounts, { supported: 11, partial: 2, unknown: 0 });
     equal(coverage.identity.variantGroupOmittedStateCount, 2);
     ok(coverage.ruleStatusCounts.supported > 0);
-    ok(coverage.ruleStatusCounts.unknown > 0);
+    ok(coverage.ruleStatusCounts.partial > 0);
     ok(coverage.supportedEffectCounts.atk > 0);
     ok(coverage.unknownFragmentCount > 0);
     ok(coverage.calculationPhase.activationEligibleEffectCount > 0);
@@ -3613,7 +4180,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.8/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.11/);
   });
 });
 

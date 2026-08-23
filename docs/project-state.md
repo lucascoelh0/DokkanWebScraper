@@ -1781,6 +1781,124 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   The public R2 manifest remains parser `1.9.0`; no R2 dry-run, upload, Git
   commit or push was authorized by this checkpoint.
 
+## Team passive official runtime and scaling checkpoint (2026-08-23)
+
+- Local Team Analysis parser `1.9.9` treats the compiled first-party Global DB
+  causality as the authority for runtime identity and scope. A uniquely matched
+  first-party ally-name binding may therefore reconcile localized wording
+  across team and rotation scopes, while ambiguity or an enemy/ally boundary
+  still fails closed. Fasha EZA's displayed Bardock wording is preserved, but
+  its official identity set and rotation scope now drive evaluation.
+- Runtime predicates now cover guard activation, own or allied Revival,
+  activated or unactivated Finish Effects, named Domains, character K.O. and
+  incoming Super Attacks. Additional typed scaling covers turns passed,
+  existing enemies, final attack Ki and non-Type Ki Spheres; exact repeated
+  combat thresholds, start-of-turn slot clauses and the remaining safe direct
+  name/category variants are also retained. Malformed or semantically
+  incomplete source fragments remain partial or unknown rather than receiving
+  inferred behavior.
+- Android maps the new wire contracts without changing old-cache tolerance.
+  `After guard is activated` is evaluated as a dependency on another passive
+  rule that actually grants guard: unconditional guard is available, a
+  composition-gated guard inherits its team result, circular self-dependencies
+  are ignored, and guard with no provable passive source remains contextual
+  rather than being falsely rejected. The Team Builder continues to present
+  runtime-reachable clauses as availability instead of pretending to know a
+  live battle value.
+- Across the same 2,288 official Global states, supported passive rules moved
+  from 9,544 to 9,830, partial rules from 2,110 to 1,840 and unknown rules from
+  57 to 41. Supported conditions moved from 11,129 to 11,469, partial
+  conditions from 154 to 69 and unknown conditions from 428 to 173. The
+  remaining unknowns are primarily malformed source fragments or causal
+  families that still lack a safe typed contract.
+- The jointly validated local candidate is Characters
+  `2026-08-23T18:40:00.672Z`, SHA-256
+  `469e9df38f8ae35521bc4fca1324a5b47391ada2b0c0b79cdc34ea44d8d605cb`,
+  2,342,759 compressed bytes and 1,436 characters, plus Team Analysis
+  `2026-08-23T18:40:00.672Z:parser-1.9.9`, SHA-256
+  `873e7306b77bb33ed88b365c0f1151f0c696ae78acd230e51c8fd52ad48dae27`,
+  2,988,074 compressed bytes, 54,583,462 uncompressed bytes and 2,288 states.
+- TypeScript compilation and 373 parser/export/candidate tests, focused Android
+  wire/evaluator and presentation tests, Android debug assembly and joint
+  delivery validation passed. The Android Studio emulator rebuilt the exact
+  local Characters version, validated Team Analysis and displayed the
+  preserved DAIMA draft at `45 Active`, `0 Inactive`, `0 Needs info`; all seven
+  entries report full counts (`7/7`, `5/5`, `6/6`, `5/5`, `6/6`, `9/9`,
+  `7/7`). Draft SHA remains
+  `cfbed0b1595df46a9c643c36d7ec6ad48612f8f8cf22570baaaa646918a9cf6d`.
+  The public R2 manifest remains parser `1.9.0`; no R2 dry-run, upload, Git
+  commit or push was authorized by this checkpoint.
+
+## Team passive universal-composition checkpoint (2026-08-23)
+
+- Local Team Analysis parser `1.9.10` adds explicit contracts for conditions
+  that are fully decidable from the selected team: the current character is
+  the only member of a named category, every selected member belongs to either
+  of two named categories, and every selected member belongs to a named
+  category or class. The category-or-class contract is evaluated per member;
+  it cannot be satisfied by counting unrelated category and class groups.
+- Entrance conditions with a named enemy category or another same-category
+  rotation ally are represented as a typed alternative. The composition side
+  can prove the ally branch, while the enemy branch remains runtime-reachable;
+  no localized text heuristic was added to Android.
+- Across the same 2,288 official Global states, supported passive rules moved
+  from 9,830 to 9,848 and partial rules from 1,840 to 1,822. Supported
+  conditions moved from 11,469 to 11,489, partial conditions from 69 to 64 and
+  unknown conditions from 173 to 158. The artifact contains six typed
+  self-category predicates and five universal category-or-class predicates.
+- The jointly validated local candidate is Team Analysis
+  `2026-08-23T19:31:37.713Z:parser-1.9.10`, SHA-256
+  `434b2a0e2fddae43e252b3b13fcd0ba99780ad5c48db251d158d148cb6a78723`,
+  2,988,607 compressed bytes, 54,591,101 uncompressed bytes and 2,288 states.
+  It is bound to Characters version `2026-08-23T19:31:37.713Z`, payload SHA
+  `469e9df38f8ae35521bc4fca1324a5b47391ada2b0c0b79cdc34ea44d8d605cb`,
+  2,342,759 compressed bytes and 1,436 characters.
+- TypeScript compilation and 378 parser/identity/candidate tests, focused
+  Android wire/evaluator tests, Android debug assembly and joint delivery
+  validation passed. The Android Studio emulator rematerialized Characters and
+  accepted the exact Team Analysis gzip; the saved draft remained byte-stable
+  at SHA
+  `cfbed0b1595df46a9c643c36d7ec6ad48612f8f8cf22570baaaa646918a9cf6d`.
+  The public R2 manifest remains parser `1.9.0`; no R2 dry-run, upload, Git
+  commit or push was authorized by this checkpoint.
+
+## Team passive first-party enemy-status checkpoint (2026-08-23)
+
+- Local Team Analysis parser `1.9.11` preserves the official Global DB
+  `passiveImg` status markers as typed first-party evidence instead of losing
+  them during text projection. ATK Down, DEF Down, stun and Super Attack seal
+  now survive as `enemy_status` predicates, including conditions embedded in
+  an effect line and compound HP/Ki alternatives. No Dokkan.fyi or DokkanInfo
+  scraping was introduced.
+- Kyawei EZA now yields two supported condition groups: 12 or more Ki plus
+  ATK Down/DEF Down/Super Attack sealed, and 12 or more Ki plus stun. Its typed
+  effects retain DEF/effective-against-all-Types and critical/additional Super
+  Attack respectively. Yakon's HP-or-enemy-status condition and Krillin
+  (Youth)'s sealed-enemy condition are also represented without empty marker
+  text. Across 2,288 states, the artifact contains 9,871 supported, 1,800
+  partial and 40 unknown passive rules.
+- Character Details and Team Analysis share the same typed presentation:
+  explicit condition wording, local status icons with accessible text labels,
+  visible `or`/`and` connectors, and typed effect reconstruction that removes
+  residues such as `status: , or` without mutating the raw source. Percent and
+  effect emphasis continue to use the established passive presentation.
+- The jointly validated local candidate is Characters
+  `2026-08-23T20:26:24.615Z`, SHA-256
+  `578fe9ca44dafb9037ce35e3b88a57f12d315fd5ab39ba91837023f39eca6d53`,
+  2,343,298 compressed bytes, 28,940,068 uncompressed bytes and 1,436
+  characters, plus Team Analysis
+  `2026-08-23T20:26:24.615Z:parser-1.9.11`, SHA-256
+  `013cd5ce9e903040ee745bad53ba4480eef96ed4cae809d7b6c08b4b2fa9b125`,
+  2,990,889 compressed bytes, 54,608,701 uncompressed bytes and 2,288 states.
+- TypeScript compilation and 387 focused parser/projection tests passed, as
+  did the focused Android presentation tests and debug assembly. The clean APK
+  and exact local candidate were installed on `emulator-5554`; Kyawei EZA was
+  visually verified with explicit status groups and no empty marker residue.
+  The saved draft remained byte-stable at SHA
+  `cfbed0b1595df46a9c643c36d7ec6ad48612f8f8cf22570baaaa646918a9cf6d`.
+  Public R2 remains parser `1.9.0`; no R2 dry-run/upload, commit or push was
+  authorized for this checkpoint.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

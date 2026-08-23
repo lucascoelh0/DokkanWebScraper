@@ -414,6 +414,37 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
         equal(source?.evidence[1].anchor.normalizedText, "ATK 200%");
     });
 
+    it("projects first-party passive enemy-status markers as typed condition evidence", () => {
+        const rawPassive = [
+            "*When attacking with 12 or more Ki if the target enemy is in the following status: {passiveImg:atk_down}, {passiveImg:def_down} or {passiveImg:astute}*",
+            "- DEF 40%{passiveImg:up_g} and attacks effective against all Types",
+            "- All attacks become critical hits when the target enemy is in the following status: {passiveImg:stun}",
+        ].join("\n");
+        const projection = projectGameDbCharacterToDokkanpanion({
+            ...makeBaseSnapshot(),
+            passiveSkillSet: {
+                id: "4216",
+                name: "Keen Weapon",
+                itemizedDescription: rawPassive,
+                passiveSkills: [],
+            },
+        }, { sourceVersion: "1787282006" });
+
+        const evidence = projection.passiveDetails?.conditionEvidence;
+        equal(evidence?.length, 2);
+        deepEqual(evidence?.[0].statuses.map(status => status.status), [
+            "atk_down",
+            "def_down",
+            "super_attack_sealed",
+        ]);
+        equal(evidence?.[0].connector, "or");
+        equal(evidence?.[0].anchor.normalizedText.endsWith("status: , or"), true);
+        deepEqual(evidence?.[1].statuses.map(status => status.status), ["stunned"]);
+        equal(evidence?.[1].anchor.normalizedText.startsWith("All attacks become critical hits"), true);
+        equal(evidence?.[1].provenance.source, "first_party_game_db");
+        equal(evidence?.[1].provenance.payloadField, "passive_skill_sets.itemized_description");
+    });
+
     it("omits an incomplete Super Attack level curve", () => {
         const projection = projectGameDbCharacterToDokkanpanion({
             ...makeBaseSnapshot(),

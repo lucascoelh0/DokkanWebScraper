@@ -179,9 +179,8 @@
       "name": "ambiguous bare Ki phase",
       "source": "real",
       "rawText": "When Ki is 18 or more\n- ATK 20%",
-      "expectedStatus": "partial",
-      "conditionStatus": "unknown",
-      "condition": { "op": "unknown", "sourceText": "When Ki is 18 or more" }
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ki_amount", "scope": "self", "comparator": "gte", "value": 18, "evaluationMoment": "when_attacking", "kiContext": "final_attack_ki" }
     },
     {
       "name": "ambiguous conversion destination",
