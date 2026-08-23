@@ -23,8 +23,13 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.5";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.8";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
+export const HP_REMAINING_SCALING_DOMAIN_RULE_VERSION = "hp-remaining-scaling-v1";
+const EFFECT_DECISION_DOMAIN_RULE_VERSIONS = new Set([
+    SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION,
+    HP_REMAINING_SCALING_DOMAIN_RULE_VERSION,
+]);
 
 export type ParseStatus = "supported" | "partial" | "unknown";
 export type ReleaseState = "initial" | "eza" | "seza";
@@ -63,7 +68,7 @@ export type CalculationPhaseResolutionSource =
     | "dokkan_fyi_payload"
     | "dokkan_fyi_structural_marker"
     | "unresolved";
-export type EffectApplicationTriggerKind = "per_super_attack" | "per_combat_event" | "entry" | "unknown";
+export type EffectApplicationTriggerKind = "per_super_attack" | "per_combat_event" | "per_turn" | "entry" | "unknown";
 export type EffectStackingScope = "current_turn" | "active_windows" | "battle" | "unknown";
 
 export interface EffectDecisionProvenance {
@@ -164,6 +169,7 @@ export interface CombatEventDescriptor {
 export type PassivePredicateKind =
     | "ally_category_present"
     | "ally_name_present"
+    | "ally_category_name_present"
     | "ally_class_present"
     | "ally_type_present"
     | "ally_class_type_present"
@@ -429,9 +435,26 @@ export interface PassivePredicate {
     nameMatch?: EnemyNameMatch,
     excludedNames?: string[],
     excludedNameMatch?: EnemyNameMatch,
+    nameIdentitySetId?: string,
+    canonicalIds?: string[],
     enemyReference?: EnemyReference,
     combatEvent?: CombatEventDescriptor,
     sourceText: string,
+}
+
+export interface TeamAnalysisNameIdentityBinding {
+    passiveSkillSetId: string,
+    scope: "team" | "rotation" | "enemy",
+    count: number,
+    identitySetId: string,
+    canonicalIds: string[],
+    canonicalNames: string[],
+    categories?: string[],
+}
+
+export interface TeamAnalysisNameIdentityContract {
+    source: "first_party_game_db",
+    bindings: TeamAnalysisNameIdentityBinding[],
 }
 
 export interface PassiveEffect {
@@ -497,10 +520,62 @@ export interface CategoryAllyEffectScaling {
     selfInclusion: SelfInclusion,
     membersPerIncrement: number,
     maximumCount: number,
-    selection: "single_category" | "largest_category_count",
+    selection: "single_category" | "largest_category_count" | "union_category_members",
 }
 
-export type PassiveEffectScaling = KiSphereEffectScaling | CombatEventEffectScaling | CategoryAllyEffectScaling;
+export interface ClassAllyEffectScaling {
+    kind: "per_class_ally",
+    scope: "team" | "rotation",
+    classes: TeamAnalysisClass[],
+    selfInclusion: SelfInclusion,
+    membersPerIncrement: number,
+    maximumCount: number,
+}
+
+export interface CategoryNameAllyEffectScaling {
+    kind: "per_category_name_ally",
+    scope: "team" | "rotation",
+    categories: string[],
+    names: string[],
+    selfInclusion: SelfInclusion,
+    membersPerIncrement: number,
+    maximumCount: number,
+}
+
+export interface NameAllyEffectScaling {
+    kind: "per_name_ally",
+    scope: "team" | "rotation",
+    names: string[],
+    selfInclusion: SelfInclusion,
+    membersPerIncrement: number,
+    maximumCount: number,
+}
+
+export interface CategoryOrClassAllyEffectScaling {
+    kind: "per_category_or_class_ally",
+    scope: "team" | "rotation",
+    categories: string[],
+    classes: TeamAnalysisClass[],
+    selfInclusion: SelfInclusion,
+    membersPerIncrement: number,
+    maximumCount: number,
+}
+
+export interface HpRemainingEffectScaling {
+    kind: "hp_remaining",
+    direction: "more" | "less",
+    hpContext: "team_hp_percent",
+}
+
+export type PassiveEffectScaling =
+    | KiSphereEffectScaling
+    | CombatEventEffectScaling
+    | CategoryAllyEffectScaling
+    | ClassAllyEffectScaling
+    | CategoryNameAllyEffectScaling
+    | NameAllyEffectScaling
+    | CategoryOrClassAllyEffectScaling
+    | HpRemainingEffectScaling;
 
 export interface KiSphereChange {
     sourceSelection: "listed_types" | "all" | "random_type",
@@ -747,11 +822,16 @@ export function buildTeamAnalysisDataset(
         sourceCharacterPayloadSha256: string,
         rulesVersion?: string,
         parserVersion?: string,
+        nameIdentityContract?: TeamAnalysisNameIdentityContract,
     },
 ): TeamAnalysisDataset {
     const catalogById = new Map(catalogEntries.map(entry => [entry.id, entry]));
     const states = characters
-        .flatMap(character => buildCharacterStates(character, catalogById.get(character.id)))
+        .flatMap(character => buildCharacterStates(
+            character,
+            catalogById.get(character.id),
+            options.nameIdentityContract,
+        ))
         .sort(compareAnalysisStates);
     const ruleCounts = countRuleStatuses(states);
 
@@ -773,6 +853,7 @@ export function buildTeamAnalysisDataset(
 function buildCharacterStates(
     character: Character,
     catalogEntry: FyiCharacterCatalogEntry | undefined,
+    nameIdentityContract?: TeamAnalysisNameIdentityContract,
 ): CharacterStateAnalysis[] {
     const rootForm: AnalysisFormSource = character;
     const forms: AnalysisFormSource[] = [rootForm, ...(character.transformations ?? [])];
@@ -791,7 +872,12 @@ function buildCharacterStates(
                 {
                     characterId: identity.characterId,
                     formId: identity.formId,
+                    canonicalId: identity.canonicalId,
                     releaseState: identity.releaseState,
+                    ...(releaseSource.passiveDetails?.sourceSkillId
+                        ? { passiveSkillSetId: releaseSource.passiveDetails.sourceSkillId }
+                        : {}),
+                    ...(nameIdentityContract ? { nameIdentityContract } : {}),
                 },
             )
             : undefined;
@@ -1885,7 +1971,10 @@ interface ParsedEffectResult {
 export interface PassiveParseContext {
     characterId: string,
     formId: string,
+    canonicalId?: string,
     releaseState: ReleaseState,
+    passiveSkillSetId?: string,
+    nameIdentityContract?: TeamAnalysisNameIdentityContract,
 }
 
 export function parsePassive(
@@ -1939,18 +2028,27 @@ export function parsePassive(
             ? parseKiSphereScalingHeader(currentCondition.text)
                 ?? parseCombatEventScalingHeader(currentCondition.text)
                 ?? parseCategoryAllyScalingHeader(currentCondition.text)
+                ?? parseCategoryNameAllyScalingHeader(currentCondition.text)
+                ?? parseCategoryOrClassAllyScalingHeader(currentCondition.text)
+                ?? parseNameAllyScalingHeader(currentCondition.text)
+                ?? parseClassAllyScalingHeader(currentCondition.text)
+                ?? parseHpRemainingScalingHeader(currentCondition.text)
             : undefined;
+        const perTurnApplicationHeader = currentCondition
+            ? isPerTurnApplicationHeader(currentCondition.text)
+            : false;
         const headerConditionResult = currentCondition
-            ? headerScaling
+            ? headerScaling || perTurnApplicationHeader
                 ? { condition: { op: "always" } as ConditionExpression, status: "supported" as ParseStatus }
                 : parseCondition(
                     currentCondition.text,
                     enrichedConditionText(currentCondition, conditionEvidence),
+                    context,
                 )
             : { condition: { op: "always" } as ConditionExpression, status: "supported" as ParseStatus };
         const inlineTemporal = splitInlineTemporalCondition(block.text);
         const conditionResult = inlineTemporal
-            ? combineConditionResults(headerConditionResult, parseCondition(inlineTemporal.conditionText))
+            ? combineConditionResults(headerConditionResult, parseCondition(inlineTemporal.conditionText, undefined, context))
             : headerConditionResult;
         const effectResult = parseEffects(inlineTemporal?.effectText ?? block.text, {
             stateKey,
@@ -1963,11 +2061,15 @@ export function parsePassive(
             } : {}),
             ...(headerScaling ? { headerScaling } : {}),
         });
-        effectResult.effects = effectResult.effects.map(effect => applyPassiveStructuralSemantics(
-            effect,
-            block.source,
-            structuralEvidence,
-            currentCondition?.source,
+        effectResult.effects = effectResult.effects.map(effect => applyPassiveHeaderSemantics(
+            applyPassiveStructuralSemantics(
+                effect,
+                block.source,
+                structuralEvidence,
+                currentCondition?.source,
+            ),
+            currentCondition?.text,
+            headerScaling,
         ));
         const source = uniqueOrderedFragments([
             ...(currentCondition?.source ?? []),
@@ -2065,6 +2167,36 @@ function applyPassiveStructuralSemantics(
         };
     }
     return effect;
+}
+
+function applyPassiveHeaderSemantics(
+    effect: PassiveEffect,
+    headerText: string | undefined,
+    headerScaling: PassiveEffectScaling | undefined,
+): PassiveEffect {
+    const explicitPerTurn = isPerTurnApplicationHeader(headerText ?? "");
+    const hpRemaining = headerScaling?.kind === "hp_remaining";
+    if (!explicitPerTurn && !hpRemaining) {
+        return effect;
+    }
+    const source: CalculationPhaseResolutionSource = explicitPerTurn
+        ? "explicit_text"
+        : "documented_domain_rule";
+    return {
+        ...effect,
+        applicationTrigger: {
+            kind: "per_turn",
+            source,
+            provenance: {
+                source,
+                ...(hpRemaining ? { ruleVersion: HP_REMAINING_SCALING_DOMAIN_RULE_VERSION } : {}),
+            },
+        },
+    };
+}
+
+function isPerTurnApplicationHeader(sourceText: string): boolean {
+    return /^At the start of each turn$/i.test(sourceText.trim());
 }
 
 function passiveStackingScope(duration: PassiveDuration | undefined): EffectStackingScope {
@@ -2539,16 +2671,104 @@ function isAlwaysHeader(text: string): boolean {
     return /^\*?Basic effect\(s\)\*?:?$/i.test(text.trim());
 }
 
-function parseCondition(sourceText: string, semanticText = sourceText): ParsedConditionResult {
+function parseCondition(
+    sourceText: string,
+    semanticText = sourceText,
+    context?: PassiveParseContext,
+): ParsedConditionResult {
     const text = sourceText.trim();
     if (isAlwaysHeader(text)) {
         return { condition: { op: "always" }, status: "supported" };
     }
-    const parsed = parseBooleanCondition(semanticText.trim());
+    const parsed = bindNameIdentitySets(parseBooleanCondition(semanticText.trim()), context);
     const condition = resolveThatEnemyReferences(
         semanticText === sourceText ? parsed : rewriteConditionSourceText(parsed, sourceText),
     );
     return { condition, status: conditionExpressionStatus(condition) };
+}
+
+const NAME_IDENTITY_PREDICATE_KINDS = new Set<PassivePredicateKind>([
+    "ally_name_present",
+    "ally_category_name_present",
+    "rotation_partner_name",
+    "enemy_name",
+]);
+
+function bindNameIdentitySets(
+    condition: ConditionExpression,
+    context?: PassiveParseContext,
+): ConditionExpression {
+    if (condition.op === "predicate") {
+        if (!NAME_IDENTITY_PREDICATE_KINDS.has(condition.predicate.kind)) {
+            return condition;
+        }
+        const predicate: PassivePredicate = {
+            ...condition.predicate,
+            nameMatch: condition.predicate.nameMatch ?? "includes",
+        };
+        const passiveSkillSetId = context?.passiveSkillSetId;
+        const contract = context?.nameIdentityContract;
+        if (!passiveSkillSetId || !contract || predicate.names?.length !== 1) {
+            return predicateExpression(predicate);
+        }
+        const expectedScope = predicate.scope === "rotation"
+            ? "rotation"
+            : predicate.scope === "team"
+                ? "team"
+                : predicate.scope === "enemy"
+                    ? "enemy"
+                    : undefined;
+        if (!expectedScope) {
+            return predicateExpression(predicate);
+        }
+        const expectedName = normalizeNameIdentityKey(predicate.names[0]);
+        const expectedCount = predicate.count ?? 1;
+        const expectedCategories = predicate.categories?.map(normalizeNameIdentityKey).sort() ?? [];
+        const structuralMatches = contract.bindings.filter(binding =>
+            binding.passiveSkillSetId === passiveSkillSetId
+            && binding.scope === expectedScope
+            && (predicate.kind === "ally_category_name_present"
+                ? expectedCategories.length > 0
+                    && JSON.stringify(binding.categories?.map(normalizeNameIdentityKey).sort() ?? [])
+                        === JSON.stringify(expectedCategories)
+                : binding.categories === undefined)
+            && binding.count === expectedCount + (
+                predicate.selfInclusion === "excluded"
+                && context?.canonicalId !== undefined
+                && binding.canonicalIds.includes(context.canonicalId)
+                    ? 1
+                    : 0
+            ));
+        const exactMatches = structuralMatches.filter(binding =>
+            binding.canonicalNames.some(name => normalizeNameIdentityKey(name) === expectedName));
+        const nameMatches = exactMatches.length > 0
+            ? exactMatches
+            : structuralMatches.filter(binding => binding.canonicalNames.some(name =>
+                normalizeNameIdentityKey(name).includes(expectedName)));
+        const preferredSize = predicate.nameMatch === "exact"
+            ? Math.min(...nameMatches.map(binding => binding.canonicalIds.length))
+            : Math.max(...nameMatches.map(binding => binding.canonicalIds.length));
+        const matches = nameMatches.filter(binding => binding.canonicalIds.length === preferredSize);
+        if (matches.length !== 1) {
+            return predicateExpression(predicate);
+        }
+        return predicateExpression({
+            ...predicate,
+            nameIdentitySetId: matches[0].identitySetId,
+            canonicalIds: matches[0].canonicalIds,
+        });
+    }
+    if (condition.op === "all" || condition.op === "any") {
+        return { ...condition, children: condition.children.map(child => bindNameIdentitySets(child, context)) };
+    }
+    if (condition.op === "not") {
+        return { op: "not", child: bindNameIdentitySets(condition.child, context) };
+    }
+    return condition;
+}
+
+function normalizeNameIdentityKey(value: string): string {
+    return value.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase("en-US");
 }
 
 function rewriteConditionSourceText(
@@ -2642,6 +2862,10 @@ function parseBooleanCondition(sourceText: string): ConditionExpression {
     if (exact) {
         return exact;
     }
+    const dualScopeName = parseNameEnemyOrTeamAlternative(text, original);
+    if (dualScopeName) {
+        return dualScopeName;
+    }
 
     for (const connector of ["or", "and"] as const) {
         const parts = splitTopLevelCondition(text, connector);
@@ -2659,6 +2883,42 @@ function parseBooleanCondition(sourceText: string): ConditionExpression {
     }
 
     return parsePartialSlotCondition(text) ?? { op: "unknown", sourceText: original };
+}
+
+function parseNameEnemyOrTeamAlternative(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const match = /^(.*?)(?:(?:,\s*)?or when\s+)?("[^"]+") is an enemy or on the team$/i.exec(text);
+    if (!match) return undefined;
+    const names = parseQuotedValues(match[2]);
+    if (names?.values.length !== 1) return undefined;
+    const name = names.values[0];
+    const alternatives: ConditionExpression[] = [
+        predicateExpression({
+            kind: "enemy_name",
+            scope: "enemy",
+            enemySelection: "any_enemy",
+            names: [name],
+            nameMatch: "exact",
+            sourceText,
+        }),
+        predicateExpression({
+            kind: "ally_name_present",
+            scope: "team",
+            selfInclusion: "included",
+            names: [name],
+            nameMatch: "exact",
+            sourceText,
+        }),
+    ];
+    const prefix = match[1].replace(/,\s*$/, "").trim();
+    if (prefix) {
+        const prefixCondition = parseBooleanCondition(prefix);
+        if (prefixCondition.op === "unknown") return undefined;
+        alternatives.unshift(prefixCondition);
+    }
+    return { op: "any", children: alternatives };
 }
 
 function parseExactConditionClause(text: string, sourceText: string): ConditionExpression | undefined {
@@ -2760,6 +3020,68 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
             classes: [normalizeClass(allRotationClass[1])],
             sourceText,
         });
+    }
+
+    const allTeamCategoryClass = /^all allies are (Super|Extreme) Class (.+?) Category characters?$/i.exec(text);
+    if (allTeamCategoryClass) {
+        const categories = parseQuotedValues(allTeamCategoryClass[2]);
+        if (categories?.values.length === 1) {
+            return predicateExpression({
+                kind: "ally_category_class_present",
+                scope: "team",
+                selfInclusion: "included",
+                comparator: "eq",
+                count: 7,
+                categories: categories.values,
+                classes: [normalizeClass(allTeamCategoryClass[1])],
+                sourceText,
+            });
+        }
+    }
+
+    const allTeamClass = /^all allies are (Super|Extreme) Class characters?$/i.exec(text);
+    if (allTeamClass) {
+        return predicateExpression({
+            kind: "team_class_count",
+            scope: "team",
+            selfInclusion: "included",
+            comparator: "eq",
+            count: 7,
+            classes: [normalizeClass(allTeamClass[1])],
+            sourceText,
+        });
+    }
+
+    const allTeamCategory = /^all allies are (.+?) Category characters?$/i.exec(text);
+    if (allTeamCategory) {
+        const categories = parseQuotedValues(allTeamCategory[1]);
+        if (categories?.values.length === 1) {
+            return predicateExpression({
+                kind: "team_category_count",
+                scope: "team",
+                selfInclusion: "included",
+                comparator: "eq",
+                count: 7,
+                categories: categories.values,
+                sourceText,
+            });
+        }
+    }
+
+    const allFiveClassTypes = /^the team includes all five (Super|Extreme) Types$/i.exec(text);
+    if (allFiveClassTypes) {
+        const className = normalizeClass(allFiveClassTypes[1]);
+        return {
+            op: "all",
+            children: TEAM_ANALYSIS_TYPES.map(type => predicateExpression({
+                kind: "ally_class_type_present",
+                scope: "team",
+                selfInclusion: "included",
+                classes: [className],
+                types: [type],
+                sourceText,
+            })),
+        };
     }
 
     if (/^(?:the team includes all five Types|all five Types are represented on the team)$/i.test(text)) {
@@ -2890,11 +3212,14 @@ function parseEntranceAnimationCondition(
     if (/^Activates the Entrance Animation upon the character's entry$/i.test(text)) {
         return { op: "always" };
     }
-    const entrance = /^Activates the Entrance Animation when (.+?) upon the character's entry$/i.exec(text);
+    const entrance = /^Activates the Entrance Animation when (.+?)(?: upon the character's entry)?$/i.exec(text);
     if (!entrance) {
         return undefined;
     }
-    const condition = parseBooleanCondition(entrance[1]);
+    const condition = parseBooleanCondition(entrance[1].replace(
+        /\s+at the start of the character's attacking turn/gi,
+        "",
+    ));
     return condition.op === "unknown" ? undefined : rewriteConditionSourceText(condition, sourceText);
 }
 
@@ -3760,13 +4085,21 @@ function buildEnemyNameExpression(
     sourceText: string,
 ): ConditionExpression | undefined {
     const exclusion = /^(.*?)\s*,?\s+excluding\s+(.+)$/i.exec(sourceValues);
-    const includedText = exclusion?.[1] ?? sourceValues;
+    const parentheticalExclusion = /^(.*?)\s*\(([^()]*)\s+excluded\)$/i.exec(sourceValues);
+    const includedText = exclusion?.[1] ?? parentheticalExclusion?.[1] ?? sourceValues;
     const included = parseQuotedValues(includedText);
     if (!included) {
         return undefined;
     }
-    const excluded = exclusion ? parseQuotedValues(exclusion[2]) : undefined;
+    const excluded = exclusion
+        ? parseQuotedValues(exclusion[2])
+        : parentheticalExclusion
+            ? parseExcludedNameExamples(parentheticalExclusion[2])
+            : undefined;
     if (exclusion && !excluded) {
+        return undefined;
+    }
+    if (parentheticalExclusion && !excluded) {
         return undefined;
     }
     const children = included.values.map(name => predicateExpression({
@@ -3781,6 +4114,14 @@ function buildEnemyNameExpression(
     return children.length === 1
         ? children[0]
         : { op: included.connector === "and" ? "all" : "any", children };
+}
+
+function parseExcludedNameExamples(sourceText: string): { values: string[] } | undefined {
+    const values = sourceText
+        .split(/\s*,\s*|\s+or\s+/i)
+        .map(value => value.replace(/^['"]|['"]$/g, "").trim())
+        .filter(value => value.length > 0 && !/^etc\.?$/i.test(value));
+    return values.length > 0 && values.every(value => !/[()]/.test(value)) ? { values } : undefined;
 }
 
 function parseEnemyAttributeCondition(text: string, sourceText: string): ConditionExpression | undefined {
@@ -4188,16 +4529,24 @@ function parseAllyConditionClause(sourceBody: string, sourceText: string): Condi
 
     const categoryAndName = /^(.+?) Category all(?:y|ies) whose name includes (.+)$/i.exec(body);
     if (categoryAndName) {
-        const categoryExpression = buildQuotedPredicateExpression(
-            categoryAndName[1],
-            value => allyPredicate("category", value, scope, selfInclusion, count, comparator, sourceText),
-        );
-        const nameExpression = buildQuotedPredicateExpression(
-            categoryAndName[2],
-            value => allyPredicate("name", value, scope, selfInclusion, count, comparator, sourceText),
-        );
-        const expression = categoryExpression && nameExpression
-            ? { op: "all" as const, children: [categoryExpression, nameExpression] }
+        const categories = parseQuotedValues(categoryAndName[1]);
+        const nameSelector = parseNameSelectorValues(categoryAndName[2]);
+        const expression = categories && nameSelector
+            && categories.connector !== "and" && nameSelector.included.connector !== "and"
+            ? predicateExpression({
+                kind: "ally_category_name_present",
+                scope,
+                selfInclusion,
+                ...(count !== undefined ? { comparator, count } : {}),
+                categories: categories.values,
+                names: nameSelector.included.values,
+                nameMatch: "includes",
+                ...(nameSelector.excluded ? {
+                    excludedNames: nameSelector.excluded.values,
+                    excludedNameMatch: "includes" as const,
+                } : {}),
+                sourceText,
+            })
             : undefined;
         return expression && negated ? { op: "not", child: expression } : expression;
     }
@@ -4212,10 +4561,28 @@ function parseAllyConditionClause(sourceBody: string, sourceText: string): Condi
     }
     const nameMatch = /^all(?:y|ies) whose name includes (.+)$/i.exec(body);
     if (nameMatch) {
-        const expression = buildQuotedPredicateExpression(
-            nameMatch[1],
-            value => allyPredicate("name", value, scope, selfInclusion, count, comparator, sourceText),
-        );
+        const selector = parseNameSelectorValues(nameMatch[1]);
+        const expression = selector
+            ? combineQuotedPredicateExpressions(
+                selector.included,
+                value => predicateExpression({
+                    ...(allyPredicate(
+                        "name",
+                        value,
+                        scope,
+                        selfInclusion,
+                        count,
+                        comparator,
+                        sourceText,
+                    ) as Extract<ConditionExpression, { op: "predicate" }>).predicate,
+                    nameMatch: "includes",
+                    ...(selector.excluded ? {
+                        excludedNames: selector.excluded.values,
+                        excludedNameMatch: "includes" as const,
+                    } : {}),
+                }),
+            )
+            : undefined;
         return expression && negated ? { op: "not", child: expression } : expression;
     }
 
@@ -4259,6 +4626,28 @@ function parseAllyConditionClause(sourceBody: string, sourceText: string): Condi
         return negated ? { op: "not", child: expression } : expression;
     }
     return undefined;
+}
+
+function parseNameSelectorValues(sourceText: string): {
+    included: ReturnType<typeof parseQuotedValues> & {},
+    excluded?: { values: string[] },
+} | undefined {
+    const parenthetical = /^(.*?)\s*\(([^()]*)\s+excluded\)$/i.exec(sourceText.trim());
+    const included = parseQuotedValues(parenthetical?.[1] ?? sourceText);
+    if (!included) return undefined;
+    const excluded = parenthetical ? parseExcludedNameExamples(parenthetical[2]) : undefined;
+    if (parenthetical && !excluded) return undefined;
+    return { included, ...(excluded ? { excluded } : {}) };
+}
+
+function combineQuotedPredicateExpressions(
+    parsed: NonNullable<ReturnType<typeof parseQuotedValues>>,
+    build: (value: string) => ConditionExpression,
+): ConditionExpression {
+    const children = parsed.values.map(build);
+    return children.length === 1
+        ? children[0]
+        : { op: parsed.connector === "and" ? "all" : "any", children };
 }
 
 function allyPredicate(
@@ -4437,19 +4826,21 @@ function parseCombatEventScalingHeader(sourceText: string): PassiveEffectScaling
 
 function parseCategoryAllyScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
     const text = sourceText.trim();
-    const largestCategory = /^Per (.+?) Category ally attacking in the same turn \(depending on which Category has more members\)$/i.exec(text);
+    const largestCategory = /^Per (.+?) Category ally (on the team|attacking in the same turn) \(depending on which Category has more members\)(\s*\(self excluded\))?$/i.exec(text);
     if (largestCategory) {
         const categories = parseQuotedValues(largestCategory[1]);
         if (!categories || categories.connector !== "or" || categories.values.length < 2) {
             return undefined;
         }
+        const scope = /^on the team$/i.test(largestCategory[2]) ? "team" as const : "rotation" as const;
+        const selfInclusion = largestCategory[3] ? "excluded" as const : "included" as const;
         return {
             kind: "per_category_ally",
-            scope: "rotation",
+            scope,
             categories: categories.values,
-            selfInclusion: "included",
+            selfInclusion,
             membersPerIncrement: 1,
-            maximumCount: 3,
+            maximumCount: scalingMaximumCount(scope, selfInclusion),
             selection: "largest_category_count",
         };
     }
@@ -4459,18 +4850,135 @@ function parseCategoryAllyScalingHeader(sourceText: string): PassiveEffectScalin
         return undefined;
     }
     const categories = parseQuotedValues(singleCategory[1]);
-    if (!categories || categories.values.length !== 1) {
+    if (!categories || categories.values.length === 0) {
+        return undefined;
+    }
+    const selection: CategoryAllyEffectScaling["selection"] | undefined = categories.values.length === 1
+        ? "single_category"
+        : categories.connector === "or"
+            ? "union_category_members"
+            : undefined;
+    if (!selection) {
         return undefined;
     }
     const scope = /on the team/i.test(text) ? "team" as const : "rotation" as const;
+    const selfInclusion = singleCategory[2] ? "excluded" as const : "included" as const;
     return {
         kind: "per_category_ally",
         scope,
         categories: categories.values,
-        selfInclusion: singleCategory[2] ? "excluded" : "included",
+        selfInclusion,
         membersPerIncrement: 1,
-        maximumCount: scope === "team" ? 7 : 3,
-        selection: "single_category",
+        maximumCount: scalingMaximumCount(scope, selfInclusion),
+        selection,
+    };
+}
+
+function parseClassAllyScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const text = sourceText.trim();
+    const match = /^Per (Super|Extreme) Class ally (on the team|attacking in the same turn)(\s*\(self excluded\))?$/i.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    const scope = /^on the team$/i.test(match[2]) ? "team" as const : "rotation" as const;
+    const selfInclusion = match[3] ? "excluded" as const : "included" as const;
+    return {
+        kind: "per_class_ally",
+        scope,
+        classes: [normalizeClass(match[1])],
+        selfInclusion,
+        membersPerIncrement: 1,
+        maximumCount: scalingMaximumCount(scope, selfInclusion),
+    };
+}
+
+function parseCategoryNameAllyScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const text = sourceText.trim();
+    const match = /^Per (.+?) Category ally whose name includes (.+?) (on the team|attacking in the same turn)(\s*\(self excluded\))?$/i.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    const categories = parseQuotedValues(match[1]);
+    const names = parseQuotedValues(match[2]);
+    if (!categories || !names || categories.connector === "and" || names.connector === "and") {
+        return undefined;
+    }
+    const scope = /^on the team$/i.test(match[3]) ? "team" as const : "rotation" as const;
+    const selfInclusion = match[4] ? "excluded" as const : "included" as const;
+    return {
+        kind: "per_category_name_ally",
+        scope,
+        categories: categories.values,
+        names: names.values,
+        selfInclusion,
+        membersPerIncrement: 1,
+        maximumCount: scalingMaximumCount(scope, selfInclusion),
+    };
+}
+
+function parseNameAllyScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const text = sourceText.trim();
+    const match = /^Per ally whose name includes (.+?) (on the team|attacking in the same turn)(\s*\(self excluded\))?$/i.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    const names = parseQuotedValues(match[1]);
+    if (!names || names.connector === "and") {
+        return undefined;
+    }
+    const scope = /^on the team$/i.test(match[2]) ? "team" as const : "rotation" as const;
+    const selfInclusion = match[3] ? "excluded" as const : "included" as const;
+    return {
+        kind: "per_name_ally",
+        scope,
+        names: names.values,
+        selfInclusion,
+        membersPerIncrement: 1,
+        maximumCount: scalingMaximumCount(scope, selfInclusion),
+    };
+}
+
+function parseCategoryOrClassAllyScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const text = sourceText.trim();
+    const match = /^Per (.+?) Category ally or (Super|Extreme) Class ally (on the team|attacking in the same turn) \(depending on which has more members\)(\s*\(self excluded\))?$/i.exec(text)
+        ?? /^Per (Super|Extreme) Class ally or (.+?) Category ally (on the team|attacking in the same turn) \(depending on which has more members\)(\s*\(self excluded\))?$/i.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    const classFirst = /^(?:Super|Extreme)$/i.test(match[1]);
+    const categorySource = classFirst ? match[2] : match[1];
+    const classSource = classFirst ? match[1] : match[2];
+    const categories = parseQuotedValues(categorySource);
+    if (!categories || categories.connector === "and") {
+        return undefined;
+    }
+    const scope = /^on the team$/i.test(match[3]) ? "team" as const : "rotation" as const;
+    const selfInclusion = match[4] ? "excluded" as const : "included" as const;
+    return {
+        kind: "per_category_or_class_ally",
+        scope,
+        categories: categories.values,
+        classes: [normalizeClass(classSource)],
+        selfInclusion,
+        membersPerIncrement: 1,
+        maximumCount: scalingMaximumCount(scope, selfInclusion),
+    };
+}
+
+function scalingMaximumCount(scope: "team" | "rotation", selfInclusion: SelfInclusion): number {
+    const capacity = scope === "team" ? 7 : 3;
+    return selfInclusion === "excluded" ? capacity - 1 : capacity;
+}
+
+function parseHpRemainingScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const match = /^The (more|less) HP remaining$/i.exec(sourceText.trim());
+    if (!match) {
+        return undefined;
+    }
+    return {
+        kind: "hp_remaining",
+        direction: match[1].toLowerCase() as "more" | "less",
+        hpContext: "team_hp_percent",
     };
 }
 
@@ -4496,6 +5004,21 @@ function clonePassiveEffectScaling(scaling: PassiveEffectScaling): PassiveEffect
     }
     if (scaling.kind === "per_category_ally") {
         return { ...scaling, categories: [...scaling.categories] };
+    }
+    if (scaling.kind === "per_class_ally") {
+        return { ...scaling, classes: [...scaling.classes] };
+    }
+    if (scaling.kind === "per_category_name_ally") {
+        return { ...scaling, categories: [...scaling.categories], names: [...scaling.names] };
+    }
+    if (scaling.kind === "per_name_ally") {
+        return { ...scaling, names: [...scaling.names] };
+    }
+    if (scaling.kind === "per_category_or_class_ally") {
+        return { ...scaling, categories: [...scaling.categories], classes: [...scaling.classes] };
+    }
+    if (scaling.kind === "hp_remaining") {
+        return { ...scaling };
     }
     return {
             ...scaling,
@@ -4691,7 +5214,10 @@ function parseEffects(sourceText: string, context: EffectParseContext): ParsedEf
     const parsedAtoms = parseEffectAtoms(resolvedTarget.body, context);
     const effects = parsedAtoms.atoms.map(atom => enrichCalculationPhase(
         applyEffectTarget(
-            context.headerScaling && atom.kind !== "ki_sphere_change" && !atom.scaling
+            context.headerScaling
+                && context.headerScaling.kind !== "hp_remaining"
+                && atom.kind !== "ki_sphere_change"
+                && !atom.scaling
                 ? { ...atom, scaling: clonePassiveEffectScaling(context.headerScaling) }
                 : atom,
             resolvedTarget,
@@ -4962,6 +5488,26 @@ function parseEffectAtoms(body: string, context: EffectParseContext): {
             }
         }
     };
+
+    if (context.headerScaling?.kind === "hp_remaining") {
+        addMatches(/\bKi\s*\(up to\s+\+(\d+(?:\.\d+)?)\)/gi, match => [{
+            kind: "ki",
+            value: Number(match[1]),
+            unit: "ki",
+            scaling: clonePassiveEffectScaling(context.headerScaling!),
+            sourceText: match[0],
+        }]);
+        addMatches(/\b((?:HP|ATK|DEF)(?:\s*(?:,|&|and)\s*(?:HP|ATK|DEF))*)\s*\(up to\s+(\d+(?:\.\d+)?)%\)/gi, match => {
+            const maximumValue = Number(match[2]);
+            return (match[1].match(/HP|ATK|DEF/gi) ?? []).map(kind => ({
+                kind: kind.toLowerCase() as "hp" | "atk" | "def",
+                value: maximumValue,
+                unit: "percent" as const,
+                scaling: clonePassiveEffectScaling(context.headerScaling!),
+                sourceText: match[0],
+            }));
+        });
+    }
 
     addMatches(/\b(?:(?:(?<activationTerm>rare|medium|high|great)\s+chance(?:\s*\((?<activationParenPercent>\d+(?:\.\d+)?)%\))?|(?<activationPercent>\d+(?:\.\d+)?)%\s+chance|(?<activationArticle>a)\s+chance|(?<activationBare>chance))\s+of\s+)?launch(?:es|ing)\s+(?<attackCount>an?|\d+)\s+additional attack(?:\(s\)|s)?(?:,?\s*each of which|\s+that|\s+which)\s+(?:has|have)\s+(?:(?<conversionArticle>a)\s+chance|(?:a\s+)?(?:(?<conversionTerm>rare|medium|high|great)\s+chance(?:\s*\((?<conversionParenPercent>\d+(?:\.\d+)?)%\))?|(?<conversionPercent>\d+(?:\.\d+)?)%\s+chance)|(?<conversionBare>chance))\s+of becoming a Super Attack(?:\s+(?<conversionTrailingPercent>\d+(?:\.\d+)?)%)?/gi, match => {
         const groups = match.groups ?? {};
@@ -5263,10 +5809,10 @@ function applyEffectModifiers(body: string, atoms: EffectAtomCandidate[]): Effec
         atom.duration = { kind: "battle" };
     });
     addModifiers(/\(\s*up to\s+(\d+(?:\.\d+)?)%\s*\)/gi, match => atom => {
-        atom.stackCap = Number(match[1]);
+        if (atom.scaling?.kind !== "hp_remaining") atom.stackCap = Number(match[1]);
     });
     addModifiers(/\(\s*up to\s+\+(\d+(?:\.\d+)?)\s*\)/gi, match => atom => {
-        atom.stackCap = Number(match[1]);
+        if (atom.scaling?.kind !== "hp_remaining") atom.stackCap = Number(match[1]);
     });
     for (const match of body.matchAll(/\bper\s+(?:(\d+)\s+)?(.*?)\s*Ki Spheres? obtained\b/gi)) {
         const start = match.index ?? 0;
@@ -5528,6 +6074,9 @@ function domainActivationMoment(
     if (headerScaling?.kind === "per_ki_sphere" && /^For every\b/i.test(phaseContextText?.trim() ?? "")) {
         return "start_of_turn";
     }
+    if (headerScaling?.kind === "hp_remaining") {
+        return "start_of_turn";
+    }
     if (headerScaling?.kind === "per_combat_event") {
         const events = headerScaling.events;
         if (events.length > 1
@@ -5567,6 +6116,9 @@ function resolveCalculationBucket(
         return { bucket: "passive_start_of_turn", source: "documented_domain_rule" };
     }
     if (headerScaling?.kind === "per_ki_sphere" && /^For every\b/i.test(phaseContextText?.trim() ?? "")) {
+        return { bucket: "passive_start_of_turn", source: "documented_domain_rule" };
+    }
+    if (headerScaling?.kind === "hp_remaining") {
         return { bucket: "passive_start_of_turn", source: "documented_domain_rule" };
     }
     return { bucket: "unresolved", source: "unresolved" };
@@ -6940,7 +7492,7 @@ function validateEffectLifecycle(
         validateDecisionProvenance(activationLimit.source, activationLimit.provenance, state, issues, rule);
     }
     if (applicationTrigger) {
-        const kinds: EffectApplicationTriggerKind[] = ["per_super_attack", "per_combat_event", "entry", "unknown"];
+        const kinds: EffectApplicationTriggerKind[] = ["per_super_attack", "per_combat_event", "per_turn", "entry", "unknown"];
         if (!kinds.includes(applicationTrigger.kind) || !sources.includes(applicationTrigger.source)
             || (applicationTrigger.kind === "unknown") !== (applicationTrigger.source === "unresolved")) {
             issues.push({ code: "application-trigger", message: `Application trigger kind/source is invalid.`, stateKey: state.stateKey, ruleId: rule?.id });
@@ -6958,7 +7510,8 @@ function validateDecisionProvenance(
 ): void {
     if (!provenance || provenance.source !== source
         || (source === "dokkan_fyi_structural_marker" && !provenance.evidenceId)
-        || (source === "documented_domain_rule" && provenance.ruleVersion !== SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION)) {
+        || (source === "documented_domain_rule"
+            && !EFFECT_DECISION_DOMAIN_RULE_VERSIONS.has(provenance.ruleVersion ?? ""))) {
         issues.push({ code: "effect-decision-provenance", message: `Effect lifecycle decision lacks matching provenance.`, stateKey: state.stateKey, ruleId: rule?.id });
     }
 }
@@ -7125,6 +7678,8 @@ function conditionExpressionStatus(condition: ConditionExpression): ParseStatus 
         return condition.predicate.enemySelection === "unknown"
             || condition.predicate.combatEvent?.countScope === "unknown"
             || condition.predicate.combatEvent?.relativeTiming === "unknown"
+            || (NAME_IDENTITY_PREDICATE_KINDS.has(condition.predicate.kind)
+                && (!condition.predicate.nameIdentitySetId || !condition.predicate.canonicalIds?.length))
             ? "partial"
             : "supported";
     }
@@ -7193,10 +7748,10 @@ function aggregateStatuses(statuses: ParseStatus[]): ParseStatus {
 }
 
 const ALLY_PREDICATE_KINDS = new Set<PassivePredicateKind>([
-    "ally_category_present", "ally_name_present", "all_rotation_allies_category",
+    "ally_category_present", "ally_name_present", "ally_category_name_present", "all_rotation_allies_category",
     "rotation_partner_category", "rotation_partner_name", "ally_class_present",
     "ally_type_present", "ally_class_type_present", "ally_category_class_present",
-    "all_rotation_allies_class",
+    "all_rotation_allies_class", "team_category_count", "team_class_count", "team_type_count",
 ]);
 
 const ENEMY_PREDICATE_KINDS = new Set<PassivePredicateKind>([
@@ -7277,7 +7832,7 @@ function validateEffectContract(
             if (!Number.isInteger(effect.scaling.membersPerIncrement) || effect.scaling.membersPerIncrement < 1) {
                 issues.push({ code: "category-scaling-unit", message: `Category ally scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
             }
-            const expectedMaximum = effect.scaling.scope === "team" ? 7 : 3;
+            const expectedMaximum = scalingMaximumCount(effect.scaling.scope, effect.scaling.selfInclusion);
             if (effect.scaling.maximumCount !== expectedMaximum) {
                 issues.push({ code: "category-scaling-maximum", message: `Category ally scaling maximum must match its scope.`, stateKey: state.stateKey, ruleId: rule.id });
             }
@@ -7286,6 +7841,81 @@ function validateEffectContract(
             }
             if (effect.scaling.selection === "largest_category_count" && effect.scaling.categories.length < 2) {
                 issues.push({ code: "category-scaling-selection", message: `Largest-category scaling requires at least two categories.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.selection === "union_category_members" && effect.scaling.categories.length < 2) {
+                issues.push({ code: "category-scaling-selection", message: `Category-union scaling requires at least two categories.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+        } else if (effect.scaling.kind === "per_class_ally") {
+            if (!(["team", "rotation"] as const).includes(effect.scaling.scope)) {
+                issues.push({ code: "class-scaling-scope", message: `Class ally scaling scope is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.classes.length !== 1 || !TEAM_ANALYSIS_CLASSES.includes(effect.scaling.classes[0])) {
+                issues.push({ code: "class-scaling-classes", message: `Class ally scaling requires one recognized class.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (!Number.isInteger(effect.scaling.membersPerIncrement) || effect.scaling.membersPerIncrement < 1) {
+                issues.push({ code: "class-scaling-unit", message: `Class ally scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            const expectedMaximum = scalingMaximumCount(effect.scaling.scope, effect.scaling.selfInclusion);
+            if (effect.scaling.maximumCount !== expectedMaximum) {
+                issues.push({ code: "class-scaling-maximum", message: `Class ally scaling maximum must match its scope and self-inclusion.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+        } else if (effect.scaling.kind === "per_category_name_ally") {
+            if (!(["team", "rotation"] as const).includes(effect.scaling.scope)) {
+                issues.push({ code: "category-name-scaling-scope", message: `Category/name ally scaling scope is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.categories.length === 0 || effect.scaling.categories.some(category => !category.trim())) {
+                issues.push({ code: "category-name-scaling-categories", message: `Category/name ally scaling requires named categories.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.names.length === 0 || effect.scaling.names.some(name => !name.trim())) {
+                issues.push({ code: "category-name-scaling-names", message: `Category/name ally scaling requires named characters.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (!Number.isInteger(effect.scaling.membersPerIncrement) || effect.scaling.membersPerIncrement < 1) {
+                issues.push({ code: "category-name-scaling-unit", message: `Category/name ally scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            const expectedMaximum = scalingMaximumCount(effect.scaling.scope, effect.scaling.selfInclusion);
+            if (effect.scaling.maximumCount !== expectedMaximum) {
+                issues.push({ code: "category-name-scaling-maximum", message: `Category/name ally scaling maximum must match its scope and self-inclusion.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+        } else if (effect.scaling.kind === "per_name_ally") {
+            if (!(["team", "rotation"] as const).includes(effect.scaling.scope)) {
+                issues.push({ code: "name-scaling-scope", message: `Name ally scaling scope is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.names.length === 0 || effect.scaling.names.some(name => !name.trim())) {
+                issues.push({ code: "name-scaling-names", message: `Name ally scaling requires named characters.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (!Number.isInteger(effect.scaling.membersPerIncrement) || effect.scaling.membersPerIncrement < 1) {
+                issues.push({ code: "name-scaling-unit", message: `Name ally scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            const expectedMaximum = scalingMaximumCount(effect.scaling.scope, effect.scaling.selfInclusion);
+            if (effect.scaling.maximumCount !== expectedMaximum) {
+                issues.push({ code: "name-scaling-maximum", message: `Name ally scaling maximum must match its scope and self-inclusion.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+        } else if (effect.scaling.kind === "per_category_or_class_ally") {
+            if (!(["team", "rotation"] as const).includes(effect.scaling.scope)) {
+                issues.push({ code: "category-class-scaling-scope", message: `Category/class ally scaling scope is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.categories.length === 0 || effect.scaling.categories.some(category => !category.trim())) {
+                issues.push({ code: "category-class-scaling-categories", message: `Category/class ally scaling requires named categories.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.classes.length !== 1 || !TEAM_ANALYSIS_CLASSES.includes(effect.scaling.classes[0])) {
+                issues.push({ code: "category-class-scaling-classes", message: `Category/class ally scaling requires one recognized class.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (!Number.isInteger(effect.scaling.membersPerIncrement) || effect.scaling.membersPerIncrement < 1) {
+                issues.push({ code: "category-class-scaling-unit", message: `Category/class ally scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            const expectedMaximum = scalingMaximumCount(effect.scaling.scope, effect.scaling.selfInclusion);
+            if (effect.scaling.maximumCount !== expectedMaximum) {
+                issues.push({ code: "category-class-scaling-maximum", message: `Category/class ally scaling maximum must match its scope and self-inclusion.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+        } else if (effect.scaling.kind === "hp_remaining") {
+            if (!(effect.scaling.direction === "more" || effect.scaling.direction === "less")) {
+                issues.push({ code: "hp-scaling-direction", message: `HP remaining scaling direction is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.hpContext !== "team_hp_percent") {
+                issues.push({ code: "hp-scaling-context", message: `HP remaining scaling must use team_hp_percent context.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.value === undefined || effect.unit === undefined) {
+                issues.push({ code: "hp-scaling-maximum", message: `Typed HP remaining scaling requires the maximum effect value and unit.`, stateKey: state.stateKey, ruleId: rule.id });
             }
         } else {
             issues.push({ code: "effect-scaling-kind", message: `Effect scaling kind is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
@@ -7510,23 +8140,24 @@ function validateCondition(
             && (!Number.isInteger(condition.predicate.count) || condition.predicate.count <= 0)) {
             issues.push({ code: "condition-count", message: `Ally count must be a positive integer.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (["ally_category_present", "ally_category_class_present", "all_rotation_allies_category", "rotation_partner_category", "enemy_category"].includes(condition.predicate.kind)
+        if (["ally_category_present", "ally_category_name_present", "ally_category_class_present", "all_rotation_allies_category", "rotation_partner_category", "team_category_count", "enemy_category"].includes(condition.predicate.kind)
             && (condition.predicate.categories?.length ?? 0) === 0) {
             issues.push({ code: "condition-categories", message: `Category condition must name at least one category.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (["ally_name_present", "rotation_partner_name", "enemy_name"].includes(condition.predicate.kind)
+        if (["ally_name_present", "ally_category_name_present", "rotation_partner_name", "enemy_name"].includes(condition.predicate.kind)
             && (condition.predicate.names?.length ?? 0) === 0) {
             issues.push({ code: "condition-names", message: `Name condition must name at least one character.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (["ally_class_present", "ally_class_type_present", "ally_category_class_present", "all_rotation_allies_class", "character_class", "enemy_class", "enemy_class_type"].includes(condition.predicate.kind)
+        if (["ally_class_present", "ally_class_type_present", "ally_category_class_present", "all_rotation_allies_class", "team_class_count", "character_class", "enemy_class", "enemy_class_type"].includes(condition.predicate.kind)
             && (condition.predicate.classes?.length ?? 0) === 0) {
             issues.push({ code: "condition-classes", message: `Class condition must name at least one class.`, stateKey: state.stateKey, ruleId: rule.id });
         }
-        if (["ally_type_present", "ally_class_type_present", "character_type", "enemy_type", "enemy_class_type"].includes(condition.predicate.kind)
+        if (["ally_type_present", "ally_class_type_present", "team_type_count", "character_type", "enemy_type", "enemy_class_type"].includes(condition.predicate.kind)
             && (condition.predicate.types?.length ?? 0) === 0) {
             issues.push({ code: "condition-types", message: `Type condition must name at least one type.`, stateKey: state.stateKey, ruleId: rule.id });
         }
         validateEnemyPredicate(condition.predicate, state, rule, issues);
+        validateNameIdentityPredicate(condition.predicate, state, rule, issues);
         validateKiPredicate(condition.predicate, state, rule, issues);
         validateCombatEventPredicate(condition.predicate, state, rule, issues);
         validateClassAndTypeValues(condition.predicate.classes, condition.predicate.types, state, rule, issues);
@@ -7544,6 +8175,39 @@ function validateCondition(
                 issues.push({ code: "slot-range", message: `Turn-order position must be 1, 2, or 3.`, stateKey: state.stateKey, ruleId: rule.id });
             }
         }
+    }
+}
+
+function validateNameIdentityPredicate(
+    predicate: PassivePredicate,
+    state: CharacterStateAnalysis,
+    rule: PassiveRule,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const isNamePredicate = NAME_IDENTITY_PREDICATE_KINDS.has(predicate.kind);
+    const hasSetId = predicate.nameIdentitySetId !== undefined;
+    const hasCanonicalIds = predicate.canonicalIds !== undefined;
+    if (!isNamePredicate && (hasSetId || hasCanonicalIds)) {
+        issues.push({ code: "name-identity-kind", message: `Canonical name identity belongs only to name predicates.`, stateKey: state.stateKey, ruleId: rule.id });
+        return;
+    }
+    if (!isNamePredicate) return;
+    if (predicate.nameMatch !== "exact" && predicate.nameMatch !== "includes") {
+        issues.push({ code: "name-match", message: `Name predicates require an exact or includes match mode.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (hasSetId !== hasCanonicalIds) {
+        issues.push({ code: "name-identity-pair", message: `Canonical name identity set and members must be paired.`, stateKey: state.stateKey, ruleId: rule.id });
+        return;
+    }
+    if (!hasSetId) return;
+    if (!/^\d+$/.test(predicate.nameIdentitySetId ?? "")) {
+        issues.push({ code: "name-identity-set", message: `Canonical name identity set must be numeric.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    const canonicalIds = predicate.canonicalIds ?? [];
+    if (canonicalIds.length === 0
+        || canonicalIds.some(id => !/^\d+$/.test(id))
+        || new Set(canonicalIds).size !== canonicalIds.length) {
+        issues.push({ code: "name-identity-members", message: `Canonical name identity members must be non-empty unique numeric IDs.`, stateKey: state.stateKey, ruleId: rule.id });
     }
 }
 

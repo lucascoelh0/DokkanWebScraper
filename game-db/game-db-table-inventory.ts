@@ -6,6 +6,8 @@ export const CORE_GAME_DB_TABLES = [
     "card_card_categories",
     "card_categories",
     "card_finish_skill_set_relations",
+    "card_unique_info_set_relations",
+    "card_unique_infos",
     "card_specials",
     "card_standby_skill_set_relations",
     "cards",

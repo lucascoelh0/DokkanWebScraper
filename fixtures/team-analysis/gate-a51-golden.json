@@ -4,7 +4,7 @@
       "name": "explicit start of turn",
       "source": "real",
       "rawText": "At the start of each turn\n- ATK & DEF 20%",
-      "expectedStatus": "partial",
+      "expectedStatus": "supported",
       "effects": [
         {
           "kind": "atk",

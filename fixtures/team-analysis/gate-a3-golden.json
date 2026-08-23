@@ -288,12 +288,12 @@
       }
     },
     {
-      "name": "HP proportional scaling stays unknown",
+      "name": "HP proportional scaling preserves unsupported effect",
       "source": "real",
       "rawText": "The less HP remaining\n- The greater the ATK boost",
-      "expectedStatus": "unknown",
-      "conditionStatus": "unknown",
-      "condition": { "op": "unknown", "sourceText": "The less HP remaining" }
+      "expectedStatus": "partial",
+      "conditionStatus": "supported",
+      "condition": { "op": "always" }
     },
     {
       "name": "HP combines with received attack event",

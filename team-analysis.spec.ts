@@ -1240,6 +1240,188 @@ describe("team-analysis Gate A4.1 structural enemy-status evidence", function ()
 });
 
 describe("team-analysis first-party Entrance Animation conditions", function () {
+  it("binds Goku name conditions to the official canonical identity set", () => {
+    const passive = parsePassive(
+      "name-identity:initial",
+      "Official identity",
+      [
+        'When there is an ally whose name includes "Goku" (Youth, Captain Ginyu, Jr., etc. excluded) on the team',
+        "- ATK & DEF 100%",
+      ].join("\n"),
+      undefined,
+      {
+        characterId: "name-identity",
+        formId: "name-identity",
+        releaseState: "initial",
+        passiveSkillSetId: "900",
+        nameIdentityContract: {
+          source: "first_party_game_db",
+          bindings: [{
+            passiveSkillSetId: "900",
+            scope: "team",
+            count: 1,
+            identitySetId: "13",
+            canonicalIds: ["1", "3", "66"],
+            canonicalNames: ["Goku", "Super Saiyan Goku"],
+          }],
+        },
+      },
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    const predicate = flattenPredicates(passive.rules[0].condition)[0];
+    equal(predicate.nameIdentitySetId, "13");
+    deepEqual(predicate.canonicalIds, ["1", "3", "66"]);
+    deepEqual(predicate.excludedNames, ["Youth", "Captain Ginyu", "Jr."]);
+  });
+
+  it("keeps name conditions partial without a unique official identity binding", () => {
+    const passive = parsePassive(
+      "name-identity-missing:initial",
+      undefined,
+      'When there is an ally whose name includes "Goku" on the team\n- ATK & DEF 100%',
+    );
+
+    equal(passive.rules[0].conditionStatus, "partial");
+    equal(flattenPredicates(passive.rules[0].condition)[0].nameIdentitySetId, undefined);
+  });
+
+  it("uses the typed includes mode to associate a shorter source name with one official set", () => {
+    const passive = parsePassive(
+      "name-identity-short:initial",
+      undefined,
+      'When there is another ally whose name includes "#17" attacking in the same turn\n- ATK 100%',
+      undefined,
+      {
+        characterId: "name-identity-short",
+        formId: "name-identity-short",
+        releaseState: "initial",
+        passiveSkillSetId: "901",
+        nameIdentityContract: {
+          source: "first_party_game_db",
+          bindings: [{
+            passiveSkillSetId: "901",
+            scope: "rotation",
+            count: 1,
+            identitySetId: "17",
+            canonicalIds: ["170"],
+            canonicalNames: ["Android #17"],
+          }],
+        },
+      },
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    equal(flattenPredicates(passive.rules[0].condition)[0].nameIdentitySetId, "17");
+  });
+
+  it("reconciles a DB count that includes the excluded passive owner", () => {
+    const passive = parsePassive(
+      "name-identity-self-count:initial",
+      undefined,
+      'When there is another ally whose name includes "#17" attacking in the same turn\n- ATK 100%',
+      undefined,
+      {
+        characterId: "name-identity-self-count",
+        formId: "name-identity-self-count",
+        canonicalId: "170",
+        releaseState: "initial",
+        passiveSkillSetId: "902",
+        nameIdentityContract: {
+          source: "first_party_game_db",
+          bindings: [{
+            passiveSkillSetId: "902",
+            scope: "rotation",
+            count: 2,
+            identitySetId: "60",
+            canonicalIds: ["170", "171"],
+            canonicalNames: ["Android #17", "Hell Fighter #17"],
+          }],
+        },
+      },
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    equal(flattenPredicates(passive.rules[0].condition)[0].nameIdentitySetId, "60");
+  });
+
+  it("binds a same-member category and name condition only to its type-45 category", () => {
+    const passive = parsePassive(
+      "name-identity-category:initial",
+      undefined,
+      'When there is a "Future Saga" Category ally whose name includes "Trunks" attacking in the same turn\n- ATK 100%',
+      undefined,
+      {
+        characterId: "name-identity-category",
+        formId: "name-identity-category",
+        releaseState: "initial",
+        passiveSkillSetId: "2683",
+        nameIdentityContract: {
+          source: "first_party_game_db",
+          bindings: [{
+            passiveSkillSetId: "2683",
+            scope: "rotation",
+            count: 1,
+            identitySetId: "12",
+            canonicalIds: ["113"],
+            canonicalNames: ["Trunks (Future)"],
+            categories: ["Future Saga"],
+          }],
+        },
+      },
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    equal(flattenPredicates(passive.rules[0].condition)[0].nameIdentitySetId, "12");
+  });
+
+  it("binds an exact name across enemy and team scopes to the narrower official set", () => {
+    const broad = {
+      passiveSkillSetId: "4714",
+      count: 1,
+      identitySetId: "13",
+      canonicalIds: ["1", "3", "66", "86"],
+      canonicalNames: ["Goku", "Super Saiyan Goku"],
+    };
+    const exact = {
+      passiveSkillSetId: "4714",
+      count: 1,
+      identitySetId: "120",
+      canonicalIds: ["3"],
+      canonicalNames: ["Goku"],
+    };
+    const passive = parsePassive(
+      "name-identity-dual-scope:initial",
+      undefined,
+      [
+        'Activates the Entrance Animation when there is a "World Tournament" Category enemy or another "World Tournament" Category ally on the team at the start of the character\'s attacking turn, or when "Goku" is an enemy or on the team at the start of the character\'s attacking turn',
+        "- ATK 100%",
+      ].join("\n"),
+      undefined,
+      {
+        characterId: "name-identity-dual-scope",
+        formId: "name-identity-dual-scope",
+        releaseState: "initial",
+        passiveSkillSetId: "4714",
+        nameIdentityContract: {
+          source: "first_party_game_db",
+          bindings: [
+            { ...broad, scope: "enemy" },
+            { ...exact, scope: "enemy" },
+            { ...broad, scope: "team" },
+            { ...exact, scope: "team" },
+          ],
+        },
+      },
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    const namePredicates = flattenPredicates(passive.rules[0].condition)
+      .filter(predicate => predicate.names?.includes("Goku"));
+    equal(namePredicates.length, 2);
+    deepEqual(namePredicates.map(predicate => predicate.nameIdentitySetId), ["120", "120"]);
+  });
+
   it("types another category ally on the team without consuming the entry trigger", () => {
     const rawText = [
       "Activates the Entrance Animation when there is another",
@@ -1346,6 +1528,134 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
     });
   });
 
+  it("distinguishes category-union scaling from largest-category scaling", () => {
+    const union = parsePassive(
+      "category-union:initial",
+      undefined,
+      "Per \"Pure Saiyans\" or \"Hybrid Saiyans\" Category ally on the team (self excluded)\n- ATK & DEF 10%",
+    );
+    const largest = parsePassive(
+      "category-largest:initial",
+      undefined,
+      "Per \"Terrifying Conquerors\" or \"Planetary Destruction\" Category ally on the team (depending on which Category has more members)\n- ATK & DEF 10%",
+    );
+
+    deepEqual(union.rules[0].effects[0].scaling, {
+      kind: "per_category_ally",
+      scope: "team",
+      categories: ["Pure Saiyans", "Hybrid Saiyans"],
+      selfInclusion: "excluded",
+      membersPerIncrement: 1,
+      maximumCount: 6,
+      selection: "union_category_members",
+    });
+    deepEqual(largest.rules[0].effects[0].scaling, {
+      kind: "per_category_ally",
+      scope: "team",
+      categories: ["Terrifying Conquerors", "Planetary Destruction"],
+      selfInclusion: "included",
+      membersPerIncrement: 1,
+      maximumCount: 7,
+      selection: "largest_category_count",
+    });
+  });
+
+  it("types class ally scaling with scope and self-inclusion capacity", () => {
+    const passive = parsePassive(
+      "class-scaling:initial",
+      "Class Potential",
+      [
+        "Per Extreme Class ally attacking in the same turn (self excluded)",
+        "- ATK & DEF 60%",
+      ].join("\n"),
+    );
+
+    equal(passive.rules.length, 1);
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(passive.rules[0].condition, { op: "always" });
+    passive.rules[0].effects.forEach(effect => deepEqual(effect.scaling, {
+      kind: "per_class_ally",
+      scope: "rotation",
+      classes: ["Extreme"],
+      selfInclusion: "excluded",
+      membersPerIncrement: 1,
+      maximumCount: 2,
+    }));
+  });
+
+  it("types category-and-name ally scaling as one same-member filter", () => {
+    const passive = parsePassive(
+      "category-name-scaling:initial",
+      undefined,
+      "Per \"Future Saga\" Category ally whose name includes \"Clone\" on the team\n- ATK & DEF 30%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(passive.rules[0].condition, { op: "always" });
+    deepEqual(passive.rules[0].effects[0].scaling, {
+      kind: "per_category_name_ally",
+      scope: "team",
+      categories: ["Future Saga"],
+      names: ["Clone"],
+      selfInclusion: "included",
+      membersPerIncrement: 1,
+      maximumCount: 7,
+    });
+  });
+
+  it("types name-only and category-or-class ally potential without flattening their selection", () => {
+    const byName = parsePassive(
+      "name-scaling:initial",
+      undefined,
+      "Per ally whose name includes \"Saibaiman\" attacking in the same turn\n- ATK & DEF 30%",
+    );
+    const largestDimension = parsePassive(
+      "category-class-scaling:initial",
+      undefined,
+      "Per Super Class ally or \"Future Saga\" Category ally on the team (depending on which has more members)\n- ATK & DEF 50%",
+    );
+
+    deepEqual(byName.rules[0].effects[0].scaling, {
+      kind: "per_name_ally",
+      scope: "rotation",
+      names: ["Saibaiman"],
+      selfInclusion: "included",
+      membersPerIncrement: 1,
+      maximumCount: 3,
+    });
+    deepEqual(largestDimension.rules[0].effects[0].scaling, {
+      kind: "per_category_or_class_ally",
+      scope: "team",
+      categories: ["Future Saga"],
+      classes: ["Super"],
+      selfInclusion: "included",
+      membersPerIncrement: 1,
+      maximumCount: 7,
+    });
+  });
+
+  it("types an all-class Entrance Animation without requiring a redundant entry suffix", () => {
+    const passive = parsePassive(
+      "entrance:all-class:initial",
+      "Unified Force",
+      [
+        "Activates the Entrance Animation when all allies are Extreme Class characters",
+        "- ATK & DEF 180%",
+      ].join("\n"),
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(conditionShape(passive.rules[0].condition), {
+      op: "predicate",
+      kind: "team_class_count",
+      scope: "team",
+      selfInclusion: "included",
+      comparator: "eq",
+      count: 7,
+      classes: ["Extreme"],
+    });
+  });
+
   it("types an incoming attack from an enemy hit by the character's Super Attack", () => {
     const passive = parsePassive(
       "runtime:enemy-hit-by-sa:initial",
@@ -1418,6 +1728,113 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
       slots: [2],
       evaluationMoment: "start_of_turn",
     }]);
+  });
+
+  it("treats an every-turn application header as available and preserves its trigger", () => {
+    const passive = parsePassive(
+      "per-turn:stacking:initial",
+      "Growing Power",
+      [
+        "At the start of each turn",
+        "- Ki +2 (up to +4)",
+        "- ATK & DEF 50% (up to 100%)",
+      ].join("\n"),
+    );
+
+    equal(passive.rules.length, 2);
+    passive.rules.forEach(rule => {
+      equal(rule.conditionStatus, "supported");
+      deepEqual(rule.condition, { op: "always" });
+      rule.effects.forEach(effect => {
+        equal(effect.applicationTrigger?.kind, "per_turn");
+        equal(effect.applicationTrigger?.source, "explicit_text");
+        equal(effect.activationTiming?.moment, "start_of_turn");
+      });
+    });
+  });
+
+  it("types bounded HP-remaining scaling without misclassifying its maximum as a stack cap", () => {
+    const passive = parsePassive(
+      "hp-scaling:bounded:initial",
+      "Adaptive Power",
+      [
+        "The more HP remaining",
+        "- ATK & DEF (up to 100%)",
+        "The less HP remaining",
+        "- Ki (up to +10)",
+      ].join("\n"),
+    );
+
+    equal(passive.rules.length, 2);
+    const [more, less] = passive.rules;
+    equal(more.conditionStatus, "supported");
+    equal(more.effectStatus, "supported");
+    deepEqual(more.condition, { op: "always" });
+    deepEqual(more.effects.map(effect => ({
+      kind: effect.kind,
+      value: effect.value,
+      unit: effect.unit,
+      stackCap: effect.stackCap,
+      scaling: effect.scaling,
+      trigger: effect.applicationTrigger,
+      timing: effect.activationTiming,
+      bucket: effect.calculationBucket,
+    })), ["atk", "def"].map(kind => ({
+      kind,
+      value: 100,
+      unit: "percent",
+      stackCap: undefined,
+      scaling: {
+        kind: "hp_remaining",
+        direction: "more",
+        hpContext: "team_hp_percent",
+      },
+      trigger: {
+        kind: "per_turn",
+        source: "documented_domain_rule",
+        provenance: {
+          source: "documented_domain_rule",
+          ruleVersion: "hp-remaining-scaling-v1",
+        },
+      },
+      timing: { moment: "start_of_turn", source: "documented_domain_rule" },
+      bucket: { bucket: "passive_start_of_turn", source: "documented_domain_rule" },
+    })));
+    equal(less.conditionStatus, "supported");
+    equal(less.effectStatus, "supported");
+    equal(less.effects[0].kind, "ki");
+    equal(less.effects[0].value, 10);
+    equal(less.effects[0].unit, "ki");
+    equal(less.effects[0].stackCap, undefined);
+    deepEqual(less.effects[0].scaling, {
+      kind: "hp_remaining",
+      direction: "less",
+      hpContext: "team_hp_percent",
+    });
+  });
+
+  it("keeps an unsupported HP-scaled effect conservative without reporting missing condition data", () => {
+    const passive = parsePassive(
+      "hp-scaling:residual:initial",
+      undefined,
+      "The less HP remaining\n- Damage reduction rate (50% - 90%)",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    equal(passive.rules[0].effectStatus, "unknown");
+    equal(passive.rules[0].parseStatus, "partial");
+    deepEqual(passive.rules[0].condition, { op: "always" });
+    equal(passive.rules[0].effects[0].applicationTrigger?.kind, "per_turn");
+  });
+
+  it("fails closed for near-match HP prose outside the official scaling header", () => {
+    const passive = parsePassive(
+      "hp-scaling:unknown:initial",
+      undefined,
+      "More HP means more power\n- ATK 100%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "unknown");
   });
 
   it("types Active Skill activation as battle context inside an alternative", () => {
@@ -3196,7 +3613,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.5/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.8/);
   });
 });
 

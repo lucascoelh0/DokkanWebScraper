@@ -1666,6 +1666,121 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   `cfbed0b1595df46a9c643c36d7ec6ad48612f8f8cf22570baaaa646918a9cf6d`.
   No R2 dry-run, upload, Git commit or push was authorized by this checkpoint.
 
+## Team passive start-of-turn and HP-scaling checkpoint (2026-08-23)
+
+- Local Team Analysis parser `1.9.6` recognizes the exact official headers
+  `At the start of each turn`, `The more HP remaining` and `The less HP
+  remaining`. Start-of-turn effects carry an explicit `per_turn` application
+  trigger. Simple bounded HP-dependent Ki, ATK, DEF and HP effects retain a
+  typed `hp_remaining` scaling contract with direction and team-HP context;
+  their stated maximum remains the effect value rather than being confused
+  with an accumulation cap. Near-matching or more complex wording still fails
+  closed.
+- Android consumes the new HP-scaling contract and `per_turn` trigger without
+  inferring a live combat value. Team Builder therefore reports whether the
+  effect is available to the selected composition and presents its
+  start-of-turn timing, while keeping the quantitative maximum and scaling
+  direction available for future scenario or damage-calculation work.
+- Against the same 2,288 official Global states, supported passive rules moved
+  from 9,160 to 9,277, partial rules from 2,417 to 2,368 and unknown rules from
+  134 to 66. Supported conditions moved from 10,687 to 10,808 and unknown
+  conditions from 808 to 687. The artifact contains 93 typed HP-scaled effects
+  and 171 per-turn effects; none of the three targeted header families remains
+  an unknown condition. Three irregular HP-dependent effects remain
+  deliberately partial at the effect level instead of receiving a fabricated
+  numeric model.
+- The emulator-compatible candidate is Team Analysis
+  `2026-08-23T15:30:29.958Z:parser-1.9.6`, SHA-256
+  `492c61afcf25ab05c9f0c5f75f7e01d206ae2f053f9a143133ecbecf052fd819`,
+  2,935,954 compressed bytes, 53,976,026 uncompressed bytes and 2,288 states.
+  It is bound to Characters version `2026-08-23T15:30:29.958Z` and payload SHA
+  `469e9df38f8ae35521bc4fca1324a5b47391ada2b0c0b79cdc34ea44d8d605cb`.
+  The Android Studio emulator validated and loaded this local cache; its
+  preserved DAIMA draft still reports `45 Active`, `0 Inactive` and `0 Needs
+  info`, and the draft SHA remains
+  `cfbed0b1595df46a9c643c36d7ec6ad48612f8f8cf22570baaaa646918a9cf6d`.
+- All 340 TypeScript Team Analysis tests, the focused Android wire-model test,
+  Android debug assembly and joint delivery validation passed. The public R2
+  manifest remains parser `1.9.0`; no R2 dry-run, upload, commit or push was
+  authorized for this checkpoint.
+
+## Team passive composition-contract checkpoint (2026-08-23)
+
+- Local Team Analysis parser `1.9.7` types the remaining high-value
+  team-composition families covered by this slice: all-Super/all-Extreme
+  teams, all five Extreme Types, same-member category plus name requirements,
+  per-class allies, per-name allies, per-category-and-name allies, and the
+  larger of category/class or category/category member groups. The contracts
+  retain scope, class, names, categories, caps and self-exclusion explicitly;
+  exact grammar and validators continue to fail closed for unsupported
+  variants.
+- Android maps and evaluates those source-neutral contracts directly. Category
+  plus name is matched against the same character rather than two unrelated
+  team members, union-category potential deduplicates characters, and team or
+  rotation capacity respects clauses that exclude the passive owner. Existing
+  full/partial potential and compatible-character disclosure are reused, so
+  this parser expansion does not introduce a separate UI interpretation.
+- Across the same 2,288 official Global states, supported passive rules moved
+  from 9,277 to 9,441, partial rules from 2,368 to 2,211 and unknown rules from
+  66 to 59. Supported conditions moved from 10,808 to 11,001 and unknown
+  conditions from 687 to 489. The artifact contains 110 typed class/type
+  presence predicates, seven same-member category/name predicates, 42
+  per-class, 30 per-category-and-name, five per-name and 20
+  per-category-or-class scaled effects.
+- The emulator-compatible candidate is Team Analysis
+  `2026-08-23T15:30:29.958Z:parser-1.9.7`, SHA-256
+  `8551584c6bfa777d53a3979af7ed3f4d55e7c453e54b5f16ec03873c8eac1937`,
+  2,942,462 compressed bytes, 54,102,541 uncompressed bytes and 2,288 states.
+  It remains bound to Characters version `2026-08-23T15:30:29.958Z` and SHA
+  `469e9df38f8ae35521bc4fca1324a5b47391ada2b0c0b79cdc34ea44d8d605cb`.
+  The Android Studio emulator validated the exact gzip and loaded the selected
+  six states; the preserved draft still reports every displayed character at
+  full active count and its SHA remains
+  `cfbed0b1595df46a9c643c36d7ec6ad48612f8f8cf22570baaaa646918a9cf6d`.
+- All 349 TypeScript Team Analysis tests, focused Android wire/evaluator tests,
+  Android debug assembly and joint delivery validation passed. The public R2
+  manifest remains parser `1.9.0`; no R2 dry-run, upload, commit or push was
+  authorized for this checkpoint.
+
+## Team passive official-name identity checkpoint (2026-08-23)
+
+- Local Team Analysis parser `1.9.8` binds name predicates to the official
+  Global DB identity dictionaries `card_unique_infos` and
+  `card_unique_info_set_relations`, using the typed skill-causality joins for
+  team, rotation and enemy scopes. Runtime matching no longer depends on
+  localized display-name substring checks. Exact-name clauses prefer the
+  narrowest unique official set, `includes` clauses prefer the broadest unique
+  official set, and ambiguous or absent bindings fail closed.
+- The official Goku identity set used by clauses such as `name includes Goku
+  (Youth, Captain Ginyu, Jr., etc. excluded)` contains 98 canonical identities
+  and includes canonical Goku ID `3`, while excluding Goku (Youth) `84`, Ginyu
+  (Goku) `235`, Goku Black `305` and Goku Jr. `332`. The exact-Goku contract
+  used by Piccolo Jr. is a separate official set with six canonical identities.
+  Android receives these canonical IDs in the wire model and resolves every
+  selected team member to its canonical identity before evaluation; old cached
+  name predicates without this contract remain safely unavailable.
+- A full audit found 348 emitted name predicates: 347 carry an official
+  identity binding. The sole unbound predicate is Fasha EZA's Bardock clause,
+  where the first-party causality scope conflicts with the localized condition;
+  it deliberately remains fail-closed instead of selecting one source by
+  assumption.
+- Against the same 2,288 official Global states, the artifact contains 9,544
+  supported, 2,110 partial and 57 unknown passive rules. The jointly validated
+  local candidate is Team Analysis
+  `2026-08-23T17:34:24.129Z:parser-1.9.8`, SHA-256
+  `49e333e675d85b30feb3fb58d882220f4d4d0fc2443d2c09666595d663154426`,
+  2,979,467 compressed bytes and 54,430,390 uncompressed bytes. It is bound to
+  Characters version `2026-08-23T17:34:24.129Z`, payload SHA
+  `469e9df38f8ae35521bc4fca1324a5b47391ada2b0c0b79cdc34ea44d8d605cb`.
+- TypeScript compilation and 371 focused parser/export tests passed. The 55
+  focused Android wire/evaluator tests and the Android debug assembly passed.
+  The Android Studio emulator validated and loaded the exact local payload,
+  showed the preserved DAIMA draft at `45 Active`, `0 Inactive`, `0 Needs
+  info`, and retained draft SHA
+  `cfbed0b1595df46a9c643c36d7ec6ad48612f8f8cf22570baaaa646918a9cf6d`.
+  The public R2 manifest remains parser `1.9.0`; no R2 dry-run, upload, Git
+  commit or push was authorized by this checkpoint.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

@@ -109,7 +109,8 @@
       "name": "enemy name includes alternatives",
       "source": "real",
       "rawText": "When there is an enemy whose name includes \"Zamasu\" or \"Goku Black\"\n- ATK 20%",
-      "expectedStatus": "supported",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
       "condition": {
         "op": "any",
         "children": [
@@ -122,14 +123,16 @@
       "name": "enemy exact name",
       "source": "synthetic",
       "rawText": "When the target enemy's name is \"Goku\"\n- ATK 20%",
-      "expectedStatus": "supported",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
       "condition": { "op": "predicate", "kind": "enemy_name", "scope": "enemy", "enemySelection": "current_target", "names": ["Goku"], "nameMatch": "exact" }
     },
     {
       "name": "enemy name structural exclusion",
       "source": "synthetic",
       "rawText": "When there is an enemy whose name includes \"Goku\", excluding \"Goku Black\"\n- ATK 20%",
-      "expectedStatus": "supported",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
       "condition": { "op": "predicate", "kind": "enemy_name", "scope": "enemy", "enemySelection": "any_enemy", "names": ["Goku"], "nameMatch": "includes", "excludedNames": ["Goku Black"], "excludedNameMatch": "includes" }
     },
     {
@@ -138,13 +141,7 @@
       "rawText": "When there is an enemy whose name includes \"Goku\" (Youth, Captain Ginyu, Jr., etc. excluded)\n- ATK 20%",
       "expectedStatus": "partial",
       "conditionStatus": "partial",
-      "condition": {
-        "op": "all",
-        "children": [
-          { "op": "predicate", "kind": "enemy_name", "scope": "enemy", "enemySelection": "any_enemy", "names": ["Goku"], "nameMatch": "includes" },
-          { "op": "unknown", "sourceText": "(Youth, Captain Ginyu, Jr., etc. excluded)" }
-        ]
-      }
+      "condition": { "op": "predicate", "kind": "enemy_name", "scope": "enemy", "enemySelection": "any_enemy", "names": ["Goku"], "nameMatch": "includes", "excludedNames": ["Youth", "Captain Ginyu", "Jr."], "excludedNameMatch": "includes" }
     },
     {
       "name": "current target enemy HP",

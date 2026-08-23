@@ -29,6 +29,20 @@
       "condition": { "op": "predicate", "kind": "all_rotation_allies_class", "scope": "rotation", "selfInclusion": "included", "classes": ["Super"] }
     },
     {
+      "name": "all team allies Super Class",
+      "source": "real",
+      "rawText": "When all allies are Super Class characters\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "team_class_count", "scope": "team", "selfInclusion": "included", "comparator": "eq", "count": 7, "classes": ["Super"] }
+    },
+    {
+      "name": "all team allies share Extreme Class and Category",
+      "source": "real",
+      "rawText": "When all allies are Extreme Class \"Space-Traveling Warriors\" Category characters\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": { "op": "predicate", "kind": "ally_category_class_present", "scope": "team", "selfInclusion": "included", "comparator": "eq", "count": 7, "categories": ["Space-Traveling Warriors"], "classes": ["Extreme"] }
+    },
+    {
       "name": "three Extreme Class rotation allies",
       "source": "real",
       "rawText": "When there are 3 Extreme Class allies attacking in the same turn\n- ATK 20%",
@@ -41,6 +55,14 @@
       "rawText": "When there are 3 Extreme Class \"Crossover\" Category allies attacking in the same turn\n- ATK 20%",
       "expectedStatus": "supported",
       "condition": { "op": "predicate", "kind": "ally_category_class_present", "scope": "rotation", "selfInclusion": "included", "comparator": "eq", "count": 3, "categories": ["Crossover"], "classes": ["Extreme"] }
+    },
+    {
+      "name": "Category and Name constrain the same ally",
+      "source": "real",
+      "rawText": "When there is a \"Future Saga\" Category ally whose name includes \"Clone\" on the team\n- ATK 20%",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
+      "condition": { "op": "predicate", "kind": "ally_category_name_present", "scope": "team", "selfInclusion": "included", "categories": ["Future Saga"], "names": ["Clone"], "nameMatch": "includes" }
     },
     {
       "name": "AGL Type ally on team",
@@ -82,6 +104,22 @@
           { "op": "predicate", "kind": "ally_type_present", "scope": "team", "selfInclusion": "included", "types": ["INT"] },
           { "op": "predicate", "kind": "ally_type_present", "scope": "team", "selfInclusion": "included", "types": ["STR"] },
           { "op": "predicate", "kind": "ally_type_present", "scope": "team", "selfInclusion": "included", "types": ["PHY"] }
+        ]
+      }
+    },
+    {
+      "name": "all five Extreme Types on team",
+      "source": "real",
+      "rawText": "When the team includes all five Extreme Types\n- ATK 20%",
+      "expectedStatus": "supported",
+      "condition": {
+        "op": "all",
+        "children": [
+          { "op": "predicate", "kind": "ally_class_type_present", "scope": "team", "selfInclusion": "included", "classes": ["Extreme"], "types": ["AGL"] },
+          { "op": "predicate", "kind": "ally_class_type_present", "scope": "team", "selfInclusion": "included", "classes": ["Extreme"], "types": ["TEQ"] },
+          { "op": "predicate", "kind": "ally_class_type_present", "scope": "team", "selfInclusion": "included", "classes": ["Extreme"], "types": ["INT"] },
+          { "op": "predicate", "kind": "ally_class_type_present", "scope": "team", "selfInclusion": "included", "classes": ["Extreme"], "types": ["STR"] },
+          { "op": "predicate", "kind": "ally_class_type_present", "scope": "team", "selfInclusion": "included", "classes": ["Extreme"], "types": ["PHY"] }
         ]
       }
     },
@@ -163,7 +201,8 @@
       "name": "nested AND OR",
       "source": "synthetic",
       "rawText": "When (there is a \"Ginyu Force\" Category ally on the team or when there is an ally whose name includes \"Goku\" on the team) and (when there is a Super Class ally on the team or when attacking as the 2nd attacker in a turn)\n- ATK 20%",
-      "expectedStatus": "supported",
+      "expectedStatus": "partial",
+      "conditionStatus": "partial",
       "condition": {
         "op": "all",
         "children": [
@@ -171,7 +210,7 @@
             "op": "any",
             "children": [
               { "op": "predicate", "kind": "ally_category_present", "scope": "team", "selfInclusion": "included", "categories": ["Ginyu Force"] },
-              { "op": "predicate", "kind": "ally_name_present", "scope": "team", "selfInclusion": "included", "names": ["Goku"] }
+              { "op": "predicate", "kind": "ally_name_present", "scope": "team", "selfInclusion": "included", "names": ["Goku"], "nameMatch": "includes" }
             ]
           },
           {

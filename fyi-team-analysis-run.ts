@@ -8,6 +8,7 @@ import {
     assertValidTeamAnalysisDataset,
     buildTeamAnalysisCoverageReport,
     buildTeamAnalysisDataset,
+    TeamAnalysisNameIdentityContract,
 } from "./team-analysis";
 import {
     buildTeamAnalysisArtifact,
@@ -26,6 +27,7 @@ export interface FyiTeamAnalysisRunOptions {
     characterDatasetPath: string,
     characterManifestPath: string,
     catalogPath: string,
+    nameIdentityContract?: TeamAnalysisNameIdentityContract,
 }
 
 export async function runFyiTeamAnalysis(
@@ -58,6 +60,7 @@ export async function runFyiTeamAnalysis(
         generatedAt: characterManifest.generatedAt,
         sourceCharacterDatasetVersion: characterManifest.datasetVersion,
         sourceCharacterPayloadSha256: characterManifest.sha256,
+        ...(options.nameIdentityContract ? { nameIdentityContract: options.nameIdentityContract } : {}),
     });
     assertValidTeamAnalysisDataset(dataset, characters, catalog.characters);
 
