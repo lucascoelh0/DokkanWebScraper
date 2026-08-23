@@ -23,7 +23,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.3";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.5";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 
 export type ParseStatus = "supported" | "partial" | "unknown";
@@ -136,7 +136,7 @@ export type CombatEventType =
 export type CombatEventActor = "self" | "enemy";
 export type CombatAttackKind = "normal_attack" | "super_attack" | "unknown";
 export type CombatAttackStyle = "ki_blast" | "unarmed" | "physical" | "unknown";
-export type CombatEventMode = "current_event" | "accumulated_count" | "per_event";
+export type CombatEventMode = "current_event" | "accumulated_count" | "repeated_threshold" | "per_event";
 export type CombatEventCountScope = "current_turn" | "battle" | "unknown";
 export type CombatEventRelativeTiming = "before_event" | "during_event" | "after_event" | "unknown";
 
@@ -209,6 +209,7 @@ export type PassivePredicateKind =
     | "ki_sphere_collection_order"
     | "incoming_attack"
     | "incoming_super_attack"
+    | "incoming_attack_from_enemy_hit_by_self_super_attack"
     | "attacks_performed"
     | "attacks_received"
     | "attacks_evaded"
@@ -489,7 +490,17 @@ export interface CombatEventEffectScaling {
     events: CombatEventDescriptor[],
 }
 
-export type PassiveEffectScaling = KiSphereEffectScaling | CombatEventEffectScaling;
+export interface CategoryAllyEffectScaling {
+    kind: "per_category_ally",
+    scope: "team" | "rotation",
+    categories: string[],
+    selfInclusion: SelfInclusion,
+    membersPerIncrement: number,
+    maximumCount: number,
+    selection: "single_category" | "largest_category_count",
+}
+
+export type PassiveEffectScaling = KiSphereEffectScaling | CombatEventEffectScaling | CategoryAllyEffectScaling;
 
 export interface KiSphereChange {
     sourceSelection: "listed_types" | "all" | "random_type",
@@ -1927,6 +1938,7 @@ export function parsePassive(
         const headerScaling = currentCondition
             ? parseKiSphereScalingHeader(currentCondition.text)
                 ?? parseCombatEventScalingHeader(currentCondition.text)
+                ?? parseCategoryAllyScalingHeader(currentCondition.text)
             : undefined;
         const headerConditionResult = currentCondition
             ? headerScaling
@@ -2673,6 +2685,23 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
         return receivingAttackWithKiSpheres;
     }
 
+    if (/^receiving an? attack from an enemy who is hit by the character's Super Attack$/i.test(text)) {
+        return predicateExpression({
+            kind: "incoming_attack_from_enemy_hit_by_self_super_attack",
+            scope: "self",
+            combatEvent: combatEventDescriptor(
+                combatEventIdentity("receiving an attack", "targeted"),
+                "current_event",
+                "during_event",
+                {
+                    relativeTimingSource: "explicit_text",
+                    modeSource: "explicit_text",
+                },
+            ),
+            sourceText,
+        });
+    }
+
     const kiSphereCollectionOrder = parseKiSphereCollectionOrderCondition(text, sourceText);
     if (kiSphereCollectionOrder) {
         return kiSphereCollectionOrder;
@@ -2858,11 +2887,15 @@ function parseEntranceAnimationCondition(
     text: string,
     sourceText: string,
 ): ConditionExpression | undefined {
+    if (/^Activates the Entrance Animation upon the character's entry$/i.test(text)) {
+        return { op: "always" };
+    }
     const entrance = /^Activates the Entrance Animation when (.+?) upon the character's entry$/i.exec(text);
     if (!entrance) {
         return undefined;
     }
-    return parseAllyConditionClause(entrance[1], sourceText);
+    const condition = parseBooleanCondition(entrance[1]);
+    return condition.op === "unknown" ? undefined : rewriteConditionSourceText(condition, sourceText);
 }
 
 interface ParsedCombatEventIdentity {
@@ -2992,6 +3025,26 @@ function parseCombatCountScope(sourceText: string): {
 }
 
 function parseExactCombatEventCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    const repeatedPerformed = /^Every time the character performs (\d+) or more ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attacks?) ((?:in|throughout) (?:the )?battle)$/i.exec(text);
+    if (repeatedPerformed) {
+        const value = Number(repeatedPerformed[1]);
+        if (!Number.isInteger(value) || value < 1) {
+            return undefined;
+        }
+        const identity = combatEventIdentity(repeatedPerformed[2], "performed");
+        const scope = parseCombatCountScope(repeatedPerformed[3]);
+        return combatPredicate(
+            identity,
+            combatEventDescriptor(identity, "repeated_threshold", "after_event", {
+                countScope: scope.countScope,
+                countScopeSource: scope.source,
+            }),
+            sourceText,
+            "gte",
+            value,
+        );
+    }
+
     if (/^Every time\b/i.test(text)) {
         return undefined;
     }
@@ -4382,6 +4435,45 @@ function parseCombatEventScalingHeader(sourceText: string): PassiveEffectScaling
     };
 }
 
+function parseCategoryAllyScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const text = sourceText.trim();
+    const largestCategory = /^Per (.+?) Category ally attacking in the same turn \(depending on which Category has more members\)$/i.exec(text);
+    if (largestCategory) {
+        const categories = parseQuotedValues(largestCategory[1]);
+        if (!categories || categories.connector !== "or" || categories.values.length < 2) {
+            return undefined;
+        }
+        return {
+            kind: "per_category_ally",
+            scope: "rotation",
+            categories: categories.values,
+            selfInclusion: "included",
+            membersPerIncrement: 1,
+            maximumCount: 3,
+            selection: "largest_category_count",
+        };
+    }
+
+    const singleCategory = /^Per (.+?) Category ally (?:on the team|attacking in the same turn)(\s*\(self excluded\))?$/i.exec(text);
+    if (!singleCategory) {
+        return undefined;
+    }
+    const categories = parseQuotedValues(singleCategory[1]);
+    if (!categories || categories.values.length !== 1) {
+        return undefined;
+    }
+    const scope = /on the team/i.test(text) ? "team" as const : "rotation" as const;
+    return {
+        kind: "per_category_ally",
+        scope,
+        categories: categories.values,
+        selfInclusion: singleCategory[2] ? "excluded" : "included",
+        membersPerIncrement: 1,
+        maximumCount: scope === "team" ? 7 : 3,
+        selection: "single_category",
+    };
+}
+
 function parsePerEventIdentity(sourceText: string): ParsedCombatEventIdentity | undefined {
     if (/^((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack) performed$/i.test(sourceText)) {
         return combatEventIdentity(sourceText, "performed");
@@ -4399,9 +4491,13 @@ function parsePerEventIdentity(sourceText: string): ParsedCombatEventIdentity | 
 }
 
 function clonePassiveEffectScaling(scaling: PassiveEffectScaling): PassiveEffectScaling {
-    return scaling.kind === "per_ki_sphere"
-        ? { ...scaling, kiSphereTypes: [...scaling.kiSphereTypes] }
-        : {
+    if (scaling.kind === "per_ki_sphere") {
+        return { ...scaling, kiSphereTypes: [...scaling.kiSphereTypes] };
+    }
+    if (scaling.kind === "per_category_ally") {
+        return { ...scaling, categories: [...scaling.categories] };
+    }
+    return {
             ...scaling,
             events: scaling.events.map(event => ({
                 ...event,
@@ -4416,6 +4512,17 @@ function parseSlotValues(sourceText: string): number[] {
 }
 
 function parseExactSlotCondition(text: string, sourceText: string): ConditionExpression | undefined {
+    const startOfTurnPattern = new RegExp(`^(?:the|this) character is the\\s+(${SLOT_LIST_PATTERN})\\s+attacker at the start of turn$`, "i");
+    const startOfTurnMatch = startOfTurnPattern.exec(text);
+    if (startOfTurnMatch) {
+        return predicateExpression({
+            kind: "battle_slot",
+            scope: "self",
+            slots: parseSlotValues(startOfTurnMatch[1]),
+            evaluationMoment: "start_of_turn",
+            sourceText,
+        });
+    }
     const attackerPattern = new RegExp(`^(?:As the|attacking as the)\\s+(${SLOT_LIST_PATTERN})\\s+attacker in a turn$`, "i");
     const slotPattern = new RegExp(`^attacking in the\\s+(${SLOT_LIST_PATTERN})\\s+slot$`, "i");
     const match = attackerPattern.exec(text) ?? slotPattern.exec(text);
@@ -6042,7 +6149,7 @@ const SCENARIO_PREDICATES = new Set<PassivePredicateKind>([
 
 const RUNTIME_PREDICATES = new Set<PassivePredicateKind>([
     "ki_amount", "ki_spheres_obtained", "ki_sphere_type_obtained", "ki_sphere_collection_order", "incoming_attack",
-    "incoming_super_attack", "attacks_performed",
+    "incoming_super_attack", "incoming_attack_from_enemy_hit_by_self_super_attack", "attacks_performed",
     "attacks_received", "attacks_evaded", "super_attacks_performed", "super_attack_received",
     "final_blow_delivered", "chance_roll",
 ]);
@@ -7160,6 +7267,26 @@ function validateEffectContract(
                 issues.push({ code: "combat-scaling-arity", message: `Single scaling requires one event; logical scaling requires multiple events.`, stateKey: state.stateKey, ruleId: rule.id });
             }
             effect.scaling.events.forEach(event => validateCombatEventDescriptor(event, state, rule, issues, true));
+        } else if (effect.scaling.kind === "per_category_ally") {
+            if (!(["team", "rotation"] as const).includes(effect.scaling.scope)) {
+                issues.push({ code: "category-scaling-scope", message: `Category ally scaling scope is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.categories.length === 0 || effect.scaling.categories.some(category => !category.trim())) {
+                issues.push({ code: "category-scaling-categories", message: `Category ally scaling requires named categories.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (!Number.isInteger(effect.scaling.membersPerIncrement) || effect.scaling.membersPerIncrement < 1) {
+                issues.push({ code: "category-scaling-unit", message: `Category ally scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            const expectedMaximum = effect.scaling.scope === "team" ? 7 : 3;
+            if (effect.scaling.maximumCount !== expectedMaximum) {
+                issues.push({ code: "category-scaling-maximum", message: `Category ally scaling maximum must match its scope.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.selection === "single_category" && effect.scaling.categories.length !== 1) {
+                issues.push({ code: "category-scaling-selection", message: `Single-category scaling requires exactly one category.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.selection === "largest_category_count" && effect.scaling.categories.length < 2) {
+                issues.push({ code: "category-scaling-selection", message: `Largest-category scaling requires at least two categories.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
         } else {
             issues.push({ code: "effect-scaling-kind", message: `Effect scaling kind is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
             const external = effect.scaling as unknown as Partial<KiSphereEffectScaling>;
@@ -7531,7 +7658,8 @@ function validateKiPredicate(
 }
 
 const COMBAT_EVENT_PREDICATE_KINDS = new Set<PassivePredicateKind>([
-    "incoming_attack", "incoming_super_attack", "attacks_performed", "attacks_received",
+    "incoming_attack", "incoming_super_attack", "incoming_attack_from_enemy_hit_by_self_super_attack",
+    "attacks_performed", "attacks_received",
     "attacks_evaded", "super_attacks_performed", "super_attack_received", "final_blow_delivered",
 ]);
 
@@ -7559,7 +7687,9 @@ function validateCombatEventPredicate(
     validateCombatEventDescriptor(predicate.combatEvent, state, rule, issues, false);
     const expectedKind: Partial<Record<CombatEventType, PassivePredicateKind[]>> = {
         attack_performed: predicate.combatEvent.attackKind === "super_attack" ? ["super_attacks_performed"] : ["attacks_performed"],
-        incoming_attack: predicate.combatEvent.attackKind === "super_attack" ? ["incoming_super_attack"] : ["incoming_attack"],
+        incoming_attack: predicate.combatEvent.attackKind === "super_attack"
+            ? ["incoming_super_attack"]
+            : ["incoming_attack", "incoming_attack_from_enemy_hit_by_self_super_attack"],
         attack_landed: predicate.combatEvent.attackKind === "super_attack" ? ["super_attack_received"] : ["attacks_received"],
         attack_evaded: ["attacks_evaded"],
         final_blow_delivered: ["final_blow_delivered"],
@@ -7567,18 +7697,22 @@ function validateCombatEventPredicate(
     if (!(expectedKind[predicate.combatEvent.eventType] ?? []).includes(predicate.kind)) {
         issues.push({ code: "combat-event-predicate-kind", message: `Combat-event descriptor does not match its predicate kind.`, stateKey: state.stateKey, ruleId: rule.id });
     }
-    if (predicate.combatEvent.mode === "accumulated_count") {
+    if (predicate.combatEvent.mode === "accumulated_count"
+        || predicate.combatEvent.mode === "repeated_threshold") {
         if (!(["lt", "lte", "eq", "gte", "gt"] as Array<PassivePredicate["comparator"]>).includes(predicate.comparator)) {
-            issues.push({ code: "combat-event-comparator", message: `Accumulated combat-event conditions require an explicit scalar comparator.`, stateKey: state.stateKey, ruleId: rule.id });
+            issues.push({ code: "combat-event-comparator", message: `Counted combat-event conditions require an explicit scalar comparator.`, stateKey: state.stateKey, ruleId: rule.id });
         }
         if (predicate.value === undefined || !Number.isInteger(predicate.value) || predicate.value < 0) {
-            issues.push({ code: "combat-event-count", message: `Accumulated combat-event conditions require a non-negative integer count.`, stateKey: state.stateKey, ruleId: rule.id });
+            issues.push({ code: "combat-event-count", message: `Counted combat-event conditions require a non-negative integer count.`, stateKey: state.stateKey, ruleId: rule.id });
         }
     } else if (predicate.comparator !== undefined || predicate.value !== undefined) {
         issues.push({ code: "combat-current-event-count", message: `Current combat events cannot carry an accumulated comparator or count.`, stateKey: state.stateKey, ruleId: rule.id });
     }
     if (predicate.combatEvent.mode === "per_event") {
         issues.push({ code: "combat-predicate-per-event", message: `Per-event repetition belongs to effect scaling, not a condition predicate.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.combatEvent.mode === "repeated_threshold" && predicate.comparator !== "gte") {
+        issues.push({ code: "combat-repeated-threshold-comparator", message: `Repeated combat-event thresholds require a gte comparator.`, stateKey: state.stateKey, ruleId: rule.id });
     }
 }
 
@@ -7593,7 +7727,7 @@ function validateCombatEventDescriptor(
     const actors: CombatEventActor[] = ["self", "enemy"];
     const attackKinds: CombatAttackKind[] = ["normal_attack", "super_attack", "unknown"];
     const attackStyles: CombatAttackStyle[] = ["ki_blast", "unarmed", "physical", "unknown"];
-    const modes: CombatEventMode[] = ["current_event", "accumulated_count", "per_event"];
+    const modes: CombatEventMode[] = ["current_event", "accumulated_count", "repeated_threshold", "per_event"];
     const countScopes: CombatEventCountScope[] = ["current_turn", "battle", "unknown"];
     const relativeTimings: CombatEventRelativeTiming[] = ["before_event", "during_event", "after_event", "unknown"];
     const sources: CalculationPhaseResolutionSource[] = ["explicit_text", "first_party_game_db", "documented_domain_rule", "unresolved"];
@@ -7809,8 +7943,16 @@ function validateScenarioPredicate(
     if (predicate.evaluationMoment !== undefined && !knownMoments.includes(predicate.evaluationMoment)) {
         issues.push({ code: "evaluation-moment", message: `Evaluation moment is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
     }
-    if (predicate.evaluationMoment !== undefined && !isScenario && predicate.kind !== "ki_amount") {
-        issues.push({ code: "evaluation-moment-kind", message: `Evaluation moment is valid only on scenario or attack-Ki predicates.`, stateKey: state.stateKey, ruleId: rule.id });
+    if (predicate.evaluationMoment !== undefined
+        && !isScenario
+        && predicate.kind !== "ki_amount"
+        && predicate.kind !== "battle_slot") {
+        issues.push({ code: "evaluation-moment-kind", message: `Evaluation moment is valid only on scenario, attack-Ki or battle-slot predicates.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.kind === "battle_slot"
+        && predicate.evaluationMoment !== undefined
+        && predicate.evaluationMoment !== "start_of_turn") {
+        issues.push({ code: "slot-evaluation-moment", message: `Battle-slot evaluation moment must be start_of_turn when present.`, stateKey: state.stateKey, ruleId: rule.id });
     }
 }
 

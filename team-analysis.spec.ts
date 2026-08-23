@@ -1274,6 +1274,152 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
     equal(passive.rules[0].conditionStatus, "unknown");
   });
 
+  it("types an unconditional Entrance Animation as always available", () => {
+    const passive = parsePassive(
+      "1032551:1032551:initial",
+      "Maximum-Power Super Saiyan 4",
+      "Activates the Entrance Animation upon the character's entry\n- ATK & DEF 400%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(passive.rules[0].condition, { op: "always" });
+  });
+
+  it("keeps both team alternatives under the shared Entrance Animation entry suffix", () => {
+    const passive = parsePassive(
+      "1032261:1032261:initial",
+      "New Power Awakened in the Demon Realm",
+      [
+        "Activates the Entrance Animation when there is another \"Demonic Power\" Category ally on the team or when 5 or more Super Class allies are on the team upon the character's entry",
+        "- ATK & DEF 150% and launches an additional Super Attack",
+      ].join("\n"),
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => ({
+      kind: predicate.kind,
+      categories: predicate.categories,
+      classes: predicate.classes,
+      count: predicate.count,
+      selfInclusion: predicate.selfInclusion,
+    })), [
+      {
+        kind: "ally_category_present",
+        categories: ["Demonic Power"],
+        classes: undefined,
+        count: undefined,
+        selfInclusion: "excluded",
+      },
+      {
+        kind: "ally_class_present",
+        categories: undefined,
+        classes: ["Super"],
+        count: 5,
+        selfInclusion: "included",
+      },
+    ]);
+  });
+
+  it("types category ally rotation scaling separately from availability", () => {
+    const passive = parsePassive(
+      "1032281:1032281:initial",
+      "Reliable Support",
+      [
+        "Per \"Dragon Ball Seekers\" or \"Demonic Power\" Category ally attacking in the same turn (depending on which Category has more members)",
+        "- ATK & DEF 100% when attacking",
+        "- All allies' chance of performing a critical hit 7%",
+      ].join("\n"),
+    );
+
+    equal(passive.rules.length, 2);
+    passive.rules.forEach(rule => {
+      equal(rule.conditionStatus, "supported");
+      deepEqual(rule.effects[0].scaling, {
+        kind: "per_category_ally",
+        scope: "rotation",
+        categories: ["Dragon Ball Seekers", "Demonic Power"],
+        selfInclusion: "included",
+        membersPerIncrement: 1,
+        maximumCount: 3,
+        selection: "largest_category_count",
+      });
+    });
+  });
+
+  it("types an incoming attack from an enemy hit by the character's Super Attack", () => {
+    const passive = parsePassive(
+      "runtime:enemy-hit-by-sa:initial",
+      undefined,
+      "When receiving an attack from an enemy who is hit by the character's Super Attack\n- DEF 250%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => predicate.kind), [
+      "incoming_attack_from_enemy_hit_by_self_super_attack",
+    ]);
+  });
+
+  it("types repeatable attack progress in battle as an accumulated performed-attack predicate", () => {
+    const passive = parsePassive(
+      "1032581:1032581:initial",
+      "Steadfast Saiyan Pride",
+      [
+        "Every time the character performs 3 or more attacks in battle",
+        "- Launches an additional Super Attack (up to once within a turn)",
+      ].join("\n"),
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => ({
+      kind: predicate.kind,
+      comparator: predicate.comparator,
+      value: predicate.value,
+      combatEvent: predicate.combatEvent,
+    })), [{
+      kind: "attacks_performed",
+      comparator: "gte",
+      value: 3,
+      combatEvent: {
+        eventType: "attack_performed",
+        actor: "self",
+        attackKind: "unknown",
+        mode: "repeated_threshold",
+        countScope: "battle",
+        relativeTiming: "after_event",
+        provenance: {
+          eventType: "explicit_text",
+          actor: "documented_domain_rule",
+          attackKind: "unresolved",
+          mode: "explicit_text",
+          countScope: "explicit_text",
+          relativeTiming: "explicit_text",
+        },
+      },
+    }]);
+  });
+
+  it("types start-of-turn attacker position without leaving a false unknown suffix", () => {
+    const passive = parsePassive(
+      "1032411:1032411:initial",
+      "Divine Support",
+      [
+        "When the character is the 2nd attacker at the start of turn",
+        "- Changes Ki Spheres: AGL to TEQ",
+      ].join("\n"),
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => ({
+      kind: predicate.kind,
+      slots: predicate.slots,
+      evaluationMoment: predicate.evaluationMoment,
+    })), [{
+      kind: "battle_slot",
+      slots: [2],
+      evaluationMoment: "start_of_turn",
+    }]);
+  });
+
   it("types Active Skill activation as battle context inside an alternative", () => {
     const passive = parsePassive(
       "1034341:1034341:initial",
@@ -2456,13 +2602,13 @@ describe("team-analysis validation and artifacts", function () {
       predicate: {
         kind: "attacks_received",
         scope: "self",
-        comparator: "gte",
+        comparator: "eq",
         value: -1,
         combatEvent: {
           eventType: "attack_landed",
           actor: "enemy",
           attackKind: "normal_attack",
-          mode: "accumulated_count",
+          mode: "repeated_threshold",
           relativeTiming: "after_event",
           provenance: {
             eventType: "explicit_text",
@@ -2529,6 +2675,7 @@ describe("team-analysis validation and artifacts", function () {
     const codes = validateTeamAnalysisDataset(broken, fixture.characters, fixture.catalogEntries)
       .map(issue => issue.code);
     ok(codes.includes("combat-event-count"));
+    ok(codes.includes("combat-repeated-threshold-comparator"));
     ok(codes.includes("combat-history-count-scope"));
     ok(codes.includes("combat-attack-kind-resolution"));
     ok(codes.includes("combat-scaling-unit"));
@@ -2703,6 +2850,7 @@ describe("team-analysis validation and artifacts", function () {
             kind: "battle_slot",
             scope: "rotation",
             slots: [0, 4],
+            evaluationMoment: "entry_turn",
             sourceText: "Basic effect(s)",
           },
         },
@@ -2723,6 +2871,7 @@ describe("team-analysis validation and artifacts", function () {
     ok(codes.includes("type-value"));
     ok(codes.includes("slot-scope"));
     ok(codes.includes("slot-range"));
+    ok(codes.includes("slot-evaluation-moment"));
     ok(codes.includes("target-classes"));
     ok(codes.includes("target-types"));
   });
@@ -3047,7 +3196,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.3/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.5/);
   });
 });
 

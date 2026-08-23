@@ -1633,6 +1633,39 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   grouped source clause. Focused and broader Android checks passed, and the
   final cross-repository contract re-review found no remaining P0-P2 issue.
 
+## Team passive potential and disclosure checkpoint (2026-08-23)
+
+- Local Team Analysis parser `1.9.5` preserves `Every time ... performs N or
+  more attacks in battle` as a typed `repeated_threshold` combat-event mode,
+  distinct from an ordinary accumulated count. Start-of-turn attacker-position
+  clauses now retain a typed `battle_slot` plus `start_of_turn` evaluation
+  moment instead of leaving the timing suffix unknown. The corresponding
+  catalog-wide pass moved 33 conditions to supported, reduced unknown
+  conditions by 19 and partial conditions by 14, and retained fail-closed
+  validation for unsupported modes and invalid slot moments.
+- Android distinguishes passive availability from rotation potential.
+  Category-ally scaling can report full or partial potential with its capped
+  compatible-member count. Lists longer than three matches are now collapsed
+  behind `Show N compatible characters`; expansion lists names without
+  repeating `Matched by`, and the disclosure has a 48dp button target and an
+  explicit expanded/collapsed state.
+- The complete local candidate is Characters
+  `2026-08-23T15:30:29.958Z`, SHA-256
+  `469e9df38f8ae35521bc4fca1324a5b47391ada2b0c0b79cdc34ea44d8d605cb`,
+  2,342,759 compressed bytes and 1,436 characters, plus Team Analysis
+  `2026-08-23T15:30:29.958Z:parser-1.9.5`, SHA-256
+  `31b29126f3a6e318a902c0a58a3fe8c0aed9b606ff2c6050e559a7c3ec67c46a`,
+  2,934,341 compressed bytes, 53,918,987 uncompressed bytes and 2,288 states.
+  It is installed only in the Android Studio emulator; the public R2 manifest
+  remains parser `1.9.0`.
+- The preserved DAIMA draft now reports `45 Active`, `0 Inactive` and
+  `0 Needs info`: Super Saiyan 3 Vegeta moved from `5/6` to `6/6`, and Supreme
+  Kai (Mini) moved from `6/9` to `9/9`. All 943 Team Analysis tests, focused
+  Android wire/evaluator tests, Android debug/test compilation and debug
+  assembly passed. The team-draft file SHA remained
+  `cfbed0b1595df46a9c643c36d7ec6ad48612f8f8cf22570baaaa646918a9cf6d`.
+  No R2 dry-run, upload, Git commit or push was authorized by this checkpoint.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

@@ -649,13 +649,32 @@
       "allActivationMoments": ["after_attack_landed", "after_attack_landed"]
     },
     {
-      "name": "ambiguous repeated threshold remains unknown",
+      "name": "repeated attack threshold retains its distinct cadence",
       "source": "real",
       "rawText": "Every time the character performs 3 or more attacks in battle\n- ATK 20%",
-      "expectedStatus": "partial",
+      "expectedStatus": "supported",
       "condition": {
-        "op": "unknown",
-        "sourceText": "Every time the character performs 3 or more attacks in battle"
+        "op": "predicate",
+        "kind": "attacks_performed",
+        "scope": "self",
+        "comparator": "gte",
+        "value": 3,
+        "combatEvent": {
+          "eventType": "attack_performed",
+          "actor": "self",
+          "attackKind": "unknown",
+          "mode": "repeated_threshold",
+          "countScope": "battle",
+          "relativeTiming": "after_event",
+          "provenance": {
+            "eventType": "explicit_text",
+            "actor": "documented_domain_rule",
+            "attackKind": "unresolved",
+            "mode": "explicit_text",
+            "countScope": "explicit_text",
+            "relativeTiming": "explicit_text"
+          }
+        }
       }
     }
   ]
