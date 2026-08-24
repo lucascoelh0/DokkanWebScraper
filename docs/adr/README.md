@@ -12,6 +12,7 @@ data pipeline and its Android consumer. Mutable progress belongs in
 | [0004](0004-use-bounded-read-only-subagents.md) | Use bounded read-only subagents | accepted | 2026-08-04 |
 | [0005](0005-use-an-optional-database-first-team-analysis-sidecar.md) | Use an optional database-first Team Analysis sidecar | accepted | 2026-08-07 |
 | [0006](0006-separate-staging-and-production-dataset-channels.md) | Separate staging and production dataset channels | accepted | 2026-08-23 |
+| [0007](0007-version-production-datasets-by-consumer-contract-lane.md) | Version production datasets by consumer contract lane | accepted | 2026-08-23 |
 
 ## Usage
 

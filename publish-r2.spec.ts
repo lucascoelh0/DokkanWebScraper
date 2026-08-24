@@ -16,6 +16,8 @@ import {
 } from "./publish-r2";
 import { assertDatasetPublicationWriteAuthorized } from "./dataset-publication-channel";
 
+const V1_PROJECTION_REPORT = "projection-report.json";
+
 describe("parseWranglerBucketSize", function () {
   it("uses a conservative upper bound for rounded Wrangler sizes", () => {
     deepEqual(parseWranglerBucketSize("383.9 MB"), {
@@ -80,11 +82,13 @@ describe("buildRemoteDatasetObjectKey", function () {
       fileName: "characters.json.gz",
       sha256: "A".repeat(64),
     } as any;
-    equal(buildCharacterManifestObjectKey("staging"), "staging/characters-manifest.json");
+    equal(buildCharacterManifestObjectKey("staging", "v1"), "staging/v1/characters-manifest.json");
     equal(
-      buildRemoteDatasetObjectKey(manifest, "staging"),
-      `staging/releases/2026-08-22T21-14-10.019Z/${"a".repeat(64)}/characters.json.gz`,
+      buildRemoteDatasetObjectKey(manifest, "staging", "v1"),
+      `staging/v1/releases/2026-08-22T21-14-10.019Z/${"a".repeat(64)}/characters.json.gz`,
     );
+    equal(buildCharacterManifestObjectKey("production", "v2"), "v2/characters-manifest.json");
+    equal(buildCharacterManifestObjectKey("staging", "v2"), "staging/v2/characters-manifest.json");
   });
 });
 
@@ -106,20 +110,21 @@ describe("assertExpectedRemoteBaselineSha256", function () {
 describe("parsePublishArgs", function () {
   it("requires and validates the expected remote baseline SHA", () => {
     throws(
-      () => parsePublishArgs(["--bucket", "test", "--expected-remote-baseline-sha256", "--remote"]),
+      () => parsePublishArgs(["--bucket", "test", "--contract-lane", "v2", "--expected-remote-baseline-sha256", "--remote"]),
       /requires a value/,
     );
     throws(
-      () => parsePublishArgs(["--bucket", "test", "--expected-remote-baseline-sha256="]),
+      () => parsePublishArgs(["--bucket", "test", "--contract-lane", "v2", "--expected-remote-baseline-sha256="]),
       /requires a value/,
     );
     throws(
-      () => parsePublishArgs(["--bucket", "test", "--expected-remote-baseline-sha256", "not-a-sha"]),
+      () => parsePublishArgs(["--bucket", "test", "--contract-lane", "v2", "--expected-remote-baseline-sha256", "not-a-sha"]),
       /Invalid --expected-remote-baseline-sha256/,
     );
     throws(
       () => parsePublishArgs([
         "--bucket", "test",
+        "--contract-lane", "v2",
         "--expected-remote-baseline-sha256", "a".repeat(64),
         "--skip-remote-manifest-check",
       ]),
@@ -129,6 +134,7 @@ describe("parsePublishArgs", function () {
     equal(
       parsePublishArgs([
         "--bucket", "test",
+        "--contract-lane", "v2",
         "--expected-remote-baseline-sha256", "A".repeat(64),
       ]).expectedRemoteBaselineSha256,
       "a".repeat(64),
@@ -137,20 +143,39 @@ describe("parsePublishArgs", function () {
 
   it("requires isolated portrait handling and state for staging", () => {
     throws(
-      () => parsePublishArgs(["--bucket", "test", "--channel", "staging"]),
+      () => parsePublishArgs(["--bucket", "test", "--contract-lane", "v2", "--channel", "staging"]),
       /requires --skip-portraits/,
     );
     const staging = parsePublishArgs([
       "--bucket", "test",
       "--channel", "staging",
+      "--contract-lane", "v1",
+      "--v1-projection-report", V1_PROJECTION_REPORT,
       "--skip-portraits",
     ]);
     equal(staging.channel, "staging");
-    equal(staging.manifestObjectKey, "staging/characters-manifest.json");
-    equal(staging.statePath.endsWith("r2-publish-state-staging.json"), true);
+    equal(staging.contractLane, "v1");
+    equal(staging.manifestObjectKey, "staging/v1/characters-manifest.json");
+    equal(staging.statePath.endsWith("r2-publish-state-staging-v1.json"), true);
     throws(
-      () => parsePublishArgs(["--bucket", "test", "--channel", "preview", "--skip-portraits"]),
+      () => parsePublishArgs(["--bucket", "test", "--contract-lane", "v2", "--channel", "preview", "--skip-portraits"]),
       /Invalid dataset publication channel/,
+    );
+  });
+
+  it("requires an explicit lane and v1 projection provenance", () => {
+    throws(() => parsePublishArgs(["--bucket", "test"]), /Missing dataset contract lane/);
+    throws(
+      () => parsePublishArgs(["--bucket", "test", "--contract-lane", "v1"]),
+      /requires --v1-projection-report/,
+    );
+    throws(
+      () => parsePublishArgs([
+        "--bucket", "test",
+        "--contract-lane", "v2",
+        "--v1-projection-report", V1_PROJECTION_REPORT,
+      ]),
+      /only be used with --contract-lane v1/,
     );
   });
 });

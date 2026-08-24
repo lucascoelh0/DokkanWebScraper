@@ -21,33 +21,33 @@ npm run validate:team-analysis
 Inspect the plan against Wrangler's local R2 storage without writing:
 
 ```powershell
-npm run publish:team-analysis-r2 -- --dry-run --local
+npm run publish:team-analysis-r2 -- --dry-run --local --contract-lane v2
 ```
 
 Inspect the production channel without writing:
 
 ```powershell
-npm run publish:team-analysis-r2 -- --dry-run --remote --channel production --bucket dokkanpanion-data
+npm run publish:team-analysis-r2 -- --dry-run --remote --channel production --contract-lane v1 --v1-projection-report PATH_TO_ANDROID_V1_PROJECTION_REPORT --bucket dokkanpanion-data
 ```
 
 Inspect staging without writing:
 
 ```powershell
-npm run publish:team-analysis-r2 -- --dry-run --remote --channel staging --bucket dokkanpanion-data
+npm run publish:team-analysis-r2 -- --dry-run --remote --channel staging --contract-lane v1 --v1-projection-report PATH_TO_ANDROID_V1_PROJECTION_REPORT --bucket dokkanpanion-data
 ```
 
 Publishing staging still mutates R2 and requires separate authorization, but
 it cannot update the production manifest or payload namespace:
 
 ```powershell
-npm run publish:team-analysis-r2 -- --remote --channel staging --bucket dokkanpanion-data
+npm run publish:team-analysis-r2 -- --remote --channel staging --contract-lane v1 --v1-projection-report PATH_TO_ANDROID_V1_PROJECTION_REPORT --bucket dokkanpanion-data
 ```
 
 The following production command is destructive and requires both separate
 authorization and the fail-closed promotion flag:
 
 ```powershell
-npm run publish:team-analysis-r2 -- --remote --channel production --promote-production --bucket dokkanpanion-data
+npm run publish:team-analysis-r2 -- --remote --channel production --contract-lane v1 --v1-projection-report PATH_TO_ANDROID_V1_PROJECTION_REPORT --promote-production --bucket dokkanpanion-data
 ```
 
 The publisher always passes either `--remote` or `--local` to Wrangler object
@@ -55,9 +55,17 @@ operations. `--skip-remote-manifest-check` and `--skip-upload-verification` are
 explicit recovery flags and are not defaults. Real remote writes also fail
 closed when Wrangler cannot report bucket size; bypassing that guard requires
 the separate explicit `--allow-unknown-bucket-size` recovery flag.
-The default channel remains production for read-only compatibility, but a real
-remote production write fails unless `--promote-production` is present.
-Staging uses a separate ignored state file and `staging/` object prefix.
+The default channel remains production for read-only compatibility, but the
+contract lane has no default and must be selected explicitly. A real remote
+production write fails unless `--promote-production` is present. V1 also
+requires the exact projector report and matching paired manifests. Publisher
+state is lane-scoped; only the historical production-v1 state keeps its legacy
+default path.
+
+Use the lockfile-pinned Wrangler 4.125.0 or newer. Wrangler 4.118.0 was observed
+returning a false successful result for a remote Team Analysis payload upload;
+the mandatory post-upload read prevented manifest promotion, but the older CLI
+must not be used for publication.
 
 ## Publication and retention
 
@@ -86,7 +94,10 @@ delete the currently active payload during rollback.
 Payload keys have this form:
 
 ```text
-team-analysis/releases/{version-slug}/{payload-sha256}/team-analysis.json.gz
+production v1: team-analysis/releases/{version-slug}/{payload-sha256}/team-analysis.json.gz
+production v2: v2/team-analysis/releases/{version-slug}/{payload-sha256}/team-analysis.json.gz
+staging v1: staging/v1/team-analysis/releases/{version-slug}/{payload-sha256}/team-analysis.json.gz
+staging v2: staging/v2/team-analysis/releases/{version-slug}/{payload-sha256}/team-analysis.json.gz
 ```
 
 The payload uses `public, max-age=31536000, immutable`; the manifest uses
@@ -105,5 +116,7 @@ Expected public endpoints:
 
 Expected staging endpoints:
 
-- `https://assets.dkbcompanion.com/staging/team-analysis-manifest.json`
-- `https://assets.dkbcompanion.com/staging/team-analysis/releases/{version-slug}/{payload-sha256}/team-analysis.json.gz`
+- `https://assets.dkbcompanion.com/staging/v1/team-analysis-manifest.json`
+- `https://assets.dkbcompanion.com/staging/v1/team-analysis/releases/{version-slug}/{payload-sha256}/team-analysis.json.gz`
+- `https://assets.dkbcompanion.com/staging/v2/team-analysis-manifest.json`
+- `https://assets.dkbcompanion.com/staging/v2/team-analysis/releases/{version-slug}/{payload-sha256}/team-analysis.json.gz`

@@ -9,6 +9,10 @@ import {
 } from "./team-analysis";
 import { sha256, TeamAnalysisManifest } from "./team-analysis-artifacts";
 import { gunzipSync } from "zlib";
+import {
+    assertCharactersProjectedForAndroidV1,
+    assertTeamAnalysisProjectedForAndroidV1,
+} from "./android-v1-contract-projector";
 
 export const TEAM_ANALYSIS_LOCAL_FILE_NAME = "team-analysis.json.gz";
 
@@ -26,8 +30,11 @@ export interface ValidatedTeamAnalysisDelivery {
     characterManifest: DatasetManifest,
 }
 
+export type TeamAnalysisDeliveryContract = "canonical" | "android-v1";
+
 export function validateTeamAnalysisDeliveryBuffers(
     buffers: TeamAnalysisDeliveryBuffers,
+    options: { contract?: TeamAnalysisDeliveryContract } = {},
 ): ValidatedTeamAnalysisDelivery {
     const manifest = parseJsonObject<TeamAnalysisManifest>(buffers.manifestBuffer, "Team Analysis manifest");
     const characterManifest = parseJsonObject<DatasetManifest>(
@@ -48,7 +55,12 @@ export function validateTeamAnalysisDeliveryBuffers(
     const dataset = parseJsonObject<TeamAnalysisDataset>(datasetText, "Team Analysis payload");
     validateTeamAnalysisArtifact(manifest, dataset, buffers.datasetBuffer, Buffer.from(datasetText, "utf8"));
     validateUniqueDeliveryIdentifiers(dataset);
-    assertValidTeamAnalysisDatasetForDelivery(dataset, characters);
+    if (options.contract === "android-v1") {
+        assertCharactersProjectedForAndroidV1(characters);
+        assertTeamAnalysisProjectedForAndroidV1(dataset);
+    } else {
+        assertValidTeamAnalysisDatasetForDelivery(dataset, characters);
+    }
 
     if (dataset.sourceCharacterDatasetVersion !== characterManifest.datasetVersion) {
         throw new Error(

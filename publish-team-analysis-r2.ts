@@ -5,11 +5,14 @@ import { tmpdir } from "os";
 import { dirname, resolve } from "path";
 import {
     assertDatasetPublicationWriteAuthorized,
-    channelObjectKey,
+    contractLaneObjectKey,
+    DatasetContractLane,
     DatasetPublicationChannel,
-    defaultChannelStatePath,
+    defaultContractLaneStatePath,
+    parseDatasetContractLane,
     parseDatasetPublicationChannel,
 } from "./dataset-publication-channel";
+import { assertAndroidV1PublicationProof } from "./android-v1-publication-proof";
 import { TeamAnalysisManifest, sha256 } from "./team-analysis-artifacts";
 import {
     TEAM_ANALYSIS_LOCAL_FILE_NAME,
@@ -46,6 +49,8 @@ export interface TeamAnalysisR2PublishOptions {
     maxTotalBytes: number,
     maxNamespaceBytes: number,
     channel: DatasetPublicationChannel,
+    contractLane: DatasetContractLane,
+    v1ProjectionReportPath?: string,
     manifestObjectKey: string,
     promoteProduction: boolean,
 }
@@ -63,6 +68,7 @@ export interface TeamAnalysisR2PublishState {
     bucket: string,
     target: "remote" | "local",
     channel?: DatasetPublicationChannel,
+    contractLane?: DatasetContractLane,
     datasetVersion: string,
     datasetObjectKey: string,
     payloadSha256: string,
@@ -132,7 +138,8 @@ export interface TeamAnalysisPublishSummary {
 export function parseTeamAnalysisR2PublishArgs(argv: string[]): TeamAnalysisR2PublishOptions {
     const valueNames = new Set([
         "--bucket", "--dataset", "--manifest", "--characters", "--character-manifest", "--state",
-        "--max-total-bytes", "--max-namespace-bytes", "--channel",
+        "--max-total-bytes", "--max-namespace-bytes", "--channel", "--contract-lane",
+        "--v1-projection-report",
     ]);
     const flagNames = new Set([
         "--dry-run", "--remote", "--local", "--skip-remote-manifest-check", "--skip-upload-verification",
@@ -175,6 +182,14 @@ export function parseTeamAnalysisR2PublishArgs(argv: string[]): TeamAnalysisR2Pu
     const bucket = values.get("--bucket") ?? process.env.R2_BUCKET_NAME ?? DEFAULT_BUCKET;
     assertValidBucket(bucket);
     const channel = parseDatasetPublicationChannel(values.get("--channel"));
+    const contractLane = parseDatasetContractLane(values.get("--contract-lane"));
+    const v1ProjectionReportPath = values.get("--v1-projection-report");
+    if (contractLane === "v1" && !v1ProjectionReportPath) {
+        throw new Error("The v1 contract lane requires --v1-projection-report.");
+    }
+    if (contractLane !== "v1" && v1ProjectionReportPath) {
+        throw new Error("--v1-projection-report can only be used with --contract-lane v1.");
+    }
 
     const resolvedPaths = {
         datasetPath: resolve(values.get("--dataset") ?? DEFAULT_DATASET_PATH),
@@ -183,7 +198,7 @@ export function parseTeamAnalysisR2PublishArgs(argv: string[]): TeamAnalysisR2Pu
         characterManifestPath: resolve(values.get("--character-manifest") ?? DEFAULT_CHARACTER_MANIFEST_PATH),
         statePath: values.has("--state")
             ? resolve(values.get("--state")!)
-            : defaultChannelStatePath(DEFAULT_STATE_PATH, channel),
+            : defaultContractLaneStatePath(DEFAULT_STATE_PATH, channel, contractLane),
     };
     assertDistinctLocalPaths(resolvedPaths);
 
@@ -201,7 +216,9 @@ export function parseTeamAnalysisR2PublishArgs(argv: string[]): TeamAnalysisR2Pu
             DEFAULT_MAX_NAMESPACE_BYTES,
         ),
         channel,
-        manifestObjectKey: buildTeamAnalysisManifestObjectKey(channel),
+        contractLane,
+        v1ProjectionReportPath: v1ProjectionReportPath ? resolve(v1ProjectionReportPath) : undefined,
+        manifestObjectKey: buildTeamAnalysisManifestObjectKey(channel, contractLane),
         promoteProduction: flags.has("--promote-production"),
     };
 }
@@ -209,10 +226,12 @@ export function parseTeamAnalysisR2PublishArgs(argv: string[]): TeamAnalysisR2Pu
 export function buildTeamAnalysisDatasetObjectKey(
     manifest: TeamAnalysisManifest,
     channel: DatasetPublicationChannel = "production",
+    contractLane: DatasetContractLane = "v1",
 ): string {
     const slug = datasetVersionSlug(manifest.datasetVersion);
-    const key = channelObjectKey(
+    const key = contractLaneObjectKey(
         channel,
+        contractLane,
         `team-analysis/releases/${slug}/${manifest.sha256.toLowerCase()}/${TEAM_ANALYSIS_LOCAL_FILE_NAME}`,
     );
     assertValidObjectKey(key, "Team Analysis payload object key");
@@ -221,8 +240,9 @@ export function buildTeamAnalysisDatasetObjectKey(
 
 export function buildTeamAnalysisManifestObjectKey(
     channel: DatasetPublicationChannel = "production",
+    contractLane: DatasetContractLane = "v1",
 ): string {
-    return channelObjectKey(channel, TEAM_ANALYSIS_MANIFEST_OBJECT_KEY);
+    return contractLaneObjectKey(channel, contractLane, TEAM_ANALYSIS_MANIFEST_OBJECT_KEY);
 }
 
 export async function readTeamAnalysisR2PublishPlan(
@@ -252,7 +272,15 @@ export async function readTeamAnalysisR2PublishPlan(
         manifestBuffer,
         characterDatasetBuffer,
         characterManifestBuffer,
+    }, {
+        contract: options.contractLane === "v1" ? "android-v1" : "canonical",
     });
+    if (options.contractLane === "v1") {
+        await assertAndroidV1PublicationProof(options.v1ProjectionReportPath!, {
+            characters: validated.characterManifest,
+            teamAnalysis: validated.manifest,
+        });
+    }
     const stateRead = await readPublishState(options.statePath, options);
     const remoteFacts = await inspectRemoteFacts(options, validated, stateRead, runner);
     return buildTeamAnalysisR2PublishPlan(options, validated, remoteFacts);
@@ -263,7 +291,11 @@ export function buildTeamAnalysisR2PublishPlan(
     validated: ValidatedTeamAnalysisDelivery,
     facts: RemoteFacts,
 ): TeamAnalysisR2PublishPlan {
-    const datasetObjectKey = buildTeamAnalysisDatasetObjectKey(validated.manifest, options.channel);
+    const datasetObjectKey = buildTeamAnalysisDatasetObjectKey(
+        validated.manifest,
+        options.channel,
+        options.contractLane,
+    );
     const remoteManifest: TeamAnalysisManifest = { ...validated.manifest, fileName: datasetObjectKey };
     const remoteManifestBuffer = serializeManifest(remoteManifest);
     const manifestMatches = facts.manifest ? manifestsExactlyMatch(remoteManifest, facts.manifest) : false;
@@ -499,6 +531,7 @@ export function printTeamAnalysisR2PublishPlan(plan: TeamAnalysisR2PublishPlan):
     console.log(`Target: ${plan.options.target}`);
     console.log(`Bucket: ${plan.options.bucket}`);
     console.log(`Channel: ${plan.options.channel}`);
+    console.log(`Contract lane: ${plan.options.contractLane}`);
     console.log(`Manifest object key: ${plan.options.manifestObjectKey}`);
     console.log(`Version: ${plan.remoteManifest.datasetVersion}`);
     console.log(`SHA-256: ${plan.remoteManifest.sha256}`);
@@ -543,7 +576,7 @@ async function inspectRemoteFacts(
             "Team Analysis remote manifest",
         );
         if (remote) {
-            validateRemoteManifest(remote.value, options.channel);
+            validateRemoteManifest(remote.value, options.channel, options.contractLane);
             manifest = remote.value;
             manifestBytes = remote.bytes;
             manifestSha256 = remote.sha256;
@@ -554,7 +587,11 @@ async function inspectRemoteFacts(
 
     const plannedRelease: TeamAnalysisRetainedRelease = {
         datasetVersion: validated.manifest.datasetVersion,
-        datasetObjectKey: buildTeamAnalysisDatasetObjectKey(validated.manifest, options.channel),
+        datasetObjectKey: buildTeamAnalysisDatasetObjectKey(
+            validated.manifest,
+            options.channel,
+            options.contractLane,
+        ),
         payloadSha256: validated.manifest.sha256.toLowerCase(),
         sizeBytes: validated.manifest.sizeBytes,
         publishedAt: validated.manifest.generatedAt,
@@ -568,7 +605,7 @@ async function inspectRemoteFacts(
     const verifiedReleases: TeamAnalysisRetainedRelease[] = [];
     let plannedPayloadPresent = false;
     for (const release of releaseCandidates) {
-        validateRelease(release, options.channel);
+        validateRelease(release, options.channel, options.contractLane);
         const matches = await remotePayloadMatches(runner, options, release);
         if (matches) {
             verifiedReleases.push(release);
@@ -743,11 +780,20 @@ async function readPublishState(
                 ],
             };
         }
+        const stateContractLane = state.contractLane ?? "v1";
+        if (stateContractLane !== options.contractLane) {
+            return {
+                status: "mismatched",
+                warnings: [
+                    `Local publish state belongs to ${stateContractLane}, not requested contract lane ${options.contractLane}, and was ignored.`,
+                ],
+            };
+        }
         if (state.retainedReleases.length + (state.cleanupPendingReleases?.length ?? 0) > MAX_TRACKED_RELEASES) {
             return { status: "old-or-invalid", warnings: ["Local publish state exceeds the bounded release history and was ignored."] };
         }
         [...state.retainedReleases, ...(state.cleanupPendingReleases ?? [])]
-            .forEach(release => validateRelease(release, options.channel));
+            .forEach(release => validateRelease(release, options.channel, options.contractLane));
         return { state, status: "valid", warnings: [] };
     } catch (error) {
         return {
@@ -760,6 +806,7 @@ async function readPublishState(
 function validateRemoteManifest(
     manifest: TeamAnalysisManifest,
     channel: DatasetPublicationChannel,
+    contractLane: DatasetContractLane,
 ): void {
     const stringFields: Array<keyof TeamAnalysisManifest> = [
         "datasetVersion", "generatedAt", "fileName", "sha256", "rulesVersion", "parserVersion",
@@ -783,6 +830,7 @@ function validateRemoteManifest(
     const expectedKey = buildTeamAnalysisDatasetObjectKey(
         { ...manifest, sha256: manifest.sha256.toLowerCase() },
         channel,
+        contractLane,
     );
     if (manifest.fileName !== expectedKey) {
         throw new Error(`Team Analysis remote manifest fileName is not its canonical immutable key: ${manifest.fileName}`);
@@ -802,6 +850,7 @@ function releaseFromManifest(manifest: TeamAnalysisManifest): TeamAnalysisRetain
 function validateRelease(
     release: TeamAnalysisRetainedRelease,
     channel: DatasetPublicationChannel,
+    contractLane: DatasetContractLane,
 ): void {
     if (!release || typeof release !== "object") throw new Error("Invalid retained Team Analysis release.");
     if (typeof release.datasetVersion !== "string" || release.datasetVersion.length === 0) {
@@ -820,6 +869,7 @@ function validateRelease(
             sha256: release.payloadSha256,
         } as TeamAnalysisManifest,
         channel,
+        contractLane,
     );
     if (release.datasetObjectKey !== expectedKey) {
         throw new Error(`Retained Team Analysis release key is not canonical: ${release.datasetObjectKey}`);
@@ -843,6 +893,7 @@ function buildNextPublishState(
         bucket: options.bucket,
         target: options.target,
         channel: options.channel,
+        contractLane: options.contractLane,
         datasetVersion: manifest.datasetVersion,
         datasetObjectKey: manifest.fileName,
         payloadSha256: manifest.sha256.toLowerCase(),
@@ -866,6 +917,7 @@ function publishStatesOperationallyEqual(left: TeamAnalysisR2PublishState, right
         bucket: state.bucket,
         target: state.target,
         channel: state.channel ?? "production",
+        contractLane: state.contractLane ?? "v1",
         datasetVersion: state.datasetVersion,
         datasetObjectKey: state.datasetObjectKey,
         payloadSha256: state.payloadSha256,

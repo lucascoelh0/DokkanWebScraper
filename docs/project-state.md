@@ -1,6 +1,6 @@
 # Dokkanpanion Project State
 
-**Last updated**: 2026-08-22
+**Last updated**: 2026-08-23
 
 This is the concise operational checkpoint for future sessions. Durable
 decisions live in [`adr/`](adr/), and current workflow instructions live in
@@ -2042,9 +2042,247 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   of 386,343,751 and 387,078,468 bytes for the individual plans. No R2 object,
   manifest, local publish state or production endpoint was changed.
 - The scraper checkpoint through `481eaac` is pushed to `origin/main`. This
-  staging foundation is captured as separate scraper and Android checkpoints;
-  no staging or production publication has occurred. Public production remains
-  Characters `2026-08-22T21:14:10.019Z` and Team Analysis parser `1.9.0`.
+  staging foundation is captured as separate scraper and Android checkpoints.
+  The first staging publication using that foundation is recorded below;
+  production remains isolated from it.
+
+## First remote staging publication checkpoint (2026-08-23)
+
+- The staging-only compatible pair is now public without changing either
+  production manifest:
+  - Characters `2026-08-23T20:26:24.615Z`, 1,436 characters, payload
+    2,343,298 bytes, SHA-256
+    `578fe9ca44dafb9037ce35e3b88a57f12d315fd5ab39ba91837023f39eca6d53`;
+  - Team Analysis `2026-08-23T20:26:24.615Z:parser-1.9.14`, 2,288 states,
+    payload 3,077,757 bytes, SHA-256
+    `0f9e3c74e96119d43388852fa3d5d0b48b53b3e5bd5c251b60c941c848a805b7`.
+- Public no-cache verification returned `200`, `application/json` and
+  `Cache-Control: no-store` for both staging manifests. Both public gzip sizes
+  and hashes matched their manifests exactly. Team Analysis references the
+  exact staging Character version and payload SHA.
+- The pre-upload dry-runs projected 5,422,219 combined new managed bytes, no
+  cleanup and no portrait upload or deletion. All planned remote keys were
+  under `staging/`.
+- The first Team Analysis post-upload read through Wrangler briefly reported
+  the new payload as missing. The publisher failed closed before writing its
+  manifest. The object was already available through the public domain and
+  became readable through Wrangler shortly afterward with the exact local size
+  and SHA; rerunning the publisher then promoted and verified the manifest.
+  Add bounded retry/backoff to immutable payload verification before the next
+  publisher change so a transient read-after-write miss does not require a
+  manual rerun.
+- Public production remains Characters `2026-08-22T21:14:10.019Z` with SHA
+  `34b2ce3918d0497b458f106f4e00b50cb039f0a280ef6bfe45c0ca76ee1a84bd`
+  and Team Analysis parser `1.9.0` with SHA
+  `d7a8461c41484b0e25f61131476006b18eadad71c6bac265e7f0e289e7a96237`.
+- Next: build/install a debug APK with `-PdebugDatasetChannel=staging`, verify
+  initial download, compatible Team Analysis activation, cached restart and
+  production/debug coexistence before considering any promotion.
+
+## Consumer contract-lane decision checkpoint (2026-08-23)
+
+- ADR-0007 makes the existing root production manifests the durable `v1`
+  consumer lane for Android 2.0.8. The next breaking Android/data contract uses
+  explicit `v2/` manifests; staging mirrors them as `staging/v1/` and
+  `staging/v2/`. The currently published unversioned staging pair must not be
+  promoted directly to the production root.
+- One official-DB import and canonical model feed lane-specific projectors. The
+  v1 projector keeps new characters available to old installations while
+  omitting or degrading unsupported enrichment to its existing partial/unknown
+  boundary. Characters and Team Analysis remain exact version/SHA-compatible
+  pairs within each lane.
+- Compatibility must be proved against a frozen Android 2.0.8 consumer contract
+  and a minified staging smoke. Retaining the same parser, rules or schema label
+  is not sufficient evidence by itself.
+- Android In-App Updates is a product backlog item that can reduce delayed app
+  adoption but cannot guarantee it. Contract lanes remain the fail-safe for
+  declined updates, offline devices, unsupported Play flows and sideloaded
+  builds. The feature is documented in the Android repository and requires
+  Intent + Impeccable review before UI implementation.
+- Next implementation order: freeze the v1 contract, audit parser `1.9.14`
+  against it, add typed lane-scoped publisher keys/state, add v1/v2 projectors,
+  then wire the next Android release to v2. No production manifest changes are
+  authorized by this decision.
+
+## Android 2.0.8/v1 static compatibility audit checkpoint (2026-08-23)
+
+- The complete public production and staging corpora were compared against the
+  Android `6ac55fe` manifest reader, wire DTOs, enum fallbacks, payload limits
+  and minified keep rules. No common JSON path changes type. Characters removes
+  no production path and adds only 44 descendants of the optional Active Skill
+  activation condition on cards `1025561` and `1034341`; the old Gson consumer
+  ignores those fields.
+- Team Analysis staging remains inside every 2.0.8 manifest limit and introduces
+  no identified hard deserialization or R8 failure. Its 199 new paths are
+  optional, while new string discriminators map to old `UNKNOWN` fallbacks.
+  This makes a hard startup failure unlikely but does not make the contract
+  semantically compatible.
+- Android 2.0.8 ignores the new Active Skill activation conditions on 343 Team
+  Analysis states. Stable-rule comparison found 810 old-unknown rules that the
+  new corpus improves, 437 that remain outside the old model and 314 newly using
+  at least one construct absent from it. The user-visible condition boundary is
+  88 newly unsupported predicate rules across 66 states; new effect scaling,
+  per-turn triggers and timing values also degrade to old `UNKNOWN` models.
+- The unprojected staging pair remains a v2 candidate and must not be promoted
+  to root v1. The minimal v1 projector removes Active Skill activation
+  conditions, explicitly downgrades unsupported predicates/scaling/triggers
+  while preserving source text, and retains required v1 shapes. A frozen full-
+  corpus 2.0.8 decoder and minified staging smoke remain mandatory before the
+  first legacy refresh.
+- Detailed evidence and counts are in
+  `docs/specs/android-2.0.8-contract-v1-audit.md`. Next: implement the frozen v1
+  consumer harness before changing publisher lane keys or generating v1 bytes.
+
+## Android 2.0.8/v1 executable consumer checkpoint (2026-08-23)
+
+- Android now owns an isolated executable harness at
+  `scripts/compat/android-v1-6ac55fe/`. The runner verifies the full commit
+  `6ac55fe20872d8c3ee1678d4e34fc010243ebb51`, archives that exact snapshot into
+  an ignored temporary directory, injects one corpus test, and executes only
+  the frozen `domain` consumer. Current Android decoder code is not compiled by
+  this gate.
+- The Character path uses the frozen `RoomCharacterDatabaseGateway.openPayload`
+  implementation, including complete Gson seed decoding, count/ID validation,
+  Character and Transformation materialization, normalization and derived
+  leader-boost work. Team Analysis uses the frozen payload validator followed
+  by full ordinal loading and wire-to-domain conversion for every state.
+- The public production pair passed: Characters
+  `2026-08-22T21:14:10.019Z`, 1,436 characters, SHA
+  `34b2ce3918d0497b458f106f4e00b50cb039f0a280ef6bfe45c0ca76ee1a84bd`;
+  Team Analysis parser `1.9.0`, 2,288 states, 11,694 passive rules, 2,703 Super
+  Attacks, SHA
+  `d7a8461c41484b0e25f61131476006b18eadad71c6bac265e7f0e289e7a96237`.
+- The unprojected staging pair also decoded completely: Characters
+  `2026-08-23T20:26:24.615Z`, 1,436 characters, SHA
+  `578fe9ca44dafb9037ce35e3b88a57f12d315fd5ab39ba91837023f39eca6d53`;
+  Team Analysis parser `1.9.14`, 2,288 states, 11,691 passive rules, 2,703
+  Super Attacks, SHA
+  `0f9e3c74e96119d43388852fa3d5d0b48b53b3e5bd5c251b60c941c848a805b7`.
+- This closes the non-minified full-corpus decoder gate only. Parser `1.9.14`
+  remains a v2 candidate because unsupported v1 semantics still require a
+  projector. The harness does not exercise the old private production URL/key
+  validator against staging-prefixed transport paths. Exact manager/cache
+  integration and an R8-minified APK smoke remain required before any root-v1
+  promotion.
+- No publisher, lane key, production manifest or R2 object changed. Next:
+  specify and implement the minimal typed v1 projector before altering publisher
+  routing; run its output through this harness, then the minified smoke.
+
+## Android 2.0.8/v1 typed projector checkpoint (2026-08-24)
+
+- The scraper now contains a local-only compatibility serializer for the exact
+  Android `6ac55fe20872d8c3ee1678d4e34fc010243ebb51` contract. It consumes an
+  explicitly supplied canonical Character/Team pair, validates every manifest,
+  payload hash/size/count and cross-dataset binding, and writes only to a fresh
+  local directory. It has no publisher, R2 or network path.
+- Character projection omits the v2 Active Skill activation-condition block at
+  top-level, EZA and transformation nesting. Team Analysis omits its state-level
+  counterpart, converts v2-only condition leaves/enum values to v1 `unknown`
+  with source text, converts unsupported scaling and application-trigger
+  discriminators to their old unknown representations, preserves supported
+  siblings/composite structure and recalculates passive-rule status totals.
+- Projecting the public staging `1.9.14` corpus omitted 2 Character and 343 Team
+  Active Skill conditions, downgraded 214 condition nodes, 765 scalings and 210
+  per-turn triggers. The local v1 pair is Characters SHA
+  `039a87def97b0f0772301cb5ca8779370d3c9176a5b040aadd50a7844521ec25`
+  (2,342,681 bytes) plus Team Analysis SHA
+  `61b90af9f9a254f915844b185e43482c945f060fc2ff4cdc4377bc32b72c327e`
+  (2,970,224 bytes), with exact projected Character-SHA binding.
+- Four focused projector tests passed. The frozen 2.0.8 consumer then decoded
+  and materialized all projected bytes: 1,436 Characters, 2,288 states, 11,691
+  passive rules and 2,703 Super Attacks. This closes the non-minified projector
+  gate without changing any publisher, object key, R2 object or production
+  manifest.
+- Remaining before a first root-v1 refresh: exercise these projected bytes via
+  the archived R8-minified 2.0.8 manager/cache path, then add and separately
+  verify typed publisher lane routing. No production publication is authorized.
+
+## Android 2.0.8/v1 minified consumer checkpoint (2026-08-24)
+
+- Android now owns a second isolated harness at
+  `scripts/compat/android-v1-6ac55fe-minified/`. It archives the exact
+  `6ac55fe20872d8c3ee1678d4e34fc010243ebb51` source, creates a debug-signed
+  `compatV1` app ID that inherits release shrinking/optimization, requires a
+  non-empty R8 mapping and forces the dataset base URL blank.
+- The generated Activity is compiled into the minified main APK. It seeds the
+  exact projected pair into the real legacy cache layouts, executes
+  `DatabaseBootstrapper`, queries the rebuilt Room Character repository,
+  refreshes `TeamAnalysisRepository` and requests every state key through the
+  minified Team Analysis mapper. The isolated package is removed after success
+  and does not touch the production app's data.
+- The R8 smoke passed on `emulator-5554`: 1,436 Characters, 2,288 Team Analysis
+  states, 11,691 passive rules and 2,703 Super Attacks. It verified projected
+  Character SHA
+  `039a87def97b0f0772301cb5ca8779370d3c9176a5b040aadd50a7844521ec25`
+  and Team SHA
+  `61b90af9f9a254f915844b185e43482c945f060fc2ff4cdc4377bc32b72c327e`.
+- The local projector remains publisher-neutral. The smoke changes only copied
+  manifest `fileName` fields to the root-v1 content-addressed format already
+  required by Android 2.0.8; payload bytes and all integrity/pairing fields are
+  unchanged. This exposed and documented the transport constraint that the v1
+  publisher must satisfy.
+- This closes the frozen non-minified and R8-minified consumer gates. Remaining:
+  implement typed root-v1/staging-v1 publisher routing, validate it locally and
+  run the mandatory byte-report dry-run. No publisher, R2 object or production
+  manifest changed, and no publication is authorized.
+
+## Android 2.0.8/v1 typed publisher dry-run checkpoint (2026-08-24)
+
+- Characters and Team Analysis publishers now require an explicit typed
+  contract lane. Production v1 preserves the existing root keys; production v2,
+  staging v1 and staging v2 route to `v2/`, `staging/v1/` and `staging/v2/`.
+  Default state files are lane-scoped while the existing root-v1 production
+  state path remains compatible with its historical state.
+- A v1 plan is fail-closed without the projector report. The publishers match
+  its version, frozen `6ac55fe20872d8c3ee1678d4e34fc010243ebb51` consumer,
+  exact output manifests and Character/Team SHA binding. Canonical v2 delivery
+  retains its strict current semantic validator; projected v1 delivery uses the
+  projector's bounded v1-shape assertions plus the same gzip, metadata, hash,
+  size, count, identity and pairing checks.
+- Fifty-seven focused projector/proof/publisher tests passed. The tracked
+  `lib/` output was rebuilt from the changed TypeScript sources.
+- Read-only remote dry-runs planned only `staging/v1` keys. Characters would add
+  2,343,137 bytes and Team Analysis 2,970,938 bytes, 5,314,075 bytes combined.
+  Wrangler reported `388 MB`; the combined conservative upper bound is
+  394,314,075/10,000,000,000 bytes.
+- No R2 object, manifest, local publisher state or input artifact changed. The
+  next separately authorized gate is an actual paired `staging/v1` publication,
+  followed by public no-store/hash verification and the frozen minified
+  consumer over downloaded bytes. Production remains untouched.
+
+## Android 2.0.8/v1 staging publication checkpoint (2026-08-24)
+
+- The projected pair was published only to `staging/v1`. Characters is version
+  `2026-08-23T20:26:24.615Z`, 2,342,681 bytes, SHA
+  `039a87def97b0f0772301cb5ca8779370d3c9176a5b040aadd50a7844521ec25`.
+  Team Analysis is version `2026-08-23T20:26:24.615Z:parser-1.9.14`,
+  2,970,224 bytes, SHA
+  `61b90af9f9a254f915844b185e43482c945f060fc2ff4cdc4377bc32b72c327e`.
+  Its source Character version and SHA match the published Character manifest
+  exactly.
+- Public HTTP verification returned `Cache-Control: no-store` for both
+  manifests and `public, max-age=31536000, immutable` for both payloads. The
+  downloaded sizes and SHA-256 values match the manifests exactly. A final
+  publisher dry-run is idempotent: no Character upload, no Team payload or
+  manifest update, and no planned writes.
+- The frozen R8-minified Android `6ac55fe` manager/cache harness passed on
+  `emulator-5554` with the payload bytes downloaded from R2: 1,436 Characters,
+  2,288 states, 11,691 passive rules and 2,703 Super Attacks. The later public
+  HTTP downloads were byte-identical by SHA-256.
+- Wrangler 4.118.0 twice returned `Upload complete` for the Team payload while
+  subsequent Wrangler and public reads proved the object absent. The publisher
+  failed closed before manifest promotion. Wrangler 4.125.0 stored the same
+  immutable bytes correctly and made them immediately readable; the dependency
+  and lockfile are now updated to `^4.125.0`.
+- Production remains Characters SHA
+  `34b2ce3918d0497b458f106f4e00b50cb039f0a280ef6bfe45c0ca76ee1a84bd`
+  and Team Analysis SHA
+  `d7a8461c41484b0e25f61131476006b18eadad71c6bac265e7f0e289e7a96237`.
+  The older unversioned staging pair also remains unchanged at Characters SHA
+  `578fe9ca44dafb9037ce35e3b88a57f12d315fd5ab39ba91837023f39eca6d53`
+  and Team SHA
+  `0f9e3c74e96119d43388852fa3d5d0b48b53b3e5bd5c251b60c941c848a805b7`.
+  No production or v2 object was written.
 
 ## Operating Constraints
 

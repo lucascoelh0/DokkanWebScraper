@@ -423,8 +423,14 @@ Portraits are stored in:
 ## Publish the scraper dataset to R2
 
 ```powershell
-npm run publish:r2 -- --bucket dokkanpanion-data
+npm run publish:r2 -- --bucket dokkanpanion-data --contract-lane v2 --dry-run
 ```
+
+The publisher requires the consumer lane explicitly. A v1 plan additionally
+requires `--v1-projection-report <path>` and exact projected artifacts; it will
+not accept the canonical v2 bundle by accident. Production v1 uses the legacy
+root keys, while v2 and staging use their lane-scoped prefixes.
+Remote publication requires the lockfile-pinned Wrangler 4.125.0 or newer.
 
 Before publishing the FYI staging bundle, validate it with:
 
@@ -445,6 +451,8 @@ Useful flags:
 - `--skip-portraits`
 - `--local`
 - `--max-total-bytes` (defaults to `10000000000`, the configured R2 budget)
+- `--contract-lane v1|v2` (required)
+- `--v1-projection-report` (required only for v1)
 
 The script stores publish state in:
 

@@ -151,6 +151,7 @@
     "run:combat-rules": "npx ts-node combat-rules-run.ts",
     "validate:combat-rules": "npx ts-node combat-rules-validate.ts",
     "validate:fyi-character-dataset": "npx ts-node fyi-character-dataset-validate.ts",
+    "run:android-v1-projector": "node lib/android-v1-contract-projector-run.js",
     "run:fyi-experiment": "npx ts-node fyi-experiment.ts",
     "run:fyi-summons": "npx ts-node fyi-summons-run.ts",
     "run:fyi-stages": "npx ts-node fyi-stages-run.ts",
@@ -182,6 +183,6 @@
     "assert": "^2.0.0",
     "mocha": "^10.0.0",
     "typescript": "^4.0.0",
-    "wrangler": "^4.118.0"
+    "wrangler": "^4.125.0"
   }
 }

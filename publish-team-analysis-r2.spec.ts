@@ -23,6 +23,10 @@ import {
 } from "./publish-team-analysis-r2";
 import { buildTeamAnalysisDataset, TeamAnalysisDataset } from "./team-analysis";
 import { buildTeamAnalysisArtifact, sha256, TeamAnalysisManifest } from "./team-analysis-artifacts";
+import {
+    ANDROID_V1_CONSUMER_COMMIT,
+    ANDROID_V1_PROJECTOR_VERSION,
+} from "./android-v1-contract-projector";
 
 class FakeRunner implements TeamAnalysisCommandRunner {
     readonly objects = new Map<string, Buffer>();
@@ -66,6 +70,7 @@ class FakeRunner implements TeamAnalysisCommandRunner {
 
 interface Fixture {
     root: string,
+    projectionReportPath: string,
     options: TeamAnalysisR2PublishOptions,
     runner: FakeRunner,
     characterArtifact: ReturnType<typeof buildCharacterDatasetArtifact>,
@@ -93,6 +98,9 @@ describe("Team Analysis R2 delivery gate", function () {
     });
 
     it("accepts the exact content-addressed fileName used by the public Characters manifest", async () => {
+        fixture.options.contractLane = "v2";
+        fixture.options.v1ProjectionReportPath = undefined;
+        fixture.options.manifestObjectKey = buildTeamAnalysisManifestObjectKey("production", "v2");
         await mutateCharacterManifest(fixture, manifest => {
             const versionSlug = manifest.datasetVersion.replace(/:/g, "-");
             manifest.fileName = `releases/${versionSlug}/${manifest.sha256}/characters.json.gz`;
@@ -453,11 +461,13 @@ describe("Team Analysis R2 delivery gate", function () {
 
         await publishTeamAnalysisR2(fixture.options, fixture.runner, () => new Date("2026-08-23T22:00:00.000Z"));
 
-        const stagingPayloadKey = buildTeamAnalysisDatasetObjectKey(fixture.artifact.manifest, "staging");
-        const stagingManifestKey = buildTeamAnalysisManifestObjectKey("staging");
+        const stagingPayloadKey = buildTeamAnalysisDatasetObjectKey(fixture.artifact.manifest, "staging", "v1");
+        const stagingManifestKey = buildTeamAnalysisManifestObjectKey("staging", "v1");
         equal(fixture.runner.objects.has(stagingPayloadKey), true);
         equal(fixture.runner.objects.has(stagingManifestKey), true);
         equal(fixture.runner.objects.has(TEAM_ANALYSIS_MANIFEST_OBJECT_KEY), false);
+        equal(buildTeamAnalysisManifestObjectKey("production", "v2"), "v2/team-analysis-manifest.json");
+        equal(buildTeamAnalysisManifestObjectKey("staging", "v2"), "staging/v2/team-analysis-manifest.json");
     });
 
     it("refuses a production write without explicit promotion", async () => {
@@ -476,7 +486,10 @@ describe("Team Analysis R2 delivery gate", function () {
     });
 
     it("uses conservative defaults and rejects conflicting targets or unsafe flags", () => {
-        const defaults = parseTeamAnalysisR2PublishArgs([]);
+        const defaults = parseTeamAnalysisR2PublishArgs([
+            "--contract-lane", "v1",
+            "--v1-projection-report", "projection-report.json",
+        ]);
         equal(defaults.bucket, "dokkanpanion-data");
         equal(defaults.target, "remote");
         equal(defaults.maxTotalBytes, 10_000_000_000);
@@ -485,8 +498,10 @@ describe("Team Analysis R2 delivery gate", function () {
         equal(defaults.skipUploadVerification, false);
         equal(defaults.allowUnknownBucketSize, false);
         equal(defaults.channel, "production");
+        equal(defaults.contractLane, "v1");
         equal(defaults.manifestObjectKey, TEAM_ANALYSIS_MANIFEST_OBJECT_KEY);
         const recovery = parseTeamAnalysisR2PublishArgs([
+            "--contract-lane", "v2",
             "--skip-remote-manifest-check",
             "--skip-upload-verification",
             "--allow-unknown-bucket-size",
@@ -494,14 +509,22 @@ describe("Team Analysis R2 delivery gate", function () {
         equal(recovery.skipRemoteManifestCheck, true);
         equal(recovery.skipUploadVerification, true);
         equal(recovery.allowUnknownBucketSize, true);
-        const staging = parseTeamAnalysisR2PublishArgs(["--channel", "staging"]);
+        const staging = parseTeamAnalysisR2PublishArgs([
+            "--channel", "staging",
+            "--contract-lane", "v1",
+            "--v1-projection-report", "projection-report.json",
+        ]);
         equal(staging.channel, "staging");
-        equal(staging.manifestObjectKey, "staging/team-analysis-manifest.json");
-        equal(staging.statePath.endsWith("team-analysis-r2-publish-state-staging.json"), true);
-        rejects(async () => parseTeamAnalysisR2PublishArgs(["--remote", "--local"]), /Choose only one/);
-        rejects(async () => parseTeamAnalysisR2PublishArgs(["--unknown"]), /Unknown option/);
-        rejects(async () => parseTeamAnalysisR2PublishArgs(["--channel", "preview"]), /Invalid dataset publication channel/);
+        equal(staging.manifestObjectKey, "staging/v1/team-analysis-manifest.json");
+        equal(staging.statePath.endsWith("team-analysis-r2-publish-state-staging-v1.json"), true);
+        rejects(async () => parseTeamAnalysisR2PublishArgs([]), /Missing dataset contract lane/);
+        rejects(async () => parseTeamAnalysisR2PublishArgs(["--contract-lane", "v1"]), /requires --v1-projection-report/);
+        rejects(async () => parseTeamAnalysisR2PublishArgs(["--contract-lane", "v2", "--v1-projection-report", "proof.json"]), /only be used/);
+        rejects(async () => parseTeamAnalysisR2PublishArgs(["--contract-lane", "v2", "--remote", "--local"]), /Choose only one/);
+        rejects(async () => parseTeamAnalysisR2PublishArgs(["--contract-lane", "v2", "--unknown"]), /Unknown option/);
+        rejects(async () => parseTeamAnalysisR2PublishArgs(["--contract-lane", "v2", "--channel", "preview"]), /Invalid dataset publication channel/);
         rejects(async () => parseTeamAnalysisR2PublishArgs([
+            "--contract-lane", "v2",
             "--dataset", "same.json.gz", "--state", "same.json.gz",
         ]), /must be distinct/);
     });
@@ -514,6 +537,7 @@ async function createFixture(extraArgs: string[] = []): Promise<Fixture> {
     const datasetPath = resolve(root, "team-analysis.json.gz");
     const manifestPath = resolve(root, "team-analysis-manifest.json");
     const statePath = resolve(root, "publish-state.json");
+    const projectionReportPath = resolve(root, "android-v1-projection-report.json");
     const characters = [{ id: "100", name: "Test Character", passive: "" }] as any;
     const generatedAt = "2026-08-04T00:00:00.000Z";
     const characterArtifact = buildCharacterDatasetArtifact(characters, {
@@ -544,11 +568,14 @@ async function createFixture(extraArgs: string[] = []): Promise<Fixture> {
         "--characters", characterDatasetPath,
         "--character-manifest", characterManifestPath,
         "--state", statePath,
+        "--contract-lane", "v1",
+        "--v1-projection-report", projectionReportPath,
         ...(extraArgs.includes("staging") ? [] : ["--promote-production"]),
         ...extraArgs,
     ];
     const fixture: Fixture = {
         root,
+        projectionReportPath,
         options: parseTeamAnalysisR2PublishArgs(args),
         runner: new FakeRunner(),
         characterArtifact,
@@ -561,9 +588,35 @@ async function createFixture(extraArgs: string[] = []): Promise<Fixture> {
     return fixture;
 }
 
+async function writeProjectionReport(fixture: Fixture): Promise<void> {
+    const characterManifest = JSON.parse(
+        await readFile(fixture.options.characterManifestPath, "utf8"),
+    ) as DatasetManifest;
+    const teamAnalysisManifest = JSON.parse(
+        await readFile(fixture.options.manifestPath, "utf8"),
+    ) as TeamAnalysisManifest;
+    await writeFile(fixture.projectionReportPath, serialize({
+        schemaVersion: 1,
+        contract: "dokkanpanion-android-v1-projection",
+        projectorVersion: ANDROID_V1_PROJECTOR_VERSION,
+        consumerCommit: ANDROID_V1_CONSUMER_COMMIT,
+        input: {
+            characters: characterManifest,
+            teamAnalysis: teamAnalysisManifest,
+        },
+        output: {
+            characters: characterManifest,
+            teamAnalysis: teamAnalysisManifest,
+        },
+        changes: {},
+        files: {},
+    }));
+}
+
 async function writeLocalArtifact(fixture: Fixture): Promise<void> {
     await writeFile(fixture.options.datasetPath, fixture.artifact.gzipBuffer);
     await writeFile(fixture.options.manifestPath, serialize(fixture.artifact.manifest));
+    await writeProjectionReport(fixture);
 }
 
 async function rewriteDataset(fixture: Fixture, dataset: TeamAnalysisDataset): Promise<void> {

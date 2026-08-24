@@ -8,12 +8,16 @@ import { gunzipSync } from "zlib";
 import { Character } from "./character";
 import {
     assertDatasetPublicationWriteAuthorized,
-    channelObjectKey,
+    contractLaneObjectKey,
+    DatasetContractLane,
     DatasetPublicationChannel,
-    defaultChannelStatePath,
+    defaultContractLaneStatePath,
+    parseDatasetContractLane,
     parseDatasetPublicationChannel,
 } from "./dataset-publication-channel";
 import { DatasetManifest } from "./dataset-artifacts";
+import { assertAndroidV1PublicationProof } from "./android-v1-publication-proof";
+import { assertCharactersProjectedForAndroidV1 } from "./android-v1-contract-projector";
 
 const DEFAULT_DATA_ROOT = "data";
 const DEFAULT_IMAGES_ROOT = "data/images";
@@ -32,6 +36,7 @@ export interface DatasetPublishState {
     bucket: string,
     target: "remote" | "local",
     channel?: DatasetPublicationChannel,
+    contractLane?: DatasetContractLane,
     datasetVersion: string,
     datasetObjectKey: string,
     manifestSha256: string,
@@ -66,6 +71,8 @@ interface PublishCliOptions {
     concurrency: number,
     maxTotalBytes: number,
     channel: DatasetPublicationChannel,
+    contractLane: DatasetContractLane,
+    v1ProjectionReportPath?: string,
     manifestObjectKey: string,
     promoteProduction: boolean,
 }
@@ -93,6 +100,7 @@ function datasetVersionSlug(datasetVersion: string): string {
 export function buildRemoteDatasetObjectKey(
     manifest: DatasetManifest,
     channel: DatasetPublicationChannel = "production",
+    contractLane: DatasetContractLane = "v1",
 ): string {
     if (!/^[a-f0-9]{64}$/i.test(manifest.sha256)) {
         throw new Error("Character manifest SHA-256 is invalid.");
@@ -106,16 +114,18 @@ export function buildRemoteDatasetObjectKey(
         throw new Error(`Character manifest filename is invalid: ${manifest.fileName}`);
     }
 
-    return channelObjectKey(
+    return contractLaneObjectKey(
         channel,
+        contractLane,
         `releases/${datasetVersionSlug(manifest.datasetVersion)}/${manifest.sha256.toLowerCase()}/${fileName}`,
     );
 }
 
 export function buildCharacterManifestObjectKey(
     channel: DatasetPublicationChannel = "production",
+    contractLane: DatasetContractLane = "v1",
 ): string {
-    return channelObjectKey(channel, "characters-manifest.json");
+    return contractLaneObjectKey(channel, contractLane, "characters-manifest.json");
 }
 
 export function assertExpectedRemoteBaselineSha256(
@@ -316,6 +326,7 @@ async function readManifest(manifestPath: string): Promise<DatasetManifest> {
 async function readPublishState(
     statePath: string,
     channel: DatasetPublicationChannel,
+    contractLane: DatasetContractLane,
 ): Promise<DatasetPublishState | undefined> {
     if (!existsSync(statePath)) {
         return undefined;
@@ -326,6 +337,12 @@ async function readPublishState(
     if (stateChannel !== channel) {
         throw new Error(
             `Character publish state belongs to ${stateChannel}, not requested channel ${channel}.`,
+        );
+    }
+    const stateContractLane = state.contractLane ?? "v1";
+    if (stateContractLane !== contractLane) {
+        throw new Error(
+            `Character publish state belongs to ${stateContractLane}, not requested contract lane ${contractLane}.`,
         );
     }
     return state;
@@ -468,6 +485,8 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
     const valueRequiredOptions = new Set([
         "--expected-remote-baseline-sha256",
         "--channel",
+        "--contract-lane",
+        "--v1-projection-report",
     ]);
 
     for (let index = 0; index < argv.length; index += 1) {
@@ -533,6 +552,14 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
         );
     }
     const channel = parseDatasetPublicationChannel(values.get("--channel"));
+    const contractLane = parseDatasetContractLane(values.get("--contract-lane"));
+    const v1ProjectionReportPath = values.get("--v1-projection-report");
+    if (contractLane === "v1" && !v1ProjectionReportPath) {
+        throw new Error("The v1 contract lane requires --v1-projection-report.");
+    }
+    if (contractLane !== "v1" && v1ProjectionReportPath) {
+        throw new Error("--v1-projection-report can only be used with --contract-lane v1.");
+    }
     if (channel === "staging" && !flags.has("--skip-portraits")) {
         throw new Error(
             "Staging publication requires --skip-portraits because portrait keys are not channel-scoped.",
@@ -547,7 +574,7 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
         manifestPath: resolve(values.get("--manifest") ?? DEFAULT_MANIFEST_PATH),
         statePath: values.has("--state")
             ? resolve(values.get("--state")!)
-            : defaultChannelStatePath(DEFAULT_STATE_PATH, channel),
+            : defaultContractLaneStatePath(DEFAULT_STATE_PATH, channel, contractLane),
         dryRun: flags.has("--dry-run"),
         forcePortraits: flags.has("--force-portraits"),
         skipPortraits: flags.has("--skip-portraits"),
@@ -557,7 +584,9 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
         concurrency,
         maxTotalBytes,
         channel,
-        manifestObjectKey: buildCharacterManifestObjectKey(channel),
+        contractLane,
+        v1ProjectionReportPath: v1ProjectionReportPath ? resolve(v1ProjectionReportPath) : undefined,
+        manifestObjectKey: buildCharacterManifestObjectKey(channel, contractLane),
         promoteProduction: flags.has("--promote-production"),
     };
 }
@@ -587,13 +616,23 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     const localManifest = await readManifest(options.manifestPath);
     const localGzipBuffer = await readFile(options.datasetPath);
     const characters = validateLocalCharacterBundle(localManifest, localGzipBuffer);
-    const remoteDatasetObjectKey = buildRemoteDatasetObjectKey(localManifest, options.channel);
+    if (options.contractLane === "v1") {
+        assertCharactersProjectedForAndroidV1(characters);
+        await assertAndroidV1PublicationProof(options.v1ProjectionReportPath!, {
+            characters: localManifest,
+        });
+    }
+    const remoteDatasetObjectKey = buildRemoteDatasetObjectKey(
+        localManifest,
+        options.channel,
+        options.contractLane,
+    );
     const remoteManifest: DatasetManifest = {
         ...localManifest,
         fileName: remoteDatasetObjectKey,
     };
     const portraitKeys = collectReferencedPortraitKeys(characters);
-    const previousState = await readPublishState(options.statePath, options.channel);
+    const previousState = await readPublishState(options.statePath, options.channel, options.contractLane);
     const publishedRemoteManifest = options.skipRemoteManifestCheck
         ? undefined
         : await tryReadRemoteManifest(options.bucket, options.target, options.manifestObjectKey);
@@ -636,6 +675,7 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     }
 
     console.log(`Channel: ${options.channel}`);
+    console.log(`Contract lane: ${options.contractLane}`);
     console.log(`Manifest object key: ${options.manifestObjectKey}`);
     console.log(`Dataset version: ${remoteManifest.datasetVersion}`);
     console.log(`Dataset object key: ${remoteDatasetObjectKey}`);
@@ -718,6 +758,7 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         bucket: options.bucket,
         target: options.target,
         channel: options.channel,
+        contractLane: options.contractLane,
         datasetVersion: remoteManifest.datasetVersion,
         datasetObjectKey: remoteDatasetObjectKey,
         manifestSha256: remoteManifest.sha256,
