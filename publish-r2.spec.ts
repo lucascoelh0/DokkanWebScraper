@@ -4,6 +4,7 @@ import { describe, it } from "mocha";
 import { gzipSync } from "zlib";
 import {
   buildPortraitPublishPlan,
+  buildCharacterManifestObjectKey,
   buildRemoteDatasetObjectKey,
   assertExpectedRemoteBaselineSha256,
   collectReferencedPortraitKeys,
@@ -13,6 +14,7 @@ import {
   PortraitPublishEntry,
   validateLocalCharacterBundle,
 } from "./publish-r2";
+import { assertDatasetPublicationWriteAuthorized } from "./dataset-publication-channel";
 
 describe("parseWranglerBucketSize", function () {
   it("uses a conservative upper bound for rounded Wrangler sizes", () => {
@@ -28,6 +30,41 @@ describe("parseWranglerBucketSize", function () {
   });
 });
 
+describe("dataset publication channel authorization", function () {
+  it("requires an explicit production promotion while allowing dry-runs and staging", () => {
+    throws(
+      () => assertDatasetPublicationWriteAuthorized({
+        channel: "production",
+        target: "remote",
+        dryRun: false,
+        promoteProduction: false,
+      }),
+      /explicit --promote-production/,
+    );
+    assertDatasetPublicationWriteAuthorized({
+      channel: "production",
+      target: "remote",
+      dryRun: true,
+      promoteProduction: false,
+    });
+    assertDatasetPublicationWriteAuthorized({
+      channel: "staging",
+      target: "remote",
+      dryRun: false,
+      promoteProduction: false,
+    });
+    throws(
+      () => assertDatasetPublicationWriteAuthorized({
+        channel: "staging",
+        target: "remote",
+        dryRun: false,
+        promoteProduction: true,
+      }),
+      /cannot be combined/,
+    );
+  });
+});
+
 describe("buildRemoteDatasetObjectKey", function () {
   it("uses a content-addressed immutable Character payload key", () => {
     equal(buildRemoteDatasetObjectKey({
@@ -35,6 +72,19 @@ describe("buildRemoteDatasetObjectKey", function () {
       fileName: "characters.json.gz",
       sha256: "A".repeat(64),
     } as any), `releases/2026-08-22T21-14-10.019Z/${"a".repeat(64)}/characters.json.gz`);
+  });
+
+  it("keeps staging manifests and immutable payloads outside production keys", () => {
+    const manifest = {
+      datasetVersion: "2026-08-22T21:14:10.019Z",
+      fileName: "characters.json.gz",
+      sha256: "A".repeat(64),
+    } as any;
+    equal(buildCharacterManifestObjectKey("staging"), "staging/characters-manifest.json");
+    equal(
+      buildRemoteDatasetObjectKey(manifest, "staging"),
+      `staging/releases/2026-08-22T21-14-10.019Z/${"a".repeat(64)}/characters.json.gz`,
+    );
   });
 });
 
@@ -82,6 +132,25 @@ describe("parsePublishArgs", function () {
         "--expected-remote-baseline-sha256", "A".repeat(64),
       ]).expectedRemoteBaselineSha256,
       "a".repeat(64),
+    );
+  });
+
+  it("requires isolated portrait handling and state for staging", () => {
+    throws(
+      () => parsePublishArgs(["--bucket", "test", "--channel", "staging"]),
+      /requires --skip-portraits/,
+    );
+    const staging = parsePublishArgs([
+      "--bucket", "test",
+      "--channel", "staging",
+      "--skip-portraits",
+    ]);
+    equal(staging.channel, "staging");
+    equal(staging.manifestObjectKey, "staging/characters-manifest.json");
+    equal(staging.statePath.endsWith("r2-publish-state-staging.json"), true);
+    throws(
+      () => parsePublishArgs(["--bucket", "test", "--channel", "preview", "--skip-portraits"]),
+      /Invalid dataset publication channel/,
     );
   });
 });

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, it } from "mocha";
 import { buildCharacterDatasetArtifact, DatasetManifest } from "./dataset-artifacts";
 import {
     buildTeamAnalysisDatasetObjectKey,
+    buildTeamAnalysisManifestObjectKey,
     CommandResult,
     parseTeamAnalysisR2PublishArgs,
     publishTeamAnalysisR2,
@@ -447,6 +448,28 @@ describe("Team Analysis R2 delivery gate", function () {
         deepEqual(planSnapshot(first), planSnapshot(second));
     });
 
+    it("publishes staging payload and manifest only under staging keys", async () => {
+        fixture = await createFixture(["--channel", "staging"]);
+
+        await publishTeamAnalysisR2(fixture.options, fixture.runner, () => new Date("2026-08-23T22:00:00.000Z"));
+
+        const stagingPayloadKey = buildTeamAnalysisDatasetObjectKey(fixture.artifact.manifest, "staging");
+        const stagingManifestKey = buildTeamAnalysisManifestObjectKey("staging");
+        equal(fixture.runner.objects.has(stagingPayloadKey), true);
+        equal(fixture.runner.objects.has(stagingManifestKey), true);
+        equal(fixture.runner.objects.has(TEAM_ANALYSIS_MANIFEST_OBJECT_KEY), false);
+    });
+
+    it("refuses a production write without explicit promotion", async () => {
+        fixture.options.promoteProduction = false;
+
+        await rejects(
+            publishTeamAnalysisR2(fixture.options, fixture.runner),
+            /explicit --promote-production/,
+        );
+        equal(fixture.runner.commands.length, 0);
+    });
+
     it("keeps generated data outside version control", () => {
         const trackedData = execFileSync("git", ["ls-files", "data"], { encoding: "utf8" }).trim();
         equal(trackedData, "");
@@ -461,6 +484,8 @@ describe("Team Analysis R2 delivery gate", function () {
         equal(defaults.skipRemoteManifestCheck, false);
         equal(defaults.skipUploadVerification, false);
         equal(defaults.allowUnknownBucketSize, false);
+        equal(defaults.channel, "production");
+        equal(defaults.manifestObjectKey, TEAM_ANALYSIS_MANIFEST_OBJECT_KEY);
         const recovery = parseTeamAnalysisR2PublishArgs([
             "--skip-remote-manifest-check",
             "--skip-upload-verification",
@@ -469,8 +494,13 @@ describe("Team Analysis R2 delivery gate", function () {
         equal(recovery.skipRemoteManifestCheck, true);
         equal(recovery.skipUploadVerification, true);
         equal(recovery.allowUnknownBucketSize, true);
+        const staging = parseTeamAnalysisR2PublishArgs(["--channel", "staging"]);
+        equal(staging.channel, "staging");
+        equal(staging.manifestObjectKey, "staging/team-analysis-manifest.json");
+        equal(staging.statePath.endsWith("team-analysis-r2-publish-state-staging.json"), true);
         rejects(async () => parseTeamAnalysisR2PublishArgs(["--remote", "--local"]), /Choose only one/);
         rejects(async () => parseTeamAnalysisR2PublishArgs(["--unknown"]), /Unknown option/);
+        rejects(async () => parseTeamAnalysisR2PublishArgs(["--channel", "preview"]), /Invalid dataset publication channel/);
         rejects(async () => parseTeamAnalysisR2PublishArgs([
             "--dataset", "same.json.gz", "--state", "same.json.gz",
         ]), /must be distinct/);
@@ -514,6 +544,7 @@ async function createFixture(extraArgs: string[] = []): Promise<Fixture> {
         "--characters", characterDatasetPath,
         "--character-manifest", characterManifestPath,
         "--state", statePath,
+        ...(extraArgs.includes("staging") ? [] : ["--promote-production"]),
         ...extraArgs,
     ];
     const fixture: Fixture = {

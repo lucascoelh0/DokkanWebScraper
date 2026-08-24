@@ -10,6 +10,8 @@ data pipeline and its Android consumer. Mutable progress belongs in
 | [0002](0002-keep-auxiliary-datasets-separate.md) | Keep auxiliary datasets separate | accepted | 2026-07-26 |
 | [0003](0003-distribute-datasets-through-versioned-r2-manifests.md) | Distribute datasets through versioned R2 manifests | accepted | 2026-07-26 |
 | [0004](0004-use-bounded-read-only-subagents.md) | Use bounded read-only subagents | accepted | 2026-08-04 |
+| [0005](0005-use-an-optional-database-first-team-analysis-sidecar.md) | Use an optional database-first Team Analysis sidecar | accepted | 2026-08-07 |
+| [0006](0006-separate-staging-and-production-dataset-channels.md) | Separate staging and production dataset channels | accepted | 2026-08-23 |
 
 ## Usage
 

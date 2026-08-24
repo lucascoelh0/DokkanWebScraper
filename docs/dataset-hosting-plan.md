@@ -29,6 +29,26 @@ Current structure:
 - `https://assets.dkbcompanion.com/releases/<datasetVersion>/characters.json.gz`
 - `https://assets.dkbcompanion.com/images/v2/portrait_<id>.png`
 
+## Production and staging channels
+
+Production and staging share the custom domain but not mutable manifests or
+payload namespaces:
+
+- production: `characters-manifest.json` and `releases/`
+- staging: `staging/characters-manifest.json` and `staging/releases/`
+
+Publisher dry-runs may inspect production by default. A real remote production
+write additionally requires `--channel production --promote-production`.
+Staging requires `--channel staging --skip-portraits`; current portrait keys
+are not channel-scoped, so a staging run is not allowed to overwrite them.
+Character and Team Analysis staging manifests must always be promoted as a
+validated compatible pair.
+
+Android release builds are fixed to the production manifest names. Debug
+builds remain production by default and opt into staging with
+`-PdebugDatasetChannel=staging`. This lets a candidate be installed and smoked
+without changing what an already published Play build downloads.
+
 The manifest should point `fileName` at the versioned release path, not just `characters.json.gz`.
 
 This gives us:

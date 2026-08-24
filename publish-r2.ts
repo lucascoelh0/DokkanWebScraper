@@ -6,6 +6,13 @@ import { tmpdir } from "os";
 import { basename, dirname, resolve } from "path";
 import { gunzipSync } from "zlib";
 import { Character } from "./character";
+import {
+    assertDatasetPublicationWriteAuthorized,
+    channelObjectKey,
+    DatasetPublicationChannel,
+    defaultChannelStatePath,
+    parseDatasetPublicationChannel,
+} from "./dataset-publication-channel";
 import { DatasetManifest } from "./dataset-artifacts";
 
 const DEFAULT_DATA_ROOT = "data";
@@ -24,6 +31,7 @@ export interface DatasetPublishState {
     schemaVersion: 1,
     bucket: string,
     target: "remote" | "local",
+    channel?: DatasetPublicationChannel,
     datasetVersion: string,
     datasetObjectKey: string,
     manifestSha256: string,
@@ -57,6 +65,9 @@ interface PublishCliOptions {
     target: "remote" | "local",
     concurrency: number,
     maxTotalBytes: number,
+    channel: DatasetPublicationChannel,
+    manifestObjectKey: string,
+    promoteProduction: boolean,
 }
 
 interface PublishSummary {
@@ -79,7 +90,10 @@ function datasetVersionSlug(datasetVersion: string): string {
         .replace(/[^\w./-]/g, "_");
 }
 
-export function buildRemoteDatasetObjectKey(manifest: DatasetManifest): string {
+export function buildRemoteDatasetObjectKey(
+    manifest: DatasetManifest,
+    channel: DatasetPublicationChannel = "production",
+): string {
     if (!/^[a-f0-9]{64}$/i.test(manifest.sha256)) {
         throw new Error("Character manifest SHA-256 is invalid.");
     }
@@ -92,7 +106,16 @@ export function buildRemoteDatasetObjectKey(manifest: DatasetManifest): string {
         throw new Error(`Character manifest filename is invalid: ${manifest.fileName}`);
     }
 
-    return `releases/${datasetVersionSlug(manifest.datasetVersion)}/${manifest.sha256.toLowerCase()}/${fileName}`;
+    return channelObjectKey(
+        channel,
+        `releases/${datasetVersionSlug(manifest.datasetVersion)}/${manifest.sha256.toLowerCase()}/${fileName}`,
+    );
+}
+
+export function buildCharacterManifestObjectKey(
+    channel: DatasetPublicationChannel = "production",
+): string {
+    return channelObjectKey(channel, "characters-manifest.json");
 }
 
 export function assertExpectedRemoteBaselineSha256(
@@ -290,12 +313,22 @@ async function readManifest(manifestPath: string): Promise<DatasetManifest> {
     return JSON.parse(await readFile(manifestPath, "utf8")) as DatasetManifest;
 }
 
-async function readPublishState(statePath: string): Promise<DatasetPublishState | undefined> {
+async function readPublishState(
+    statePath: string,
+    channel: DatasetPublicationChannel,
+): Promise<DatasetPublishState | undefined> {
     if (!existsSync(statePath)) {
         return undefined;
     }
 
-    return JSON.parse(await readFile(statePath, "utf8")) as DatasetPublishState;
+    const state = JSON.parse(await readFile(statePath, "utf8")) as DatasetPublishState;
+    const stateChannel = state.channel ?? "production";
+    if (stateChannel !== channel) {
+        throw new Error(
+            `Character publish state belongs to ${stateChannel}, not requested channel ${channel}.`,
+        );
+    }
+    return state;
 }
 
 async function writePublishState(
@@ -354,6 +387,7 @@ async function readRemoteBucketSizeReport(bucket: string): Promise<BucketSizeRep
 async function tryReadRemoteManifest(
     bucket: string,
     target: "remote" | "local",
+    manifestObjectKey: string,
 ): Promise<DatasetManifest | undefined> {
     const tempDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-r2-manifest-"));
     const tempManifestPath = resolve(tempDirectory, "characters-manifest.json");
@@ -363,7 +397,7 @@ async function tryReadRemoteManifest(
             "r2",
             "object",
             "get",
-            `${bucket}/characters-manifest.json`,
+            `${bucket}/${manifestObjectKey}`,
             "--file",
             tempManifestPath,
             target === "remote" ? "--remote" : "--local",
@@ -433,6 +467,7 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
     const flags = new Set<string>();
     const valueRequiredOptions = new Set([
         "--expected-remote-baseline-sha256",
+        "--channel",
     ]);
 
     for (let index = 0; index < argv.length; index += 1) {
@@ -497,6 +532,12 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
             "--expected-remote-baseline-sha256 cannot be combined with --skip-remote-manifest-check.",
         );
     }
+    const channel = parseDatasetPublicationChannel(values.get("--channel"));
+    if (channel === "staging" && !flags.has("--skip-portraits")) {
+        throw new Error(
+            "Staging publication requires --skip-portraits because portrait keys are not channel-scoped.",
+        );
+    }
 
     return {
         bucket,
@@ -504,7 +545,9 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
         imagesRoot: resolve(values.get("--images-root") ?? DEFAULT_IMAGES_ROOT),
         datasetPath: resolve(values.get("--dataset") ?? DEFAULT_DATASET_PATH),
         manifestPath: resolve(values.get("--manifest") ?? DEFAULT_MANIFEST_PATH),
-        statePath: resolve(values.get("--state") ?? DEFAULT_STATE_PATH),
+        statePath: values.has("--state")
+            ? resolve(values.get("--state")!)
+            : defaultChannelStatePath(DEFAULT_STATE_PATH, channel),
         dryRun: flags.has("--dry-run"),
         forcePortraits: flags.has("--force-portraits"),
         skipPortraits: flags.has("--skip-portraits"),
@@ -513,6 +556,9 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
         target: localFlag ? "local" : "remote",
         concurrency,
         maxTotalBytes,
+        channel,
+        manifestObjectKey: buildCharacterManifestObjectKey(channel),
+        promoteProduction: flags.has("--promote-production"),
     };
 }
 
@@ -527,6 +573,7 @@ function manifestsMatch(left: DatasetManifest, right?: DatasetManifest): boolean
 }
 
 async function publishDataset(options: PublishCliOptions): Promise<PublishSummary> {
+    assertDatasetPublicationWriteAuthorized(options);
     if (!existsSync(options.manifestPath)) {
         throw new Error(`Manifest not found: ${options.manifestPath}`);
     }
@@ -540,16 +587,16 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     const localManifest = await readManifest(options.manifestPath);
     const localGzipBuffer = await readFile(options.datasetPath);
     const characters = validateLocalCharacterBundle(localManifest, localGzipBuffer);
-    const remoteDatasetObjectKey = buildRemoteDatasetObjectKey(localManifest);
+    const remoteDatasetObjectKey = buildRemoteDatasetObjectKey(localManifest, options.channel);
     const remoteManifest: DatasetManifest = {
         ...localManifest,
         fileName: remoteDatasetObjectKey,
     };
     const portraitKeys = collectReferencedPortraitKeys(characters);
-    const previousState = await readPublishState(options.statePath);
+    const previousState = await readPublishState(options.statePath, options.channel);
     const publishedRemoteManifest = options.skipRemoteManifestCheck
         ? undefined
-        : await tryReadRemoteManifest(options.bucket, options.target);
+        : await tryReadRemoteManifest(options.bucket, options.target, options.manifestObjectKey);
     assertExpectedRemoteBaselineSha256(options.expectedRemoteBaselineSha256, publishedRemoteManifest);
     const datasetNeedsUpload = !manifestsMatch(remoteManifest, publishedRemoteManifest);
     const skippedBecauseRemoteMatches = !datasetNeedsUpload && !options.forcePortraits && !options.skipPortraits;
@@ -588,6 +635,8 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         );
     }
 
+    console.log(`Channel: ${options.channel}`);
+    console.log(`Manifest object key: ${options.manifestObjectKey}`);
     console.log(`Dataset version: ${remoteManifest.datasetVersion}`);
     console.log(`Dataset object key: ${remoteDatasetObjectKey}`);
     console.log(`Dataset upload needed: ${datasetNeedsUpload ? "yes" : "no"}`);
@@ -649,7 +698,7 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         await writeFile(manifestTempPath, `${JSON.stringify(remoteManifest, null, 2)}\n`, "utf8");
         await uploadObject(
             options.bucket,
-            "characters-manifest.json",
+            options.manifestObjectKey,
             manifestTempPath,
             "application/json",
             "no-store",
@@ -668,6 +717,7 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         schemaVersion: 1,
         bucket: options.bucket,
         target: options.target,
+        channel: options.channel,
         datasetVersion: remoteManifest.datasetVersion,
         datasetObjectKey: remoteDatasetObjectKey,
         manifestSha256: remoteManifest.sha256,

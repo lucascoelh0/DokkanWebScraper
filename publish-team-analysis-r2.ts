@@ -3,6 +3,13 @@ import { existsSync } from "fs";
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { dirname, resolve } from "path";
+import {
+    assertDatasetPublicationWriteAuthorized,
+    channelObjectKey,
+    DatasetPublicationChannel,
+    defaultChannelStatePath,
+    parseDatasetPublicationChannel,
+} from "./dataset-publication-channel";
 import { TeamAnalysisManifest, sha256 } from "./team-analysis-artifacts";
 import {
     TEAM_ANALYSIS_LOCAL_FILE_NAME,
@@ -38,6 +45,9 @@ export interface TeamAnalysisR2PublishOptions {
     allowUnknownBucketSize: boolean,
     maxTotalBytes: number,
     maxNamespaceBytes: number,
+    channel: DatasetPublicationChannel,
+    manifestObjectKey: string,
+    promoteProduction: boolean,
 }
 
 export interface TeamAnalysisRetainedRelease {
@@ -52,6 +62,7 @@ export interface TeamAnalysisR2PublishState {
     schemaVersion: 1,
     bucket: string,
     target: "remote" | "local",
+    channel?: DatasetPublicationChannel,
     datasetVersion: string,
     datasetObjectKey: string,
     payloadSha256: string,
@@ -121,11 +132,11 @@ export interface TeamAnalysisPublishSummary {
 export function parseTeamAnalysisR2PublishArgs(argv: string[]): TeamAnalysisR2PublishOptions {
     const valueNames = new Set([
         "--bucket", "--dataset", "--manifest", "--characters", "--character-manifest", "--state",
-        "--max-total-bytes", "--max-namespace-bytes",
+        "--max-total-bytes", "--max-namespace-bytes", "--channel",
     ]);
     const flagNames = new Set([
         "--dry-run", "--remote", "--local", "--skip-remote-manifest-check", "--skip-upload-verification",
-        "--allow-unknown-bucket-size",
+        "--allow-unknown-bucket-size", "--promote-production",
     ]);
     const values = new Map<string, string>();
     const flags = new Set<string>();
@@ -163,13 +174,16 @@ export function parseTeamAnalysisR2PublishArgs(argv: string[]): TeamAnalysisR2Pu
     }
     const bucket = values.get("--bucket") ?? process.env.R2_BUCKET_NAME ?? DEFAULT_BUCKET;
     assertValidBucket(bucket);
+    const channel = parseDatasetPublicationChannel(values.get("--channel"));
 
     const resolvedPaths = {
         datasetPath: resolve(values.get("--dataset") ?? DEFAULT_DATASET_PATH),
         manifestPath: resolve(values.get("--manifest") ?? DEFAULT_MANIFEST_PATH),
         characterDatasetPath: resolve(values.get("--characters") ?? DEFAULT_CHARACTER_DATASET_PATH),
         characterManifestPath: resolve(values.get("--character-manifest") ?? DEFAULT_CHARACTER_MANIFEST_PATH),
-        statePath: resolve(values.get("--state") ?? DEFAULT_STATE_PATH),
+        statePath: values.has("--state")
+            ? resolve(values.get("--state")!)
+            : defaultChannelStatePath(DEFAULT_STATE_PATH, channel),
     };
     assertDistinctLocalPaths(resolvedPaths);
 
@@ -186,14 +200,29 @@ export function parseTeamAnalysisR2PublishArgs(argv: string[]): TeamAnalysisR2Pu
             values.get("--max-namespace-bytes"),
             DEFAULT_MAX_NAMESPACE_BYTES,
         ),
+        channel,
+        manifestObjectKey: buildTeamAnalysisManifestObjectKey(channel),
+        promoteProduction: flags.has("--promote-production"),
     };
 }
 
-export function buildTeamAnalysisDatasetObjectKey(manifest: TeamAnalysisManifest): string {
+export function buildTeamAnalysisDatasetObjectKey(
+    manifest: TeamAnalysisManifest,
+    channel: DatasetPublicationChannel = "production",
+): string {
     const slug = datasetVersionSlug(manifest.datasetVersion);
-    const key = `team-analysis/releases/${slug}/${manifest.sha256.toLowerCase()}/${TEAM_ANALYSIS_LOCAL_FILE_NAME}`;
+    const key = channelObjectKey(
+        channel,
+        `team-analysis/releases/${slug}/${manifest.sha256.toLowerCase()}/${TEAM_ANALYSIS_LOCAL_FILE_NAME}`,
+    );
     assertValidObjectKey(key, "Team Analysis payload object key");
     return key;
+}
+
+export function buildTeamAnalysisManifestObjectKey(
+    channel: DatasetPublicationChannel = "production",
+): string {
+    return channelObjectKey(channel, TEAM_ANALYSIS_MANIFEST_OBJECT_KEY);
 }
 
 export async function readTeamAnalysisR2PublishPlan(
@@ -234,7 +263,7 @@ export function buildTeamAnalysisR2PublishPlan(
     validated: ValidatedTeamAnalysisDelivery,
     facts: RemoteFacts,
 ): TeamAnalysisR2PublishPlan {
-    const datasetObjectKey = buildTeamAnalysisDatasetObjectKey(validated.manifest);
+    const datasetObjectKey = buildTeamAnalysisDatasetObjectKey(validated.manifest, options.channel);
     const remoteManifest: TeamAnalysisManifest = { ...validated.manifest, fileName: datasetObjectKey };
     const remoteManifestBuffer = serializeManifest(remoteManifest);
     const manifestMatches = facts.manifest ? manifestsExactlyMatch(remoteManifest, facts.manifest) : false;
@@ -330,9 +359,9 @@ export function buildTeamAnalysisR2PublishPlan(
     if (payloadUploadNeeded) plannedActions.push(`put ${datasetObjectKey}`);
     if (payloadUploadNeeded && !options.skipUploadVerification) plannedActions.push(`verify ${datasetObjectKey}`);
     if (manifestUpdateNeeded) {
-        plannedActions.push(`put ${TEAM_ANALYSIS_MANIFEST_OBJECT_KEY} last`);
+        plannedActions.push(`put ${options.manifestObjectKey} last`);
         if (!options.skipUploadVerification) {
-            plannedActions.push(`verify ${TEAM_ANALYSIS_MANIFEST_OBJECT_KEY}`);
+            plannedActions.push(`verify ${options.manifestObjectKey}`);
         }
     }
     if (stateUpdateNeeded || manifestUpdateNeeded || payloadUploadNeeded || cleanupCandidates.length > 0) {
@@ -375,6 +404,7 @@ export async function publishTeamAnalysisR2(
     runner: TeamAnalysisCommandRunner = createWranglerCommandRunner(),
     now: () => Date = () => new Date(),
 ): Promise<TeamAnalysisPublishSummary> {
+    assertDatasetPublicationWriteAuthorized(options);
     const plan = await readTeamAnalysisR2PublishPlan(options, runner);
     printTeamAnalysisR2PublishPlan(plan);
     if (options.dryRun) {
@@ -411,7 +441,7 @@ export async function publishTeamAnalysisR2(
             await putObject(
                 runner,
                 options,
-                TEAM_ANALYSIS_MANIFEST_OBJECT_KEY,
+                options.manifestObjectKey,
                 temporaryManifestPath,
                 "application/json",
                 TEAM_ANALYSIS_MANIFEST_CACHE_CONTROL,
@@ -468,6 +498,8 @@ export async function publishTeamAnalysisR2(
 export function printTeamAnalysisR2PublishPlan(plan: TeamAnalysisR2PublishPlan): void {
     console.log(`Target: ${plan.options.target}`);
     console.log(`Bucket: ${plan.options.bucket}`);
+    console.log(`Channel: ${plan.options.channel}`);
+    console.log(`Manifest object key: ${plan.options.manifestObjectKey}`);
     console.log(`Version: ${plan.remoteManifest.datasetVersion}`);
     console.log(`SHA-256: ${plan.remoteManifest.sha256}`);
     console.log(`Payload key: ${plan.datasetObjectKey}`);
@@ -507,11 +539,11 @@ async function inspectRemoteFacts(
         const remote = await tryGetJsonObject<TeamAnalysisManifest>(
             runner,
             options,
-            TEAM_ANALYSIS_MANIFEST_OBJECT_KEY,
+            options.manifestObjectKey,
             "Team Analysis remote manifest",
         );
         if (remote) {
-            validateRemoteManifest(remote.value);
+            validateRemoteManifest(remote.value, options.channel);
             manifest = remote.value;
             manifestBytes = remote.bytes;
             manifestSha256 = remote.sha256;
@@ -522,7 +554,7 @@ async function inspectRemoteFacts(
 
     const plannedRelease: TeamAnalysisRetainedRelease = {
         datasetVersion: validated.manifest.datasetVersion,
-        datasetObjectKey: buildTeamAnalysisDatasetObjectKey(validated.manifest),
+        datasetObjectKey: buildTeamAnalysisDatasetObjectKey(validated.manifest, options.channel),
         payloadSha256: validated.manifest.sha256.toLowerCase(),
         sizeBytes: validated.manifest.sizeBytes,
         publishedAt: validated.manifest.generatedAt,
@@ -536,7 +568,7 @@ async function inspectRemoteFacts(
     const verifiedReleases: TeamAnalysisRetainedRelease[] = [];
     let plannedPayloadPresent = false;
     for (const release of releaseCandidates) {
-        validateRelease(release);
+        validateRelease(release, options.channel);
         const matches = await remotePayloadMatches(runner, options, release);
         if (matches) {
             verifiedReleases.push(release);
@@ -642,7 +674,7 @@ async function assertRemoteManifestMatches(
     const remote = await tryGetJsonObject<TeamAnalysisManifest>(
         runner,
         options,
-        TEAM_ANALYSIS_MANIFEST_OBJECT_KEY,
+        options.manifestObjectKey,
         "uploaded Team Analysis manifest",
     );
     const matches = remote
@@ -702,10 +734,20 @@ async function readPublishState(
         if (state.bucket !== options.bucket || state.target !== options.target) {
             return { status: "mismatched", warnings: ["Local publish state belongs to a different bucket or target and was ignored."] };
         }
+        const stateChannel = state.channel ?? "production";
+        if (stateChannel !== options.channel) {
+            return {
+                status: "mismatched",
+                warnings: [
+                    `Local publish state belongs to ${stateChannel}, not requested channel ${options.channel}, and was ignored.`,
+                ],
+            };
+        }
         if (state.retainedReleases.length + (state.cleanupPendingReleases?.length ?? 0) > MAX_TRACKED_RELEASES) {
             return { status: "old-or-invalid", warnings: ["Local publish state exceeds the bounded release history and was ignored."] };
         }
-        [...state.retainedReleases, ...(state.cleanupPendingReleases ?? [])].forEach(validateRelease);
+        [...state.retainedReleases, ...(state.cleanupPendingReleases ?? [])]
+            .forEach(release => validateRelease(release, options.channel));
         return { state, status: "valid", warnings: [] };
     } catch (error) {
         return {
@@ -715,7 +757,10 @@ async function readPublishState(
     }
 }
 
-function validateRemoteManifest(manifest: TeamAnalysisManifest): void {
+function validateRemoteManifest(
+    manifest: TeamAnalysisManifest,
+    channel: DatasetPublicationChannel,
+): void {
     const stringFields: Array<keyof TeamAnalysisManifest> = [
         "datasetVersion", "generatedAt", "fileName", "sha256", "rulesVersion", "parserVersion",
         "sourceCharacterDatasetVersion", "sourceCharacterPayloadSha256",
@@ -735,7 +780,10 @@ function validateRemoteManifest(manifest: TeamAnalysisManifest): void {
         if (!Number.isSafeInteger(value) || value < 0) throw new Error("Invalid Team Analysis remote manifest numeric field.");
     });
     assertValidObjectKey(manifest.fileName, "Team Analysis remote manifest fileName");
-    const expectedKey = buildTeamAnalysisDatasetObjectKey({ ...manifest, sha256: manifest.sha256.toLowerCase() });
+    const expectedKey = buildTeamAnalysisDatasetObjectKey(
+        { ...manifest, sha256: manifest.sha256.toLowerCase() },
+        channel,
+    );
     if (manifest.fileName !== expectedKey) {
         throw new Error(`Team Analysis remote manifest fileName is not its canonical immutable key: ${manifest.fileName}`);
     }
@@ -751,7 +799,10 @@ function releaseFromManifest(manifest: TeamAnalysisManifest): TeamAnalysisRetain
     };
 }
 
-function validateRelease(release: TeamAnalysisRetainedRelease): void {
+function validateRelease(
+    release: TeamAnalysisRetainedRelease,
+    channel: DatasetPublicationChannel,
+): void {
     if (!release || typeof release !== "object") throw new Error("Invalid retained Team Analysis release.");
     if (typeof release.datasetVersion !== "string" || release.datasetVersion.length === 0) {
         throw new Error("Retained Team Analysis release has an invalid datasetVersion.");
@@ -763,10 +814,13 @@ function validateRelease(release: TeamAnalysisRetainedRelease): void {
         throw new Error("Retained Team Analysis release has an invalid sizeBytes.");
     }
     assertValidObjectKey(release.datasetObjectKey, "retained Team Analysis object key");
-    const expectedKey = buildTeamAnalysisDatasetObjectKey({
-        datasetVersion: release.datasetVersion,
-        sha256: release.payloadSha256,
-    } as TeamAnalysisManifest);
+    const expectedKey = buildTeamAnalysisDatasetObjectKey(
+        {
+            datasetVersion: release.datasetVersion,
+            sha256: release.payloadSha256,
+        } as TeamAnalysisManifest,
+        channel,
+    );
     if (release.datasetObjectKey !== expectedKey) {
         throw new Error(`Retained Team Analysis release key is not canonical: ${release.datasetObjectKey}`);
     }
@@ -788,6 +842,7 @@ function buildNextPublishState(
         schemaVersion: 1,
         bucket: options.bucket,
         target: options.target,
+        channel: options.channel,
         datasetVersion: manifest.datasetVersion,
         datasetObjectKey: manifest.fileName,
         payloadSha256: manifest.sha256.toLowerCase(),
@@ -810,6 +865,7 @@ function publishStatesOperationallyEqual(left: TeamAnalysisR2PublishState, right
         schemaVersion: state.schemaVersion,
         bucket: state.bucket,
         target: state.target,
+        channel: state.channel ?? "production",
         datasetVersion: state.datasetVersion,
         datasetObjectKey: state.datasetObjectKey,
         payloadSha256: state.payloadSha256,

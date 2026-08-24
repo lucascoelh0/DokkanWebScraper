@@ -2015,6 +2015,37 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   passed. Public R2 remains parser `1.9.0`; no R2 dry-run/upload, commit or push
   of this slice was authorized.
 
+## Dataset staging-channel foundation checkpoint (2026-08-23)
+
+- Characters and Team Analysis publishers now accept only the typed
+  `production` or `staging` channel. Production keeps the existing root
+  manifests and payload namespaces; staging uses `staging/` manifests,
+  content-addressed payload namespaces and independent ignored state files.
+  A real remote production write additionally requires the explicit
+  `--promote-production` flag. Staging Character publication refuses to touch
+  non-channel-scoped portraits and therefore requires `--skip-portraits`.
+- Android release builds are hard-coded to the production manifest object
+  keys. Debug builds remain production by default and may opt into staging
+  only with `-PdebugDatasetChannel=staging`. Character and Team Analysis
+  managers allowlist those two manifest paths, retain their existing local
+  cache names, and accept the corresponding staging payload namespace without
+  weakening host, traversal, size, SHA or exact cross-dataset compatibility
+  checks.
+- Publisher compilation and 50 focused delivery tests passed. Android focused
+  Character/Team Analysis manager tests and debug compilation passed. Generated
+  BuildConfig evidence proved that the same staging property produces staging
+  paths for debug while release still contains production paths.
+- Read-only remote dry-runs found no existing staging manifests. The Characters
+  candidate would add 2,343,751 managed bytes with zero portrait mutations;
+  Team Analysis parser `1.9.14` would add 3,078,468 managed bytes. Wrangler
+  reported the bucket as 383 MB, yielding conservative projected upper bounds
+  of 386,343,751 and 387,078,468 bytes for the individual plans. No R2 object,
+  manifest, local publish state or production endpoint was changed.
+- The scraper checkpoint through `481eaac` is pushed to `origin/main`. This
+  staging foundation is captured as separate scraper and Android checkpoints;
+  no staging or production publication has occurred. Public production remains
+  Characters `2026-08-22T21:14:10.019Z` and Team Analysis parser `1.9.0`.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
