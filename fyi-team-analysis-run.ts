@@ -8,6 +8,7 @@ import {
     assertValidTeamAnalysisDataset,
     buildTeamAnalysisCoverageReport,
     buildTeamAnalysisDataset,
+    TeamAnalysisActiveSkillActivationContract,
     TeamAnalysisNameIdentityContract,
 } from "./team-analysis";
 import {
@@ -28,6 +29,7 @@ export interface FyiTeamAnalysisRunOptions {
     characterManifestPath: string,
     catalogPath: string,
     nameIdentityContract?: TeamAnalysisNameIdentityContract,
+    activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
 }
 
 export async function runFyiTeamAnalysis(
@@ -61,8 +63,15 @@ export async function runFyiTeamAnalysis(
         sourceCharacterDatasetVersion: characterManifest.datasetVersion,
         sourceCharacterPayloadSha256: characterManifest.sha256,
         ...(options.nameIdentityContract ? { nameIdentityContract: options.nameIdentityContract } : {}),
+        ...(options.activeSkillActivationContract
+            ? { activeSkillActivationContract: options.activeSkillActivationContract }
+            : {}),
     });
-    assertValidTeamAnalysisDataset(dataset, characters, catalog.characters);
+    assertValidTeamAnalysisDataset(dataset, characters, catalog.characters, {
+        ...(options.activeSkillActivationContract
+            ? { activeSkillActivationContract: options.activeSkillActivationContract }
+            : {}),
+    });
 
     const coverage = buildTeamAnalysisCoverageReport(dataset);
     const artifact = buildTeamAnalysisArtifact(dataset);

@@ -18,6 +18,7 @@ import {
   PassiveEffect,
   PassivePredicate,
   validateTeamAnalysisDataset,
+  validateTeamAnalysisDatasetForDelivery,
 } from "./team-analysis";
 import {
   buildTeamAnalysisArtifact,
@@ -1369,6 +1370,358 @@ describe("team-analysis Gate A4.1 structural enemy-status evidence", function ()
 });
 
 describe("team-analysis first-party Entrance Animation conditions", function () {
+  it("recovers a structured effect continuation before the next real condition", () => {
+    const rawText = [
+      "When attacking with 12 or more Ki",
+      "- ATK 100% when facing",
+      "2 or more enemies, plus an additional ATK 150%",
+      "As the 2nd or 3rd attacker in a turn",
+      "- DEF 100%",
+    ].join("\n");
+    const passive = parsePassive("structured-continuation:initial", undefined, rawText, {
+      text: rawText,
+      sections: [
+        {
+          label: "When attacking with 12 or more Ki",
+          lines: ["ATK 100% when facing"],
+        },
+        {
+          label: "2 or more enemies, plus an additional ATK 150%",
+          lines: [],
+        },
+        {
+          label: "As the 2nd or 3rd attacker in a turn",
+          lines: ["DEF 100%"],
+        },
+      ],
+    });
+
+    equal(passive.rules.some(rule => rule.conditionStatus !== "supported"), false);
+    equal(passive.rules.some(rule => JSON.stringify(rule.condition).includes("2 or more enemies")), false);
+    match(JSON.stringify(passive.rules[0].effects), /"value":150/);
+    match(JSON.stringify(passive.rules[passive.rules.length - 1]?.condition), /"kind":"battle_slot"/);
+  });
+
+  it("types counted Category alternatives that share one team or rotation scope", () => {
+    const passive = parsePassive(
+      "shared-category-alternatives:initial",
+      undefined,
+      [
+        'Activates the Entrance Animation when there are 3 "Revenge" Category allies, 3 "GT Bosses" Category allies or 3 "Sworn Enemies" Category allies attacking in the same turn upon the character\'s entry',
+        "- ATK & DEF 100%",
+      ].join("\n"),
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => ({
+      kind: predicate.kind,
+      categories: predicate.categories,
+      count: predicate.count,
+      scope: predicate.scope,
+    })), [
+      { kind: "ally_category_present", categories: ["Revenge"], count: 3, scope: "rotation" },
+      { kind: "ally_category_present", categories: ["GT Bosses"], count: 3, scope: "rotation" },
+      { kind: "ally_category_present", categories: ["Sworn Enemies"], count: 3, scope: "rotation" },
+    ]);
+  });
+
+  it("keeps Ki Sphere scaling separate from its typed rotation-partner gate", () => {
+    const passive = parsePassive(
+      "conditional-sphere-scaling:initial",
+      undefined,
+      [
+        'For every Ki Sphere obtained when there is another "Super Heroes" or "Movie Heroes" Category ally attacking in the same turn',
+        "- ATK & DEF 9% when attacking",
+      ].join("\n"),
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition)
+      .map(predicate => predicate.categories)
+      .filter(categories => categories !== undefined), [
+      ["Super Heroes"],
+      ["Movie Heroes"],
+    ]);
+    deepEqual(passive.rules[0].effects[0].scaling, {
+      kind: "per_ki_sphere",
+      kiSphereTypes: ["any"],
+      spheresPerIncrement: 1,
+      kiContext: "collected_ki_spheres",
+    });
+  });
+
+  it("types per-Ki scaling while receiving an attack without treating the scale as a gate", () => {
+    const passive = parsePassive(
+      "receiving-ki-scaling:initial",
+      undefined,
+      "For every 2 Ki when receiving an attack\n- DEF 20% and damage reduction rate 2%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    match(JSON.stringify(passive.rules[0].condition), /"kind":"incoming_attack"/);
+    deepEqual(passive.rules[0].effects[0].scaling, {
+      kind: "per_ki_amount",
+      kiPerIncrement: 2,
+      kiContext: "final_attack_ki",
+      evaluationMoment: "when_targeted_by_attack",
+    });
+  });
+
+  it("types HP, named-ally and turn requirements as one conjunction", () => {
+    const passive = parsePassive(
+      "hp-named-ally:initial",
+      undefined,
+      'When HP is 58% or more with an ally whose name includes "Trunks" (Kid and GT excluded) on the team starting from the 4th turn from the start of battle\n- Transforms',
+      undefined,
+      {
+        characterId: "hp-named-ally",
+        formId: "hp-named-ally",
+        releaseState: "initial",
+        passiveSkillSetId: "hp-named-ally",
+        nameIdentityContract: {
+          source: "first_party_game_db",
+          bindings: [{
+            passiveSkillSetId: "hp-named-ally",
+            scope: "team",
+            count: 1,
+            identitySetId: "trunks",
+            canonicalIds: ["trunks"],
+            canonicalNames: ["Trunks"],
+          }],
+        },
+      },
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => predicate.kind), [
+      "hp_percent",
+      "ally_name_present",
+      "battle_turn",
+    ]);
+    deepEqual(flattenPredicates(passive.rules[0].condition)[1].excludedNames, ["Kid", "GT"]);
+  });
+
+  it("keeps shared Category alternatives together before applying their turn gate", () => {
+    const passive = parsePassive(
+      "category-alternatives-turn:initial",
+      undefined,
+      [
+        'When HP is 50% or less, or when there are 3 "Realm of Gods" Category allies, 3 "Universe Survival Saga" Category allies or 3 "Turtle School" Category allies attacking in the same turn starting from the 4th turn from the start of battle',
+        "- Awakens",
+      ].join("\n"),
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => predicate.kind), [
+      "hp_percent",
+      "ally_category_present",
+      "ally_category_present",
+      "ally_category_present",
+      "battle_turn",
+    ]);
+  });
+
+  it("types a lone enemy HP branch without losing its Category-enemy alternative", () => {
+    const passive = parsePassive(
+      "single-enemy-hp:initial",
+      undefined,
+      'When facing only 1 enemy and that enemy\'s HP is 58% or more, or when there is a "Majin Buu Saga" Category enemy\n- Attacks are effective against all Types',
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => ({
+      kind: predicate.kind,
+      enemySelection: predicate.enemySelection,
+    })), [
+      { kind: "enemy_count", enemySelection: undefined },
+      { kind: "enemy_hp_percent", enemySelection: "only_enemy" },
+      { kind: "enemy_category", enemySelection: "any_enemy" },
+    ]);
+  });
+
+  it("types a negated other-name rotation condition with per-name exclusions", () => {
+    const passive = parsePassive(
+      "negative-other-name:initial",
+      undefined,
+      'When there are no other allies whose names include "Vegeta" (Jr., Baby and Duplicate excluded) attacking in the same turn\n- ATK 200%',
+      undefined,
+      {
+        characterId: "negative-other-name",
+        formId: "negative-other-name",
+        releaseState: "initial",
+        passiveSkillSetId: "negative-other-name",
+        nameIdentityContract: {
+          source: "first_party_game_db",
+          bindings: [{
+            passiveSkillSetId: "negative-other-name",
+            scope: "rotation",
+            count: 1,
+            identitySetId: "vegeta",
+            canonicalIds: ["vegeta"],
+            canonicalNames: ["Vegeta"],
+          }],
+        },
+      },
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    equal(passive.rules[0].condition.op, "not");
+    const predicate = flattenPredicates(passive.rules[0].condition)[0];
+    equal(predicate.kind, "rotation_partner_name");
+    deepEqual(predicate.excludedNames, ["Jr.", "Baby", "Duplicate"]);
+  });
+
+  it("keeps received-or-evaded scaling separate from the battle-slot gate", () => {
+    const passive = parsePassive(
+      "received-evaded-scaling:initial",
+      undefined,
+      "For every attack received or evaded as the 1st or 2nd attacker in a turn\n- ATK 20% (up to 100%)",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    match(JSON.stringify(passive.rules[0].condition), /"kind":"battle_slot"/);
+    const scaling = passive.rules[0].effects[0].scaling;
+    equal(scaling?.kind, "per_combat_event");
+    if (scaling?.kind === "per_combat_event") {
+      equal(scaling.connector, "or");
+      deepEqual(scaling.events.map(event => event.eventType), ["attack_landed", "attack_evaded"]);
+    }
+  });
+
+  it("types the next attacking turn after a counted combat event", () => {
+    const passive = parsePassive(
+      "next-turn-after-event:initial",
+      undefined,
+      "Starting from the character's next attacking turn after the character evades 5 or more attacks in battle\n- ATK 159%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    const predicate = flattenPredicates(passive.rules[0].condition)[0];
+    equal(predicate.kind, "attacks_evaded");
+    equal(predicate.value, 5);
+    equal(predicate.combatEvent?.countScope, "battle");
+    equal(predicate.combatEvent?.relativeTiming, "starting_next_attacking_turn");
+  });
+
+  it("keeps a next-turn combat branch separate from its delayed team alternative", () => {
+    const passive = parsePassive(
+      "next-turn-team-alternative:initial",
+      undefined,
+      [
+        'On the character\'s next attacking turn after performing 3 or more Super Attacks and receiving 5 or more attacks in battle, or when 3 or more "Movie Heroes" Category allies are on the team starting from the 5th turn from the character\'s entry turn',
+        "- Receives a morale boost",
+      ].join("\n"),
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported", JSON.stringify(passive.rules[0].condition));
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => predicate.kind), [
+      "super_attacks_performed",
+      "attacks_received",
+      "ally_category_present",
+      "turn_from_entry",
+    ]);
+  });
+
+  it("distinguishes one next attacking turn from a persistent next-turn window", () => {
+    const onNext = parsePassive(
+      "on-next-turn:initial",
+      undefined,
+      "On the character's next attacking turn\n- Transforms again",
+    );
+    const startingNext = parsePassive(
+      "starting-next-turn:initial",
+      undefined,
+      "Starting from the next attacking turn\n- ATK 100%",
+    );
+
+    equal(onNext.rules[0].conditionStatus, "supported");
+    equal(startingNext.rules[0].conditionStatus, "supported");
+    equal(flattenPredicates(onNext.rules[0].condition)[0].evaluationMoment, "on_next_attacking_turn");
+    equal(flattenPredicates(startingNext.rules[0].condition)[0].evaluationMoment, "starting_next_attacking_turn");
+  });
+
+  it("preserves the Ki-Sphere evaluation moment on an enemy gate", () => {
+    const passive = parsePassive(
+      "enemy-while-sphere:initial",
+      undefined,
+      'If there is a Super Class enemy when the character obtains a Ki Sphere\n- ATK 120%',
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    const predicate = flattenPredicates(passive.rules[0].condition)[0];
+    equal(predicate.kind, "enemy_class");
+    equal(predicate.evaluationMoment, "when_obtaining_ki_sphere");
+  });
+
+  it("types all-rotation Ki Sphere collection and its attack-Ki conjunction", () => {
+    const passive = parsePassive(
+      "rotation-spheres:initial",
+      undefined,
+      "If the character's Ki is 7 or more when all allies attacking in the same turn have obtained a Ki Sphere\n- ATK 100%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => predicate.kind), [
+      "ki_amount",
+      "all_rotation_allies_obtained_ki_sphere",
+    ]);
+  });
+
+  it("types special Ki Spheres and the two residual Ki Sphere scaling modes", () => {
+    const sweetTreat = parsePassive(
+      "sweet-treat:initial",
+      undefined,
+      "1 or more sweet treat Ki Spheres obtained\n- ATK 100%",
+    );
+    const deferred = parsePassive(
+      "deferred-spheres:initial",
+      undefined,
+      "For every Ki Sphere obtained with 4 or more Ki Spheres obtained (count starts from the 4th Ki Sphere)\n- ATK 20%",
+    );
+    const largest = parsePassive(
+      "largest-sphere-type:initial",
+      undefined,
+      "For every STR or Rainbow Ki Sphere obtained (whichever Ki Sphere is collected more will be counted)\n- ATK 20%",
+    );
+
+    equal(sweetTreat.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(sweetTreat.rules[0].condition)[0].kiSphereTypes, ["sweet_treat"]);
+    deepEqual(deferred.rules[0].effects[0].scaling, {
+      kind: "per_ki_sphere",
+      kiSphereTypes: ["any"],
+      spheresPerIncrement: 1,
+      kiContext: "collected_ki_spheres",
+      countStartsFrom: 4,
+      selection: "all_obtained",
+    });
+    deepEqual(largest.rules[0].effects[0].scaling, {
+      kind: "per_ki_sphere",
+      kiSphereTypes: ["STR", "rainbow"],
+      spheresPerIncrement: 1,
+      kiContext: "collected_ki_spheres",
+      selection: "largest_type_count",
+    });
+  });
+
+  it("keeps a standalone personality switch as an action and types the Giant Ape lifecycle flag", () => {
+    const personality = parsePassive(
+      "personality-switch:initial",
+      undefined,
+      "Sneezes and switches personalities",
+    );
+    const giant = parsePassive(
+      "giant-form-end:initial",
+      undefined,
+      "When Giant Ape Transformation ends\n- ATK 100%",
+    );
+
+    equal(personality.rules[0].conditionStatus, "supported");
+    equal(personality.rules[0].condition.op, "always");
+    equal(personality.rules[0].effectStatus, "unknown");
+    equal(giant.rules[0].conditionStatus, "supported");
+    equal(flattenPredicates(giant.rules[0].condition)[0].kind, "giant_form_ended");
+  });
+
   it("binds Goku name conditions to the official canonical identity set", () => {
     const passive = parsePassive(
       "name-identity:initial",
@@ -1994,6 +2347,150 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
     ]);
   });
 
+  it("types Ultra, Unit and styled Super Attack variants for a previously marked enemy", () => {
+    const cases = [
+      "When receiving an attack from an enemy who is hit by the character's Ultra Super Attack",
+      "When receiving an attack from an enemy who is hit by the character's Ultra Super Attack or Unit Super Attack",
+      "When receiving an Unarmed Super Attack from an enemy who is hit by the character's Ultra Super Attack",
+    ];
+
+    cases.forEach((header, index) => {
+      const passive = parsePassive(
+        `marked-enemy-${index}:initial`,
+        undefined,
+        `${header}\n- DEF 250%`,
+      );
+      equal(passive.rules[0].conditionStatus, "supported", header);
+      const predicate = flattenPredicates(passive.rules[0].condition)[0];
+      equal(predicate.kind, "incoming_attack_from_enemy_hit_by_self_super_attack", header);
+      equal(predicate.combatEvent?.attackKind, index === 2 ? "super_attack" : "unknown", header);
+      equal(predicate.combatEvent?.attackStyle, index === 2 ? "unarmed" : undefined, header);
+    });
+  });
+
+  it("types first, ordinal and parenthesized combat-event counters", () => {
+    const cases: Array<{
+      header: string,
+      kind: string,
+      comparator: string,
+      value: number,
+      countScope: string,
+      mode: string,
+    }> = [
+      { header: "When attacking for the 1st time", kind: "attacks_performed", comparator: "eq", value: 1, countScope: "battle", mode: "accumulated_count" },
+      { header: "When receiving an attack for the 1st time within the turn", kind: "attacks_received", comparator: "eq", value: 1, countScope: "current_turn", mode: "accumulated_count" },
+      { header: "When the character performs the 6th attack in battle", kind: "attacks_performed", comparator: "eq", value: 6, countScope: "battle", mode: "accumulated_count" },
+      { header: "Every time the character receives 5 or more attacks in battle", kind: "attacks_received", comparator: "gte", value: 5, countScope: "battle", mode: "repeated_threshold" },
+      { header: "After performing 3 Super Attack(s) in battle", kind: "super_attacks_performed", comparator: "gte", value: 3, countScope: "battle", mode: "accumulated_count" },
+    ];
+
+    cases.forEach((fixture, index) => {
+      const passive = parsePassive(
+        `combat-counter-${index}:initial`,
+        undefined,
+        `${fixture.header}\n- ATK 100%`,
+      );
+      equal(passive.rules[0].conditionStatus, "supported", fixture.header);
+      const predicate = flattenPredicates(passive.rules[0].condition)[0];
+      equal(predicate.kind, fixture.kind, fixture.header);
+      equal(predicate.comparator, fixture.comparator, fixture.header);
+      equal(predicate.value, fixture.value, fixture.header);
+      equal(predicate.combatEvent?.countScope, fixture.countScope, fixture.header);
+      equal(predicate.combatEvent?.mode, fixture.mode, fixture.header);
+    });
+  });
+
+  it("types final-blow timing, after-attack Ki and joined combat histories", () => {
+    const cases = [
+      "At the end of the turn in which a final blow is delivered",
+      "After attacking with 8 or more Ki",
+      "After performing 3 or more Super Attacks and receiving 7 or more attacks in battle",
+      "Every time the character receives 3 or more attacks in battle, or every time the character evades 3 or more attacks in battle",
+    ];
+
+    cases.forEach((header, index) => {
+      const passive = parsePassive(`joined-runtime-${index}:initial`, undefined, `${header}\n- ATK 100%`);
+      equal(passive.rules[0].conditionStatus, "supported", header);
+    });
+    deepEqual(flattenPredicates(parsePassive(
+      "joined-runtime-combat:initial",
+      undefined,
+      `${cases[2]}\n- ATK 100%`,
+    ).rules[0].condition).map(predicate => predicate.kind), [
+      "super_attacks_performed",
+      "attacks_received",
+    ]);
+  });
+
+  it("keeps lowercase wrapped inline conditions with their effect and starts the next real header separately", () => {
+    const passive = parsePassive(
+      "1026731:1026731:initial",
+      "Mad Scientist's Scheme",
+      [
+        "When facing only 1 enemy",
+        "- ATK 60000 and medium chance of performing a critical hit",
+        "when the enemy's HP is 60% or more",
+        "When facing 2 or more enemies",
+        "- Ki +2",
+      ].join("\n"),
+    );
+
+    equal(passive.rules.length, 2);
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => predicate.kind), [
+      "enemy_count",
+      "enemy_hp_percent",
+    ]);
+    equal(passive.rules[1].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[1].condition).map(predicate => predicate.kind), [
+      "enemy_count",
+    ]);
+  });
+
+  it("keeps numeric wrapped Ki requirements attached to the preceding effect", () => {
+    const passive = parsePassive(
+      "wrapped-ki:initial",
+      undefined,
+      [
+        "When attacking with 18 or more Ki",
+        "- ATK 100% and disables the enemy's guard with",
+        "1 or more STR Ki Spheres obtained",
+        "After receiving an attack",
+        "- DEF 100%",
+      ].join("\n"),
+    );
+
+    equal(passive.rules.length, 2);
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => predicate.kind), [
+      "ki_amount",
+      "ki_spheres_obtained",
+    ]);
+  });
+
+  it("types ally-or-enemy name alternatives without losing their distinct scopes", () => {
+    const team = parsePassive(
+      "name-team-or-enemy:initial",
+      undefined,
+      'When there is an ally or an enemy whose name includes\n"Goku (Youth)"\n- Ki +3',
+    );
+    const rotation = parsePassive(
+      "name-rotation-or-enemy:initial",
+      undefined,
+      'When the name of an ally who is attacking in the same turn or\nan enemy includes "Goku" (Captain Ginyu, Jr., etc. excluded)\n- Guards all attacks',
+    );
+
+    [team, rotation].forEach(passive => equal(passive.rules[0].conditionStatus, "partial"));
+    deepEqual(flattenPredicates(team.rules[0].condition).map(predicate => [predicate.kind, predicate.scope]), [
+      ["enemy_name", "enemy"],
+      ["ally_name_present", "team"],
+    ]);
+    deepEqual(flattenPredicates(rotation.rules[0].condition).map(predicate => [predicate.kind, predicate.scope]), [
+      ["ally_name_present", "rotation"],
+      ["enemy_name", "enemy"],
+    ]);
+  });
+
   it("types repeatable attack progress in battle as an accumulated performed-attack predicate", () => {
     const passive = parsePassive(
       "1032581:1032581:initial",
@@ -2092,6 +2589,7 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
       { header: "After guard is activated 2 times in battle", kind: "guard_activated", scope: "self", comparator: "gte", value: 2 },
       { header: "After the character's Revival Skill is activated", kind: "revive_triggered", scope: "self" },
       { header: "After the character's or an ally's Revival Skill is activated", kind: "revive_triggered", scope: "team" },
+      { header: "After an ally's Revival Skill is activated", kind: "revive_triggered", scope: "team" },
       { header: "When the Finish Effect is activated", kind: "finish_effect_activated", scope: "self" },
       { header: "When the Finish Effect is not activated", kind: "finish_effect_activated", scope: "self", negated: true },
       { header: 'When the Domain "Tree of Might" is active', kind: "domain_active", scope: "battle", domainNames: ["Tree of Might"] },
@@ -2157,6 +2655,119 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
       enemiesPerIncrement: 1,
       countStartsFrom: 3,
     });
+  });
+
+  it("types launched enemy Super Attacks as per-event scaling", () => {
+    const passive = parsePassive(
+      "incoming-super-scaling:initial",
+      undefined,
+      "For every Super Attack the enemy launches at the character\n- Ki +1",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(passive.rules[0].condition, { op: "always" });
+    const scaling = passive.rules[0].effects[0].scaling;
+    equal(scaling?.kind, "per_combat_event");
+    if (scaling?.kind !== "per_combat_event") throw new Error("expected combat scaling");
+    equal(scaling.events[0].eventType, "incoming_attack");
+    equal(scaling.events[0].attackKind, "super_attack");
+    equal(scaling.events[0].mode, "per_event");
+  });
+
+  it("types performed-Super-Attack scaling qualified by attack Ki", () => {
+    const passive = parsePassive(
+      "super-scaling-with-ki:initial",
+      undefined,
+      "For every Super Attack performed with 18 or more Ki\n- Ki +3 (up to +6)",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    equal(flattenPredicates(passive.rules[0].condition)[0].kind, "ki_amount");
+    equal(passive.rules[0].effects[0].scaling?.kind, "per_combat_event");
+  });
+
+  it("types excluded Type Ki Sphere presence and scaling without flattening the exclusion", () => {
+    const passive = parsePassive(
+      "excluded-type-spheres:initial",
+      undefined,
+      [
+        "For every Type Ki Sphere obtained (STR excluded)",
+        "- DEF 70%",
+        "With a Type Ki Sphere obtained (PHY excluded)",
+        "- ATK 100%",
+      ].join("\n"),
+    );
+
+    equal(passive.rules.length, 2);
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(passive.rules[0].condition, { op: "always" });
+    deepEqual(passive.rules[0].effects[0].scaling, {
+      kind: "per_ki_sphere",
+      kiSphereTypes: ["any"],
+      excludedKiSphereTypes: ["STR"],
+      spheresPerIncrement: 1,
+      kiContext: "collected_ki_spheres",
+    });
+    equal(passive.rules[1].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[1].condition).flatMap(predicate => predicate.kiSphereTypes ?? []), [
+      "AGL", "TEQ", "INT", "STR",
+    ]);
+  });
+
+  it("types mixed Type and Rainbow Ki Sphere presence", () => {
+    const passive = parsePassive(
+      "mixed-sphere-presence:initial",
+      undefined,
+      "With an INT or Rainbow Ki Sphere obtained\n- ATK 100%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition)[0].kiSphereTypes, ["INT", "rainbow"]);
+  });
+
+  it("types counted rotation characters as name allies", () => {
+    const passive = parsePassive(
+      "counted-name-rotation:initial",
+      undefined,
+      'When there are 3 characters whose names include "Metal Cooler" attacking in the same turn\n- ATK 100%',
+    );
+
+    equal(passive.rules[0].conditionStatus, "partial");
+    const predicate = flattenPredicates(passive.rules[0].condition)[0];
+    equal(predicate.kind, "ally_name_present");
+    equal(predicate.scope, "rotation");
+    equal(predicate.count, 3);
+  });
+
+  it("types HP-at-start availability gated by received attack history", () => {
+    const passive = parsePassive(
+      "hp-after-hits:initial",
+      undefined,
+      "When HP is 30% or less at the start of the character's attacking turn after the character receives 4 or more attacks in battle\n- ATK 100%",
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => [predicate.kind, predicate.value]), [
+      ["hp_percent", 30],
+      ["attacks_received", 4],
+    ]);
+  });
+
+  it("types an if-qualified team condition together with its attack Ki requirement", () => {
+    const passive = parsePassive(
+      "ki-if-ally:initial",
+      undefined,
+      [
+        'When attacking with 12 or more Ki if there is another "Power of Wishes" Category ally on the team',
+        "- ATK 150%",
+      ].join("\n"),
+    );
+
+    equal(passive.rules[0].conditionStatus, "supported");
+    deepEqual(flattenPredicates(passive.rules[0].condition).map(predicate => predicate.kind), [
+      "ki_amount",
+      "ally_category_present",
+    ]);
   });
 
   it("types direct quoted team and rotation name clauses for official identity binding", () => {
@@ -2899,6 +3510,58 @@ describe("team-analysis Gate A7 Super Attack effect channel", function () {
       .some(issue => issue.code === "active-skill-condition-source"));
   });
 
+  it("injects an external first-party Active Skill contract without mutating Characters", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const character = characters.find(item => item.id === "1004001") as Character;
+    delete character.activeSkillDetails;
+    delete character.ezaActiveSkillDetails;
+    const activation = {
+      status: "supported" as const,
+      expression: {
+        op: "predicate" as const,
+        predicate: {
+          kind: "attacks_received" as const,
+          comparator: "gte" as const,
+          value: 7,
+          evidenceStatus: "supported" as const,
+          provenance: {
+            table: "skill_causalities" as const,
+            rowId: "803",
+            causalityType: 44,
+            values: [3, 7, 0] as [number, number, number],
+          },
+        },
+      },
+      provenance: {
+        activeSkillSet: { table: "active_skill_sets" as const, rowId: "94" },
+        causalities: [{ table: "skill_causalities" as const, rowId: "803" }],
+      },
+    };
+    const contract = new Map([[character.id, activation]]);
+    const dataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, {
+      ...options,
+      activeSkillActivationContract: contract,
+    });
+
+    deepEqual(
+      state(dataset.states, "1004001:1004001:initial").activeSkillActivationCondition,
+      activation,
+    );
+    deepEqual(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries, {
+      activeSkillActivationContract: contract,
+    }), []);
+    ok(validateTeamAnalysisDataset(dataset, characters, fixture.catalogEntries)
+      .some(issue => issue.code === "active-skill-condition-source"));
+    deepEqual(validateTeamAnalysisDatasetForDelivery(dataset, characters), []);
+    const injected = state(dataset.states, "1004001:1004001:initial")
+      .activeSkillActivationCondition?.expression;
+    if (!injected || injected.op !== "predicate") throw new Error("expected injected predicate");
+    injected.predicate.value = 0;
+    ok(validateTeamAnalysisDatasetForDelivery(dataset, characters)
+      .some(issue => issue.code === "active-skill-condition-source"));
+    equal(character.activeSkillDetails, undefined);
+  });
+
   it("carries the typed Super Attack level curve on every release state", () => {
     const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
     const character = characters.find(item => item.id === "1004001") as Character;
@@ -3614,7 +4277,7 @@ describe("team-analysis validation and artifacts", function () {
           eventType: "incoming_attack",
           actor: "enemy",
           attackKind: "unknown",
-          mode: "per_event",
+          mode: "accumulated_count",
           countScope: "battle",
           relativeTiming: "after_event",
           provenance: {
@@ -4180,7 +4843,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.11/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.14/);
   });
 });
 

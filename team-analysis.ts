@@ -1,6 +1,8 @@
 import { createHash } from "crypto";
 import {
     ActiveSkillActivationConditionDetails,
+    ActiveSkillActivationConditionExpression,
+    ActiveSkillActivationConditionPredicate,
     ActiveSkillDetails,
     Character,
     EffectStructuralEvidence,
@@ -23,7 +25,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.11";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.14";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 export const HP_REMAINING_SCALING_DOMAIN_RULE_VERSION = "hp-remaining-scaling-v1";
 const EFFECT_DECISION_DOMAIN_RULE_VERSIONS = new Set([
@@ -38,7 +40,7 @@ export type PassiveEffectClassification = "support";
 export type TeamAnalysisClass = "Super" | "Extreme";
 export type TeamAnalysisType = "AGL" | "TEQ" | "INT" | "STR" | "PHY";
 export type ConcreteKiSphereType = TeamAnalysisType | "rainbow";
-export type KiSphereType = ConcreteKiSphereType | "non_rainbow" | "any";
+export type KiSphereType = ConcreteKiSphereType | "non_rainbow" | "sweet_treat" | "any";
 export type KiContext = "final_attack_ki" | "collected_ki_spheres" | "board_state";
 export type PassiveEvaluationMoment =
     | "start_of_turn"
@@ -46,7 +48,10 @@ export type PassiveEvaluationMoment =
     | "end_of_turn"
     | "before_attack"
     | "when_attacking"
-    | "when_targeted_by_attack";
+    | "when_targeted_by_attack"
+    | "when_obtaining_ki_sphere"
+    | "on_next_attacking_turn"
+    | "starting_next_attacking_turn";
 export type EnemySelection =
     | "any_enemy"
     | "all_enemies"
@@ -143,7 +148,13 @@ export type CombatAttackKind = "normal_attack" | "super_attack" | "unknown";
 export type CombatAttackStyle = "ki_blast" | "unarmed" | "physical" | "unknown";
 export type CombatEventMode = "current_event" | "accumulated_count" | "repeated_threshold" | "per_event";
 export type CombatEventCountScope = "current_turn" | "battle" | "unknown";
-export type CombatEventRelativeTiming = "before_event" | "during_event" | "after_event" | "unknown";
+export type CombatEventRelativeTiming =
+    | "before_event"
+    | "during_event"
+    | "after_event"
+    | "on_next_attacking_turn"
+    | "starting_next_attacking_turn"
+    | "unknown";
 
 export interface CombatEventProvenance {
     eventType: CalculationPhaseResolutionSource,
@@ -180,6 +191,7 @@ export type PassivePredicateKind =
     | "team_type_count"
     | "all_rotation_allies_category"
     | "all_rotation_allies_class"
+    | "all_rotation_allies_obtained_ki_sphere"
     | "character_category"
     | "character_class"
     | "character_type"
@@ -195,6 +207,7 @@ export type PassivePredicateKind =
     | "hp_percent"
     | "battle_turn"
     | "turn_from_entry"
+    | "next_attacking_turn"
     /** @deprecated Never emitted; use battle_turn. */
     | "turn_number"
     /** @deprecated Never emitted; use turn_from_entry. */
@@ -214,6 +227,7 @@ export type PassivePredicateKind =
     | "guard_activated"
     | "finish_effect_activated"
     | "character_ko"
+    | "giant_form_ended"
     | "ki_amount"
     | "ki_spheres_obtained"
     | "ki_sphere_type_obtained"
@@ -282,6 +296,11 @@ export interface CharacterStateAnalysis {
     passive?: ParsedPassive,
     superAttacks?: ParsedSuperAttack[],
 }
+
+export type TeamAnalysisActiveSkillActivationContract = ReadonlyMap<
+    string,
+    ActiveSkillActivationConditionDetails
+>;
 
 export interface ParsedSuperAttack {
     id: string,
@@ -511,13 +530,15 @@ export interface KiSphereEffectScaling {
     excludedKiSphereTypes?: TeamAnalysisType[],
     spheresPerIncrement: number,
     kiContext: "collected_ki_spheres",
+    countStartsFrom?: number,
+    selection?: "all_obtained" | "largest_type_count",
 }
 
 export interface KiAmountEffectScaling {
     kind: "per_ki_amount",
     kiPerIncrement: number,
     kiContext: "final_attack_ki",
-    evaluationMoment: "when_attacking",
+    evaluationMoment: "when_attacking" | "when_targeted_by_attack",
 }
 
 export interface CombatEventEffectScaling {
@@ -853,6 +874,7 @@ export function buildTeamAnalysisDataset(
         rulesVersion?: string,
         parserVersion?: string,
         nameIdentityContract?: TeamAnalysisNameIdentityContract,
+        activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
     },
 ): TeamAnalysisDataset {
     const catalogById = new Map(catalogEntries.map(entry => [entry.id, entry]));
@@ -861,6 +883,7 @@ export function buildTeamAnalysisDataset(
             character,
             catalogById.get(character.id),
             options.nameIdentityContract,
+            options.activeSkillActivationContract,
         ))
         .sort(compareAnalysisStates);
     const ruleCounts = countRuleStatuses(states);
@@ -884,6 +907,7 @@ function buildCharacterStates(
     character: Character,
     catalogEntry: FyiCharacterCatalogEntry | undefined,
     nameIdentityContract?: TeamAnalysisNameIdentityContract,
+    activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
 ): CharacterStateAnalysis[] {
     const rootForm: AnalysisFormSource = character;
     const forms: AnalysisFormSource[] = [rootForm, ...(character.transformations ?? [])];
@@ -916,9 +940,10 @@ function buildCharacterStates(
             releaseSource.releaseState,
             releaseSources.length === 1,
         ).map(source => parseSuperAttack(stateKey, source));
-        const activeSkillActivationCondition = analysisActiveSkillActivationCondition(
+        const activeSkillActivationCondition = resolvedActiveSkillActivationCondition(
             form,
             releaseSource.releaseState,
+            activeSkillActivationContract,
         );
 
         return {
@@ -951,6 +976,20 @@ function analysisActiveSkillActivationCondition(
             ? form.ezaActiveSkillDetails
             : form.activeSkillDetails;
     return details?.find(detail => detail.activationCondition)?.activationCondition;
+}
+
+function resolvedActiveSkillActivationCondition(
+    form: AnalysisFormSource,
+    releaseState: ReleaseState,
+    activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+): ActiveSkillActivationConditionDetails | undefined {
+    const firstParty = activeSkillActivationContract?.get(form.id);
+    const payload = analysisActiveSkillActivationCondition(form, releaseState);
+    if (!firstParty) return payload;
+    if (!payload) return firstParty;
+    const rank = (status: ActiveSkillActivationConditionDetails["status"]): number =>
+        status === "supported" ? 2 : status === "partial" ? 1 : 0;
+    return rank(firstParty.status) >= rank(payload.status) ? firstParty : payload;
 }
 
 function resolveIdentity(
@@ -2048,7 +2087,9 @@ export function parsePassive(
         if (!currentCondition || currentConditionUsed) {
             return;
         }
-        rules.push(unknownStandaloneRule(stateKey, currentCondition));
+        rules.push(isStandalonePassiveAction(currentCondition.text)
+            ? standalonePassiveActionRule(stateKey, currentCondition)
+            : unknownStandaloneRule(stateKey, currentCondition));
         unparsedFragments.push(...currentCondition.source);
     };
 
@@ -2514,8 +2555,9 @@ function splitInlineTemporalCondition(sourceText: string): {
     const kiSuffix = /\s+((?:when|if) attacking with (?:(?:between\s+)?\d+\s+(?:and|to)\s+\d+|(?:(?:exactly|at least|at most)\s+)?\d+(?:\s+or\s+(?:more|less))?) Ki)$/i.exec(sourceText)
         ?? /\s+((?:when attacking with\s+|with\s+)(?:(?:between\s+)?\d+\s+(?:and|to)\s+\d+|(?:(?:exactly|at least|at most)\s+)?\d+(?:\s+or\s+(?:more|less))?)\s*(?:AGL|TEQ|INT|STR|PHY|Rainbow|non[- ]Rainbow|Type)?\s*Ki Spheres? obtained)$/i.exec(sourceText);
     const combatSuffix = /\s+((?:before|when|after)\s+(?:(?:performing|receiving|evading)(?:\s+(?:an?|the|\d+(?:\s+or\s+(?:more|less))?)\s+(?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:normal\s+|Super\s+)?attacks?)?|attacking|delivering\s+(?:a\s+|the\s+)?final blow)(?:\s+(?:in battle|within the turn))?)$/i.exec(sourceText);
+    const enemyHpSuffix = /\s+((?:when|if) (?:the )?enemy['â€™]s HP is \d+%(?:\s+or\s+(?:more|less|above|below))?)$/i.exec(sourceText);
     const againstNormalAttack = /\s+(against normal attacks?)$/i.exec(sourceText);
-    const suffix = temporalSuffix ?? kiSuffix ?? combatSuffix ?? againstNormalAttack;
+    const suffix = temporalSuffix ?? kiSuffix ?? combatSuffix ?? enemyHpSuffix ?? againstNormalAttack;
     if (!suffix || suffix.index === undefined) {
         return undefined;
     }
@@ -2643,11 +2685,23 @@ function buildLogicalPassiveBlocks(sourceMap: PassiveSourceMap): LogicalPassiveB
             return structured;
         }
         return structuredSectionsContainSwallowedLogicalHeader(sourceMap)
+            || structuredSectionsSplitEffectContinuation(sourceMap)
             ? buildHeuristicLogicalPassiveBlocks(sourceMap.sourceFragments)
             : failClosedLogicalPassiveBlocks(sourceMap.sourceFragments);
     }
 
     return buildHeuristicLogicalPassiveBlocks(sourceMap.sourceFragments);
+}
+
+function structuredSectionsSplitEffectContinuation(sourceMap: PassiveSourceMap): boolean {
+    const entries = sourceMap.sections.flatMap(section => [
+        ...(section.label ? [{ kind: "condition" as const, mappedText: section.label }] : []),
+        ...section.lines.map(mappedText => ({ kind: "effect" as const, mappedText })),
+    ]);
+    return entries.some((entry, index) => index > 0
+        && entry.kind === "condition"
+        && entries[index - 1].kind === "effect"
+        && effectTextRequiresContinuation(logicalText("effect", entries[index - 1].mappedText.source)));
 }
 
 function structuredSectionsContainSwallowedLogicalHeader(sourceMap: PassiveSourceMap): boolean {
@@ -2662,6 +2716,9 @@ function isStructuredBoundaryHeader(text: string): boolean {
 }
 
 function buildStructuredLogicalPassiveBlocks(sourceMap: PassiveSourceMap): LogicalPassiveBlock[] | undefined {
+    if (structuredSectionsSplitEffectContinuation(sourceMap)) {
+        return undefined;
+    }
     const entries = sourceMap.sections.flatMap(section => [
         ...(section.label ? [{ kind: "condition" as const, mappedText: section.label }] : []),
         ...section.lines.map(mappedText => ({ kind: "effect" as const, mappedText })),
@@ -2738,8 +2795,16 @@ function buildHeuristicLogicalPassiveBlocks(sourceFragments: SourceFragment[]): 
             continue;
         }
         if (current.kind === "effect"
-            && isLogicalHeaderStart(fragment.text)
+            && isStructuredBoundaryHeader(fragment.text)
+            && !effectTextRequiresContinuation(logicalText("effect", current.source))
             && !isEffectModifierContinuation(fragment.text)) {
+            flush();
+            current = { kind: "condition", source: [fragment] };
+            continue;
+        }
+        if (current.kind === "condition"
+            && isStructuredBoundaryHeader(fragment.text)
+            && conditionExpressionStatus(parseBooleanCondition(logicalText("condition", current.source))) === "supported") {
             flush();
             current = { kind: "condition", source: [fragment] };
             continue;
@@ -2760,6 +2825,10 @@ function isEffectModifierContinuation(text: string): boolean {
     return /^for\s+\d+\s+turn(?:s|\(s\))?$/i.test(text.trim());
 }
 
+function effectTextRequiresContinuation(text: string): boolean {
+    return /(?:\bwith|\bwhen|\bif|\band|\bor|\bto|\bfrom|\bwhen facing|\bafter (?:the character )?(?:performs?|receives?|evades?))\s*$/i.test(text.trim());
+}
+
 function logicalText(kind: "condition" | "effect", source: SourceFragment[]): string {
     return source.map((fragment, index) => {
         const text = fragment.text.replace(/^\*|\*$/g, "").trim();
@@ -2771,7 +2840,7 @@ function isLogicalHeaderStart(text: string): boolean {
     const trimmed = text.trim();
     return /^(?:Activates the Entrance Animation|Basic effect\(s\)|When\b|If\b|Per\b|As the\b|After\b|Before\b|At the\b|With\b|Without\b|While\b|The less\b|The more\b|Upon\b|Once\b|Every\b|\d+ or more\b)/i.test(trimmed)
         || /^(?:For|Starting)\b/.test(trimmed)
-        || /^(?:On the \d+(?:st|nd|rd|th)|Up to the \d+(?:st|nd|rd|th)|From the \d+(?:st|nd|rd|th) (?:through|to) the \d+(?:st|nd|rd|th))\b/.test(trimmed);
+        || /^(?:On the (?:\d+(?:st|nd|rd|th)|character['â€™]s next attacking turn)|Up to the \d+(?:st|nd|rd|th)|From the \d+(?:st|nd|rd|th) (?:through|to) the \d+(?:st|nd|rd|th))\b/.test(trimmed);
 }
 
 function isAlwaysHeader(text: string): boolean {
@@ -2950,7 +3019,7 @@ function resolveThatEnemyReferencesInConjunction(
 ): ConditionExpression {
     if (condition.op === "predicate") {
         if (!provesSingleEnemy
-            || condition.predicate.enemyReference !== "that_enemy"
+            || condition.predicate.scope !== "enemy"
             || condition.predicate.enemySelection !== "unknown") {
             return condition;
         }
@@ -2985,6 +3054,10 @@ function parseBooleanCondition(sourceText: string): ConditionExpression {
     if (qualifiedEnemyStatus) {
         return qualifiedEnemyStatus;
     }
+    const nextTurnOrTeam = parseNextTurnOrTeamAlternative(text, original);
+    if (nextTurnOrTeam) {
+        return nextTurnOrTeam;
+    }
     const exact = parseExactConditionClause(text, original);
     if (exact) {
         return exact;
@@ -2993,9 +3066,134 @@ function parseBooleanCondition(sourceText: string): ConditionExpression {
     if (sharedScopeAlly) {
         return sharedScopeAlly;
     }
+    const sharedCategoryAlternatives = parseSharedScopeCategoryAllyAlternatives(text, original);
+    if (sharedCategoryAlternatives) {
+        return sharedCategoryAlternatives;
+    }
+    const mixedNameOrCategoryAlly = parseMixedNameOrCategoryAllyCondition(text, original);
+    if (mixedNameOrCategoryAlly) {
+        return mixedNameOrCategoryAlly;
+    }
+    const hpWithAlly = parseHpWithAllyCondition(text, original);
+    if (hpWithAlly) {
+        return hpWithAlly;
+    }
+    const commaAlternatives = parseCommaSeparatedConditionAlternatives(text);
+    if (commaAlternatives) {
+        return commaAlternatives;
+    }
+    const explicitAlternative = /^(.*?),\s+or when\s+(.+)$/i.exec(text);
+    if (explicitAlternative) {
+        const left = parseBooleanCondition(explicitAlternative[1]);
+        const right = parseBooleanCondition(explicitAlternative[2]);
+        if (left.op !== "unknown" && right.op !== "unknown") {
+            return { op: "any", children: [left, right] };
+        }
+    }
+    const scopedCategoryTemporal = parseScopedCategoryAlternativesWithTemporal(text, original);
+    if (scopedCategoryTemporal) {
+        return scopedCategoryTemporal;
+    }
+    const singleEnemyHpAlternative = parseSingleEnemyHpAlternative(text, original);
+    if (singleEnemyHpAlternative) {
+        return singleEnemyHpAlternative;
+    }
+    const nextTurnSuffix = /^(HP is .+?)\s+(starting from (?:the )?(?:character['â€™]s )?next attacking turn)$/i.exec(text);
+    if (nextTurnSuffix) {
+        const hp = parseExactHpCondition(nextTurnSuffix[1], original);
+        const nextTurn = parseNextAttackingTurnCondition(nextTurnSuffix[2], original);
+        if (hp && nextTurn) {
+            return { op: "all", children: [hp, nextTurn] };
+        }
+    }
+    const allRotationSpheresSuffix = /^(.*?)\s+when all allies attacking in the same turn have obtained a Ki Sphere$/i.exec(text);
+    if (allRotationSpheresSuffix?.[1].trim()) {
+        const prefix = parseBooleanCondition(allRotationSpheresSuffix[1]);
+        const allRotation = parseAllRotationKiSphereCondition(
+            "When all allies attacking in the same turn have obtained a Ki Sphere",
+            original,
+        );
+        if (prefix.op !== "unknown" && allRotation) {
+            return { op: "all", children: [prefix, allRotation] };
+        }
+    }
     const dualScopeName = parseNameEnemyOrTeamAlternative(text, original);
     if (dualScopeName) {
         return dualScopeName;
+    }
+    const qualifiedSuffix = /^(.*?)\s+(?:(?:and\s+)?if|when)\s+((?:there (?:is|are)|your team has|an? .+? ally|another .+? ally).+)$/i.exec(text);
+    if (qualifiedSuffix) {
+        const prefix = parseBooleanCondition(qualifiedSuffix[1]);
+        const suffix = parseBooleanCondition(qualifiedSuffix[2]);
+        if (prefix.op !== "unknown" && suffix.op !== "unknown") {
+            return { op: "all", children: [prefix, suffix] };
+        }
+    }
+    const trailingRuntimeCondition = /^(.*?)\s+when\s+(HP is \d+% or (?:more|less|above|below))$/i.exec(text);
+    if (trailingRuntimeCondition) {
+        const prefix = parseBooleanCondition(trailingRuntimeCondition[1]);
+        const suffix = parseBooleanCondition(trailingRuntimeCondition[2]);
+        if (prefix.op !== "unknown" && suffix.op !== "unknown") {
+            return { op: "all", children: [prefix, suffix] };
+        }
+    }
+
+    const hpAfterReceived = /^HP is (\d+)% or (more|less) at the start of the character's attacking turn after the character receives (\d+) or more attacks in battle$/i.exec(text);
+    if (hpAfterReceived) {
+        const hp = Number(hpAfterReceived[1]);
+        const attacks = Number(hpAfterReceived[3]);
+        if (isHpPercent(hp) && Number.isInteger(attacks) && attacks > 0) {
+            const identity = combatEventIdentity("attack", "landed");
+            return {
+                op: "all",
+                children: [
+                    predicateExpression({
+                        kind: "hp_percent",
+                        scope: "team",
+                        comparator: /^more$/i.test(hpAfterReceived[2]) ? "gte" : "lte",
+                        value: hp,
+                        evaluationMoment: "start_of_turn",
+                        sourceText: original,
+                    }),
+                    combatPredicate(
+                        identity,
+                        combatEventDescriptor(identity, "accumulated_count", "after_event", {
+                            countScope: "battle",
+                            countScopeSource: "explicit_text",
+                        }),
+                        original,
+                        "gte",
+                        attacks,
+                    ),
+                ],
+            };
+        }
+    }
+    const sharedCombatScope = /^After (performing|receiving|evading) (\d+)(?: or more)? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack(?:s|\(s\)))\s+(and|or)\s+(performing|receiving|evading) (\d+)(?: or more)? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack(?:s|\(s\))) in battle$/i.exec(text);
+    if (sharedCombatScope) {
+        const build = (directionText: string, valueText: string, attackText: string): ConditionExpression => {
+            const direction: CombatEventDirection = /^performing$/i.test(directionText)
+                ? "performed"
+                : /^receiving$/i.test(directionText) ? "landed" : "evaded";
+            const identity = combatEventIdentity(attackText, direction);
+            return combatPredicate(
+                identity,
+                combatEventDescriptor(identity, "accumulated_count", "after_event", {
+                    countScope: "battle",
+                    countScopeSource: "explicit_text",
+                }),
+                original,
+                "gte",
+                Number(valueText),
+            );
+        };
+        return {
+            op: /^and$/i.test(sharedCombatScope[4]) ? "all" : "any",
+            children: [
+                build(sharedCombatScope[1], sharedCombatScope[2], sharedCombatScope[3]),
+                build(sharedCombatScope[5], sharedCombatScope[6], sharedCombatScope[7]),
+            ],
+        };
     }
 
     for (const connector of ["or", "and"] as const) {
@@ -3052,19 +3250,198 @@ function parseSharedScopeCategoryAllyCondition(
     };
 }
 
+function parseSharedScopeCategoryAllyAlternatives(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const match = /^there are\s+(.+?)\s+(on the team|attacking in the same turn)$/i.exec(text);
+    if (!match || !/\bor\b/i.test(match[1])) {
+        return undefined;
+    }
+    const items = [...match[1].matchAll(/(?:another\s+)?(?:\d+(?:\s+or\s+more)?\s+)?(?:"[^"]+"(?:\s+or\s+"[^"]+")*)\s+Category all(?:y|ies)/gi)]
+        .map(item => item[0].trim());
+    if (items.length < 2) {
+        return undefined;
+    }
+    const residue = items.reduce((remaining, item) => remaining.replace(item, "#"), match[1]);
+    if (!/^#(?:\s*(?:,|and|or)\s*#)+$/i.test(residue.trim())) {
+        return undefined;
+    }
+    const children = items.map(item => parseAllyConditionClause(`${item} ${match[2]}`, sourceText));
+    if (children.some(child => child === undefined)) {
+        return undefined;
+    }
+    return { op: "any", children: children as ConditionExpression[] };
+}
+
+function parseMixedNameOrCategoryAllyCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const match = /^("[^"]+")\s+or\s+(another\s+.+? Category ally)\s+(?:is\s+)?(on the team|attacking in the same turn)$/i.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    const names = parseQuotedValues(match[1]);
+    const scope = /^on the team$/i.test(match[3]) ? "team" as const : "rotation" as const;
+    const category = parseAllyConditionClause(`${match[2]} ${match[3]}`, sourceText);
+    if (names?.values.length !== 1 || !category) {
+        return undefined;
+    }
+    const name = predicateExpression({
+        kind: "ally_name_present",
+        scope,
+        selfInclusion: "included",
+        names: names.values,
+        nameMatch: "exact",
+        sourceText,
+    });
+    return { op: "any", children: [name, category] };
+}
+
+function parseHpWithAllyCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const match = /^(HP is .+?)\s+with\s+(.+? all(?:y|ies)(?: .+?)? (?:on the team|attacking in the same turn))$/i.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    const hp = parseExactHpCondition(match[1], sourceText);
+    const ally = parseAllyConditionClause(match[2], sourceText);
+    return hp && ally ? { op: "all", children: [hp, ally] } : undefined;
+}
+
+function parseCommaSeparatedConditionAlternatives(text: string): ConditionExpression | undefined {
+    if (!/,\s*or\s+when\b/i.test(text) || !/,\s*when\b/i.test(text)) {
+        return undefined;
+    }
+    const parts = text.split(/,\s*(?:or\s+)?when\s+/i).map(part => part.trim()).filter(Boolean);
+    if (parts.length < 3) {
+        return undefined;
+    }
+    const children = parts.map(parseBooleanCondition);
+    return children.some(child => child.op === "unknown")
+        ? undefined
+        : { op: "any", children };
+}
+
+function parseNextTurnOrTeamAlternative(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const normalizedText = text.replace(/’/g, "'");
+    if (!normalizedText.toLowerCase().startsWith("on the character's next attacking turn after ")) {
+        return undefined;
+    }
+    const separator = /,\s+or when\s+/i.exec(normalizedText);
+    if (!separator || separator.index === undefined) {
+        return undefined;
+    }
+    const nextTurnText = normalizedText.slice(0, separator.index).trim();
+    const teamAndTemporal = normalizedText.slice(separator.index + separator[0].length).trim();
+    const temporalMatch = /(starting from the \d+(?:st|nd|rd|th) turn from (?:the start of battle|the character's entry turn))$/i.exec(teamAndTemporal);
+    if (!temporalMatch || temporalMatch.index === undefined) {
+        return undefined;
+    }
+    const allyText = teamAndTemporal.slice(0, temporalMatch.index).trim();
+    const nextTurn = parseNextAttackingTurnCondition(nextTurnText, sourceText);
+    const ally = parseAllyConditionClause(allyText, sourceText);
+    const temporal = parseExactTemporalCondition(temporalMatch[1], sourceText);
+    return nextTurn && ally && temporal
+        ? { op: "any", children: [nextTurn, { op: "all", children: [ally, temporal] }] }
+        : undefined;
+}
+
+function parseScopedCategoryAlternativesWithTemporal(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const match = /^(.*?)(there are\s+.+? Category allies(?:,\s*.+? Category allies)*\s+or\s+.+? Category allies attacking in the same turn)\s+(starting from the \d+(?:st|nd|rd|th) turn from (?:the start of battle|the character['â€™]s entry turn))$/i.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    const categories = parseSharedScopeCategoryAllyAlternatives(match[2], sourceText);
+    const temporal = parseExactTemporalCondition(match[3], sourceText);
+    if (!categories || !temporal) {
+        return undefined;
+    }
+    const children: ConditionExpression[] = [];
+    const prefix = match[1].replace(/\s+and\s+$/i, "").trim();
+    if (prefix) {
+        const prefixCondition = parseBooleanCondition(prefix);
+        if (prefixCondition.op === "unknown") {
+            return undefined;
+        }
+        children.push(prefixCondition);
+    }
+    children.push(categories, temporal);
+    return { op: "all", children };
+}
+
+function parseSingleEnemyHpAlternative(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const match = /^facing only 1 enemy and that enemy['â€™]s HP is (\d+)% or (more|less),?\s+or when (there is .+ Category enemy)$/i.exec(text);
+    if (!match) {
+        return undefined;
+    }
+    const enemyCount = parseEnemyCountCondition("facing only 1 enemy", sourceText);
+    const enemyHp = parseEnemyHpCondition(`that enemy's HP is ${match[1]}% or ${match[2]}`, sourceText);
+    const alternative = parseExactEnemyCondition(match[3], sourceText);
+    return enemyCount && enemyHp && alternative
+        ? { op: "any", children: [{ op: "all", children: [enemyCount, enemyHp] }, alternative] }
+        : undefined;
+}
+
 function parseNameEnemyOrTeamAlternative(
     text: string,
     sourceText: string,
 ): ConditionExpression | undefined {
-    const includes = /^there is an enemy or an ally whose name includes\s+(.+)$/i.exec(text);
+    const includes = /^there is an (enemy or an ally|ally or an enemy) whose name includes\s+(.+)$/i.exec(text);
     if (includes) {
-        const enemy = buildEnemyNameExpression(includes[1], "includes", "any_enemy", sourceText);
+        const enemy = buildEnemyNameExpression(includes[2], "includes", "any_enemy", sourceText);
         const ally = parseAllyConditionClause(
-            `an ally whose name includes ${includes[1]} on the team`,
+            `an ally whose name includes ${includes[2]} on the team`,
             sourceText,
         );
         if (enemy && ally) {
             return { op: "any", children: [enemy, ally] };
+        }
+    }
+    const rotationAllyOrEnemy = /^the name of an ally who is attacking in the same turn or an enemy includes\s+(.+)$/i.exec(text);
+    if (rotationAllyOrEnemy) {
+        const selector = parseNameSelectorValues(rotationAllyOrEnemy[1]);
+        const enemy = buildEnemyNameExpression(
+            rotationAllyOrEnemy[1],
+            "includes",
+            "any_enemy",
+            sourceText,
+        );
+        const ally = selector
+            ? combineQuotedPredicateExpressions(
+                selector.included,
+                value => predicateExpression({
+                    ...(allyPredicate(
+                        "name",
+                        value,
+                        "rotation",
+                        "included",
+                        undefined,
+                        undefined,
+                        sourceText,
+                    ) as Extract<ConditionExpression, { op: "predicate" }>).predicate,
+                    nameMatch: "includes",
+                    ...(selector.excluded ? {
+                        excludedNames: selector.excluded.values,
+                        excludedNameMatch: "includes" as const,
+                    } : {}),
+                }),
+            )
+            : undefined;
+        if (enemy && ally) {
+            return { op: "any", children: [ally, enemy] };
         }
     }
     const match = /^(.*?)(?:(?:,\s*)?or when\s+)?("[^"]+") is an enemy or on the team$/i.exec(text);
@@ -3105,6 +3482,32 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
         return entrance;
     }
 
+    const perTurnConditional = /^At the start of each turn when (.+)$/i.exec(text);
+    if (perTurnConditional) {
+        const condition = parseBooleanCondition(perTurnConditional[1]);
+        if (condition.op !== "unknown") {
+            return rewriteConditionSourceText(condition, sourceText);
+        }
+    }
+
+    const nextAttackingTurn = parseNextAttackingTurnCondition(text, sourceText);
+    if (nextAttackingTurn) {
+        return nextAttackingTurn;
+    }
+
+    const whileObtainingKiSphere = /^(.*?)\s+when the character obtains a Ki Sphere$/i.exec(text);
+    if (whileObtainingKiSphere) {
+        const base = parseBooleanCondition(whileObtainingKiSphere[1]);
+        if (base.op !== "unknown") {
+            return mapConditionPredicates(
+                rewriteConditionSourceText(base, sourceText),
+                predicate => ENEMY_PREDICATE_KINDS.has(predicate.kind)
+                    ? { ...predicate, evaluationMoment: "when_obtaining_ki_sphere" }
+                    : predicate,
+            );
+        }
+    }
+
     if (/^activating the Active Skill$/i.test(text)) {
         return predicateExpression({
             kind: "active_skill_used",
@@ -3128,12 +3531,16 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
         return receivingAttackWithKiSpheres;
     }
 
-    if (/^receiving an? attack from an enemy who is hit by the character's Super Attack$/i.test(text)) {
+    const incomingFromMarkedEnemy = /^receiving an? (?:(Ki Blast|Unarmed|Physical) )?(?:Super Attack|attack) from an enemy who is hit by the character's (?:Super Attack|Ultra Super Attack|Unit Super Attack|Ultra Super Attack or Unit Super Attack)$/i.exec(text);
+    if (incomingFromMarkedEnemy) {
+        const incomingText = incomingFromMarkedEnemy[1]
+            ? `${incomingFromMarkedEnemy[1]} Super Attack`
+            : "receiving an attack";
         return predicateExpression({
             kind: "incoming_attack_from_enemy_hit_by_self_super_attack",
             scope: "self",
             combatEvent: combatEventDescriptor(
-                combatEventIdentity("receiving an attack", "targeted"),
+                combatEventIdentity(incomingText, "targeted"),
                 "current_event",
                 "during_event",
                 {
@@ -3178,6 +3585,11 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
     const slot = parseExactSlotCondition(text, sourceText);
     if (slot) {
         return slot;
+    }
+
+    const allRotationKiSphere = parseAllRotationKiSphereCondition(text, sourceText);
+    if (allRotationKiSphere) {
+        return allRotationKiSphere;
     }
 
     const allRotationCategory = /^all allies attacking in the same turn are (.+?) Category characters?$/i.exec(text);
@@ -3380,6 +3792,139 @@ function parseExactConditionClause(text: string, sourceText: string): ConditionE
     return parseAllyConditionClause(text, sourceText);
 }
 
+function parseAllRotationKiSphereCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    if (!/^(?:When )?all allies attacking in the same turn have obtained a Ki Sphere$/i.test(text)) {
+        return undefined;
+    }
+    return predicateExpression({
+        kind: "all_rotation_allies_obtained_ki_sphere",
+        scope: "rotation",
+        selfInclusion: "included",
+        evaluationMoment: "when_obtaining_ki_sphere",
+        sourceText,
+    });
+}
+
+function parseNextAttackingTurnCondition(
+    text: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const normalizedText = text.replace(/’/g, "'");
+    const timed = /^(On|At the start of|Starting from) (?:the )?(?:character's )?next attacking turn(?: after (.+))?$/i.exec(normalizedText);
+    if (!timed) {
+        return undefined;
+    }
+    const relativeTiming: Extract<CombatEventRelativeTiming, "on_next_attacking_turn" | "starting_next_attacking_turn"> =
+        /^Starting from$/i.test(timed[1]) ? "starting_next_attacking_turn" : "on_next_attacking_turn";
+    if (!timed[2]) {
+        return predicateExpression({
+            kind: "next_attacking_turn",
+            scope: "self",
+            evaluationMoment: relativeTiming,
+            sourceText,
+        });
+    }
+    const eventCondition = parseNextAttackingTurnEvent(timed[2], sourceText);
+    if (!eventCondition) {
+        return undefined;
+    }
+    return mapConditionPredicates(eventCondition, predicate => predicate.combatEvent
+        ? {
+            ...predicate,
+            sourceText,
+            combatEvent: {
+                ...predicate.combatEvent,
+                relativeTiming,
+                provenance: {
+                    ...predicate.combatEvent.provenance,
+                    relativeTiming: "explicit_text",
+                },
+            },
+        }
+        : predicate);
+}
+
+function parseNextAttackingTurnEvent(
+    sourceBody: string,
+    sourceText: string,
+): ConditionExpression | undefined {
+    const combined = /^(?:the character )?(?:performs?|performing) (\d+)(?: or more)? ((?:Super\s+)?attack(?:s|\(s\))) and (?:the character )?(?:receives?|receiving) (\d+)(?: or more)? ((?:Super\s+)?attack(?:s|\(s\))) in battle$/i.exec(sourceBody);
+    if (combined) {
+        const performed = combatEventIdentity(combined[2], "performed");
+        const received = combatEventIdentity(combined[4], "landed");
+        return {
+            op: "all",
+            children: [
+                combatPredicate(
+                    performed,
+                    combatEventDescriptor(performed, "accumulated_count", "after_event", {
+                        countScope: "battle",
+                        countScopeSource: "explicit_text",
+                    }),
+                    sourceText,
+                    "gte",
+                    Number(combined[1]),
+                ),
+                combatPredicate(
+                    received,
+                    combatEventDescriptor(received, "accumulated_count", "after_event", {
+                        countScope: "battle",
+                        countScopeSource: "explicit_text",
+                    }),
+                    sourceText,
+                    "gte",
+                    Number(combined[3]),
+                ),
+            ],
+        };
+    }
+    const shared = /^the character performs (\d+)(?: or more)? attack(?:s|\(s\)) or receives (\d+)(?: or more)? attack(?:s|\(s\)) in battle$/i.exec(sourceBody);
+    if (shared) {
+        const performed = combatEventIdentity("attack", "performed");
+        const received = combatEventIdentity("attack", "landed");
+        return {
+            op: "any",
+            children: [
+                combatPredicate(
+                    performed,
+                    combatEventDescriptor(performed, "accumulated_count", "after_event", {
+                        countScope: "battle",
+                        countScopeSource: "explicit_text",
+                    }),
+                    sourceText,
+                    "gte",
+                    Number(shared[1]),
+                ),
+                combatPredicate(
+                    received,
+                    combatEventDescriptor(received, "accumulated_count", "after_event", {
+                        countScope: "battle",
+                        countScopeSource: "explicit_text",
+                    }),
+                    sourceText,
+                    "gte",
+                    Number(shared[2]),
+                ),
+            ],
+        };
+    }
+
+    let normalized = sourceBody
+        .replace(/^the character performs\s+/i, "performing ")
+        .replace(/^the character receives\s+/i, "receiving ")
+        .replace(/^the character evades\s+/i, "evading ");
+    if (/^(?:performing|receiving|evading) \d+(?: or more)? .+attack(?:s|\(s\))$/i.test(normalized)) {
+        normalized += " in battle";
+    }
+    const condition = parseBooleanCondition(normalized);
+    return condition.op !== "unknown" && collectCombatPredicates(condition).length > 0
+        ? rewriteConditionSourceText(condition, sourceText)
+        : undefined;
+}
+
 function parseExactNamedAllyCondition(
     text: string,
     sourceText: string,
@@ -3442,6 +3987,14 @@ function parseExactRuntimeFlagCondition(
             sourceText,
         });
     }
+    if (/^After an ally's Revival Skill is activated$/i.test(text)) {
+        return predicateExpression({
+            kind: "revive_triggered",
+            scope: "team",
+            selfInclusion: "excluded",
+            sourceText,
+        });
+    }
     if (/^At the end of the turn in which the character's Revival Skill is activated$/i.test(text)) {
         return predicateExpression({
             kind: "revive_triggered",
@@ -3474,6 +4027,13 @@ function parseExactRuntimeFlagCondition(
     if (/^(?:the )?character is KO'd$/i.test(text)) {
         return predicateExpression({
             kind: "character_ko",
+            scope: "self",
+            sourceText,
+        });
+    }
+    if (/^(?:When )?Giant Ape Transformation ends$/i.test(text)) {
+        return predicateExpression({
+            kind: "giant_form_ended",
             scope: "self",
             sourceText,
         });
@@ -3718,7 +4278,59 @@ function parseCombatCountScope(sourceText: string): {
 }
 
 function parseExactCombatEventCondition(text: string, sourceText: string): ConditionExpression | undefined {
-    const repeatedExact = /^Every time the character (performs|receives|evades) (\d+) attack\(s\) in battle$/i.exec(text);
+    if (/^At the end of the turn in which a final blow is delivered$/i.test(text)) {
+        const identity = combatEventIdentity("final blow", "final_blow");
+        return combatPredicate(
+            identity,
+            combatEventDescriptor(identity, "current_event", "after_event"),
+            sourceText,
+        );
+    }
+    if (/^Before evading an? attack within the turn$/i.test(text)) {
+        const identity = combatEventIdentity("attack", "targeted");
+        return combatPredicate(
+            identity,
+            combatEventDescriptor(identity, "current_event", "before_event"),
+            sourceText,
+        );
+    }
+    const firstEvent = /^(?:When )?(attacking|receiving an? attack) for the 1st time(?: (within the turn|in battle))?$/i.exec(text);
+    if (firstEvent) {
+        const direction: CombatEventDirection = /^attacking$/i.test(firstEvent[1]) ? "performed" : "landed";
+        const identity = combatEventIdentity("attack", direction);
+        const countScope: CombatEventCountScope = /^within the turn$/i.test(firstEvent[2] ?? "")
+            ? "current_turn"
+            : "battle";
+        return combatPredicate(
+            identity,
+            combatEventDescriptor(identity, "accumulated_count", "during_event", {
+                countScope,
+                countScopeSource: firstEvent[2] ? "explicit_text" : "documented_domain_rule",
+            }),
+            sourceText,
+            "eq",
+            1,
+        );
+    }
+
+    const ordinalPerformed = /^(?:When )?the character performs the (\d+)(?:st|nd|rd|th) attack in battle$/i.exec(text);
+    if (ordinalPerformed) {
+        const value = Number(ordinalPerformed[1]);
+        if (!Number.isInteger(value) || value < 1) return undefined;
+        const identity = combatEventIdentity("attack", "performed");
+        return combatPredicate(
+            identity,
+            combatEventDescriptor(identity, "accumulated_count", "during_event", {
+                countScope: "battle",
+                countScopeSource: "explicit_text",
+            }),
+            sourceText,
+            "eq",
+            value,
+        );
+    }
+
+    const repeatedExact = /^Every time the character (performs|receives|evades) (\d+)(?: or more)? attack(?:s|\(s\)) in battle$/i.exec(text);
     if (repeatedExact) {
         const value = Number(repeatedExact[2]);
         if (!Number.isInteger(value) || value < 1) {
@@ -3733,6 +4345,41 @@ function parseExactCombatEventCondition(text: string, sourceText: string): Condi
         return combatPredicate(
             identity,
             combatEventDescriptor(identity, "repeated_threshold", "after_event", {
+                countScope: "battle",
+                countScopeSource: "explicit_text",
+            }),
+            sourceText,
+            "gte",
+            value,
+        );
+    }
+    const completedCount = /^After (?:the character )?(?:performs?|performing) (\d+)(?: or more)? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?Attack(?:s|\(s\))) in battle$/i.exec(text);
+    if (completedCount) {
+        const value = Number(completedCount[1]);
+        if (!Number.isInteger(value) || value < 1) return undefined;
+        const identity = combatEventIdentity(completedCount[2], "performed");
+        return combatPredicate(
+            identity,
+            combatEventDescriptor(identity, "accumulated_count", "after_event", {
+                countScope: "battle",
+                countScopeSource: "explicit_text",
+            }),
+            sourceText,
+            "gte",
+            value,
+        );
+    }
+    const bareCount = /^(performing|receiving|evading) (\d+)(?: or more)? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack(?:s|\(s\))) in battle$/i.exec(text);
+    if (bareCount) {
+        const value = Number(bareCount[2]);
+        if (!Number.isInteger(value) || value < 1) return undefined;
+        const direction: CombatEventDirection = /^performing$/i.test(bareCount[1])
+            ? "performed"
+            : /^receiving$/i.test(bareCount[1]) ? "landed" : "evaded";
+        const identity = combatEventIdentity(bareCount[3], direction);
+        return combatPredicate(
+            identity,
+            combatEventDescriptor(identity, "accumulated_count", "after_event", {
                 countScope: "battle",
                 countScopeSource: "explicit_text",
             }),
@@ -3761,6 +4408,15 @@ function parseExactCombatEventCondition(text: string, sourceText: string): Condi
         );
     }
 
+    if (/^Every time the character is about to attack$/i.test(text)) {
+        const identity = combatEventIdentity("attack", "performed");
+        return combatPredicate(
+            identity,
+            combatEventDescriptor(identity, "current_event", "before_event"),
+            sourceText,
+        );
+    }
+
     if (/^Every time\b/i.test(text)) {
         return undefined;
     }
@@ -3778,7 +4434,7 @@ function parseExactCombatEventCondition(text: string, sourceText: string): Condi
         };
     }
 
-    const interval = /^(?:after\s+)?(performing|receiving|evading)\s+between\s+(\d+)\s+and\s+(\d+)\s+((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attacks?)\s*((?:(?:in|throughout) (?:the )?battle|(?:within|in) (?:the )?(?:current )?turn)?)$/i.exec(text);
+    const interval = /^(?:after\s+)?(performing|receiving|evading)\s+between\s+(\d+)\s+and\s+(\d+)\s+((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack(?:s|\(s\)))\s*((?:(?:in|throughout) (?:the )?battle|(?:within|in) (?:the )?(?:current )?turn)?)$/i.exec(text);
     if (interval) {
         const lower = Number(interval[2]);
         const upper = Number(interval[3]);
@@ -3801,7 +4457,7 @@ function parseExactCombatEventCondition(text: string, sourceText: string): Condi
         };
     }
 
-    const counted = /^(after|before)\s+(performing|receiving|evading)\s+(?:(exactly|at least|at most)\s+)?(\d+)(?:\s+or\s+(more|less))?\s+((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attacks?)\s*((?:(?:in|throughout) (?:the )?battle|(?:within|in) (?:the )?(?:current )?turn)?)$/i.exec(text);
+    const counted = /^(after|before)\s+(performing|receiving|evading)\s+(?:(exactly|at least|at most)\s+)?(\d+)(?:\s+or\s+(more|less))?\s+((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack(?:s|\(s\)))\s*((?:(?:in|throughout) (?:the )?battle|(?:within|in) (?:the )?(?:current )?turn)?)$/i.exec(text);
     if (counted) {
         const value = Number(counted[4]);
         if (!Number.isInteger(value) || value < 0) {
@@ -3899,7 +4555,7 @@ function parseExactKiCondition(text: string, sourceText: string): ConditionExpre
         };
     }
 
-    const amount = /^(attacking|before attacking) with (?:(exactly|at least|at most)\s+)?(\d+)(?:\s+or\s+(more|less))? Ki$/i.exec(text);
+    const amount = /^(attacking with|before attacking with|after attacking with|with) (?:(exactly|at least|at most)\s+)?(\d+)(?:\s+or\s+(more|less))? Ki$/i.exec(text);
     if (amount) {
         const value = Number(amount[3]);
         if (!isKiAmount(value)) {
@@ -3913,7 +4569,7 @@ function parseExactKiCondition(text: string, sourceText: string): ConditionExpre
         return kiAmountPredicate(
             comparator,
             value,
-            /^before attacking$/i.test(amount[1]) ? "before_attack" : "when_attacking",
+            /^before attacking with$/i.test(amount[1]) ? "before_attack" : "when_attacking",
             sourceText,
         );
     }
@@ -3948,6 +4604,25 @@ function parseExactKiCondition(text: string, sourceText: string): ConditionExpre
                 ? "lte"
                 : "eq";
         return kiSphereCountPredicate(comparator, value, kiSphereTypes, sourceText);
+    }
+
+    const excludedTypePresence = /^With\s+an?\s*Type Ki Sphere obtained \((AGL|TEQ|INT|STR|PHY) excluded\)$/i.exec(text);
+    if (excludedTypePresence) {
+        const excluded = normalizeType(excludedTypePresence[1]);
+        return {
+            op: "any",
+            children: TEAM_ANALYSIS_TYPES
+                .filter(type => type !== excluded)
+                .map(type => predicateExpression({
+                    kind: "ki_sphere_type_obtained",
+                    scope: "self",
+                    comparator: "gte",
+                    value: 1,
+                    kiSphereTypes: [type],
+                    kiContext: "collected_ki_spheres",
+                    sourceText,
+                })),
+        };
     }
 
     const spherePresence = /^With\s+an?\s*(.*?)\s*Ki Sphere obtained$/i.exec(text);
@@ -4487,6 +5162,21 @@ function buildEnemyNameExpression(
     enemySelection: EnemySelection,
     sourceText: string,
 ): ConditionExpression | undefined {
+    const qualified = parseIndividuallyQualifiedNameValues(sourceValues);
+    if (qualified) {
+        return combineIndividuallyQualifiedNames(qualified, value => predicateExpression({
+            kind: "enemy_name",
+            scope: "enemy",
+            enemySelection,
+            names: [value.name],
+            nameMatch,
+            ...(value.excludedNames ? {
+                excludedNames: value.excludedNames,
+                excludedNameMatch: nameMatch,
+            } : {}),
+            sourceText,
+        }));
+    }
     const exclusion = /^(.*?)\s*,?\s+excluding\s+(.+)$/i.exec(sourceValues);
     const parentheticalExclusion = /^(.*?)\s*\(([^()]*)\s+excluded\)$/i.exec(sourceValues);
     const includedText = exclusion?.[1] ?? parentheticalExclusion?.[1] ?? sourceValues;
@@ -4521,7 +5211,7 @@ function buildEnemyNameExpression(
 
 function parseExcludedNameExamples(sourceText: string): { values: string[] } | undefined {
     const values = sourceText
-        .split(/\s*,\s*|\s+or\s+/i)
+        .split(/\s*,\s*|\s+(?:and|or)\s+/i)
         .map(value => value.replace(/^['"]|['"]$/g, "").trim())
         .filter(value => value.length > 0 && !/^etc\.?$/i.test(value));
     return values.length > 0 && values.every(value => !/[()]/.test(value)) ? { values } : undefined;
@@ -4865,6 +5555,8 @@ function parseTemporalSuffixCondition(text: string): ConditionExpression | undef
 
 function parseAllyConditionClause(sourceBody: string, sourceText: string): ConditionExpression | undefined {
     let body = sourceBody.trim();
+    body = body.replace(/^characters? whose names? include\s+/i, "allies whose name includes ");
+    body = body.replace(/^allies whose names include\s+/i, "allies whose name includes ");
     let selfInclusion: SelfInclusion = "included";
     if (/\(self excluded\)/i.test(body)) {
         selfInclusion = "excluded";
@@ -4883,6 +5575,12 @@ function parseAllyConditionClause(sourceBody: string, sourceText: string): Condi
     } else {
         body = body.replace(/^there (?:is|are)\s+/i, "");
     }
+    const otherMatch = /^other\s+/i.exec(body);
+    if (otherMatch) {
+        selfInclusion = "excluded";
+        body = body.slice(otherMatch[0].length);
+    }
+    body = body.replace(/^allies whose names include\s+/i, "allies whose name includes ");
     const anotherMatch = /^another\s+/i.exec(body);
     if (anotherMatch) {
         selfInclusion = "excluded";
@@ -4904,6 +5602,7 @@ function parseAllyConditionClause(sourceBody: string, sourceText: string): Condi
         }
     }
     body = body.replace(/^an?\s+/i, "");
+    body = body.replace(/^characters? whose names? include\s+/i, "allies whose name includes ");
 
     let scope: "team" | "rotation";
     const teamMatch = /\s+(?:is\s+|are\s+)?on the team$/i.exec(body);
@@ -4942,8 +5641,24 @@ function parseAllyConditionClause(sourceBody: string, sourceText: string): Condi
     const categoryAndName = /^(.+?) Category all(?:y|ies) whose name includes (.+)$/i.exec(body);
     if (categoryAndName) {
         const categories = parseQuotedValues(categoryAndName[1]);
-        const nameSelector = parseNameSelectorValues(categoryAndName[2]);
-        const expression = categories && nameSelector
+        const qualifiedNames = parseIndividuallyQualifiedNameValues(categoryAndName[2]);
+        const nameSelector = qualifiedNames ? undefined : parseNameSelectorValues(categoryAndName[2]);
+        const expression = categories && qualifiedNames && categories.connector !== "and"
+            ? combineIndividuallyQualifiedNames(qualifiedNames, value => predicateExpression({
+                kind: "ally_category_name_present",
+                scope,
+                selfInclusion,
+                ...(count !== undefined ? { comparator, count } : {}),
+                categories: categories.values,
+                names: [value.name],
+                nameMatch: "includes",
+                ...(value.excludedNames ? {
+                    excludedNames: value.excludedNames,
+                    excludedNameMatch: "includes" as const,
+                } : {}),
+                sourceText,
+            }))
+            : categories && nameSelector
             && categories.connector !== "and" && nameSelector.included.connector !== "and"
             ? predicateExpression({
                 kind: "ally_category_name_present",
@@ -4973,8 +5688,26 @@ function parseAllyConditionClause(sourceBody: string, sourceText: string): Condi
     }
     const nameMatch = /^all(?:y|ies) whose name includes (.+)$/i.exec(body);
     if (nameMatch) {
-        const selector = parseNameSelectorValues(nameMatch[1]);
-        const expression = selector
+        const qualified = parseIndividuallyQualifiedNameValues(nameMatch[1]);
+        const selector = qualified ? undefined : parseNameSelectorValues(nameMatch[1]);
+        const expression = qualified
+            ? combineIndividuallyQualifiedNames(qualified, value => predicateExpression({
+                ...(allyPredicate(
+                    "name",
+                    value.name,
+                    scope,
+                    selfInclusion,
+                    count,
+                    comparator,
+                    sourceText,
+                ) as Extract<ConditionExpression, { op: "predicate" }>).predicate,
+                nameMatch: "includes",
+                ...(value.excludedNames ? {
+                    excludedNames: value.excludedNames,
+                    excludedNameMatch: "includes" as const,
+                } : {}),
+            }))
+            : selector
             ? combineQuotedPredicateExpressions(
                 selector.included,
                 value => predicateExpression({
@@ -5038,6 +5771,61 @@ function parseAllyConditionClause(sourceBody: string, sourceText: string): Condi
         return negated ? { op: "not", child: expression } : expression;
     }
     return undefined;
+}
+
+function parseIndividuallyQualifiedNameValues(sourceText: string): {
+    values: Array<{ name: string, excludedNames?: string[] }>,
+    connector: "single" | "and" | "or",
+} | undefined {
+    const matches = [...sourceText.matchAll(/"([^"]+)"(?:\s*\(([^()]*)\s+excluded\))?/g)];
+    if (matches.length === 0 || matches.some(match => match.index === undefined)) {
+        return undefined;
+    }
+    const separators: string[] = [];
+    let cursor = 0;
+    for (const match of matches) {
+        const separator = sourceText.slice(cursor, match.index).trim();
+        if (cursor === 0) {
+            if (separator) return undefined;
+        } else {
+            if (!/^(?:,|and|or|,\s*(?:and|or))$/i.test(separator)) return undefined;
+            separators.push(separator);
+        }
+        cursor = (match.index ?? 0) + match[0].length;
+    }
+    if (sourceText.slice(cursor).trim()) {
+        return undefined;
+    }
+    const hasAnd = separators.some(separator => /\band\b/i.test(separator));
+    const hasOr = separators.some(separator => /\bor\b/i.test(separator));
+    if (hasAnd && hasOr) {
+        return undefined;
+    }
+    const values: Array<{ name: string, excludedNames?: string[] }> = [];
+    for (const match of matches) {
+        const excluded = match[2] ? parseExcludedNameExamples(match[2]) : undefined;
+        if (match[2] && !excluded) {
+            return undefined;
+        }
+        values.push({
+            name: match[1].trim(),
+            ...(excluded ? { excludedNames: excluded.values } : {}),
+        });
+    }
+    return {
+        values,
+        connector: values.length === 1 ? "single" : hasAnd ? "and" : "or",
+    };
+}
+
+function combineIndividuallyQualifiedNames(
+    parsed: NonNullable<ReturnType<typeof parseIndividuallyQualifiedNameValues>>,
+    build: (value: { name: string, excludedNames?: string[] }) => ConditionExpression,
+): ConditionExpression {
+    const children = parsed.values.map(build);
+    return children.length === 1
+        ? children[0]
+        : { op: parsed.connector === "and" ? "all" : "any", children };
 }
 
 function parseNameSelectorValues(sourceText: string): {
@@ -5118,6 +5906,7 @@ const KI_SPHERE_TYPES: readonly KiSphereType[] = [
     ...TEAM_ANALYSIS_TYPES,
     "rainbow",
     "non_rainbow",
+    "sweet_treat",
     "any",
 ];
 const SLOT_LIST_PATTERN = "(?:1st|2nd|3rd)(?:\\s*(?:,|and|or)\\s*(?:1st|2nd|3rd))*";
@@ -5141,11 +5930,14 @@ function parseKiSphereTypes(sourceText: string): KiSphereType[] | undefined {
     if (/^(?:non[- ]Rainbow|Type)$/i.test(text)) {
         return ["non_rainbow"];
     }
+    if (/^sweet treat$/i.test(text)) {
+        return ["sweet_treat"];
+    }
     const parts = text.split(/\s*(?:,|&|\band\b|\bor\b)\s*/i).filter(Boolean);
-    if (parts.length === 0 || parts.some(part => !/^(?:AGL|TEQ|INT|STR|PHY)$/i.test(part))) {
+    if (parts.length === 0 || parts.some(part => !/^(?:AGL|TEQ|INT|STR|PHY|Rainbow)$/i.test(part))) {
         return undefined;
     }
-    return [...new Set(parts.map(normalizeType))];
+    return [...new Set(parts.map(part => /^Rainbow$/i.test(part) ? "rainbow" as const : normalizeType(part)))];
 }
 
 function parseKiSphereDestination(sourceText: string): ConcreteKiSphereType | undefined {
@@ -5173,7 +5965,7 @@ function parseExcludedKiSphereTypes(sourceText: string): TeamAnalysisType[] | un
 }
 
 function parseKiAmountScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
-    const match = /^For every(?:\s+(\d+))?\s+Ki when attacking$/i.exec(sourceText.trim());
+    const match = /^For every(?:\s+(\d+))?\s+Ki (when attacking|when receiving an? attack)$/i.exec(sourceText.trim());
     const kiPerIncrement = match ? Number(match[1] ?? 1) : NaN;
     if (!Number.isInteger(kiPerIncrement) || kiPerIncrement < 1) {
         return undefined;
@@ -5182,11 +5974,56 @@ function parseKiAmountScalingHeader(sourceText: string): PassiveEffectScaling | 
         kind: "per_ki_amount",
         kiPerIncrement,
         kiContext: "final_attack_ki",
-        evaluationMoment: "when_attacking",
+        evaluationMoment: /^when receiving/i.test(match?.[2] ?? "")
+            ? "when_targeted_by_attack"
+            : "when_attacking",
     };
 }
 
 function parseKiSphereScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    const deferredCount = /^For every Ki Sphere obtained with (\d+) or more Ki Spheres obtained \(count starts from the (\d+)(?:st|nd|rd|th) Ki Sphere\)$/i.exec(sourceText.trim());
+    if (deferredCount) {
+        const minimum = Number(deferredCount[1]);
+        const countStartsFrom = Number(deferredCount[2]);
+        if (!Number.isInteger(minimum) || minimum < 1 || minimum !== countStartsFrom) {
+            return undefined;
+        }
+        return {
+            kind: "per_ki_sphere",
+            kiSphereTypes: ["any"],
+            spheresPerIncrement: 1,
+            kiContext: "collected_ki_spheres",
+            countStartsFrom,
+            selection: "all_obtained",
+        };
+    }
+    const largestType = /^For every (AGL|TEQ|INT|STR|PHY|Rainbow) or (AGL|TEQ|INT|STR|PHY|Rainbow) Ki Sphere obtained \(whichever Ki Sphere is collected more will be counted\)$/i.exec(sourceText.trim());
+    if (largestType) {
+        return {
+            kind: "per_ki_sphere",
+            kiSphereTypes: [
+                /^Rainbow$/i.test(largestType[1]) ? "rainbow" : normalizeType(largestType[1]),
+                /^Rainbow$/i.test(largestType[2]) ? "rainbow" : normalizeType(largestType[2]),
+            ],
+            spheresPerIncrement: 1,
+            kiContext: "collected_ki_spheres",
+            selection: "largest_type_count",
+        };
+    }
+    const excludedType = /^For every(?:\s+(\d+))?\s+Type Ki Spheres? obtained \((AGL|TEQ|INT|STR|PHY) excluded\)$/i.exec(sourceText.trim());
+    if (excludedType) {
+        const spheresPerIncrement = Number(excludedType[1] ?? 1);
+        if (!Number.isInteger(spheresPerIncrement) || spheresPerIncrement < 1) {
+            return undefined;
+        }
+        return {
+            kind: "per_ki_sphere",
+            kiSphereTypes: ["any"],
+            excludedKiSphereTypes: [normalizeType(excludedType[2])],
+            spheresPerIncrement,
+            kiContext: "collected_ki_spheres",
+        };
+    }
     const excluded = /^For every(?:\s+(\d+))?\s+non-(AGL|TEQ|INT|STR|PHY) Ki Spheres? obtained$/i.exec(sourceText.trim());
     if (excluded) {
         const spheresPerIncrement = Number(excluded[1] ?? 1);
@@ -5219,6 +6056,18 @@ function parseKiSphereScalingHeader(sourceText: string): PassiveEffectScaling | 
 }
 
 function parseCombatEventScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
+    if (/^For every Super Attack the enemy launches at the character$/i.test(sourceText.trim())) {
+        const identity = combatEventIdentity("Super Attack", "targeted");
+        return {
+            kind: "per_combat_event",
+            connector: "single",
+            eventsPerIncrement: 1,
+            events: [combatEventDescriptor(identity, "per_event", "during_event", {
+                countScope: "battle",
+                countScopeSource: "documented_domain_rule",
+            })],
+        };
+    }
     const match = /^For every(?:\s+(\d+))?\s+(.+)$/i.exec(sourceText.trim());
     if (!match) {
         return undefined;
@@ -5268,15 +6117,43 @@ function parseCompositeScalingConditionHeader(sourceText: string): {
     scaling: PassiveEffectScaling,
     conditionText: string,
 } | undefined {
-    const match = /^(For every(?:\s+\d+)?\s+(?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack performed)\s+(.+)$/i.exec(sourceText.trim());
-    if (!match) {
-        return undefined;
+    const text = sourceText.trim();
+    const combat = /^(For every(?:\s+\d+)?\s+(?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super\s+)?attack performed)\s+(.+)$/i.exec(text);
+    if (combat) {
+        const scaling = parseCombatEventScalingHeader(combat[1]);
+        const condition = parseBooleanCondition(combat[2]);
+        if (scaling && condition.op !== "unknown") {
+            return { scaling, conditionText: combat[2] };
+        }
     }
-    const scaling = parseCombatEventScalingHeader(match[1]);
-    const condition = parseBooleanCondition(match[2]);
-    return scaling && condition.op !== "unknown"
-        ? { scaling, conditionText: match[2] }
-        : undefined;
+
+    const receivedOrEvaded = /^(For every(?:\s+\d+)?\s+attack received or evaded)\s+(as the .+)$/i.exec(text);
+    if (receivedOrEvaded) {
+        const scaling = parseCombatEventScalingHeader(receivedOrEvaded[1]);
+        const condition = parseBooleanCondition(receivedOrEvaded[2]);
+        if (scaling && condition.op !== "unknown") {
+            return { scaling, conditionText: receivedOrEvaded[2] };
+        }
+    }
+
+    const kiSphere = /^(For every(?:\s+\d+)?\s+.*?Ki Spheres? obtained)\s+((?:when|if) .+)$/i.exec(text);
+    if (kiSphere) {
+        const scaling = parseKiSphereScalingHeader(kiSphere[1]);
+        const condition = parseBooleanCondition(kiSphere[2]);
+        if (scaling && condition.op !== "unknown") {
+            return { scaling, conditionText: kiSphere[2] };
+        }
+    }
+
+    const kiAmount = /^(For every(?:\s+\d+)?\s+Ki)\s+(when receiving an? attack)$/i.exec(text);
+    if (kiAmount) {
+        const scaling = parseKiAmountScalingHeader(text);
+        const condition = parseBooleanCondition(kiAmount[2]);
+        if (scaling && condition.op !== "unknown") {
+            return { scaling, conditionText: kiAmount[2] };
+        }
+    }
+    return undefined;
 }
 
 function parseCategoryAllyScalingHeader(sourceText: string): PassiveEffectScaling | undefined {
@@ -5621,7 +6498,7 @@ function splitTopLevelCondition(sourceText: string, connector: "and" | "or"): st
             continue;
         }
         const right = sourceText.slice(index + match[0].length).trim();
-        if (!/^(?:when|if|not\b|after\b|before\b|as|attacking|with|between|ki\b|\d+\b|there|all|the\s+(?:team|character|enemy|target|attacked|selected|only)|this\s+character|that\s+enemy|an?\s+(?:enemy|["']|(?:Super|Extreme|AGL|TEQ|INT|STR|PHY)\b)|another|no|for\b|starting\b|on the\b|up to the\b|from the\b|HP\b|facing\b|\()/i.test(right)) {
+        if (!/^(?:when|if|not\b|after\b|before\b|as|attacking|performing|receiving|evading|every\b|your\s+team|with|between|ki\b|\d+\b|there|all|the\s+(?:team|character|enemy|target|attacked|selected|only)|this\s+character|that\s+enemy|an?\s+(?:enemy|["']|(?:Super|Extreme|AGL|TEQ|INT|STR|PHY)\b)|another|no|for\b|starting\b|on the\b|up to the\b|from the\b|HP\b|facing\b|\()/i.test(right)) {
             continue;
         }
         parts.push(sourceText.slice(lastIndex, index).replace(/[\s,]+$/g, "").trim());
@@ -6669,6 +7546,24 @@ function unknownStandaloneRule(stateKey: string, block: LogicalPassiveBlock): Pa
     };
 }
 
+function isStandalonePassiveAction(sourceText: string): boolean {
+    return /^Sneezes and switches personalities$/i.test(sourceText.trim());
+}
+
+function standalonePassiveActionRule(stateKey: string, block: LogicalPassiveBlock): PassiveRule {
+    const fragment = block.source[block.source.length - 1];
+    return {
+        id: ruleIdFromFragment(stateKey, fragment),
+        condition: { op: "always" },
+        conditionStatus: "supported",
+        effects: [unknownEffect(block.text, { scope: "self" })],
+        effectStatus: "unknown",
+        source: block.source,
+        parseStatus: "partial",
+        confidence: "medium",
+    };
+}
+
 function trimmedFragment(rawLine: string, lineIndex: number): SourceFragment {
     const text = rawLine.trim();
     const start = rawLine.indexOf(text);
@@ -7192,11 +8087,12 @@ function classifyCondition(condition: ConditionExpression): "always" | "predicat
 }
 
 const SCENARIO_PREDICATES = new Set<PassivePredicateKind>([
-    "hp_percent", "battle_turn", "turn_from_entry", "turn_number", "turns_from_entry",
+    "hp_percent", "battle_turn", "turn_from_entry", "next_attacking_turn", "turn_number", "turns_from_entry",
     "enemy_count", "enemy_category",
     "enemy_name", "enemy_class", "enemy_type", "enemy_class_type", "enemy_hp_percent",
     "enemy_status", "domain_active",
     "standby_active", "active_skill_used", "revive_triggered",
+    "all_rotation_allies_obtained_ki_sphere", "giant_form_ended",
 ]);
 
 const RUNTIME_PREDICATES = new Set<PassivePredicateKind>([
@@ -7333,12 +8229,16 @@ export function validateTeamAnalysisDataset(
     dataset: TeamAnalysisDataset,
     characters: Character[],
     catalogEntries: FyiCharacterCatalogEntry[],
+    options: {
+        activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+        allowExternalActiveSkillConditions?: boolean,
+    } = {},
 ): TeamAnalysisValidationIssue[] {
     const issues: TeamAnalysisValidationIssue[] = [];
     const stateKeys = new Set<string>();
     const ruleIds = new Set<string>();
     const expectedStates = expectedStateIdentities(characters, catalogEntries);
-    const expectedSources = expectedStateSources(characters);
+    const expectedSources = expectedStateSources(characters, options.activeSkillActivationContract);
 
     if (dataset.stateCount !== dataset.states.length) {
         issues.push({ code: "state-count", message: `stateCount ${dataset.stateCount} does not match ${dataset.states.length} states.` });
@@ -7361,7 +8261,12 @@ export function validateTeamAnalysisDataset(
             issues.push({ code: "missing-reference", message: `State does not reference a character/form/release in the character payload.`, stateKey: state.stateKey });
         } else {
             validateStableIdentity(state, expected, issues);
-            validateStateSource(state, expectedSources.get(state.stateKey), issues);
+            validateStateSource(
+                state,
+                expectedSources.get(state.stateKey),
+                issues,
+                options.allowExternalActiveSkillConditions ?? false,
+            );
         }
         validatePassive(state, ruleIds, issues);
     }
@@ -7378,8 +8283,12 @@ export function assertValidTeamAnalysisDataset(
     dataset: TeamAnalysisDataset,
     characters: Character[],
     catalogEntries: FyiCharacterCatalogEntry[],
+    options: {
+        activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+        allowExternalActiveSkillConditions?: boolean,
+    } = {},
 ): void {
-    const issues = validateTeamAnalysisDataset(dataset, characters, catalogEntries);
+    const issues = validateTeamAnalysisDataset(dataset, characters, catalogEntries, options);
     if (issues.length > 0) {
         const summary = issues.slice(0, 10).map(issue => {
             const location = [issue.stateKey, issue.ruleId].filter(Boolean).join(" / ");
@@ -7453,7 +8362,12 @@ export function validateTeamAnalysisDatasetForDelivery(
         });
     }
 
-    return [...issues, ...validateTeamAnalysisDataset(dataset, characters, catalogEntries)];
+    return [
+        ...issues,
+        ...validateTeamAnalysisDataset(dataset, characters, catalogEntries, {
+            allowExternalActiveSkillConditions: true,
+        }),
+    ];
 }
 
 export function assertValidTeamAnalysisDatasetForDelivery(
@@ -7490,6 +8404,7 @@ function expectedStateIdentities(
 
 function expectedStateSources(
     characters: Character[],
+    activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
 ): Map<string, {
     displayName: string,
     passiveText: string,
@@ -7512,11 +8427,16 @@ function expectedStateSources(
                     displayName: form.name,
                     passiveText: releaseSource.passiveText,
                     ...(releaseSource.passiveDetails ? { passiveDetails: releaseSource.passiveDetails } : {}),
-                    ...(analysisActiveSkillActivationCondition(form, releaseSource.releaseState)
+                    ...(resolvedActiveSkillActivationCondition(
+                        form,
+                        releaseSource.releaseState,
+                        activeSkillActivationContract,
+                    )
                         ? {
-                            activeSkillActivationCondition: analysisActiveSkillActivationCondition(
+                            activeSkillActivationCondition: resolvedActiveSkillActivationCondition(
                                 form,
                                 releaseSource.releaseState,
+                                activeSkillActivationContract,
                             ),
                         }
                         : {}),
@@ -7566,6 +8486,7 @@ function validateStateSource(
         superAttacks: AnalysisSuperAttackSource[],
     } | undefined,
     issues: TeamAnalysisValidationIssue[],
+    allowExternalActiveSkillConditions: boolean,
 ): void {
     if (!expected) {
         return;
@@ -7573,7 +8494,12 @@ function validateStateSource(
     if (state.displayName !== expected.displayName) {
         issues.push({ code: "display-name-source", message: `Display name does not match the character form.`, stateKey: state.stateKey });
     }
-    if (JSON.stringify(state.activeSkillActivationCondition) !== JSON.stringify(expected.activeSkillActivationCondition)) {
+    const activeSkillMatches = JSON.stringify(state.activeSkillActivationCondition)
+        === JSON.stringify(expected.activeSkillActivationCondition);
+    const validExternalActiveSkill = allowExternalActiveSkillConditions
+        && state.activeSkillActivationCondition !== undefined
+        && isValidExternalActiveSkillCondition(state.activeSkillActivationCondition);
+    if (!activeSkillMatches && !validExternalActiveSkill) {
         issues.push({
             code: "active-skill-condition-source",
             message: "Active Skill activation condition does not exactly match the character payload.",
@@ -7664,6 +8590,112 @@ function validateStateSource(
         issues.push({ code: "unexpected-passive", message: `Analysis contains a passive absent from the character form.`, stateKey: state.stateKey });
     }
     validateSuperAttacks(state, expected.superAttacks, issues);
+}
+
+function isValidExternalActiveSkillCondition(
+    condition: ActiveSkillActivationConditionDetails,
+): boolean {
+    const activeSkillSet = condition.provenance.activeSkillSet;
+    const causalities = condition.provenance.causalities;
+    if (activeSkillSet.table !== "active_skill_sets" || !/^\d+$/.test(activeSkillSet.rowId)) {
+        return false;
+    }
+    if (causalities.length === 0
+        || causalities.some(reference => reference.table !== "skill_causalities" || !/^\d+$/.test(reference.rowId))) {
+        return false;
+    }
+    const declaredIds = new Set(causalities.map(reference => reference.rowId));
+    const statuses: Array<ActiveSkillActivationConditionPredicate["evidenceStatus"]> = [];
+    const visit = (expression: ActiveSkillActivationConditionExpression): boolean => {
+        if (expression.op === "predicate") {
+            statuses.push(expression.predicate.evidenceStatus);
+            const provenance = expression.predicate.provenance;
+            return provenance.table === "skill_causalities"
+                && declaredIds.has(provenance.rowId)
+                && Number.isSafeInteger(provenance.causalityType)
+                && provenance.causalityType > 0
+                && provenance.values.length === 3
+                && provenance.values.every(Number.isSafeInteger)
+                && isValidActiveSkillPredicateShape(expression.predicate);
+        }
+        return expression.children.length > 0 && expression.children.every(visit);
+    };
+    if (!visit(condition.expression)) return false;
+    const expectedStatus = statuses.includes("unknown")
+        ? "unknown"
+        : statuses.includes("partial")
+            ? "partial"
+            : "supported";
+    return condition.status === expectedStatus;
+}
+
+function isValidActiveSkillPredicateShape(
+    predicate: ActiveSkillActivationConditionPredicate,
+): boolean {
+    const categories = predicate.categories ?? [];
+    const classes = predicate.classes ?? [];
+    const hasNoDimensions = categories.length === 0 && classes.length === 0;
+    const hasNoThreshold = predicate.comparator === undefined
+        && predicate.value === undefined
+        && predicate.count === undefined;
+    const integerValue = predicate.value !== undefined
+        && Number.isSafeInteger(predicate.value);
+    const integerCount = predicate.count !== undefined
+        && Number.isSafeInteger(predicate.count);
+    const supported = predicate.evidenceStatus === "supported";
+
+    switch (predicate.kind) {
+        case "battle_turn":
+        case "turn_from_entry":
+            return supported && hasNoDimensions && predicate.comparator === "gte"
+                && integerValue && predicate.value! >= 1 && predicate.count === undefined;
+        case "next_attacking_turn":
+        case "revive_triggered":
+        case "runtime_gate":
+            return supported && hasNoDimensions && hasNoThreshold;
+        case "hp_percent":
+        case "enemy_hp_percent":
+            return supported && hasNoDimensions
+                && (predicate.comparator === "gte" || predicate.comparator === "lte")
+                && integerValue && predicate.value! > 0 && predicate.value! <= 100
+                && predicate.count === undefined;
+        case "enemy_count":
+            return supported && hasNoDimensions && predicate.comparator === "eq"
+                && integerCount && predicate.count === 1 && predicate.value === undefined;
+        case "rotation_category_count":
+        case "team_category_count":
+            return supported && categories.length === 1 && classes.length === 0
+                && predicate.selfInclusion === "included" && predicate.comparator === "gte"
+                && integerCount && predicate.count! >= 1 && predicate.count! <= 7
+                && predicate.value === undefined;
+        case "all_team_category":
+            return supported && categories.length === 1 && classes.length === 0
+                && predicate.selfInclusion === "included" && predicate.comparator === "eq"
+                && predicate.count === 7 && predicate.value === undefined;
+        case "enemy_category":
+            return supported && categories.length === 1 && classes.length === 0
+                && predicate.selfInclusion === undefined && hasNoThreshold;
+        case "rotation_class_count":
+        case "team_class_count":
+            return supported && categories.length === 0 && classes.length === 1
+                && predicate.selfInclusion === "included" && predicate.comparator === "gte"
+                && integerCount && predicate.count! >= 1 && predicate.count! <= 7
+                && predicate.value === undefined;
+        case "all_team_class":
+            return supported && categories.length === 0 && classes.length === 1
+                && predicate.selfInclusion === "included" && predicate.comparator === "eq"
+                && predicate.count === 7 && predicate.value === undefined;
+        case "attacks_performed":
+        case "super_attacks_performed":
+        case "attacks_received":
+        case "attacks_evaded":
+            return supported && hasNoDimensions && predicate.comparator === "gte"
+                && integerValue && predicate.value! >= 1 && predicate.count === undefined;
+        case "unknown":
+            return predicate.evidenceStatus === "unknown" && hasNoDimensions && hasNoThreshold;
+        default:
+            return false;
+    }
 }
 
 function validateSuperAttacks(
@@ -8324,13 +9356,25 @@ function validateEffectContract(
                     && (effect.scaling.kiSphereTypes.length !== 1 || effect.scaling.kiSphereTypes[0] !== "any"))) {
                 issues.push({ code: "effect-scaling-excluded-sphere-types", message: `Excluded Ki Sphere scaling requires recognized Types and an any-sphere base.`, stateKey: state.stateKey, ruleId: rule.id });
             }
+            if (effect.scaling.countStartsFrom !== undefined
+                && (!Number.isInteger(effect.scaling.countStartsFrom) || effect.scaling.countStartsFrom < 1)) {
+                issues.push({ code: "effect-scaling-count-start", message: `Ki Sphere scaling count offsets must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.selection !== undefined
+                && !["all_obtained", "largest_type_count"].includes(effect.scaling.selection)) {
+                issues.push({ code: "effect-scaling-selection", message: `Ki Sphere scaling selection is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
+            if (effect.scaling.selection === "largest_type_count"
+                && effect.scaling.kiSphereTypes.length < 2) {
+                issues.push({ code: "effect-scaling-largest-selection", message: `Largest-type Ki Sphere scaling requires at least two candidate types.`, stateKey: state.stateKey, ruleId: rule.id });
+            }
         } else if (effect.scaling.kind === "per_ki_amount") {
             if (!Number.isInteger(effect.scaling.kiPerIncrement) || effect.scaling.kiPerIncrement < 1) {
                 issues.push({ code: "ki-scaling-unit", message: `Ki scaling units must be positive integers.`, stateKey: state.stateKey, ruleId: rule.id });
             }
             if (effect.scaling.kiContext !== "final_attack_ki"
-                || effect.scaling.evaluationMoment !== "when_attacking") {
-                issues.push({ code: "ki-scaling-context", message: `Ki scaling requires final attack Ki at attack time.`, stateKey: state.stateKey, ruleId: rule.id });
+                || !["when_attacking", "when_targeted_by_attack"].includes(effect.scaling.evaluationMoment)) {
+                issues.push({ code: "ki-scaling-context", message: `Ki scaling requires final attack Ki at an explicit attack phase.`, stateKey: state.stateKey, ruleId: rule.id });
             }
         } else if (effect.scaling.kind === "per_combat_event") {
             if (!["single", "and", "or"].includes(effect.scaling.connector)) {
@@ -8939,7 +9983,7 @@ function validateCombatEventPredicate(
     const expectedKind: Partial<Record<CombatEventType, PassivePredicateKind[]>> = {
         attack_performed: predicate.combatEvent.attackKind === "super_attack" ? ["super_attacks_performed"] : ["attacks_performed"],
         incoming_attack: predicate.combatEvent.attackKind === "super_attack"
-            ? ["incoming_super_attack"]
+            ? ["incoming_super_attack", "incoming_attack_from_enemy_hit_by_self_super_attack"]
             : ["incoming_attack", "incoming_attack_from_enemy_hit_by_self_super_attack"],
         attack_landed: predicate.combatEvent.attackKind === "super_attack" ? ["super_attack_received"] : ["attacks_received"],
         attack_evaded: ["attacks_evaded"],
@@ -8980,7 +10024,10 @@ function validateCombatEventDescriptor(
     const attackStyles: CombatAttackStyle[] = ["ki_blast", "unarmed", "physical", "unknown"];
     const modes: CombatEventMode[] = ["current_event", "accumulated_count", "repeated_threshold", "per_event"];
     const countScopes: CombatEventCountScope[] = ["current_turn", "battle", "unknown"];
-    const relativeTimings: CombatEventRelativeTiming[] = ["before_event", "during_event", "after_event", "unknown"];
+    const relativeTimings: CombatEventRelativeTiming[] = [
+        "before_event", "during_event", "after_event",
+        "on_next_attacking_turn", "starting_next_attacking_turn", "unknown",
+    ];
     const sources: CalculationPhaseResolutionSource[] = ["explicit_text", "first_party_game_db", "documented_domain_rule", "unresolved"];
     if (!eventTypes.includes(event.eventType)) issues.push({ code: "combat-event-type", message: `Combat event type is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
     if (!actors.includes(event.actor)) issues.push({ code: "combat-event-actor", message: `Combat event actor is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
@@ -8998,7 +10045,7 @@ function validateCombatEventDescriptor(
     if (event.mode !== "current_event" && event.countScope === undefined) {
         issues.push({ code: "combat-history-count-scope", message: `Historical and per-event combat data require an explicit or unknown count scope.`, stateKey: state.stateKey, ruleId: rule.id });
     }
-    if (event.eventType === "incoming_attack" && event.mode !== "current_event") {
+    if (event.eventType === "incoming_attack" && event.mode !== "current_event" && event.mode !== "per_event") {
         issues.push({ code: "combat-targeting-history", message: `Incoming targeting is a pre-resolution current event and cannot increment hit history or effect scaling.`, stateKey: state.stateKey, ruleId: rule.id });
     }
     if (event.eventType === "incoming_attack" && event.relativeTiming === "after_event") {
@@ -9189,7 +10236,8 @@ function validateScenarioPredicate(
 
     const knownMoments: PassiveEvaluationMoment[] = [
         "start_of_turn", "entry_turn", "end_of_turn", "before_attack", "when_attacking",
-        "when_targeted_by_attack",
+        "when_targeted_by_attack", "when_obtaining_ki_sphere",
+        "on_next_attacking_turn", "starting_next_attacking_turn",
     ];
     if (predicate.evaluationMoment !== undefined && !knownMoments.includes(predicate.evaluationMoment)) {
         issues.push({ code: "evaluation-moment", message: `Evaluation moment is not recognized.`, stateKey: state.stateKey, ruleId: rule.id });
@@ -9204,6 +10252,11 @@ function validateScenarioPredicate(
         && predicate.evaluationMoment !== undefined
         && predicate.evaluationMoment !== "start_of_turn") {
         issues.push({ code: "slot-evaluation-moment", message: `Battle-slot evaluation moment must be start_of_turn when present.`, stateKey: state.stateKey, ruleId: rule.id });
+    }
+    if (predicate.kind === "next_attacking_turn"
+        && (predicate.scope !== "self"
+            || !["on_next_attacking_turn", "starting_next_attacking_turn"].includes(predicate.evaluationMoment ?? ""))) {
+        issues.push({ code: "next-attacking-turn-contract", message: `Next-attacking-turn predicates require self scope and an explicit next-turn mode.`, stateKey: state.stateKey, ruleId: rule.id });
     }
 }
 

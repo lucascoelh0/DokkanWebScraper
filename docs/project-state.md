@@ -1899,6 +1899,122 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Public R2 remains parser `1.9.0`; no R2 dry-run/upload, commit or push was
   authorized for this checkpoint.
 
+## Team passive residual-condition mapping checkpoint (2026-08-23)
+
+- Parser `1.9.12` audits every non-supported passive condition against the
+  exact first-party Global candidate rather than relying on manual character
+  sampling. It fixes logical line boundaries before adding semantics: a
+  lowercase inline condition remains attached to its effect, while a complete
+  condition followed by a new real header is separated. This removes false
+  combinations such as Dr. Wheelo's target HP clause being attached to the
+  following enemy-count block.
+- Existing typed contracts now cover first/ordinal/repeated attack events,
+  parenthesized attack counters, combined performed/received histories,
+  final-blow timing, after-attack Ki, Ultra/Unit/styled Super Attack variants,
+  ally-or-enemy name alternatives, ally-only Revival, qualified Ki plus team
+  gates, HP-at-start plus received-attack history, mixed Type/Rainbow Ki
+  Spheres, excluded Type Ki Spheres and counted rotation names. Enemy Super
+  Attacks launched at the character and Super Attacks performed at a required
+  Ki value are represented as typed per-event scaling rather than fake
+  conditions.
+- Across 11,693 passive rules, supported conditions moved from 11,515 to
+  11,624, partial conditions from 55 to 40 and unknown conditions from 141 to
+  29. Supported/partial/unknown rules are now 9,943 / 1,744 / 6. The 69
+  remaining non-supported condition instances are explicitly inventoried:
+  delayed next-attacking-turn lifecycle gates; special or comparative Ki
+  Sphere semantics; all-rotation collection state; transformation completion;
+  individually qualified multi-name selectors; and malformed or truncated
+  source/projection fragments. They remain fail-closed instead of receiving
+  inferred behavior.
+- The validated local Team Analysis candidate is
+  `2026-08-23T20:26:24.615Z:parser-1.9.12`, SHA-256
+  `e80954bf4f6c953307f75ba278cc2319e88995670039cfefeaec03fe8784b954`,
+  2,994,258 compressed bytes, 54,720,077 uncompressed bytes and 2,288 states.
+  It remains bound to Characters SHA-256
+  `578fe9ca44dafb9037ce35e3b88a57f12d315fd5ab39ba91837023f39eca6d53`.
+  TypeScript compilation and 402 focused parser/projection/candidate tests
+  passed. No Android wire change was required because this slice uses existing
+  typed contracts; public R2 remains parser `1.9.0`, and no upload, commit or
+  push of this new slice was authorized.
+
+## Team passive complete-condition contract checkpoint (2026-08-23)
+
+- Parser `1.9.13` completes the residual condition inventory against the same
+  first-party Global candidate. Typed contracts now retain next-attacking-turn
+  event gates, all-rotation Ki Sphere collection, Giant Form completion,
+  Sweet Treat Ki Spheres, comparative/per-Type Ki Sphere scaling, shared
+  counted Category alternatives, mixed name/Category alternatives and the
+  remaining exact temporal/combat combinations. A standalone personality
+  switch is preserved as an action fragment instead of being misclassified as
+  a condition.
+- The full candidate contains 11,691 passive conditions: 11,691 supported,
+  zero partial and zero unknown. This closes passive-condition parsing without
+  claiming complete calculation support for every passive effect: rule status
+  is 10,000 supported, 1,691 partial and zero unknown, while effect status is
+  10,000 supported, 1,011 partial and 680 unknown. The distinction is
+  intentional and keeps unsupported effect math fail-closed.
+- A separate runtime-availability audit found 41 states whose passive refers
+  to Active Skill activation: Gohan (Beast) has a supported first-party
+  activation tree, both Ultimate Gohan states retain one partial enemy-count
+  branch, and 38 states still lack a first-party activation tree because their
+  cards were not part of the selected character overlay. These can still cause
+  `Condition data missing` and are the next Team Builder data-contract slice;
+  they are not hidden by the zero passive-parser residual count. Separately,
+  52 Unit Super Attack condition records still preserve raw activation text
+  without a typed condition tree.
+- Android wire/domain contracts accept the new predicate kinds, evaluation
+  moments, combat-relative timings, Sweet Treat Ki Spheres and Ki Sphere
+  scaling selectors. The Team Builder continues to collapse live-battle facts
+  into `Available with this team`, while composition requirements can still be
+  rejected and incomplete contracts remain distinguishable from availability.
+- The validated local Team Analysis candidate is
+  `2026-08-23T20:26:24.615Z:parser-1.9.13`, SHA-256
+  `69bb7a946ea40d8fceb6dbee1eee74b87a165c506a78475ad14eb6ce19f4a472`,
+  2,998,882 compressed bytes, 54,798,703 uncompressed bytes and 2,288 states.
+  It remains bound to Characters SHA-256
+  `578fe9ca44dafb9037ce35e3b88a57f12d315fd5ab39ba91837023f39eca6d53`.
+  TypeScript compilation and 403 focused parser/projection/candidate tests,
+  focused Android wire/evaluator tests and Android app debug compilation
+  passed. Public R2 remains parser `1.9.0`; no R2 dry-run/upload, commit or push
+  of this slice was authorized.
+
+## Team passive Active Skill causality checkpoint (2026-08-23)
+
+- Parser `1.9.14` builds a catalog-wide Active Skill activation contract
+  directly from first-party Global `card_active_skills`, `active_skill_sets`,
+  `skill_causalities` and `card_categories`. The contract is keyed by the exact
+  DB card/form id and is injected into Team Analysis without modifying or
+  broadening the explicitly selected Characters overlay. Cards with multiple
+  semantically different activation trees remain omitted rather than having a
+  branch guessed.
+- The previous Ultimate Gohan-only exception was removed. General typed
+  causality covers battle and entry turns, HP, enemy count/HP, team or rotation
+  Category/Class counts, all-team Category/Class requirements, performed,
+  received and evaded attack histories, Revival, next-attacking-turn timing
+  and first-party runtime gates. Unsupported causality types remain unknown;
+  a weaker DB tree cannot replace a better condition already carried by the
+  Characters payload.
+- The first-party snapshot yields 586 unambiguous form bindings: 520 supported
+  and 66 unknown. Every state whose passive actually refers to Active Skill
+  activation is covered: 41/41 states have supported trees and zero unsupported
+  leaves, including both Ultimate Gohan release states and the recent DAIMA
+  cards. Composition requirements can now evaluate as available/unavailable;
+  live battle predicates remain available-in-principle in the Team Builder.
+- Android wire/domain models decode the generalized causal vocabulary and
+  preserve old-cache tolerance. A runtime gate is typed separately from data
+  absence, so it cannot regress into `Condition data missing` merely because
+  the live battle has not happened yet.
+- The validated local Team Analysis candidate is
+  `2026-08-23T20:26:24.615Z:parser-1.9.14`, SHA-256
+  `0f9e3c74e96119d43388852fa3d5d0b48b53b3e5bd5c251b60c941c848a805b7`,
+  3,077,757 compressed bytes, 55,433,108 uncompressed bytes and 2,288 states.
+  It remains bound to Characters SHA-256
+  `578fe9ca44dafb9037ce35e3b88a57f12d315fd5ab39ba91837023f39eca6d53`.
+  TypeScript compilation and 416 focused parser/contract/candidate tests,
+  focused Android wire/evaluator tests and Android app debug compilation
+  passed. Public R2 remains parser `1.9.0`; no R2 dry-run/upload, commit or push
+  of this slice was authorized.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

@@ -1,6 +1,9 @@
 import { deepEqual, throws } from "assert";
 import { describe, it } from "mocha";
-import { mapActiveSkillSets } from "./game-db-active-skill";
+import {
+    buildGameDbActiveSkillActivationContract,
+    mapActiveSkillSets,
+} from "./game-db-active-skill";
 import { GameDbRow } from "./game-db-source";
 
 describe("mapActiveSkillSets", function () {
@@ -72,7 +75,7 @@ describe("mapActiveSkillSets", function () {
             new Map([["88", { id: "88", name: "Super Heroes" }]]),
         );
 
-        deepEqual(mapped.activationCondition?.status, "partial");
+        deepEqual(mapped.activationCondition?.status, "supported");
         deepEqual(mapped.activationCondition?.expression, {
             op: "any",
             children: [
@@ -137,7 +140,7 @@ describe("mapActiveSkillSets", function () {
                                 kind: "enemy_count",
                                 comparator: "eq",
                                 count: 1,
-                                evidenceStatus: "partial",
+                                evidenceStatus: "supported",
                                 provenance: {
                                     table: "skill_causalities",
                                     rowId: "2027",
@@ -152,7 +155,7 @@ describe("mapActiveSkillSets", function () {
         });
     });
 
-    it("does not generalize the audited rotation causality when first-party evidence drifts", () => {
+    it("uses the compiled first-party causality independently from localized display text", () => {
         const [mapped] = mapActiveSkillSets(
             [{ id: "174", card_id: "1025561", active_skill_set_id: "174" }],
             new Map([[
@@ -181,10 +184,10 @@ describe("mapActiveSkillSets", function () {
         const category = teamRoute.children[1];
         if (category.op !== "predicate") throw new Error("expected the category predicate");
 
-        deepEqual(category.predicate.evidenceStatus, "partial");
+        deepEqual(category.predicate.evidenceStatus, "supported");
     });
 
-    it("requires the exact audited type-34 operands before marking the leaf supported", () => {
+    it("fails closed for an unsupported type-34 scope operand", () => {
         const conditionDescription = [
             'Can be activated when there are 3 "Super Heroes" ',
             "Category allies attacking in the same turn ",
@@ -192,14 +195,7 @@ describe("mapActiveSkillSets", function () {
             "or when facing only 1 enemy starting from the ",
             "6th turn from the start of battle (once only)",
         ].join("\n");
-        const drifts = [
-            { cau_val1: "1", cau_val2: "88", cau_val3: "3" },
-            { cau_val1: "2", cau_val2: "89", cau_val3: "3" },
-            { cau_val1: "2", cau_val2: "88", cau_val3: "4" },
-        ];
-
-        for (const drift of drifts) {
-            const [mapped] = mapActiveSkillSets(
+        const [mapped] = mapActiveSkillSets(
                 [{ id: "174", card_id: "1025561", active_skill_set_id: "174" }],
                 new Map([[
                     "174",
@@ -214,13 +210,12 @@ describe("mapActiveSkillSets", function () {
                 new Map(),
                 new Map([
                     ["2024", { id: "2024", causality_type: "5", cau_val1: "2", cau_val2: "0", cau_val3: "0" }],
-                    ["2025", { id: "2025", causality_type: "34", ...drift }],
+                    ["2025", { id: "2025", causality_type: "34", cau_val1: "9", cau_val2: "88", cau_val3: "3" }],
                     ["2026", { id: "2026", causality_type: "5", cau_val1: "5", cau_val2: "0", cau_val3: "0" }],
                     ["2027", { id: "2027", causality_type: "16", cau_val1: "2", cau_val2: "0", cau_val3: "0" }],
                 ]),
                 new Map([
                     ["88", { id: "88", name: "Super Heroes" }],
-                    ["89", { id: "89", name: "Other Category" }],
                 ]),
             );
             const expression = mapped.activationCondition?.expression;
@@ -230,8 +225,37 @@ describe("mapActiveSkillSets", function () {
             const category = teamRoute.children[1];
             if (category.op !== "predicate") throw new Error("expected the category predicate");
 
-            deepEqual(category.predicate.evidenceStatus === "supported", false);
-        }
+        deepEqual(category.predicate.kind, "unknown");
+        deepEqual(category.predicate.evidenceStatus, "unknown");
+    });
+
+    it("builds a form-keyed contract and omits cards with conflicting Active Skill trees", () => {
+        const contract = buildGameDbActiveSkillActivationContract({
+            active_skill_sets: [
+                { id: "94", causality_conditions: '{"compiled":803}' },
+                { id: "95", causality_conditions: '{"compiled":814}' },
+            ],
+            skill_causalities: [
+                { id: "803", causality_type: "44", cau_val1: "3", cau_val2: "7", cau_val3: "0" },
+                { id: "814", causality_type: "44", cau_val1: "1", cau_val2: "4", cau_val3: "0" },
+            ],
+            card_categories: [],
+            card_active_skills: [
+                { id: "1", card_id: "1022091", active_skill_set_id: "94" },
+                { id: "2", card_id: "9999991", active_skill_set_id: "94" },
+                { id: "3", card_id: "9999991", active_skill_set_id: "95" },
+            ],
+        });
+
+        deepEqual(contract.get("1022091")?.status, "supported");
+        const expression = contract.get("1022091")?.expression;
+        deepEqual(
+            expression?.op === "predicate"
+                ? expression.predicate.kind
+                : undefined,
+            "attacks_received",
+        );
+        deepEqual(contract.has("9999991"), false);
     });
 
     it("pins first-party ultimate attack semantics against real FYI cards", () => {

@@ -11,6 +11,7 @@ import { projectGameDbCharactersToDokkanpanion } from "./game-db-app-projection"
 import { overlayGameDbCharacterReleaseStates } from "./game-db-character-release-overlay";
 import { buildGameDbCharacterSnapshots, loadRequiredGameDbTables } from "./game-db-experiment";
 import { buildGameDbNameIdentityContract } from "./game-db-name-identity";
+import { buildGameDbActiveSkillActivationContract } from "./game-db-active-skill";
 import { resolveGameDbSourceConfig } from "./game-db-source";
 
 const DEFAULT_BASELINE_DIR = resolve("data", "fyi-characters", "latest");
@@ -145,6 +146,7 @@ export async function buildGameDbCharacterReleaseCandidate(options: CandidateOpt
     const sourceConfig = resolveGameDbSourceConfig(options.firstPartyDir);
     const tables = await loadRequiredGameDbTables(sourceConfig);
     const nameIdentityContract = buildGameDbNameIdentityContract(tables);
+    const activeSkillActivationContract = buildGameDbActiveSkillActivationContract(tables);
     const snapshots = buildGameDbCharacterSnapshots(options.cardIds, tables);
     const projections = projectGameDbCharactersToDokkanpanion(snapshots, {
         sourceVersion: metadata.dbVersion,
@@ -164,6 +166,7 @@ export async function buildGameDbCharacterReleaseCandidate(options: CandidateOpt
         characterManifestPath: resolve(options.outputDir, "characters-manifest.json"),
         catalogPath: options.catalogPath,
         nameIdentityContract,
+        activeSkillActivationContract,
     });
     const teamAnalysisManifest = JSON.parse(
         await readFile(teamAnalysis.manifestPath, "utf8"),

@@ -455,11 +455,32 @@ export type ActiveSkillActivationConditionExpression =
     };
 
 export interface ActiveSkillActivationConditionPredicate {
-    kind: "battle_turn" | "rotation_category_count" | "enemy_count" | "unknown",
-    comparator?: "eq" | "gte",
+    kind:
+        | "battle_turn"
+        | "turn_from_entry"
+        | "next_attacking_turn"
+        | "hp_percent"
+        | "enemy_count"
+        | "enemy_hp_percent"
+        | "rotation_category_count"
+        | "team_category_count"
+        | "enemy_category"
+        | "rotation_class_count"
+        | "team_class_count"
+        | "all_team_category"
+        | "all_team_class"
+        | "attacks_performed"
+        | "super_attacks_performed"
+        | "attacks_received"
+        | "attacks_evaded"
+        | "revive_triggered"
+        | "runtime_gate"
+        | "unknown",
+    comparator?: "eq" | "gte" | "lte",
     value?: number,
     count?: number,
     categories?: string[],
+    classes?: Array<"Super" | "Extreme">,
     selfInclusion?: "included" | "excluded" | "unknown",
     evidenceStatus: "supported" | "partial" | "unknown",
     provenance: {

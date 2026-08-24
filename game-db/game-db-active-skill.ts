@@ -3,25 +3,11 @@ import {
     ActiveSkillActivationConditionExpression,
     ActiveSkillActivationConditionPredicate,
 } from "../character";
-import { createHash } from "crypto";
 import { GameDbActiveSkillEffect, GameDbActiveSkillSet } from "./game-db-contract";
 import { GameDbRow, normalizeDbId, parseDbInt, parseDbJsonArray } from "./game-db-source";
 
 function normalizeText(value?: string): string {
     return (value ?? "").replace(/\r\n/g, "\n").trim();
-}
-
-const ULTIMATE_GOHAN_ACTIVE_SKILL_SET_ID = "174";
-const ULTIMATE_GOHAN_ROTATION_CAUSALITY_ID = "2025";
-const ULTIMATE_GOHAN_CATEGORY_ID = "88";
-const ULTIMATE_GOHAN_ROTATION_CAUSALITY_TYPE = 34;
-const ULTIMATE_GOHAN_ROTATION_CAUSALITY_VALUES = [2, 88, 3] as const;
-const ULTIMATE_GOHAN_COMPILED_CAUSALITY = '["|",["&",2024,2025],["&",2026,2027]]';
-const ULTIMATE_GOHAN_CONDITION_DESCRIPTION_SHA256 =
-    "f5908df2ce2b82d561577ce8d3bb5b9a5a731d4dbf9ff43a7cebe3b1292fe452";
-
-function sha256Text(value: string): string {
-    return createHash("sha256").update(value).digest("hex");
 }
 
 function compareDbIds(left?: string, right?: string): number {
@@ -62,12 +48,11 @@ function isCompiledCausality(value: unknown): value is CompiledCausality {
         && value.slice(1).every(isCompiledCausality);
 }
 
-function causalityPredicate(
+function causalityExpression(
     causalityId: string,
     row: GameDbRow | undefined,
     categoryById: Map<string, GameDbRow>,
-    directlySupportedCausalityIds: ReadonlySet<string>,
-): ActiveSkillActivationConditionPredicate {
+): ActiveSkillActivationConditionExpression {
     const causalityType = parseDbInt(row?.causality_type) ?? 0;
     const values: [number, number, number] = [
         parseDbInt(row?.cau_val1) ?? 0,
@@ -81,77 +66,159 @@ function causalityPredicate(
         values,
     };
 
-    if (causalityType === 5) {
-        return {
+    const predicate = (
+        value: Omit<ActiveSkillActivationConditionPredicate, "evidenceStatus" | "provenance">,
+    ): ActiveSkillActivationConditionExpression => ({
+        op: "predicate",
+        predicate: {
+            ...value,
+            evidenceStatus: "supported",
+            provenance,
+        },
+    });
+    const unknown = (): ActiveSkillActivationConditionExpression => ({
+        op: "predicate",
+        predicate: {
+            kind: "unknown",
+            evidenceStatus: "unknown",
+            provenance,
+        },
+    });
+
+    if (causalityType === 1 && values[0] > 0) {
+        return predicate({ kind: "hp_percent", comparator: "gte", value: values[0] });
+    }
+    if (causalityType === 2 && values[0] > 0) {
+        return predicate({ kind: "hp_percent", comparator: "lte", value: values[0] });
+    }
+    if (causalityType === 5 && values[0] >= 0) {
+        return predicate({
             kind: "battle_turn",
             comparator: "gte",
             value: values[0] + 1,
-            evidenceStatus: "supported",
-            provenance,
-        };
+        });
+    }
+    if (causalityType === 16 && values[0] === 2) {
+        return predicate({ kind: "enemy_count", comparator: "eq", count: 1 });
+    }
+    if (causalityType === 18 && values[0] > 0) {
+        return predicate({ kind: "enemy_hp_percent", comparator: "lte", value: values[0] });
     }
 
-    if (causalityType === 34 && values[0] === 2 && values[2] > 0) {
+    if (causalityType === 34 && values[2] > 0) {
         const categoryId = String(values[1]);
         const category = normalizeText(categoryById.get(categoryId)?.name);
         if (category) {
-            return {
-                kind: "rotation_category_count",
+            if (values[0] === 0) {
+                return predicate({
+                    kind: "team_category_count",
+                    comparator: "gte",
+                    count: values[2],
+                    categories: [category],
+                    selfInclusion: "included",
+                });
+            }
+            if (values[0] === 1) {
+                return predicate({ kind: "enemy_category", categories: [category] });
+            }
+            if (values[0] === 2) {
+                return predicate({
+                    kind: "rotation_category_count",
+                    comparator: "gte",
+                    count: values[2],
+                    categories: [category],
+                    selfInclusion: "included",
+                });
+            }
+        }
+    }
+    if (causalityType === 37 && values[0] > 0 && values[1] >= 0) {
+        return {
+            op: "all",
+            children: [
+                predicate({ kind: "hp_percent", comparator: "lte", value: values[0] }),
+                predicate({ kind: "battle_turn", comparator: "gte", value: values[1] + 1 }),
+            ],
+        };
+    }
+    if (causalityType === 44 && values[1] > 0) {
+        const kind = values[0] === 1
+            ? "super_attacks_performed"
+            : values[0] === 2
+                ? "attacks_performed"
+                : values[0] === 3
+                    ? "attacks_received"
+                    : values[0] === 5
+                        ? "attacks_evaded"
+                        : undefined;
+        return kind
+            ? predicate({ kind, comparator: "gte", value: values[1] })
+            : unknown();
+    }
+    if (causalityType === 46 && values[2] > 0) {
+        const characterClass = values[1] === 32 ? "Super" : values[1] === 64 ? "Extreme" : undefined;
+        if (characterClass && values[0] === 0) {
+            return predicate({
+                kind: "team_class_count",
                 comparator: "gte",
                 count: values[2],
-                categories: [category],
+                classes: [characterClass],
                 selfInclusion: "included",
-                evidenceStatus: directlySupportedCausalityIds.has(causalityId) ? "supported" : "partial",
-                provenance,
-            };
+            });
+        }
+        if (characterClass && values[0] === 2) {
+            return predicate({
+                kind: "rotation_class_count",
+                comparator: "gte",
+                count: values[2],
+                classes: [characterClass],
+                selfInclusion: "included",
+            });
+        }
+    }
+    if (causalityType === 47 && values.every(value => value === 0)) {
+        return predicate({ kind: "revive_triggered" });
+    }
+    if (causalityType === 55 && values[0] >= 0 && values[1] === 0 && values[2] === 0) {
+        return values[0] === 1
+            ? predicate({ kind: "next_attacking_turn" })
+            : predicate({ kind: "turn_from_entry", comparator: "gte", value: values[0] + 1 });
+    }
+    if (causalityType === 58 && values.every(value => value === 0)) {
+        return predicate({ kind: "runtime_gate" });
+    }
+    if (causalityType === 66 && values[0] === 1 && values[1] === 0 && values[2] === 0) {
+        return predicate({ kind: "runtime_gate" });
+    }
+    if (causalityType === 67 && values[2] === 0) {
+        const characterClass = values[1] === 32 ? "Super" : values[1] === 64 ? "Extreme" : undefined;
+        if (values[0] === 2 && characterClass) {
+            return predicate({
+                kind: "all_team_class",
+                comparator: "eq",
+                count: 7,
+                classes: [characterClass],
+                selfInclusion: "included",
+            });
+        }
+        if (values[0] === 0) {
+            const category = normalizeText(categoryById.get(String(values[1]))?.name);
+            if (category) {
+                return predicate({
+                    kind: "all_team_category",
+                    comparator: "eq",
+                    count: 7,
+                    categories: [category],
+                    selfInclusion: "included",
+                });
+            }
         }
     }
 
-    if (causalityType === 16 && values[0] === 2) {
-        return {
-            kind: "enemy_count",
-            comparator: "eq",
-            count: 1,
-            evidenceStatus: "partial",
-            provenance,
-        };
-    }
-
-    return {
-        kind: "unknown",
-        evidenceStatus: "unknown",
-        provenance,
-    };
+    return unknown();
 }
 
-function directlySupportedSetScopedCausalities(
-    activeSkillSet: GameDbRow,
-    compiled: CompiledCausality,
-    skillCausalityById: Map<string, GameDbRow>,
-    categoryById: Map<string, GameDbRow>,
-): ReadonlySet<string> {
-    const activeSkillSetId = normalizeDbId(activeSkillSet.id);
-    const rotationCausality = skillCausalityById.get(ULTIMATE_GOHAN_ROTATION_CAUSALITY_ID);
-    const rotationCausalityValues = [
-        parseDbInt(rotationCausality?.cau_val1),
-        parseDbInt(rotationCausality?.cau_val2),
-        parseDbInt(rotationCausality?.cau_val3),
-    ];
-    const categoryName = normalizeText(categoryById.get(ULTIMATE_GOHAN_CATEGORY_ID)?.name);
-    const conditionDescriptionHash = sha256Text(normalizeText(activeSkillSet.condition_description));
-    return activeSkillSetId === ULTIMATE_GOHAN_ACTIVE_SKILL_SET_ID
-        && JSON.stringify(compiled) === ULTIMATE_GOHAN_COMPILED_CAUSALITY
-        && normalizeDbId(rotationCausality?.id) === ULTIMATE_GOHAN_ROTATION_CAUSALITY_ID
-        && parseDbInt(rotationCausality?.causality_type) === ULTIMATE_GOHAN_ROTATION_CAUSALITY_TYPE
-        && rotationCausalityValues.every((value, index) =>
-            value === ULTIMATE_GOHAN_ROTATION_CAUSALITY_VALUES[index])
-        && categoryName === "Super Heroes"
-        && conditionDescriptionHash === ULTIMATE_GOHAN_CONDITION_DESCRIPTION_SHA256
-        ? new Set([ULTIMATE_GOHAN_ROTATION_CAUSALITY_ID])
-        : new Set();
-}
-
-function activeSkillActivationCondition(
+export function activeSkillActivationCondition(
     activeSkillSet: GameDbRow,
     skillCausalityById: Map<string, GameDbRow>,
     categoryById: Map<string, GameDbRow>,
@@ -159,26 +226,16 @@ function activeSkillActivationCondition(
     const compiled = parseCompiledCausality(activeSkillSet.causality_conditions);
     if (!compiled) return undefined;
     const causalityIds: string[] = [];
-    const directlySupportedCausalityIds = directlySupportedSetScopedCausalities(
-        activeSkillSet,
-        compiled,
-        skillCausalityById,
-        categoryById,
-    );
 
     const expression = (node: CompiledCausality): ActiveSkillActivationConditionExpression => {
         if (typeof node === "number") {
             const causalityId = String(node);
             causalityIds.push(causalityId);
-            return {
-                op: "predicate",
-                predicate: causalityPredicate(
-                    causalityId,
-                    skillCausalityById.get(causalityId),
-                    categoryById,
-                    directlySupportedCausalityIds,
-                ),
-            };
+            return causalityExpression(
+                causalityId,
+                skillCausalityById.get(causalityId),
+                categoryById,
+            );
         }
         return {
             op: node[0] === "&" ? "all" : "any",
@@ -209,6 +266,80 @@ function collectEvidenceStatuses(
     return expression.op === "predicate"
         ? [expression.predicate.evidenceStatus]
         : expression.children.flatMap(collectEvidenceStatuses);
+}
+
+function activationExpressionIdentity(
+    expression: ActiveSkillActivationConditionExpression,
+): string {
+    if (expression.op === "predicate") {
+        const { provenance: _provenance, ...predicate } = expression.predicate;
+        return JSON.stringify({ op: expression.op, predicate });
+    }
+    return JSON.stringify({
+        op: expression.op,
+        children: expression.children.map(activationExpressionIdentity),
+    });
+}
+
+/**
+ * Builds a first-party Active Skill activation contract keyed by the exact DB
+ * card/form id consumed by Team Analysis. Cards with multiple semantically
+ * different activation trees are omitted so the consumer fails closed rather
+ * than guessing which Active Skill a passive clause refers to.
+ */
+export function buildGameDbActiveSkillActivationContract(
+    tables: Record<string, GameDbRow[]>,
+): ReadonlyMap<string, ActiveSkillActivationConditionDetails> {
+    const activeSkillSetById = new Map(
+        (tables.active_skill_sets ?? []).flatMap(row => {
+            const id = normalizeDbId(row.id);
+            return id ? [[id, row] as const] : [];
+        }),
+    );
+    const skillCausalityById = new Map(
+        (tables.skill_causalities ?? []).flatMap(row => {
+            const id = normalizeDbId(row.id);
+            return id ? [[id, row] as const] : [];
+        }),
+    );
+    const categoryById = new Map(
+        (tables.card_categories ?? []).flatMap(row => {
+            const id = normalizeDbId(row.id);
+            return id ? [[id, row] as const] : [];
+        }),
+    );
+    const relationsByCardId = new Map<string, GameDbRow[]>();
+    for (const relation of tables.card_active_skills ?? []) {
+        const cardId = normalizeDbId(relation.card_id);
+        if (!cardId) continue;
+        const relations = relationsByCardId.get(cardId) ?? [];
+        relations.push(relation);
+        relationsByCardId.set(cardId, relations);
+    }
+
+    const contract = new Map<string, ActiveSkillActivationConditionDetails>();
+    for (const [cardId, relations] of relationsByCardId) {
+        const activeSkillSetIds = [...new Set([...relations]
+            .sort((left, right) => compareDbIds(left.id, right.id))
+            .flatMap(relation => {
+                const setId = normalizeDbId(relation.active_skill_set_id);
+                return setId ? [setId] : [];
+            }))];
+        const conditions = activeSkillSetIds.flatMap(setId => {
+            const set = activeSkillSetById.get(setId);
+            const condition = set
+                ? activeSkillActivationCondition(set, skillCausalityById, categoryById)
+                : undefined;
+            return condition ? [condition] : [];
+        });
+        if (conditions.length === 0 || conditions.length !== activeSkillSetIds.length) continue;
+        const identities = new Set(conditions.map(condition =>
+            activationExpressionIdentity(condition.expression)));
+        if (identities.size === 1) {
+            contract.set(cardId, conditions[0]);
+        }
+    }
+    return contract;
 }
 
 function mapActiveSkillEffects(rows: GameDbRow[]): GameDbActiveSkillEffect[] {
