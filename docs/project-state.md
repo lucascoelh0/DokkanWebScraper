@@ -1,6 +1,6 @@
 # Dokkanpanion Project State
 
-**Last updated**: 2026-08-23
+**Last updated**: 2026-08-24
 
 This is the concise operational checkpoint for future sessions. Durable
 decisions live in [`adr/`](adr/), and current workflow instructions live in
@@ -2283,6 +2283,124 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   and Team SHA
   `0f9e3c74e96119d43388852fa3d5d0b48b53b3e5bd5c251b60c941c848a805b7`.
   No production or v2 object was written.
+
+## Android v2 staging lane end-to-end checkpoint (2026-08-24)
+
+- The canonical pair is public only under `staging/v2`. Characters is version
+  `2026-08-23T20:26:24.615Z`, 1,436 characters, 2,343,298 bytes and SHA-256
+  `578fe9ca44dafb9037ce35e3b88a57f12d315fd5ab39ba91837023f39eca6d53`.
+  Team Analysis is version `2026-08-23T20:26:24.615Z:parser-1.9.14`, 2,288
+  states, 3,077,757 bytes and SHA-256
+  `0f9e3c74e96119d43388852fa3d5d0b48b53b3e5bd5c251b60c941c848a805b7`.
+  Its Character version/SHA binding is exact.
+- The mandatory dry-run projected 5,422,225 new managed bytes. Wrangler
+  reported a 394 MB bucket, giving a conservative combined upper bound of
+  399,422,225/10,000,000,000 bytes. Both manifests and payloads were then
+  verified publicly for exact name, size and SHA; manifests use `no-store` and
+  payloads use immutable one-year caching. Final dry-runs were idempotent.
+- Android now has one typed route for production/staging and v1/v2. A manifest
+  and its payload must remain within the same route. Debug defaults to
+  production/v1 and can explicitly select staging/v2; the next release build
+  is explicitly wired to production/v2. Compatible local caches remain
+  contract-neutral so an upgraded app can start offline, while an online v2
+  refresh remains authoritative and replaces the old cache only after complete
+  validation.
+- Focused Character and Team Analysis manager tests passed, including all route
+  combinations, cross-lane rejection and legacy-cache offline/online migration.
+  Debug and R8-minified release builds passed; generated BuildConfig evidence
+  showed `staging/v2` for the selected debug build and `production/v2` for
+  release. The release mapping was non-empty. The release workflow now runs a
+  read-only public production-v2 preflight before its signed build job; it
+  verifies both manifests, same-lane payloads, exact byte hashes/sizes,
+  Character/Team binding and cache headers. Until production v2 exists, the
+  workflow intentionally fails before producing a release artifact.
+- A clean staging/v2 debug install on `emulator-5554` downloaded and stored the
+  exact pair, rebuilt the Character database and activated Team Analysis. A
+  cached restart passed. An airplane-mode restart retained the catalog and
+  validated Team Analysis from cache while showing the expected non-blocking
+  update warning; networking was restored afterward.
+- Team Analysis publication now retries only post-upload exact-read
+  verification within a bounded 30-second window. It still requires exact size
+  and SHA-256, promotes the manifest only after verified payload readiness, and
+  writes local state/starts cleanup only after the manifest itself verifies.
+  Real remote writes now reject both legacy skip-verification flags; they remain
+  available only for local or read-only dry-run diagnostics. Forty-two focused
+  publisher tests cover delayed payload/manifest visibility, retry exhaustion
+  and remote bypass rejection; tracked `lib/` matches the TypeScript. Four
+  focused release-preflight tests passed, and the same script verified the
+  complete public staging-v2 pair.
+- Production remains unchanged at Characters SHA
+  `34b2ce3918d0497b458f106f4e00b50cb039f0a280ef6bfe45c0ca76ee1a84bd`
+  and Team Analysis SHA
+  `d7a8461c41484b0e25f61131476006b18eadad71c6bac265e7f0e289e7a96237`.
+  No v2 production manifest exists or was written. The Android v2 routing and
+  publisher retry changes remain local checkpoints pending a separate commit
+  request.
+
+## Team lifecycle management checkpoint (2026-08-24)
+
+- The Team Builder now distinguishes New team, Save as new team and Update
+  saved team before writing. The compact command bar retains its previous
+  height and three visible icon targets; Share current team and the lifecycle
+  commands live in a labelled overflow instead of adding more fixed chrome.
+- Starting a new team preserves every saved snapshot, clears the active saved
+  identity and resets the draft only after persistence succeeds. Unsaved work
+  receives an explicit confirmation; a clean saved snapshot can start a new
+  draft directly. Failure paths keep or restore the prior active identity.
+- Remove all characters clears owned and Friend members without deleting the
+  saved record or resetting Basic/Rotations and its rotation plan. The existing
+  dismissible snackbar provides Undo using the exact applied/previous draft
+  guard.
+- Focused ViewModel tests passed, Android instrumented-test compilation passed,
+  and all five new Compose lifecycle cases passed on `emulator-5554`. The full
+  57-case Builder class completed 55 cases and exposed two older layout tests
+  outside this slice that could not locate below-header content; one reproduced
+  in isolation and remains separate test-debt evidence.
+- The debug build was installed and visually inspected on the Android Studio
+  emulator. The user approved the Intent + Impeccable result. No commit, push,
+  R2 object or production endpoint changed. The next recommended Team Builder
+  slice is the candidate-picker discovery foundation.
+
+## Team candidate-picker discovery checkpoint (2026-08-24)
+
+- The Team Builder candidate picker now exposes a typed, combinable discovery
+  contract for full Leader/Friend coverage, categories with Any/All matching,
+  type, class, rarity and BASE/EZA/SEZA release state. Dimensions combine with
+  AND, selected values within ordinary dimensions use OR, partial coverage does
+  not satisfy a full-coverage filter, and category options come from the loaded
+  catalog rather than text parsing.
+- Hard duplicates are excluded by default and restored fail-soft as an explicit
+  opt-in independent from the main filter value. Each fresh picker defaults
+  full coverage to the resolved Leader and/or Friend roles currently present;
+  neither coverage constraint is applied when neither role is available.
+  Applied-filter state is consolidated in the fixed Filters entry and its sheet
+  instead of occupying a second removable-chip row above the results. A compact
+  Clear filters action remains directly available beside the result count when
+  any filter or hard-copy override is active. Sorting is one mutually exclusive
+  segmented control rather than three independent filter-like pills. Clear all,
+  Clear search and dedicated zero-result recovery remain distinct actions.
+- Search and sort chrome now collapse while the user browses results and do not
+  reopen on a small reverse scroll away from the absolute top. A Back to top
+  action returns the list and header together. The title, target role and filter
+  entry remain available while the result chrome is collapsed.
+- Candidates can be inspected through View details without selecting them or
+  closing the picker. Returning preserves the draft, target slot, filters,
+  query, sort and list state. Ranking semantics themselves remain unchanged and
+  are intentionally a later slice.
+- Seventy-four focused ViewModel tests and five focused Compose picker tests
+  passed on `emulator-5554`. Debug and Android-test Kotlin compilation passed,
+  the final debug APK installed successfully, and the filter sheet,
+  absolute-top collapse behavior, Back to top and detail-return flow were
+  inspected in the running staging/v2 debug app. The subsequent consolidated
+  filter layout was also inspected at compact width; a resolved Leader opened
+  the next-slot picker with only Leader coverage selected and no redundant
+  active-chip row. Unit fixtures cover the resolved Leader + Friend, Leader
+  only, Friend only and neither-role defaults. The older 200%-font
+  below-header Builder test debt recorded in the previous checkpoint remains
+  separate and was not introduced here.
+- Intent + Impeccable guided the hierarchy, copy and accent restraint. Final
+  user visual acceptance is pending. No commit, push, R2 object, publisher or
+  production endpoint changed.
 
 ## Operating Constraints
 
