@@ -1,4 +1,5 @@
 import type {
+    TeamAnalysisCardIdentity,
     TeamAnalysisNameIdentityBinding,
     TeamAnalysisNameIdentityContract,
 } from "../team-analysis";
@@ -21,6 +22,22 @@ function requiredId(value: string | undefined, context: string): string {
         throw new Error(`${context} must be a positive numeric ID`);
     }
     return id;
+}
+
+export function buildGameDbCardIdentityContract(
+    tables: Record<string, GameDbRow[]>,
+): ReadonlyMap<string, TeamAnalysisCardIdentity> {
+    const identities = new Map<string, TeamAnalysisCardIdentity>();
+    for (const row of tables.cards ?? []) {
+        const cardId = requiredId(row.id, "cards.id");
+        const identity: TeamAnalysisCardIdentity = {
+            canonicalId: requiredId(row.card_unique_info_id, `cards row ${cardId} canonical ID`),
+            gameCharacterId: requiredId(row.character_id, `cards row ${cardId} character ID`),
+        };
+        if (identities.has(cardId)) throw new Error(`duplicate cards row ${cardId}`);
+        identities.set(cardId, identity);
+    }
+    return identities;
 }
 
 function collectCompiledCausalityIds(raw: string | undefined): string[] {

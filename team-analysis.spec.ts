@@ -1296,6 +1296,43 @@ describe("team-analysis Gate A4.1 structural enemy-status evidence", function ()
     equal(passive.rules[0].conditionStatus, "supported");
   });
 
+  it("recovers typed enemy statuses from legacy unresolved structural markers", () => {
+    const details = passiveDetailsFromSkill({
+      id: 4764,
+      description: "*Basic effect(s)*\n- ATK & DEF 200%{passiveImg:up_g} when the target enemy is in the following status: {passiveImg:atk_down}, {passiveImg:def_down}, {passiveImg:stun} or {passiveImg:astute}",
+    } as any, {
+      characterId: "1032391",
+      formId: "1032391",
+      releaseState: "initial",
+      sourceVersion: "a".repeat(32),
+      payloadField: "props.character.passive_skill.description",
+    });
+    ok(details?.text && details.structuralSource);
+    details.conditionEvidence = undefined;
+
+    const passive = parsePassive(
+      "1032391:1032391:initial",
+      "Mischievous Majin",
+      details.text,
+      details,
+      {
+        characterId: "1032391",
+        formId: "1032391",
+        releaseState: "initial",
+        passiveSkillSetId: "4764",
+      },
+    );
+
+    deepEqual(
+      passive.rules.flatMap(rule => flattenPredicates(rule.condition))
+        .flatMap(predicate => predicate.enemyStatuses ?? []),
+      ["atk_down", "def_down", "stunned", "super_attack_sealed"],
+    );
+    equal(passive.rules.some(rule => flattenPredicates(rule.condition)
+      .some(predicate => predicate.kind === "enemy_status")
+      && rule.conditionStatus === "supported"), true);
+  });
+
   it("splits first-party inline enemy-status requirements from their passive effects", () => {
     const rawText = [
       "Basic effect(s)",
@@ -4843,7 +4880,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.14/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.15/);
   });
 });
 

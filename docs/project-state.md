@@ -2402,6 +2402,72 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   user visual acceptance is pending. No commit, push, R2 object, publisher or
   production endpoint changed.
 
+## Team Analysis identity/status staging checkpoint (2026-08-24)
+
+- The first-party card identity contract now comes from the official Global DB
+  `cards.id`, `card_unique_info_id` and `character_id` fields. It is applied to
+  both the Character catalog projection and every Team Analysis state before
+  catalog fallback. The generated corpus has zero states or cards without a
+  canonical identity; the previous corpus had seven.
+- Android now fails closed when a static exact-name passive condition cannot be
+  evaluated because a relevant team member lacks canonical identity. A missing
+  identity can no longer turn a known team restriction green. With official
+  identity present, Panzy is canonical character `910`, Masked Majin (Panzy) is
+  `873`, and neither satisfies the official DAIMA/Glorio name sets.
+- Passive target-enemy status conditions recover typed `atk_down`, `def_down`,
+  `stunned` and `super_attack_sealed` evidence from the already validated
+  structural markers. Card `1032391` now carries all four typed status choices,
+  so both Character Details and Team Builder can render the existing icons.
+- The new pair is public only in `staging/v2`. Characters is version
+  `2026-08-24T16:26:58.136Z`, 1,436 characters, 2,343,283 bytes and SHA-256
+  `4260712cc058ca06364d38a19de75f1e9280769dbeaebed3d8e35a37f9932643`.
+  Team Analysis is version `2026-08-24T16:26:58.136Z:parser-1.9.15`, 2,288
+  states, 3,078,302 bytes and SHA-256
+  `da9c9128b1857904ea8f49b15592d8fb0c4a38fa7cea4cf54497690e374a3b6e`.
+  Its Character version/SHA binding is exact.
+- Both mandatory pre-publication dry-runs passed. The Team payload upload was
+  initially followed by a bounded visibility-verification failure, so its
+  manifest remained on the prior release. A read-only public download then
+  proved the immutable object exact; the idempotent retry reused it without an
+  upload and promoted only the staging/v2 manifest. Final dry-runs plan zero
+  writes. Public payload sizes/hashes and cache headers match exactly;
+  manifests use `no-store` and payloads use immutable one-year caching.
+- Focused scraper tests passed 414 cases and the Android evaluator regression
+  test passed. The broad scraper suite had 1,822 passing and 13 pending cases;
+  its 19 failures are unchanged test-environment/lineage prerequisites (17
+  require Node `--expose-gc`, two are the existing DD6 source-identity lock).
+  Tracked `lib/` was rebuilt from the changed TypeScript sources.
+- A debug build explicitly routed to `staging/v2` was installed on
+  `emulator-5554`. It opened normally, downloaded both exact new payloads and
+  stored matching manifests; Team Analysis validation completed successfully.
+  The remaining manual product check is the Panzy + Masked Majin draft without
+  a Friend: the DAIMA/Glorio condition must be unavailable and the four enemy
+  status icons must be visible.
+- Production remains unchanged at Characters SHA
+  `34b2ce3918d0497b458f106f4e00b50cb039f0a280ef6bfe45c0ca76ee1a84bd`
+  and Team Analysis SHA
+  `d7a8461c41484b0e25f61131476006b18eadad71c6bac265e7f0e289e7a96237`.
+  The scraper and Android implementation changes in this checkpoint are kept
+  in separate repository commits. The Android fail-closed evaluator is
+  `87d3729`; its Basic-header interaction follow-up is `aca3fb9`.
+
+## Team Builder Basic header regression checkpoint (2026-08-24)
+
+- The Basic-mode collapsible header again expands only after the actively
+  scrolled content returns to its absolute top. A small reverse scroll while
+  browsing owned slots, Friend or passive analysis no longer reopens the full
+  workspace header. Compact and both expanded-width Basic columns use the same
+  typed scroll policy; Rotations preserves its existing behavior.
+- The already approved candidate-picker absolute-top behavior now shares that
+  policy instead of carrying a duplicate conditional implementation. Focused
+  state tests cover collapse, reverse scroll away from the top and expansion at
+  the top. Android test compilation passed.
+- The staging/v2 debug APK was reinstalled on `emulator-5554`. A real gesture
+  pass proved the header remained collapsed after a short reverse scroll deep
+  in the Basic list and restored `Current draft` only after returning to the
+  top. Intent + Impeccable treated this as a narrow interaction refinement; no
+  layout, copy, new control, dataset or R2 endpoint changed.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

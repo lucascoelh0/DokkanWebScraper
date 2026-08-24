@@ -1,6 +1,35 @@
 import { deepEqual, throws } from "assert";
 import { describe, it } from "mocha";
-import { buildGameDbNameIdentityContract } from "./game-db-name-identity";
+import {
+    buildGameDbCardIdentityContract,
+    buildGameDbNameIdentityContract,
+} from "./game-db-name-identity";
+
+describe("buildGameDbCardIdentityContract", function () {
+    it("indexes official card identity independently from the community catalog", () => {
+        const contract = buildGameDbCardIdentityContract({
+            cards: [
+                { id: "1034411", character_id: "1510", card_unique_info_id: "910" },
+                { id: "1032391", character_id: "1485", card_unique_info_id: "873" },
+            ],
+        });
+
+        deepEqual(contract.get("1034411"), {
+            canonicalId: "910",
+            gameCharacterId: "1510",
+        });
+        deepEqual(contract.get("1032391"), {
+            canonicalId: "873",
+            gameCharacterId: "1485",
+        });
+    });
+
+    it("fails closed for incomplete official card identity", () => {
+        throws(() => buildGameDbCardIdentityContract({
+            cards: [{ id: "1034411", character_id: "1510" }],
+        }), /canonical ID/);
+    });
+});
 
 describe("buildGameDbNameIdentityContract", function () {
     it("joins nested type-41 causalities to official canonical identity sets", () => {

@@ -9,6 +9,7 @@ import {
     buildTeamAnalysisCoverageReport,
     buildTeamAnalysisDataset,
     TeamAnalysisActiveSkillActivationContract,
+    TeamAnalysisCardIdentity,
     TeamAnalysisNameIdentityContract,
 } from "./team-analysis";
 import {
@@ -29,7 +30,25 @@ export interface FyiTeamAnalysisRunOptions {
     characterManifestPath: string,
     catalogPath: string,
     nameIdentityContract?: TeamAnalysisNameIdentityContract,
+    cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
     activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+}
+
+export function applyTeamAnalysisCardIdentityContract(
+    entries: FyiCharacterCatalogDataset["characters"],
+    contract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
+): FyiCharacterCatalogDataset["characters"] {
+    if (!contract) return entries;
+    return entries.map(entry => {
+        const identity = contract.get(entry.id);
+        return identity
+            ? {
+                ...entry,
+                canonicalId: identity.canonicalId,
+                characterId: identity.gameCharacterId,
+            }
+            : entry;
+    });
 }
 
 export async function runFyiTeamAnalysis(
@@ -58,16 +77,22 @@ export async function runFyiTeamAnalysis(
         throw new Error(`Character manifest count ${characterManifest.characterCount} does not match ${characters.length}.`);
     }
     const catalog = JSON.parse(catalogText) as FyiCharacterCatalogDataset;
-    const dataset = buildTeamAnalysisDataset(characters, catalog.characters, {
+    const catalogEntries = applyTeamAnalysisCardIdentityContract(
+        catalog.characters,
+        options.cardIdentityContract,
+    );
+    const dataset = buildTeamAnalysisDataset(characters, catalogEntries, {
         generatedAt: characterManifest.generatedAt,
         sourceCharacterDatasetVersion: characterManifest.datasetVersion,
         sourceCharacterPayloadSha256: characterManifest.sha256,
         ...(options.nameIdentityContract ? { nameIdentityContract: options.nameIdentityContract } : {}),
+        ...(options.cardIdentityContract ? { cardIdentityContract: options.cardIdentityContract } : {}),
         ...(options.activeSkillActivationContract
             ? { activeSkillActivationContract: options.activeSkillActivationContract }
             : {}),
     });
-    assertValidTeamAnalysisDataset(dataset, characters, catalog.characters, {
+    assertValidTeamAnalysisDataset(dataset, characters, catalogEntries, {
+        ...(options.cardIdentityContract ? { cardIdentityContract: options.cardIdentityContract } : {}),
         ...(options.activeSkillActivationContract
             ? { activeSkillActivationContract: options.activeSkillActivationContract }
             : {}),

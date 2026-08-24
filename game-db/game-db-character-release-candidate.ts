@@ -10,7 +10,10 @@ import type { TeamAnalysisManifest } from "../team-analysis-artifacts";
 import { projectGameDbCharactersToDokkanpanion } from "./game-db-app-projection";
 import { overlayGameDbCharacterReleaseStates } from "./game-db-character-release-overlay";
 import { buildGameDbCharacterSnapshots, loadRequiredGameDbTables } from "./game-db-experiment";
-import { buildGameDbNameIdentityContract } from "./game-db-name-identity";
+import {
+    buildGameDbCardIdentityContract,
+    buildGameDbNameIdentityContract,
+} from "./game-db-name-identity";
 import { buildGameDbActiveSkillActivationContract } from "./game-db-active-skill";
 import { resolveGameDbSourceConfig } from "./game-db-source";
 
@@ -146,6 +149,7 @@ export async function buildGameDbCharacterReleaseCandidate(options: CandidateOpt
     const sourceConfig = resolveGameDbSourceConfig(options.firstPartyDir);
     const tables = await loadRequiredGameDbTables(sourceConfig);
     const nameIdentityContract = buildGameDbNameIdentityContract(tables);
+    const cardIdentityContract = buildGameDbCardIdentityContract(tables);
     const activeSkillActivationContract = buildGameDbActiveSkillActivationContract(tables);
     const snapshots = buildGameDbCharacterSnapshots(options.cardIds, tables);
     const projections = projectGameDbCharactersToDokkanpanion(snapshots, {
@@ -166,6 +170,7 @@ export async function buildGameDbCharacterReleaseCandidate(options: CandidateOpt
         characterManifestPath: resolve(options.outputDir, "characters-manifest.json"),
         catalogPath: options.catalogPath,
         nameIdentityContract,
+        cardIdentityContract,
         activeSkillActivationContract,
     });
     const teamAnalysisManifest = JSON.parse(

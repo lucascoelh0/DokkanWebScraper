@@ -25,7 +25,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.14";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.15";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 export const HP_REMAINING_SCALING_DOMAIN_RULE_VERSION = "hp-remaining-scaling-v1";
 const EFFECT_DECISION_DOMAIN_RULE_VERSIONS = new Set([
@@ -482,6 +482,11 @@ export interface TeamAnalysisNameIdentityContract {
     bindings: TeamAnalysisNameIdentityBinding[],
 }
 
+export interface TeamAnalysisCardIdentity {
+    canonicalId: string,
+    gameCharacterId: string,
+}
+
 export interface PassiveEffect {
     kind: PassiveEffectKind,
     target: PassiveTarget,
@@ -874,6 +879,7 @@ export function buildTeamAnalysisDataset(
         rulesVersion?: string,
         parserVersion?: string,
         nameIdentityContract?: TeamAnalysisNameIdentityContract,
+        cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
         activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
     },
 ): TeamAnalysisDataset {
@@ -883,6 +889,7 @@ export function buildTeamAnalysisDataset(
             character,
             catalogById.get(character.id),
             options.nameIdentityContract,
+            options.cardIdentityContract,
             options.activeSkillActivationContract,
         ))
         .sort(compareAnalysisStates);
@@ -907,6 +914,7 @@ function buildCharacterStates(
     character: Character,
     catalogEntry: FyiCharacterCatalogEntry | undefined,
     nameIdentityContract?: TeamAnalysisNameIdentityContract,
+    cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
     activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
 ): CharacterStateAnalysis[] {
     const rootForm: AnalysisFormSource = character;
@@ -915,7 +923,13 @@ function buildCharacterStates(
     return forms.flatMap(form => {
         const releaseSources = analysisReleaseSources(form);
         return releaseSources.map(releaseSource => {
-        const identity = resolveIdentity(character, form, catalogEntry, releaseSource.releaseState);
+        const identity = resolveIdentity(
+            character,
+            form,
+            catalogEntry,
+            releaseSource.releaseState,
+            cardIdentityContract,
+        );
         const stateKey = buildStateKey(identity.characterId, identity.formId, identity.releaseState);
         const passive = releaseSource.passiveText
             ? parsePassive(
@@ -997,13 +1011,15 @@ function resolveIdentity(
     form: AnalysisFormSource,
     catalogEntry: FyiCharacterCatalogEntry | undefined,
     releaseState = releaseStateFromForm(form),
+    cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
 ): ResolvedIdentity {
-    const canonicalId = catalogEntry?.canonicalId;
+    const firstPartyIdentity = cardIdentityContract?.get(character.id);
+    const canonicalId = firstPartyIdentity?.canonicalId ?? catalogEntry?.canonicalId;
     const baseCharacterId = catalogEntry?.baseCharacterId;
     return {
         characterId: character.id,
         canonicalId,
-        gameCharacterId: catalogEntry?.characterId,
+        gameCharacterId: firstPartyIdentity?.gameCharacterId ?? catalogEntry?.characterId,
         baseCharacterId,
         hardDuplicateGroupId: buildHardDuplicateGroupId(character.id),
         variantGroupId: canonicalId ? buildVariantGroupId(canonicalId) : undefined,
@@ -2077,6 +2093,15 @@ export function parsePassive(
             passiveDetails?.sourceSkillId,
         )
         : [];
+    const parsingConditionEvidence = [
+        ...conditionEvidence,
+        ...conditionEvidenceFromStructuralEvidence(
+            stateKey,
+            rawText,
+            structuralEvidence,
+            conditionEvidence,
+        ),
+    ];
     const blocks = buildLogicalPassiveBlocks(sourceMap);
     const rules: PassiveRule[] = [];
     const unparsedFragments: SourceFragment[] = [];
@@ -2128,11 +2153,11 @@ export function parsePassive(
                 ? { condition: { op: "always" } as ConditionExpression, status: "supported" as ParseStatus }
                 : parseCondition(
                     currentCondition.text,
-                    enrichedConditionText(currentCondition, conditionEvidence),
+                    enrichedConditionText(currentCondition, parsingConditionEvidence),
                     context,
                 )
             : { condition: { op: "always" } as ConditionExpression, status: "supported" as ParseStatus };
-        const inlineEnemyStatus = splitInlineEnemyStatusCondition(block, conditionEvidence);
+        const inlineEnemyStatus = splitInlineEnemyStatusCondition(block, parsingConditionEvidence);
         const inlineTemporal = splitInlineTemporalCondition(inlineEnemyStatus?.effectText ?? block.text);
         const inlineConditionResults = [
             ...(inlineEnemyStatus
@@ -2377,7 +2402,8 @@ function validConditionEvidence(
         if (sourceTokens.length !== evidence.statuses.length
             || evidence.statuses.some((status, order) => status.order !== order
                 || status.sourceToken !== sourceTokens[order]
-                || status.status !== enemyStatusFromEvidenceMarker(status.sourceToken)
+                || (status.status !== undefined
+                    && status.status !== enemyStatusFromEvidenceMarker(status.sourceToken))
                 || status.resolution !== (status.status ? "supported" : "unresolved"))) {
             return false;
         }
@@ -2403,6 +2429,89 @@ function conditionEvidenceForBlock(
         }
         return false;
     });
+}
+
+function conditionEvidenceFromStructuralEvidence(
+    stateKey: string,
+    rawText: string,
+    structuralEvidence: EffectStructuralEvidence[],
+    explicitEvidence: PassiveConditionEvidence[],
+): PassiveConditionEvidence[] {
+    const explicitLines = new Set<number>();
+    explicitEvidence.forEach(evidence => {
+        const end = evidence.anchor.endLineIndex ?? evidence.anchor.lineIndex;
+        for (let line = evidence.anchor.lineIndex; line <= end; line += 1) {
+            explicitLines.add(line);
+        }
+    });
+    const derived: PassiveConditionEvidence[] = [];
+    for (const evidence of structuralEvidence) {
+        const endLine = evidence.anchor.endLineIndex ?? evidence.anchor.lineIndex;
+        const overlapsExplicit = Array.from(
+            { length: endLine - evidence.anchor.lineIndex + 1 },
+            (_value, index) => evidence.anchor.lineIndex + index,
+        ).some(line => explicitLines.has(line));
+        const structuralText = evidence.anchor.structuralText.replace(/\s+/g, " ");
+        const statusOffset = structuralText.toLowerCase().indexOf("following status:");
+        if (overlapsExplicit || statusOffset < 0 || evidence.channel !== "passive") continue;
+        const provenance: PassiveConditionEvidence["provenance"] | undefined =
+            evidence.provenance.source === "dokkan_fyi_payload"
+                ? evidence.provenance.payloadField === "props.character.passive_skill.description"
+                    || evidence.provenance.payloadField === "props.character.extreme_z_awakening.passive_skill.description"
+                    ? {
+                        source: evidence.provenance.source,
+                        sourceVersion: evidence.provenance.sourceVersion,
+                        payloadField: evidence.provenance.payloadField,
+                        markerSyntax: evidence.provenance.markerSyntax,
+                    }
+                    : undefined
+                : evidence.provenance.payloadField !== "special_sets.description"
+                    ? {
+                        source: evidence.provenance.source,
+                        sourceVersion: evidence.provenance.sourceVersion,
+                        payloadField: evidence.provenance.payloadField,
+                        markerSyntax: evidence.provenance.markerSyntax,
+                    }
+                    : undefined;
+        if (!provenance) continue;
+        const statusSource = structuralText.slice(statusOffset + "following status:".length);
+        const sourceTokens = [...statusSource.matchAll(/\{passiveImg:([^}]+)\}/g)]
+            .map(match => match[1]);
+        const statuses: PassiveConditionEvidence["statuses"] = [];
+        for (const [order, sourceToken] of sourceTokens.entries()) {
+            const status = enemyStatusFromEvidenceMarker(sourceToken);
+            if (!status) {
+                statuses.length = 0;
+                break;
+            }
+            statuses.push({ order, sourceToken, status, resolution: "supported" });
+        }
+        if (statuses.length === 0) continue;
+        const connector = evidenceConnector(evidence.anchor.structuralText, statuses.length);
+        if (statuses.length > 1 && !connector) continue;
+        derived.push({
+            kind: "enemy_status",
+            stateKey,
+            characterId: evidence.characterId,
+            formId: evidence.formId,
+            releaseState: evidence.releaseState,
+            ...(evidence.passiveSkillId ? { passiveSkillId: evidence.passiveSkillId } : {}),
+            passiveTextSha256: createHash("sha256").update(rawText, "utf8").digest("hex"),
+            anchor: {
+                lineIndex: evidence.anchor.lineIndex,
+                ...(evidence.anchor.endLineIndex !== undefined
+                    ? { endLineIndex: evidence.anchor.endLineIndex }
+                    : {}),
+                normalizedText: evidence.anchor.normalizedText,
+                structuralText: evidence.anchor.structuralText,
+            },
+            statuses,
+            ...(connector ? { connector } : {}),
+            resolution: "supported",
+            provenance,
+        });
+    }
+    return derived;
 }
 
 function stripPassiveMarkers(sourceText: string): string {
@@ -2519,12 +2628,15 @@ function semanticEvidenceText(evidence: PassiveConditionEvidence): string {
             return "";
         }
         const item = evidence.statuses[order++];
-        if (!item || item.sourceToken !== sourceToken || !item.status) {
+        const status = item?.sourceToken === sourceToken
+            ? item.status ?? enemyStatusFromEvidenceMarker(sourceToken)
+            : undefined;
+        if (!status) {
             return "unresolved enemy status";
         }
-        if (item.status === "atk_down") return "ATK Down";
-        if (item.status === "def_down") return "DEF Down";
-        if (item.status === "stunned") return "stunned";
+        if (status === "atk_down") return "ATK Down";
+        if (status === "def_down") return "DEF Down";
+        if (status === "stunned") return "stunned";
         return "Super Attack sealed";
     });
 }
@@ -8231,13 +8343,18 @@ export function validateTeamAnalysisDataset(
     catalogEntries: FyiCharacterCatalogEntry[],
     options: {
         activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+        cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
         allowExternalActiveSkillConditions?: boolean,
     } = {},
 ): TeamAnalysisValidationIssue[] {
     const issues: TeamAnalysisValidationIssue[] = [];
     const stateKeys = new Set<string>();
     const ruleIds = new Set<string>();
-    const expectedStates = expectedStateIdentities(characters, catalogEntries);
+    const expectedStates = expectedStateIdentities(
+        characters,
+        catalogEntries,
+        options.cardIdentityContract,
+    );
     const expectedSources = expectedStateSources(characters, options.activeSkillActivationContract);
 
     if (dataset.stateCount !== dataset.states.length) {
@@ -8285,6 +8402,7 @@ export function assertValidTeamAnalysisDataset(
     catalogEntries: FyiCharacterCatalogEntry[],
     options: {
         activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+        cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
         allowExternalActiveSkillConditions?: boolean,
     } = {},
 ): void {
@@ -8387,6 +8505,7 @@ export function assertValidTeamAnalysisDatasetForDelivery(
 function expectedStateIdentities(
     characters: Character[],
     catalogEntries: FyiCharacterCatalogEntry[],
+    cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
 ): Map<string, ResolvedIdentity> {
     const catalogById = new Map(catalogEntries.map(entry => [entry.id, entry]));
     const expected = new Map<string, ResolvedIdentity>();
@@ -8394,7 +8513,13 @@ function expectedStateIdentities(
         const catalogEntry = catalogById.get(character.id);
         for (const form of [character, ...(character.transformations ?? [])] as AnalysisFormSource[]) {
             for (const releaseSource of analysisReleaseSources(form)) {
-                const identity = resolveIdentity(character, form, catalogEntry, releaseSource.releaseState);
+                const identity = resolveIdentity(
+                    character,
+                    form,
+                    catalogEntry,
+                    releaseSource.releaseState,
+                    cardIdentityContract,
+                );
                 expected.set(buildStateKey(identity.characterId, identity.formId, identity.releaseState), identity);
             }
         }
