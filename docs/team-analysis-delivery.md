@@ -36,6 +36,9 @@ Inspect staging without writing:
 npm run publish:team-analysis-r2 -- --dry-run --remote --channel staging --contract-lane v1 --v1-projection-report PATH_TO_ANDROID_V1_PROJECTION_REPORT --bucket dokkanpanion-data
 ```
 
+Use `--contract-lane v2` without a projection report to inspect or publish the
+canonical v2 pair under `staging/v2/`.
+
 Publishing staging still mutates R2 and requires separate authorization, but
 it cannot update the production manifest or payload namespace:
 
@@ -52,9 +55,10 @@ npm run publish:team-analysis-r2 -- --remote --channel production --contract-lan
 
 The publisher always passes either `--remote` or `--local` to Wrangler object
 operations. `--skip-remote-manifest-check` and `--skip-upload-verification` are
-explicit recovery flags and are not defaults. Real remote writes also fail
-closed when Wrangler cannot report bucket size; bypassing that guard requires
-the separate explicit `--allow-unknown-bucket-size` recovery flag.
+limited to local or read-only dry-run diagnostics; every real remote write
+requires both fail-closed barriers. Real remote writes also fail closed when
+Wrangler cannot report bucket size; bypassing that guard requires the separate
+explicit `--allow-unknown-bucket-size` recovery flag.
 The default channel remains production for read-only compatibility, but the
 contract lane has no default and must be selected explicitly. A real remote
 production write fails unless `--promote-production` is present. V1 also
@@ -75,6 +79,13 @@ the last public write and is downloaded again to verify its exact content,
 size, and SHA-256. Local state is updated only after that verification, and
 old-release cleanup runs afterward. A cleanup failure is recorded for a later
 retry and does not invalidate the newly active manifest.
+
+Both post-upload reads use a bounded six-attempt verification window (the
+initial read plus 1, 2, 4, 8 and 15 second waits). This tolerates brief remote
+visibility delay without weakening the byte checks. Exhaustion still fails
+closed before the next publication phase: an unverified payload cannot promote
+the manifest, and an unverified manifest cannot update local state or start
+cleanup.
 
 The namespace retains the active release and the immediately previous verified
 release. Older releases tracked by the local state are deterministic cleanup

@@ -37,6 +37,13 @@ class FakeRunner implements TeamAnalysisCommandRunner {
     failAllDeletes = false;
     failBucketInfo = false;
     bucketSize = "100 MB";
+    readonly delays: number[] = [];
+    readonly getMissesAfterPut = new Map<string, number>();
+    private readonly pendingGetMisses = new Map<string, number>();
+
+    async delay(milliseconds: number): Promise<void> {
+        this.delays.push(milliseconds);
+    }
 
     async run(args: string[]): Promise<CommandResult> {
         this.commands.push([...args]);
@@ -48,6 +55,11 @@ class FakeRunner implements TeamAnalysisCommandRunner {
         const objectPath = args[3];
         const objectKey = objectPath.slice(objectPath.indexOf("/") + 1);
         if (operation === "get") {
+            const pendingMisses = this.pendingGetMisses.get(objectKey) ?? 0;
+            if (pendingMisses > 0) {
+                this.pendingGetMisses.set(objectKey, pendingMisses - 1);
+                return failure("404 object not found");
+            }
             const value = this.objects.get(objectKey);
             if (!value) return failure("404 object not found");
             await writeFile(args[args.indexOf("--file") + 1], value);
@@ -57,6 +69,8 @@ class FakeRunner implements TeamAnalysisCommandRunner {
             if (this.failPutKey === objectKey) return failure(`put failed for ${objectKey}`);
             if (this.ignorePutKey === objectKey) return success();
             this.objects.set(objectKey, await readFile(args[args.indexOf("--file") + 1]));
+            const getMisses = this.getMissesAfterPut.get(objectKey) ?? 0;
+            if (getMisses > 0) this.pendingGetMisses.set(objectKey, getMisses);
             return success();
         }
         if (operation === "delete") {
@@ -257,12 +271,44 @@ describe("Team Analysis R2 delivery gate", function () {
         deepEqual(puts, [buildTeamAnalysisDatasetObjectKey(fixture.artifact.manifest), TEAM_ANALYSIS_MANIFEST_OBJECT_KEY]);
     });
 
+    it("waits for a newly uploaded payload to become readable before promoting the manifest", async () => {
+        const payloadKey = buildTeamAnalysisDatasetObjectKey(fixture.artifact.manifest);
+        fixture.runner.getMissesAfterPut.set(payloadKey, 2);
+
+        await publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock);
+
+        deepEqual(fixture.runner.delays, [1_000, 2_000]);
+        deepEqual(putKeys(fixture.runner), [payloadKey, TEAM_ANALYSIS_MANIFEST_OBJECT_KEY]);
+    });
+
+    it("waits for a newly uploaded manifest to become readable before completing publication", async () => {
+        fixture.runner.getMissesAfterPut.set(TEAM_ANALYSIS_MANIFEST_OBJECT_KEY, 1);
+
+        await publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock);
+
+        deepEqual(fixture.runner.delays, [1_000]);
+        equal((await readFile(fixture.options.statePath, "utf8")).length > 0, true);
+    });
+
     it("does not promote the manifest or write state after payload failure", async () => {
         fixture.runner.failPutKey = buildTeamAnalysisDatasetObjectKey(fixture.artifact.manifest);
 
         await rejects(() => publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock), /put failed/);
         equal(fixture.runner.objects.has(TEAM_ANALYSIS_MANIFEST_OBJECT_KEY), false);
         equal(await fileExists(fixture.options.statePath), false);
+    });
+
+    it("fails closed after bounded retries when a successful payload put never becomes readable", async () => {
+        fixture.runner.ignorePutKey = buildTeamAnalysisDatasetObjectKey(fixture.artifact.manifest);
+
+        await rejects(
+            () => publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock),
+            /payload failed size\/SHA-256 verification/,
+        );
+
+        equal(fixture.runner.objects.has(TEAM_ANALYSIS_MANIFEST_OBJECT_KEY), false);
+        equal(await fileExists(fixture.options.statePath), false);
+        deepEqual(fixture.runner.delays, [1_000, 2_000, 4_000, 8_000, 15_000]);
     });
 
     it("does not update state or clean releases after manifest failure", async () => {
@@ -286,6 +332,7 @@ describe("Team Analysis R2 delivery gate", function () {
         equal(await fileExists(fixture.options.statePath), false);
         equal(fixture.runner.objects.has(old.datasetObjectKey), true);
         equal(fixture.runner.commands.some(args => args[2] === "delete"), false);
+        deepEqual(fixture.runner.delays, [1_000, 2_000, 4_000, 8_000, 15_000]);
     });
 
     it("keeps the new publication valid when old-release cleanup fails", async () => {
@@ -476,6 +523,24 @@ describe("Team Analysis R2 delivery gate", function () {
         await rejects(
             publishTeamAnalysisR2(fixture.options, fixture.runner),
             /explicit --promote-production/,
+        );
+        equal(fixture.runner.commands.length, 0);
+    });
+
+    it("refuses remote writes when either fail-closed verification barrier is disabled", async () => {
+        fixture.options.target = "remote";
+        fixture.options.skipRemoteManifestCheck = true;
+        await rejects(
+            () => publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock),
+            /Remote publication requires the baseline manifest check and post-upload verification/,
+        );
+        equal(fixture.runner.commands.length, 0);
+
+        fixture.options.skipRemoteManifestCheck = false;
+        fixture.options.skipUploadVerification = true;
+        await rejects(
+            () => publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock),
+            /Remote publication requires the baseline manifest check and post-upload verification/,
         );
         equal(fixture.runner.commands.length, 0);
     });

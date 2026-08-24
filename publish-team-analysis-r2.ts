@@ -30,6 +30,7 @@ const DEFAULT_MAX_TOTAL_BYTES = 10_000_000_000;
 const DEFAULT_MAX_NAMESPACE_BYTES = 50_000_000;
 const RETAINED_RELEASE_COUNT = 2;
 const MAX_TRACKED_RELEASES = 50;
+const UPLOAD_VERIFICATION_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000] as const;
 export const TEAM_ANALYSIS_MANIFEST_OBJECT_KEY = "team-analysis-manifest.json";
 export const TEAM_ANALYSIS_PAYLOAD_CACHE_CONTROL = "public, max-age=31536000, immutable";
 export const TEAM_ANALYSIS_MANIFEST_CACHE_CONTROL = "no-store";
@@ -86,6 +87,7 @@ export interface CommandResult {
 
 export interface TeamAnalysisCommandRunner {
     run(args: string[]): Promise<CommandResult>,
+    delay?(milliseconds: number): Promise<void>,
 }
 
 export interface BucketSizeReport {
@@ -437,6 +439,7 @@ export async function publishTeamAnalysisR2(
     now: () => Date = () => new Date(),
 ): Promise<TeamAnalysisPublishSummary> {
     assertDatasetPublicationWriteAuthorized(options);
+    assertRemoteWriteVerificationEnabled(options);
     const plan = await readTeamAnalysisR2PublishPlan(options, runner);
     printTeamAnalysisR2PublishPlan(plan);
     if (options.dryRun) {
@@ -525,6 +528,16 @@ export async function publishTeamAnalysisR2(
         console.log("Team Analysis R2 publication completed; the manifest was promoted only after payload readiness.");
     }
     return { plan, cleanupFailures };
+}
+
+function assertRemoteWriteVerificationEnabled(options: TeamAnalysisR2PublishOptions): void {
+    if (options.target !== "remote" || options.dryRun) return;
+    if (options.skipRemoteManifestCheck || options.skipUploadVerification) {
+        throw new Error(
+            "Remote publication requires the baseline manifest check and post-upload verification; "
+            + "skip flags are limited to local or read-only dry-run diagnostics.",
+        );
+    }
 }
 
 export function printTeamAnalysisR2PublishPlan(plan: TeamAnalysisR2PublishPlan): void {
@@ -691,12 +704,12 @@ async function assertRemotePayloadMatches(
     expectedSha256: string,
     expectedSizeBytes: number,
 ): Promise<void> {
-    const matches = await remotePayloadMatches(runner, options, {
+    const matches = await eventuallyMatches(runner, () => remotePayloadMatches(runner, options, {
         datasetVersion: "upload-verification",
         datasetObjectKey: objectKey,
         payloadSha256: expectedSha256,
         sizeBytes: expectedSizeBytes,
-    });
+    }));
     if (!matches) {
         throw new Error(`Uploaded Team Analysis payload failed size/SHA-256 verification: ${objectKey}`);
     }
@@ -708,19 +721,44 @@ async function assertRemoteManifestMatches(
     expectedManifest: TeamAnalysisManifest,
     expectedBuffer: Buffer,
 ): Promise<void> {
-    const remote = await tryGetJsonObject<TeamAnalysisManifest>(
-        runner,
-        options,
-        options.manifestObjectKey,
-        "uploaded Team Analysis manifest",
-    );
-    const matches = remote
-        && remote.bytes === expectedBuffer.byteLength
-        && remote.sha256 === sha256(expectedBuffer)
-        && manifestsExactlyMatch(remote.value, expectedManifest);
+    const expectedSha256 = sha256(expectedBuffer);
+    const matches = await eventuallyMatches(runner, async () => {
+        const remote = await tryGetJsonObject<TeamAnalysisManifest>(
+            runner,
+            options,
+            options.manifestObjectKey,
+            "uploaded Team Analysis manifest",
+        );
+        return Boolean(
+            remote
+            && remote.bytes === expectedBuffer.byteLength
+            && remote.sha256 === expectedSha256
+            && manifestsExactlyMatch(remote.value, expectedManifest),
+        );
+    });
     if (!matches) {
         throw new Error("Uploaded Team Analysis manifest failed content/size/SHA-256 verification.");
     }
+}
+
+async function eventuallyMatches(
+    runner: TeamAnalysisCommandRunner,
+    check: () => Promise<boolean>,
+): Promise<boolean> {
+    if (await check()) return true;
+    for (const delayMilliseconds of UPLOAD_VERIFICATION_RETRY_DELAYS_MS) {
+        await delayRunner(runner, delayMilliseconds);
+        if (await check()) return true;
+    }
+    return false;
+}
+
+async function delayRunner(runner: TeamAnalysisCommandRunner, milliseconds: number): Promise<void> {
+    if (runner.delay) {
+        await runner.delay(milliseconds);
+        return;
+    }
+    await new Promise<void>(resolveDelay => setTimeout(resolveDelay, milliseconds));
 }
 
 async function tryReadBucketSizeReport(
