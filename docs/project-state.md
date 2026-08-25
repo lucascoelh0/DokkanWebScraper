@@ -2549,6 +2549,30 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 - This delivery did not publish R2 data, alter the production/v1 dataset lane,
   create a Play track release or promote anything to production.
 
+## Team Builder Rotations clarity checkpoint (2026-08-25)
+
+- Rotations now explains the plan before the six-turn schedule: Rotation 1 is
+  labelled as turns 1/3/5, Rotation 2 as turns 2/4/6, and each floater carries
+  its exact pair of turns. Fixed pairs show a compact shared-Link count with
+  optional exact names derived from the existing selected-state/same-name/
+  transformation linking contract; unresolved members fail closed instead of
+  being shown as zero links.
+- The link-only suggestion sheet is now labelled `Most shared links` rather
+  than implying a broader best team. Both candidate plans summarize their two
+  proposed pairs and shared-Link counts before the portrait breakdown while
+  ranking details remain behind disclosure. Rotation-specific passive scoring
+  remains excluded until a typed formation-aware contract is proven.
+- Manual move-sheet changes and drag swaps persist first and then expose a
+  dismissible guarded Undo. Basic and Rotations both have Back to top, and
+  Rotations now shares Basic's absolute-top header policy: a small reverse
+  scroll in the middle of the list cannot reopen the full workspace header.
+- Intent + Impeccable guided the hierarchy and wording. Both changed layout
+  files returned zero detector findings. The focused ViewModel suite, Android
+  test compilation, the Rotations/Basic/suggestion/undo Compose cases, and a
+  real emulator gesture/visual pass succeeded. The debug APK is installed on
+  `emulator-5554`; the user still needs to review this visual slice. No commit,
+  push, dataset, R2 lane or production endpoint changed.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
