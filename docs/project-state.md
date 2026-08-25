@@ -2468,6 +2468,87 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   top. Intent + Impeccable treated this as a narrow interaction refinement; no
   layout, copy, new control, dataset or R2 endpoint changed.
 
+## Dataset download consent checkpoint (2026-08-25)
+
+- First install now inspects manifests before any payload transfer and presents
+  the exact combined compressed size and included datasets. An unverifiable
+  size fails closed with Retry/Cancel rather than offering an unmeasured
+  download.
+- Tools > Data > Check for updates is now a manifest-only inspection. Current
+  data reports up to date; changed datasets require a separate Download Data
+  action, while Not now performs no payload request.
+- Confirmation is bound to the exact dataset entries shown: kind, manifest
+  object key, version, payload key, SHA-256 and compressed byte count. Character
+  and all auxiliary downloaders reject a changed manifest before requesting its
+  payload. Persisted first-install consent propagates the freshly revalidated
+  plan after process death, and generic MANUAL calls cannot bypass the required
+  plan.
+- Manual byte totals compare remote entries with validated persisted auxiliary
+  cache manifests, so unchanged datasets remain excluded after a process
+  restart instead of relying on volatile in-memory status.
+- Focused contract tests and the complete Domain/App debug unit suites passed.
+  A debug APK explicitly routed to `staging/v2` built successfully, installed
+  on the user's Galaxy A56 at `192.168.18.181:46669`, launched as
+  `com.luminay.dokkanpanion.debug`, and produced no AndroidRuntime fatal. Manual
+  first-install and Tools confirmation review on-device found and isolated a
+  manual auxiliary single-flight race: an active startup refresh could cause
+  the approved auxiliary round to be skipped, while the UI returned before
+  auxiliary completion and retained the prior availability card.
+- The local follow-up serializes a confirmed manual operation behind any active
+  auxiliary round, awaits its own approved auxiliary round, then reinspects the
+  validated persisted cache. The final Data screen therefore reports up to
+  date or the exact entries still pending instead of returning silently.
+  Coordinator regressions cover startup-to-manual and two distinct concurrent
+  approved plans; the complete Domain/App debug unit suites pass. Contract
+  re-review found no P0-P2. The final staging/v2 debug APK was installed over
+  the existing app data on the user's Galaxy A56, launched without a runtime
+  fatal, and Tools > Data > Check for updates deterministically reported
+  **Data is up to date** instead of retaining the prior 5.3 MB card.
+- Intent + Impeccable governed the approved inline confirmation hierarchy and
+  failure copy. A read-only contract re-review found no P0-P2. No commit, push,
+  R2 object, publisher or production endpoint changed.
+
+## Android physical-device acceptance checkpoint (2026-08-25)
+
+- The user approved the final staging/v2 debug build on the Galaxy A56 after
+  checking Team lifecycle actions, Remove all + Undo, Leaders hard-copy
+  deduplication, the six-character Links geometry, candidate discovery and the
+  deterministic Recommended ordering.
+- The manual dataset flow also reports the persisted staging/v2 pair as up to
+  date after the auxiliary single-flight fix. No further Team Builder ranking,
+  passive-analysis or Rotations evaluation is required for this checkpoint.
+- Google Play's flexible in-app update lifecycle remains a later internal-track
+  verification because a sideloaded debug APK cannot exercise that Play-owned
+  flow. No commit, push, R2 object or production endpoint changed.
+
+## Play In-App Update acceptance checkpoint (2026-08-25)
+
+- Two minified release-class bundles were generated for Google Play Internal
+  App Sharing with package `com.luminay.dokkanpanion`, production/v1 data and
+  version codes 17 and 18. Bundletool validation and local signature checks
+  passed for both; neither artifact entered a Play testing or production track.
+- The base bundle installed from Play detected the higher-version sharing
+  artifact. The user verified the top banner, dismissed it without affecting
+  app usability, reopened the process and confirmed the offer returned, then
+  approved the behavior.
+- This proves the Play-owned availability path that cannot run in the sideloaded
+  `.debug` package. A short internal-track smoke remains for the eventual
+  release candidate. No commit, push, R2 object or production endpoint changed.
+
+## Android delivery checkpoint (2026-08-25)
+
+- The approved Team Builder recommendation, presentation, dataset-consent and
+  flexible in-app-update work was committed and pushed to `origin/master`.
+  The delivered Android range is `f01423c..21e00b6`: recommendation quality
+  (`f01423c`, `c11c64b`), ranking performance (`c76cd64`), Leaders/Links
+  presentation (`4b2b4ab`) and consented data plus Play updates (`21e00b6`).
+- Complete Domain/App debug unit suites, two minified release bundle builds,
+  bundletool validation, signature checks and the physical-device acceptance
+  described above all passed before delivery. Local `.scratch/` and generated
+  APK/AAB artifacts were not committed.
+- This delivery did not publish R2 data, alter the production/v1 dataset lane,
+  create a Play track release or promote anything to production.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
