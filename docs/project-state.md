@@ -2721,6 +2721,101 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Android transformation-feasibility consumer.
 - Production/v1, production/v2 and Google Play were not changed.
 
+## Official portrait source and static-composition checkpoint (2026-08-26)
+
+- The portrait badge defect is data-side rather than Android-side: the public
+  staging/v2 corpus carried Super-style `1x` specs for every top-level card.
+  A complete first-party join now covers all 1,627 portrait references,
+  including transformations and awakenings. Exactly 854 specs require repair;
+  the official visual inventory is 372 classless, 773 Super and 482 Extreme.
+- Raw official `cards.element` is authoritative for visual class/type. Gameplay
+  class cannot replace it because low-rarity cards may intentionally use a
+  classless `0x` badge. Typed overlay code joins exact IDs, validates rarity,
+  handles nested references and proves that no non-portrait field changes.
+- Official `cards.resource_id` owns shared portrait identity when present;
+  otherwise the exact card ID is used before normalizing the final decimal
+  digit. This resolves 27 shared-resource cards, including Bota Magetta and
+  special 2xxxxxx/3xxxxxx rows, without name exceptions. The corpus therefore
+  has 1,596 unique thumb assets for 1,627 card references.
+- Official Global 6.5.0 downloaded CPKs provide every static layer: the shared
+  `layout/en/image/character.cpk` owns frames, rarities and badge variants, and
+  each official resource owns an exact 250x250 thumb CPK. A source-only local CPK
+  reader enumerated and extracted representative bytes; no community host
+  supplied an asset.
+- A deterministic local compositor produced accepted-geometry 150x150 samples
+  for Extreme INT LR Metal Cooler Army and classless AGL SR Cell (1st Form).
+  EZA has no distinct frame or decoration. LR and SEZA effects remain a later
+  motion/performance gate after static delivery.
+- Exact CPK hashes and residual asset-manifest lineage are recorded in
+  `docs/game-db/official-portrait-compositor-report.md`. No R2 object, dataset
+  lane, Android code, production endpoint or Play release changed.
+
+## Official portrait local staging-candidate checkpoint (2026-08-26)
+
+- All 1,596 required thumb CPKs were present in the installed official Global
+  asset store. Together with the shared `character.cpk`, they produced a
+  bounded 39,822,848-byte archive whose Android and local SHA-256 both equal
+  `853bca55395067b8ae3382f1c4a0bfeb9b54d489f2a932f453b05b75c29d74a9`.
+  Extraction yielded 280 shared members and 1,596 exact thumb PNGs without a
+  missing file or collision.
+- A new fail-closed local builder hashes the archive, selected CPK inventory and
+  every extracted input layer; pins the exact APK, Global `cards.csv`,
+  DB/asset/APK versions and canonical real paths; overlays first-party
+  element/rarity/resource identity; and atomically creates 1,627 deterministic
+  150x150 portraits under channel-scoped `staging/v2/images/v4/`
+  content-addressed keys. No community site supplied asset bytes. Shared
+  official thumbs across cards or types remain valid; typed frame/rarity/badge
+  layers are composed independently for each card. The compositor consumes the
+  exact canonical bytes already hashed by the inventory rather than reopening
+  lexical paths.
+- The candidate contains 1,436 characters. Its gzip is 2,346,736 bytes with
+  SHA-256 `672b6fc2fe3712c8530a13ef0561a0a44d857e0bc6c48ddfec6b6b0a92c3965f`;
+  generated portraits total 17,438,290 bytes. Two complete generations with the
+  same timestamp produced 1,630 files each and zero byte differences.
+- A provenance-strengthened replay rejected substituted APK, DB and extracted
+  layer fixtures before output creation. Its manifest and all 1,628 object
+  files were byte-identical to the original candidate; the report alone gained
+  the stronger provenance evidence.
+- Classless, Super, Extreme and shared-resource samples were visually checked.
+  TypeScript compilation, 12 focused checks and the broader applicable suite
+  passed; the latter reported 1,851 passing and 13 expected pending under
+  `--expose-gc`. The historical DD6 HEAD-blob lock was omitted because this
+  checkpoint documentation remains intentionally uncommitted. Final read-only
+  contract re-review found no remaining P0-P2 issue. The
+  local report marks only the portrait candidate `GO`; Team Analysis rebind,
+  Android staging validation, publisher dry-run, publication, production and
+  R2 mutation remain `NO-GO`.
+- The next gate is to bind Team Analysis to this Character payload and validate
+  the complete candidate through the isolated Android staging consumer before
+  any separately authorized R2 dry-run. No remote data, Android source, Play
+  track or production endpoint changed.
+
+## Official portrait paired Android staging checkpoint (2026-08-26)
+
+- The local portrait Character candidate was rebound to Team Analysis using the
+  complete first-party Global export and parser `1.9.16`. The 2,288-state gzip
+  is 3,152,060 bytes with SHA-256
+  `8d39b8d932df4830906fffb7138ba7d6980d844e577cd90f8176fae71e09ed4b`;
+  its source version and SHA bind exactly to Character version
+  `2026-08-26T14:05:24.714Z` and SHA-256
+  `672b6fc2fe3712c8530a13ef0561a0a44d857e0bc6c48ddfec6b6b0a92c3965f`.
+  A complete replay reproduced payload, manifest and coverage bytes exactly.
+- An isolated Android `stagingDebug` build downloaded the complete local pair
+  after showing the verified 12 MB initial-consent total. On-device Character
+  and Team payload sizes and SHA-256 values matched the manifests. Team Builder
+  loaded the analysis with zero `needs info` in the smoke draft, and catalog/
+  Team screenshots verified Super, Extreme, classless and legitimate
+  shared-thumb/different-type portraits.
+- The temporary local transport is unavailable to production: only the
+  disabled-release `staging` flavor enables loopback HTTP in Team Analysis,
+  only `stagingDebug` packages cleartext exceptions for `10.0.2.2`, localhost
+  and `127.0.0.1`, and generated production configuration keeps the flag false
+  with cleartext disabled. Focused Team Analysis tests and the staging APK build
+  passed; final contract review found no P0-P3 issue.
+- No R2 object, public manifest, publisher, production endpoint, Play track,
+  commit or push changed. The next separately authorized gate is a staging
+  publisher dry-run and byte report; publication remains `NO-GO`.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
