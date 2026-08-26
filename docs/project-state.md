@@ -2659,6 +2659,25 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   existing production debug app on `emulator-5554`. No R2 object, dataset lane,
   Play track, commit or push changed.
 
+## Transformation and dataset-variant delivery checkpoint (2026-08-26)
+
+- The typed transformation-activation pipeline was committed and pushed to
+  `origin/main` as `a4958ef` (`feat: type transformation activation contracts`).
+  The tracked `lib/` output matches the changed TypeScript; the focused
+  transformation and Team Analysis suites passed 410 cases immediately before
+  delivery.
+- Android transformation-aware recommendation and role-aware Leader/Friend
+  replacement were committed and pushed to `origin/master` as `0498909`
+  (`feat: evaluate transformation-aware team candidates`). Explicit isolated
+  staging/production variants followed as `dbf7faf`
+  (`build: isolate staging and production datasets`).
+- Focused Android wire-model, recommendation and Team Builder ViewModel tests
+  passed. Both debug variants and the complete minified `productionRelease`
+  bundle built successfully; the final `stagingDebug` remained installed beside
+  `productionDebug` on `emulator-5554`.
+- Local attachments, review logs and Android `.scratch/` were not committed.
+  No R2 object, dataset manifest, Play track or production endpoint changed.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
