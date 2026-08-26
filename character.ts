@@ -491,6 +491,69 @@ export interface ActiveSkillActivationConditionPredicate {
     },
 }
 
+export type TransformationActivationChannel =
+    | "passive_transformation"
+    | "passive_giant_rage"
+    | "passive_reversible_exchange"
+    | "active_skill_transformation"
+    | "active_skill_giant_rage"
+    | "standby_transformation"
+    | "finish_transformation"
+    | "transformation_chain";
+
+export type TransformationActivationSourceReleaseState = "initial" | "eza" | "seza";
+
+export type TransformationActivationConditionExpression =
+    | {
+        op: "all" | "any",
+        children: TransformationActivationConditionExpression[],
+    }
+    | {
+        op: "predicate",
+        predicate: ActiveSkillActivationConditionPredicate,
+    }
+    | { op: "always" }
+    | { op: "unknown" };
+
+export interface TransformationActivationCondition {
+    status: "supported" | "partial" | "unknown",
+    expression: TransformationActivationConditionExpression,
+}
+
+export interface TransformationActivationDbReference {
+    table:
+        | "cards"
+        | "optimal_awakening_growths"
+        | "passive_skill_sets"
+        | "passive_skill_set_relations"
+        | "passive_skills"
+        | "card_active_skills"
+        | "active_skill_sets"
+        | "active_skills"
+        | "card_standby_skill_set_relations"
+        | "standby_skill_sets"
+        | "standby_skills"
+        | "card_finish_skill_set_relations"
+        | "standby_skill_set_finish_skill_set_relations"
+        | "finish_skill_sets"
+        | "finish_skills"
+        | "skill_causalities",
+    rowId: string,
+}
+
+export interface TransformationActivationPath {
+    channel: TransformationActivationChannel,
+    stateBindingStatus: "supported" | "partial" | "unknown",
+    sourceReleaseStates: TransformationActivationSourceReleaseState[],
+    condition: TransformationActivationCondition,
+    provenance: TransformationActivationDbReference[],
+}
+
+export interface TransformationActivationConditionDetails {
+    status: "supported" | "partial" | "unknown",
+    paths: TransformationActivationPath[],
+}
+
 export interface ActiveSkillUltimateAttackDetails {
     id: string,
     name?: string,

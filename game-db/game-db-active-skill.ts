@@ -218,12 +218,23 @@ function causalityExpression(
     return unknown();
 }
 
-export function activeSkillActivationCondition(
-    activeSkillSet: GameDbRow,
+export interface CompiledSkillCausalityCondition {
+    status: ActiveSkillActivationConditionDetails["status"],
+    expression: ActiveSkillActivationConditionExpression,
+    causalityRowIds: string[],
+}
+
+/**
+ * Compiles the official `causality_conditions.compiled` tree without consulting
+ * localized descriptions. Callers remain responsible for deciding whether an
+ * absent tree means `always`, `unknown`, or no contract for their mechanic.
+ */
+export function compileSkillCausalityCondition(
+    raw: string | undefined,
     skillCausalityById: Map<string, GameDbRow>,
     categoryById: Map<string, GameDbRow>,
-): ActiveSkillActivationConditionDetails | undefined {
-    const compiled = parseCompiledCausality(activeSkillSet.causality_conditions);
+): CompiledSkillCausalityCondition | undefined {
+    const compiled = parseCompiledCausality(raw);
     if (!compiled) return undefined;
     const causalityIds: string[] = [];
 
@@ -245,17 +256,34 @@ export function activeSkillActivationCondition(
 
     const mapped = expression(compiled);
     const evidenceStatuses = collectEvidenceStatuses(mapped);
-    const status = evidenceStatuses.includes("unknown")
-        ? "unknown"
-        : evidenceStatuses.includes("partial")
-            ? "partial"
-            : "supported";
     return {
-        status,
+        status: evidenceStatuses.includes("unknown")
+            ? "unknown"
+            : evidenceStatuses.includes("partial")
+                ? "partial"
+                : "supported",
         expression: mapped,
+        causalityRowIds: [...new Set(causalityIds)],
+    };
+}
+
+export function activeSkillActivationCondition(
+    activeSkillSet: GameDbRow,
+    skillCausalityById: Map<string, GameDbRow>,
+    categoryById: Map<string, GameDbRow>,
+): ActiveSkillActivationConditionDetails | undefined {
+    const compiled = compileSkillCausalityCondition(
+        activeSkillSet.causality_conditions,
+        skillCausalityById,
+        categoryById,
+    );
+    if (!compiled) return undefined;
+    return {
+        status: compiled.status,
+        expression: compiled.expression,
         provenance: {
             activeSkillSet: { table: "active_skill_sets", rowId: normalizeDbId(activeSkillSet.id) ?? "" },
-            causalities: [...new Set(causalityIds)].map(rowId => ({ table: "skill_causalities", rowId })),
+            causalities: compiled.causalityRowIds.map(rowId => ({ table: "skill_causalities", rowId })),
         },
     };
 }

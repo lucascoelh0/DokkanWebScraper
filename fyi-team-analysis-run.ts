@@ -11,6 +11,7 @@ import {
     TeamAnalysisActiveSkillActivationContract,
     TeamAnalysisCardIdentity,
     TeamAnalysisNameIdentityContract,
+    TeamAnalysisTransformationActivationContract,
 } from "./team-analysis";
 import {
     buildTeamAnalysisArtifact,
@@ -32,6 +33,7 @@ export interface FyiTeamAnalysisRunOptions {
     nameIdentityContract?: TeamAnalysisNameIdentityContract,
     cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
     activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+    transformationActivationContract?: TeamAnalysisTransformationActivationContract,
 }
 
 export function applyTeamAnalysisCardIdentityContract(
@@ -90,11 +92,17 @@ export async function runFyiTeamAnalysis(
         ...(options.activeSkillActivationContract
             ? { activeSkillActivationContract: options.activeSkillActivationContract }
             : {}),
+        ...(options.transformationActivationContract
+            ? { transformationActivationContract: options.transformationActivationContract }
+            : {}),
     });
     assertValidTeamAnalysisDataset(dataset, characters, catalogEntries, {
         ...(options.cardIdentityContract ? { cardIdentityContract: options.cardIdentityContract } : {}),
         ...(options.activeSkillActivationContract
             ? { activeSkillActivationContract: options.activeSkillActivationContract }
+            : {}),
+        ...(options.transformationActivationContract
+            ? { transformationActivationContract: options.transformationActivationContract }
             : {}),
     });
 

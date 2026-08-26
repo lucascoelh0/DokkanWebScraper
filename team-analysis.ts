@@ -13,6 +13,7 @@ import {
     SuperAttackEffectDetails,
     SuperAttackIncreaseDetails,
     Transformation,
+    TransformationActivationConditionDetails,
     UnitSuperAttack,
 } from "./character";
 import { FyiCharacterCatalogEntry } from "./fyi-character-catalog";
@@ -25,7 +26,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.15";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.16";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 export const HP_REMAINING_SCALING_DOMAIN_RULE_VERSION = "hp-remaining-scaling-v1";
 const EFFECT_DECISION_DOMAIN_RULE_VERSIONS = new Set([
@@ -293,6 +294,7 @@ export interface CharacterStateAnalysis {
     releaseState: ReleaseState,
     displayName: string,
     activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
+    transformationActivationCondition?: TransformationActivationConditionDetails,
     passive?: ParsedPassive,
     superAttacks?: ParsedSuperAttack[],
 }
@@ -301,6 +303,18 @@ export type TeamAnalysisActiveSkillActivationContract = ReadonlyMap<
     string,
     ActiveSkillActivationConditionDetails
 >;
+
+export type TeamAnalysisTransformationActivationContract = ReadonlyMap<
+    string,
+    TransformationActivationConditionDetails
+>;
+
+export function buildTransformationActivationContractKey(
+    sourceCardId: string,
+    targetFormId: string,
+): string {
+    return `${sourceCardId}->${targetFormId}`;
+}
 
 export interface ParsedSuperAttack {
     id: string,
@@ -881,6 +895,7 @@ export function buildTeamAnalysisDataset(
         nameIdentityContract?: TeamAnalysisNameIdentityContract,
         cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
         activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+        transformationActivationContract?: TeamAnalysisTransformationActivationContract,
     },
 ): TeamAnalysisDataset {
     const catalogById = new Map(catalogEntries.map(entry => [entry.id, entry]));
@@ -891,6 +906,7 @@ export function buildTeamAnalysisDataset(
             options.nameIdentityContract,
             options.cardIdentityContract,
             options.activeSkillActivationContract,
+            options.transformationActivationContract,
         ))
         .sort(compareAnalysisStates);
     const ruleCounts = countRuleStatuses(states);
@@ -916,6 +932,7 @@ function buildCharacterStates(
     nameIdentityContract?: TeamAnalysisNameIdentityContract,
     cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
     activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+    transformationActivationContract?: TeamAnalysisTransformationActivationContract,
 ): CharacterStateAnalysis[] {
     const rootForm: AnalysisFormSource = character;
     const forms: AnalysisFormSource[] = [rootForm, ...(character.transformations ?? [])];
@@ -959,6 +976,11 @@ function buildCharacterStates(
             releaseSource.releaseState,
             activeSkillActivationContract,
         );
+        const transformationActivationCondition = form.id === character.id
+            ? undefined
+            : transformationActivationContract?.get(
+                buildTransformationActivationContractKey(character.id, form.id),
+            );
 
         return {
             stateKey,
@@ -973,6 +995,7 @@ function buildCharacterStates(
             releaseState: identity.releaseState,
             displayName: form.name,
             ...(activeSkillActivationCondition ? { activeSkillActivationCondition } : {}),
+            ...(transformationActivationCondition ? { transformationActivationCondition } : {}),
             ...(passive ? { passive } : {}),
             ...(superAttacks.length > 0 ? { superAttacks } : {}),
         };
@@ -8343,6 +8366,7 @@ export function validateTeamAnalysisDataset(
     catalogEntries: FyiCharacterCatalogEntry[],
     options: {
         activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+        transformationActivationContract?: TeamAnalysisTransformationActivationContract,
         cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
         allowExternalActiveSkillConditions?: boolean,
     } = {},
@@ -8355,7 +8379,11 @@ export function validateTeamAnalysisDataset(
         catalogEntries,
         options.cardIdentityContract,
     );
-    const expectedSources = expectedStateSources(characters, options.activeSkillActivationContract);
+    const expectedSources = expectedStateSources(
+        characters,
+        options.activeSkillActivationContract,
+        options.transformationActivationContract,
+    );
 
     if (dataset.stateCount !== dataset.states.length) {
         issues.push({ code: "state-count", message: `stateCount ${dataset.stateCount} does not match ${dataset.states.length} states.` });
@@ -8383,6 +8411,7 @@ export function validateTeamAnalysisDataset(
                 expectedSources.get(state.stateKey),
                 issues,
                 options.allowExternalActiveSkillConditions ?? false,
+                options.transformationActivationContract !== undefined,
             );
         }
         validatePassive(state, ruleIds, issues);
@@ -8402,6 +8431,7 @@ export function assertValidTeamAnalysisDataset(
     catalogEntries: FyiCharacterCatalogEntry[],
     options: {
         activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+        transformationActivationContract?: TeamAnalysisTransformationActivationContract,
         cardIdentityContract?: ReadonlyMap<string, TeamAnalysisCardIdentity>,
         allowExternalActiveSkillConditions?: boolean,
     } = {},
@@ -8530,11 +8560,13 @@ function expectedStateIdentities(
 function expectedStateSources(
     characters: Character[],
     activeSkillActivationContract?: TeamAnalysisActiveSkillActivationContract,
+    transformationActivationContract?: TeamAnalysisTransformationActivationContract,
 ): Map<string, {
     displayName: string,
     passiveText: string,
     passiveDetails?: PassiveDetails,
     activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
+    transformationActivationCondition?: TransformationActivationConditionDetails,
     superAttacks: AnalysisSuperAttackSource[],
 }> {
     const expected = new Map<string, {
@@ -8542,6 +8574,7 @@ function expectedStateSources(
         passiveText: string,
         passiveDetails?: PassiveDetails,
         activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
+        transformationActivationCondition?: TransformationActivationConditionDetails,
         superAttacks: AnalysisSuperAttackSource[],
     }>();
     for (const character of characters) {
@@ -8562,6 +8595,15 @@ function expectedStateSources(
                                 form,
                                 releaseSource.releaseState,
                                 activeSkillActivationContract,
+                            ),
+                        }
+                        : {}),
+                    ...(form.id !== character.id && transformationActivationContract?.get(
+                        buildTransformationActivationContractKey(character.id, form.id),
+                    )
+                        ? {
+                            transformationActivationCondition: transformationActivationContract.get(
+                                buildTransformationActivationContractKey(character.id, form.id),
                             ),
                         }
                         : {}),
@@ -8608,10 +8650,12 @@ function validateStateSource(
         passiveText: string,
         passiveDetails?: PassiveDetails,
         activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
+        transformationActivationCondition?: TransformationActivationConditionDetails,
         superAttacks: AnalysisSuperAttackSource[],
     } | undefined,
     issues: TeamAnalysisValidationIssue[],
     allowExternalActiveSkillConditions: boolean,
+    enforceTransformationActivationCondition: boolean,
 ): void {
     if (!expected) {
         return;
@@ -8628,6 +8672,15 @@ function validateStateSource(
         issues.push({
             code: "active-skill-condition-source",
             message: "Active Skill activation condition does not exactly match the character payload.",
+            stateKey: state.stateKey,
+        });
+    }
+    if (enforceTransformationActivationCondition
+        && JSON.stringify(state.transformationActivationCondition)
+            !== JSON.stringify(expected.transformationActivationCondition)) {
+        issues.push({
+            code: "transformation-activation-condition-source",
+            message: "Transformation activation condition does not exactly match the first-party contract.",
             stateKey: state.stateKey,
         });
     }

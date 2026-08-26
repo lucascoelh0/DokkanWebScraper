@@ -2596,6 +2596,69 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   in **Why this fits** and does not parse prose or claim the path is satisfied.
   No dataset, R2 lane, publisher or production endpoint changed.
 
+## Typed transformation-feasibility checkpoint (2026-08-26)
+
+- The local parser contract is now `parser-1.9.16` and emits a typed optional
+  `transformationActivationCondition` for transformed Team Analysis states.
+  Paths are joined from first-party passive, Active Skill, Standby, Finish,
+  giant/exchange and transformation-chain records; condition expressions reuse
+  the existing typed Team Analysis AST and never infer game semantics from
+  display prose.
+- A full official-DB corpus audit covered 190 of 191 transformed forms across
+  2,288 states with no validation issue: 83 contracts are supported, 75 are
+  partial and 32 unknown. The sole absent form is Nappa `1005130`, whose
+  first-party relation targets `4005130` while the release payload contains
+  `4005131`; it intentionally remains fail-closed rather than guessing the
+  join.
+- Android decodes the optional contract without breaking old cached datasets
+  and reuses the Team Builder's typed passive-condition evaluator. Candidate
+  forms are classified as available, possibly available, unavailable or not
+  verifiable; exact supported paths affect Recommended ordering, while
+  multi-step chains remain not verifiable because intermediate release-state
+  bindings cannot yet be preserved losslessly.
+- **Why this fits** presents that result with the existing Instrument status
+  hierarchy and concise disclosure copy. Intent + Impeccable guided the
+  presentation; the changed screen returned zero detector findings. Exact
+  Initial/EZA/SEZA alternatives, partial/legacy data, complete-team failures
+  and multi-step chains have focused regression coverage.
+- Leader/Friend replacement filters are role-aware: the role being replaced is
+  removed from the automatic coverage requirement, while the other resolved
+  role remains required. This prevents replacing a lone Leader from producing
+  an empty candidate list merely because the old Leader no longer participates
+  in its own replacement evaluation.
+- TypeScript build plus 1,103 focused parser/Team Analysis tests, Android wire
+  and recommendation tests, the complete Team Builder ViewModel test class,
+  app compilation and Android-test compilation passed. The existing exact R8
+  rule for `TeamAnalysis*Wire` covers the new nested wire models. No commit,
+  push, R2 object, staging lane, production endpoint or Play release changed.
+
+## Android dataset-environment variants checkpoint (2026-08-26)
+
+- Dataset routing no longer depends on remembering debug Gradle properties.
+  `productionDebug` is fixed to production/v2 and installs as
+  `com.luminay.dokkanpanion.debug`; `stagingDebug` is fixed to staging/v2 and
+  installs as `com.luminay.dokkanpanion.staging.debug`. Their Android storage,
+  cached manifests, drafts and preferences are therefore isolated and both
+  apps can coexist on one device.
+- Launcher labels expose the environment as `DkB Companion PROD` and
+  `DkB Companion STG`; staging also has a distinct orange launcher background.
+  Intent + Impeccable treated this as environment wayfinding rather than a
+  product rebrand, preserving the production name and icon unchanged.
+- `stagingRelease` is disabled. The only release variant is
+  `productionRelease`, still minified, signed through the existing release
+  configuration and hardcoded to production/v2. Legacy dataset-route Gradle
+  properties are rejected, so neither a local signed build nor CI can silently
+  redirect a named variant to another lane. GitHub Actions now invokes
+  `bundleProductionRelease` and reads its flavor-specific AAB and R8 mapping
+  paths.
+- Both debug APKs assembled; their packaged application IDs, labels and exact
+  BuildConfig manifest keys were inspected. The Team Builder ViewModel suite
+  passed under both environments, the obsolete-property failure path was
+  exercised, and a complete minified `bundleProductionRelease` succeeded.
+  `stagingDebug` is installed beside the
+  existing production debug app on `emulator-5554`. No R2 object, dataset lane,
+  Play track, commit or push changed.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

@@ -15,6 +15,7 @@ import {
     buildGameDbNameIdentityContract,
 } from "./game-db-name-identity";
 import { buildGameDbActiveSkillActivationContract } from "./game-db-active-skill";
+import { buildGameDbTransformationActivationContract } from "./game-db-transformation-activation";
 import { resolveGameDbSourceConfig } from "./game-db-source";
 
 const DEFAULT_BASELINE_DIR = resolve("data", "fyi-characters", "latest");
@@ -151,6 +152,7 @@ export async function buildGameDbCharacterReleaseCandidate(options: CandidateOpt
     const nameIdentityContract = buildGameDbNameIdentityContract(tables);
     const cardIdentityContract = buildGameDbCardIdentityContract(tables);
     const activeSkillActivationContract = buildGameDbActiveSkillActivationContract(tables);
+    const transformationActivationContract = buildGameDbTransformationActivationContract(tables);
     const snapshots = buildGameDbCharacterSnapshots(options.cardIds, tables);
     const projections = projectGameDbCharactersToDokkanpanion(snapshots, {
         sourceVersion: metadata.dbVersion,
@@ -172,6 +174,7 @@ export async function buildGameDbCharacterReleaseCandidate(options: CandidateOpt
         nameIdentityContract,
         cardIdentityContract,
         activeSkillActivationContract,
+        transformationActivationContract,
     });
     const teamAnalysisManifest = JSON.parse(
         await readFile(teamAnalysis.manifestPath, "utf8"),
