@@ -387,6 +387,28 @@ describe("Team Analysis R2 delivery gate", function () {
         equal(state.cleanupPendingReleases, undefined);
     });
 
+    it("retains every verified tracked release when cleanup is explicitly disabled", async () => {
+        const previous = installPreviousRemote(fixture, "characters-v0:parser-1.7.1", "previous");
+        const staleOne = makeRelease(fixture, "characters-v-1:parser-1.7.1", "stale-one");
+        const staleTwo = makeRelease(fixture, "characters-v-2:parser-1.7.1", "stale-two");
+        [staleOne, staleTwo].forEach(entry => fixture.runner.objects.set(entry.datasetObjectKey, entry.buffer));
+        await writeState(fixture, [previous, staleOne.release, staleTwo.release]);
+        fixture.options.retainAllReleases = true;
+
+        const plan = await readTeamAnalysisR2PublishPlan(fixture.options, fixture.runner);
+
+        equal(plan.retainedReleases.length, 4);
+        equal(plan.cleanupCandidates.length, 0);
+        equal(plan.bytesRemovable, 0);
+        ok(plan.warnings.some(warning => warning.includes("no release cleanup")));
+
+        await publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock);
+        equal(fixture.runner.commands.some(args => args[2] === "delete"), false);
+        equal(fixture.runner.objects.has(previous.datasetObjectKey), true);
+        equal(fixture.runner.objects.has(staleOne.datasetObjectKey), true);
+        equal(fixture.runner.objects.has(staleTwo.datasetObjectKey), true);
+    });
+
     it("fails before writes when the namespace budget is exceeded", async () => {
         fixture.options.maxNamespaceBytes = 1;
 
@@ -561,6 +583,7 @@ describe("Team Analysis R2 delivery gate", function () {
         equal(defaults.maxNamespaceBytes, 50_000_000);
         equal(defaults.skipRemoteManifestCheck, false);
         equal(defaults.skipUploadVerification, false);
+        equal(defaults.retainAllReleases, false);
         equal(defaults.allowUnknownBucketSize, false);
         equal(defaults.channel, "production");
         equal(defaults.contractLane, "v1");
@@ -574,6 +597,11 @@ describe("Team Analysis R2 delivery gate", function () {
         equal(recovery.skipRemoteManifestCheck, true);
         equal(recovery.skipUploadVerification, true);
         equal(recovery.allowUnknownBucketSize, true);
+        const preserveHistory = parseTeamAnalysisR2PublishArgs([
+            "--contract-lane", "v2",
+            "--retain-all-releases",
+        ]);
+        equal(preserveHistory.retainAllReleases, true);
         const staging = parseTeamAnalysisR2PublishArgs([
             "--channel", "staging",
             "--contract-lane", "v1",

@@ -2678,6 +2678,49 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 - Local attachments, review logs and Android `.scratch/` were not committed.
   No R2 object, dataset manifest, Play track or production endpoint changed.
 
+## Transformation contract staging/v2 publication checkpoint (2026-08-26)
+
+- The official Global DB export remains `dbVersion 1787282006`; the overlay was
+  still restricted to cards `1034341`, `1025561` and `1022721`. Characters is
+  version `2026-08-26T03:51:45.330Z`, 1,436 characters, 2,343,283 bytes and
+  SHA-256 `4260712cc058ca06364d38a19de75f1e9280769dbeaebed3d8e35a37f9932643`.
+  Its bytes are unchanged from the previous staging/v2 release.
+- Team Analysis is version
+  `2026-08-26T03:51:45.330Z:parser-1.9.16`, 2,288 states, 3,152,060 bytes and
+  SHA-256 `389159f4f2360a9f1b756090a5c28bcbcc40ec76dd165961f551a2610663d456`.
+  Its Character version/SHA binding is exact. The generated corpus contains
+  transformation activation contracts for 190/191 transformed states: 83
+  supported, 75 partial and 32 unknown. Nappa `1005130 -> 4005131` remains the
+  sole intentionally absent fail-closed join.
+- Mandatory final dry-runs projected 2,343,739 managed Character bytes and
+  3,152,774 new Team bytes. The Team namespace peak was 9,308,833/50,000,000
+  bytes and the conservative whole-bucket upper bound was
+  408,152,060/10,000,000,000 bytes.
+- The Team publisher now has a `--retain-all-releases` mode.
+  It retains every verified state-tracked immutable payload while preserving
+  the 50-release bound, namespace/global byte limits, payload verification and
+  manifest-last ordering. Its 43 focused tests passed and contract review found
+  no P0-P2. Publication used this mode: parser 1.9.14, 1.9.15 and 1.9.16 remain
+  available, with no cleanup candidate or delete.
+- Both staging/v2 manifests and payloads were fetched publicly after
+  publication and matched exact names, sizes and SHA-256 values. Manifests use
+  `no-store`; payloads use one-year immutable caching. Post-publication dry-runs
+  are idempotent with zero new bytes or writes. Production and Play were not
+  changed.
+- The final `stagingDebug` APK was reinstalled and launched on
+  `emulator-5554` without clearing its isolated app data. Physical-device
+  acceptance followed in the checkpoint below.
+
+## Transformation contract physical-device acceptance (2026-08-26)
+
+- The isolated `stagingDebug` package was installed without clearing data on
+  the user's Galaxy A56 and launched successfully beside the production app.
+- The app consumed the published staging/v2 dataset and the user reported the
+  transformation-aware Team Builder flow as working correctly on the physical
+  device. This closes the manual acceptance gate for parser `1.9.16` and the
+  Android transformation-feasibility consumer.
+- Production/v1, production/v2 and Google Play were not changed.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

@@ -46,6 +46,14 @@ it cannot update the production manifest or payload namespace:
 npm run publish:team-analysis-r2 -- --remote --channel staging --contract-lane v1 --v1-projection-report PATH_TO_ANDROID_V1_PROJECTION_REPORT --bucket dokkanpanion-data
 ```
 
+When an operational checkpoint requires immutable release history to remain
+untouched, add `--retain-all-releases` to both the final remote dry-run and the
+matching publish invocation. The flag retains every verified state-tracked
+payload, emits no cleanup candidates, and still enforces the namespace and
+global byte limits. Publication fails closed if the bounded tracked-release
+limit would be exceeded; cleanup remains a separate explicitly authorized
+operation.
+
 The following production command is destructive and requires both separate
 authorization and the fail-closed promotion flag:
 
