@@ -2573,6 +2573,29 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   `emulator-5554`; the user still needs to review this visual slice. No commit,
   push, dataset, R2 lane or production endpoint changed.
 
+## Team Builder transformed-candidate checkpoint (2026-08-25)
+
+- The candidate picker now evaluates BASE and every typed transformation state
+  before collapsing results to one hard-copy row per recruitable card. An
+  inline BASE/Form control changes the portrait, effective name, type/class
+  coverage, Links, passive fit and Character Details destination without
+  selecting the card. Character Details opened from an already selected slot
+  also preserves the slot's exact form and release state.
+- Selecting a previewed form persists its exact card ID, transformation index
+  and release state. Replacement recognizes only that exact tuple as the
+  current variant; hard-copy filtering and duplicate prevention continue to
+  use the base card ID across all forms.
+- Search plus type/class filters use the effective transformed values. Focused
+  domain tests cover transformed Links, exact current-form identity and
+  transformed type/class coverage; ViewModel coverage proves grouped forms and
+  exact selection persistence; the Compose regression exercises preview and
+  selection on the emulator.
+- The current first-party dataset types the skills belonging to each form but
+  does not expose a complete dedicated contract for every transformation's
+  activation condition. The app therefore labels this as form-level potential
+  in **Why this fits** and does not parse prose or claim the path is satisfied.
+  No dataset, R2 lane, publisher or production endpoint changed.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
