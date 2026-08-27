@@ -227,3 +227,53 @@ package/version, bounded archive and per-file hashes are proven;
 manifest-level asset lineage is therefore still an explicit residual gate
 rather than an inferred claim. Publisher dry-run, publication, production and
 R2 mutation remain `NO-GO`.
+
+## Layered portrait delivery dry-run
+
+A later candidate preserved the same official inputs while adding the three
+typed rendering layers consumed by Android motion: background, transparent
+character thumb and static badge overlay. All objects remain isolated under
+`staging/v2/`; production keys are structurally rejected.
+
+| Check | Result |
+| --- | ---: |
+| Character version | `2026-08-26T20:58:47.619Z` |
+| Character gzip bytes | 2,554,009 |
+| Character gzip SHA-256 | `403b40ce911147899986b8c7c618acbc40af8f67973793e63aab58281beb79f4` |
+| Portrait references / static objects | 1,627 / 1,627 |
+| Deduplicated layer objects | 1,656 |
+| Visual objects planned | 3,283 |
+| Visual object bytes | 66,929,757 |
+| Character managed bytes | 69,484,222 |
+| Team Analysis version | `2026-08-26T20:58:47.619Z:parser-1.9.16` |
+| Team Analysis gzip bytes | 2,962,029 |
+| Team Analysis gzip SHA-256 | `43a01d5efb74241fdd1661b92adb1d8fb961f1c68098b68003e36909265bc550` |
+| Team Analysis states | 2,288 |
+
+The Character publisher now accepts only the candidate's exact immutable
+payload key, recursively collects base/transformation/awakening portraits and
+their typed layers, proves local containment and embedded SHA-256, and refuses
+to skip a layered contract. Before a prior state can suppress an upload it
+also rereads the remote object and verifies exact size and SHA-256. Remote
+manifest failures other than a confirmed missing key fail closed. Payload and
+assets remain before the mutable manifest, and immutable historical objects
+remain retained pending release-aware GC.
+
+The final remote staging dry-runs were read-only. Characters planned
+69,484,222 new managed bytes and a conservative whole-bucket upper bound of
+480,484,222/10,000,000,000 bytes. The exact Team pair planned 2,962,743 new
+bytes, retained all four tracked Team releases with no cleanup, and reported a
+12,270,862/50,000,000-byte namespace peak. If both plans are executed against
+the same current bucket, their combined conservative upper bound is
+483,446,965/10,000,000,000 bytes.
+
+Focused compiled delivery checks passed 25 cases. The broader suite reached
+1,861 passing and 13 expected pending cases; two DD6 source-lock failures are
+the known `project-state.md` versus committed-HEAD checkpoint constraint, and
+the single two-second WT timeout passed all 43 cases when rerun with its
+appropriate bound. Independent re-review found no remaining P0-P2 issue.
+
+Remote staging dry-run and the exact paired candidate are `GO`. Actual staging
+upload requires separate authorization and coordinated Character + Team
+manifest promotion. Production, Play and all production manifests remain
+`NO-GO`; this checkpoint performed no R2 mutation.

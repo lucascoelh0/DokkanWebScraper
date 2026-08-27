@@ -39,8 +39,10 @@ payload namespaces:
 
 Publisher dry-runs may inspect production by default. A real remote production
 write additionally requires `--channel production --promote-production`.
-Staging requires `--channel staging --skip-portraits`; current portrait keys
-are not channel-scoped, so a staging run is not allowed to overwrite them.
+Staging still requires `--skip-portraits` for legacy, non-channel-scoped
+portrait keys. Typed portrait candidates may use channel/lane-scoped,
+content-addressed keys instead; in that mode the publisher validates and plans
+every referenced object and refuses `--skip-portraits`.
 Character and Team Analysis staging manifests must always be promoted as a
 validated compatible pair.
 
@@ -65,18 +67,20 @@ We do not want to exceed the Cloudflare R2 free tier.
 Current practical rules:
 
 1. use the bucket only for app datasets
-2. upload only portraits referenced by the current character manifest; do not
-   keep unrelated or orphaned media there
-3. keep only:
-   - current dataset
-   - portraits referenced by the current dataset
-   - optional previous dataset for rollback
-4. delete older versioned datasets during publish
+2. upload only portraits referenced by a validated character release
+3. retain immutable payloads and portrait objects needed by active or rollback
+   releases; never infer that an object is orphaned from the current manifest
+   alone
+4. delete only through a future release-aware GC that proves no retained
+   manifest references the object
 5. keep storage class on Standard
 
-With the current dataset size, this should stay comfortably below the free storage limit as long as old versions are cleaned up. The publisher also
-enforces a 10,000,000,000-byte managed-output budget by default; lower it with
-`--max-total-bytes` when sharing the bucket with other data.
+With the current dataset size, this remains comfortably below the free storage
+limit while every publication measures a conservative whole-bucket upper
+bound. The publisher also enforces a 10,000,000,000-byte managed-output budget
+by default; lower it with `--max-total-bytes` when sharing the bucket with
+other data. Release-aware GC remains future work rather than an implicit part
+of publication.
 
 ## Current recommendation
 

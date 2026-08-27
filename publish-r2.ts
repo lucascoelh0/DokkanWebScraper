@@ -3,7 +3,7 @@ import { execFile } from "child_process";
 import { existsSync, statSync } from "fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
-import { basename, dirname, resolve } from "path";
+import { dirname, isAbsolute, relative, resolve, sep } from "path";
 import { gunzipSync } from "zlib";
 import { Character } from "./character";
 import {
@@ -97,6 +97,18 @@ function datasetVersionSlug(datasetVersion: string): string {
         .replace(/[^\w./-]/g, "_");
 }
 
+function canonicalRemoteDatasetObjectKey(
+    manifest: Pick<DatasetManifest, "datasetVersion" | "sha256">,
+    channel: DatasetPublicationChannel,
+    contractLane: DatasetContractLane,
+): string {
+    return contractLaneObjectKey(
+        channel,
+        contractLane,
+        `releases/${datasetVersionSlug(manifest.datasetVersion)}/${manifest.sha256.toLowerCase()}/characters.json.gz`,
+    );
+}
+
 export function buildRemoteDatasetObjectKey(
     manifest: DatasetManifest,
     channel: DatasetPublicationChannel = "production",
@@ -109,16 +121,12 @@ export function buildRemoteDatasetObjectKey(
         throw new Error("Character manifest dataset version is missing.");
     }
 
-    const fileName = basename(manifest.fileName.replace(/\\/g, "/"));
-    if (fileName !== "characters.json.gz") {
+    const expectedObjectKey = canonicalRemoteDatasetObjectKey(manifest, channel, contractLane);
+    if (manifest.fileName !== "characters.json.gz" && manifest.fileName !== expectedObjectKey) {
         throw new Error(`Character manifest filename is invalid: ${manifest.fileName}`);
     }
 
-    return contractLaneObjectKey(
-        channel,
-        contractLane,
-        `releases/${datasetVersionSlug(manifest.datasetVersion)}/${manifest.sha256.toLowerCase()}/${fileName}`,
-    );
+    return expectedObjectKey;
 }
 
 export function buildCharacterManifestObjectKey(
@@ -177,22 +185,54 @@ function normalizeObjectKey(value: string): string {
     return value.replace(/\\/g, "/").replace(/^\/+/, "").replace(/^\.\//, "");
 }
 
-export function collectReferencedPortraitKeys(characters: Character[]): string[] {
-    const portraitKeys = new Set<string>();
+export type PortraitLayerKind = "background" | "thumb" | "overlay";
 
-    const add = (portraitURL?: string) => {
-        if (!portraitURL) {
+export interface ReferencedPortrait {
+    objectKey: string,
+    layerKind?: PortraitLayerKind,
+}
+
+export function collectReferencedPortraitReferences(characters: Character[]): ReferencedPortrait[] {
+    const portraits = new Map<string, ReferencedPortrait>();
+
+    const add = (portraitURL?: string, layerKind?: PortraitLayerKind) => {
+        if (portraitURL === undefined) {
             return;
         }
+        if (typeof portraitURL !== "string" || portraitURL.trim().length === 0) {
+            throw new Error(`Portrait ${layerKind ? `${layerKind} layer ` : ""}URL must be a non-empty string.`);
+        }
 
-        portraitKeys.add(normalizeObjectKey(portraitURL));
+        const objectKey = normalizeObjectKey(portraitURL);
+        const previous = portraits.get(objectKey);
+        if (previous && previous.layerKind !== layerKind) {
+            throw new Error(
+                `Portrait object key ${objectKey} is referenced with conflicting static/layer kinds.`,
+            );
+        }
+        portraits.set(objectKey, { objectKey, layerKind: previous?.layerKind ?? layerKind });
+    };
+
+    const addLayers = (layers: Character["portraitLayers"]) => {
+        if (!layers) return;
+        if (typeof layers !== "object"
+            || typeof layers.backgroundURL !== "string" || layers.backgroundURL.trim().length === 0
+            || typeof layers.thumbURL !== "string" || layers.thumbURL.trim().length === 0
+            || typeof layers.overlayURL !== "string" || layers.overlayURL.trim().length === 0) {
+            throw new Error("portraitLayers must provide non-empty backgroundURL, thumbURL, and overlayURL values.");
+        }
+        add(layers.backgroundURL, "background");
+        add(layers.thumbURL, "thumb");
+        add(layers.overlayURL, "overlay");
     };
 
     for (const character of characters) {
         add(character.portraitURL);
+        addLayers(character.portraitLayers);
 
         for (const transformation of character.transformations ?? []) {
             add(transformation.portraitURL);
+            addLayers(transformation.portraitLayers);
         }
 
         for (const awakening of [
@@ -201,10 +241,26 @@ export function collectReferencedPortraitKeys(characters: Character[]): string[]
             ...(character.nextAwakenings ?? []),
         ]) {
             add(awakening.portraitURL);
+            addLayers(awakening.portraitLayers);
         }
     }
 
-    return Array.from(portraitKeys).sort((left, right) => left.localeCompare(right));
+    return Array.from(portraits.values()).sort((left, right) => left.objectKey.localeCompare(right.objectKey));
+}
+
+export function collectReferencedPortraitKeys(characters: Character[]): string[] {
+    return collectReferencedPortraitReferences(characters).map(reference => reference.objectKey);
+}
+
+export function assertPortraitPublicationMode(characters: Character[], skipPortraits: boolean): void {
+    if (!skipPortraits) return;
+    const hasTypedPortraitLayers = collectReferencedPortraitReferences(characters)
+        .some(reference => reference.layerKind !== undefined);
+    if (hasTypedPortraitLayers) {
+        throw new Error(
+            "--skip-portraits cannot be used when the Character dataset references typed portraitLayers.",
+        );
+    }
 }
 
 export function buildPortraitPublishPlan(
@@ -229,20 +285,106 @@ export function buildPortraitPublishPlan(
     };
 }
 
-async function buildPortraitEntries(objectKeys: string[], dataRoot: string): Promise<PortraitPublishEntry[]> {
-    const entries: PortraitPublishEntry[] = [];
+function resolveContainedObjectPath(dataRoot: string, objectKey: string): string {
+    const normalizedKey = objectKey.replace(/\\/g, "/");
+    if (!normalizedKey || normalizedKey.startsWith("/") || normalizedKey.split("/").includes("..")) {
+        throw new Error(`Unsafe portrait object key: ${objectKey}`);
+    }
 
-    for (const objectKey of objectKeys) {
-        const filePath = resolve(dataRoot, objectKey);
+    const root = resolve(dataRoot);
+    const filePath = resolve(root, ...normalizedKey.split("/"));
+    const relativePath = relative(root, filePath);
+    if (!relativePath || isAbsolute(relativePath) || relativePath === ".." || relativePath.startsWith(`..${sep}`)) {
+        throw new Error(`Portrait object key escapes data root: ${objectKey}`);
+    }
+    return filePath;
+}
+
+function parseContentAddressedPortraitKey(
+    reference: ReferencedPortrait,
+    channel: DatasetPublicationChannel,
+    contractLane: DatasetContractLane,
+): string | undefined {
+    const segments = reference.objectKey.split("/");
+    const expectedPrefix = channel === "staging" ? ["staging", contractLane] : [contractLane];
+    const isScopedPortrait = segments[0] === "staging" || segments[0] === "v1" || segments[0] === "v2";
+    if (!isScopedPortrait) {
+        if (reference.layerKind || channel === "staging") {
+            throw new Error(`Portrait object key is not channel/lane scoped: ${reference.objectKey}`);
+        }
+        return undefined;
+    }
+
+    const prefixMatches = expectedPrefix.every((segment, index) => segments[index] === segment);
+    const suffix = segments.slice(expectedPrefix.length);
+    if (!prefixMatches || suffix[0] !== "images") {
+        throw new Error(
+            `Portrait object key does not belong to requested ${channel}/${contractLane}: ${reference.objectKey}`,
+        );
+    }
+
+    let fileName: string;
+    if (reference.layerKind) {
+        if (suffix.length !== 4 || suffix[1] !== "v5" || suffix[2] !== "layers") {
+            throw new Error(`Malformed ${reference.layerKind} portrait layer key: ${reference.objectKey}`);
+        }
+        fileName = suffix[3];
+        const parts = fileName.split(".");
+        if (parts.length !== 3 || parts[0] !== reference.layerKind || parts[2] !== "png") {
+            throw new Error(`Malformed ${reference.layerKind} portrait layer key: ${reference.objectKey}`);
+        }
+    } else {
+        if (suffix.length !== 3 || suffix[1] !== "v4") {
+            throw new Error(`Malformed content-addressed portrait key: ${reference.objectKey}`);
+        }
+        fileName = suffix[2];
+        const parts = fileName.split(".");
+        if (parts.length !== 3 || !/^portrait_[0-9]+$/.test(parts[0]) || parts[2] !== "png") {
+            throw new Error(`Malformed content-addressed portrait key: ${reference.objectKey}`);
+        }
+    }
+
+    const embeddedSha256 = fileName.split(".")[1];
+    if (!/^[a-f0-9]{64}$/.test(embeddedSha256)) {
+        throw new Error(`Malformed content-addressed portrait SHA-256: ${reference.objectKey}`);
+    }
+    return embeddedSha256;
+}
+
+export async function buildPortraitEntries(
+    references: string[] | ReferencedPortrait[],
+    dataRoot: string,
+    options?: {
+        channel?: DatasetPublicationChannel,
+        contractLane?: DatasetContractLane,
+    },
+): Promise<PortraitPublishEntry[]> {
+    const entries: PortraitPublishEntry[] = [];
+    const normalizedReferences: ReferencedPortrait[] = references.map(reference => typeof reference === "string"
+        ? { objectKey: reference }
+        : reference);
+    const channel = options?.channel ?? "production";
+    const contractLane = options?.contractLane ?? "v1";
+
+    for (const reference of normalizedReferences) {
+        const { objectKey } = reference;
+        const expectedSha256 = parseContentAddressedPortraitKey(reference, channel, contractLane);
+        const filePath = resolveContainedObjectPath(dataRoot, objectKey);
         if (!existsSync(filePath)) {
             throw new Error(`Missing portrait file for ${objectKey}: ${filePath}`);
         }
 
         const fileBuffer = await readFile(filePath);
+        const actualSha256 = sha256(fileBuffer);
+        if (expectedSha256 && actualSha256 !== expectedSha256) {
+            throw new Error(
+                `Portrait SHA-256 mismatch for ${objectKey}: expected ${expectedSha256}, found ${actualSha256}.`,
+            );
+        }
         entries.push({
             objectKey,
             filePath,
-            sha256: sha256(fileBuffer),
+            sha256: actualSha256,
         });
     }
 
@@ -252,6 +394,10 @@ async function buildPortraitEntries(objectKeys: string[], dataRoot: string): Pro
 export function validateLocalCharacterBundle(
     manifest: DatasetManifest,
     gzipBuffer: Buffer,
+    options?: {
+        channel: DatasetPublicationChannel,
+        contractLane: DatasetContractLane,
+    },
 ): Character[] {
     if (manifest.schemaVersion !== 1) {
         throw new Error(`Unsupported Character manifest schema version: ${manifest.schemaVersion}`);
@@ -259,7 +405,10 @@ export function validateLocalCharacterBundle(
     if (manifest.compression !== "gzip") {
         throw new Error(`Unsupported Character bundle compression: ${manifest.compression}`);
     }
-    if (manifest.fileName !== "characters.json.gz") {
+    const expectedFileName = options
+        ? canonicalRemoteDatasetObjectKey(manifest, options.channel, options.contractLane)
+        : "characters.json.gz";
+    if (manifest.fileName !== "characters.json.gz" && manifest.fileName !== expectedFileName) {
         throw new Error(`Local Character manifest filename is invalid: ${manifest.fileName}`);
     }
     if (!/^[a-f0-9]{64}$/.test(manifest.sha256)) {
@@ -325,6 +474,8 @@ async function readManifest(manifestPath: string): Promise<DatasetManifest> {
 
 async function readPublishState(
     statePath: string,
+    bucket: string,
+    target: "remote" | "local",
     channel: DatasetPublicationChannel,
     contractLane: DatasetContractLane,
 ): Promise<DatasetPublishState | undefined> {
@@ -333,6 +484,11 @@ async function readPublishState(
     }
 
     const state = JSON.parse(await readFile(statePath, "utf8")) as DatasetPublishState;
+    if (state.bucket !== bucket || state.target !== target) {
+        throw new Error(
+            `Character publish state belongs to ${state.bucket}/${state.target}, not requested ${bucket}/${target}.`,
+        );
+    }
     const stateChannel = state.channel ?? "production";
     if (stateChannel !== channel) {
         throw new Error(
@@ -371,6 +527,11 @@ async function execFileAsync(command: string, args: string[]): Promise<{ stdout:
 
 async function runWranglerCommand(args: string[]): Promise<void> {
     await execFileAsync(process.execPath, [WRANGLER_ENTRYPOINT, ...args]);
+}
+
+export function isMissingR2ObjectError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /(?:\b404\b|nosuchkey|specified (?:object )?key does not exist|r2 object [^\r\n]* not found)/i.test(message);
 }
 
 async function readRemoteBucketSizeReport(bucket: string): Promise<BucketSizeReport> {
@@ -423,10 +584,58 @@ async function tryReadRemoteManifest(
         await runWranglerCommand(args);
         return JSON.parse(await readFile(tempManifestPath, "utf8")) as DatasetManifest;
     } catch (error) {
-        return undefined;
+        if (isMissingR2ObjectError(error)) return undefined;
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Cannot read Character remote manifest ${manifestObjectKey}: ${message}`);
     } finally {
         await rm(tempDirectory, { recursive: true, force: true });
     }
+}
+
+type ReadPublishedPortrait = (entry: PortraitPublishEntry, index: number) => Promise<Buffer | undefined>;
+
+async function readPublishedPortrait(
+    bucket: string,
+    target: "remote" | "local",
+    temporaryDirectory: string,
+    entry: PortraitPublishEntry,
+    index: number,
+): Promise<Buffer | undefined> {
+    const temporaryPath = resolve(temporaryDirectory, `${index}.png`);
+    try {
+        await runWranglerCommand([
+            "r2",
+            "object",
+            "get",
+            `${bucket}/${entry.objectKey}`,
+            "--file",
+            temporaryPath,
+            target === "remote" ? "--remote" : "--local",
+        ]);
+    } catch (error) {
+        if (isMissingR2ObjectError(error)) return undefined;
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Cannot verify published portrait ${entry.objectKey}: ${message}`);
+    }
+    return readFile(temporaryPath);
+}
+
+export async function verifyReusablePortraitEntries(
+    currentPortraits: PortraitPublishEntry[],
+    previousState: DatasetPublishState | undefined,
+    readRemote: ReadPublishedPortrait,
+    concurrency: number,
+): Promise<Record<string, string>> {
+    const previousPortraits = previousState?.portraits ?? {};
+    const candidates = currentPortraits.filter(entry => previousPortraits[entry.objectKey] === entry.sha256);
+    const reusable: Record<string, string> = {};
+    await runWithConcurrency(candidates, concurrency, async (entry, index) => {
+        const remoteBytes = await readRemote(entry, index);
+        if (!remoteBytes || remoteBytes.byteLength !== statSync(entry.filePath).size) return;
+        if (sha256(remoteBytes) !== entry.sha256) return;
+        reusable[entry.objectKey] = entry.sha256;
+    });
+    return reusable;
 }
 
 async function uploadObject(
@@ -560,12 +769,6 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
     if (contractLane !== "v1" && v1ProjectionReportPath) {
         throw new Error("--v1-projection-report can only be used with --contract-lane v1.");
     }
-    if (channel === "staging" && !flags.has("--skip-portraits")) {
-        throw new Error(
-            "Staging publication requires --skip-portraits because portrait keys are not channel-scoped.",
-        );
-    }
-
     return {
         bucket,
         dataRoot: resolve(values.get("--data-root") ?? DEFAULT_DATA_ROOT),
@@ -606,33 +809,44 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     if (!existsSync(options.manifestPath)) {
         throw new Error(`Manifest not found: ${options.manifestPath}`);
     }
-    if (!existsSync(options.datasetPath)) {
-        throw new Error(`Dataset bundle not found: ${options.datasetPath}`);
-    }
-    if (!existsSync(options.imagesRoot)) {
-        throw new Error(`Portrait directory not found: ${options.imagesRoot}`);
-    }
 
     const localManifest = await readManifest(options.manifestPath);
-    const localGzipBuffer = await readFile(options.datasetPath);
-    const characters = validateLocalCharacterBundle(localManifest, localGzipBuffer);
+    const remoteDatasetObjectKey = buildRemoteDatasetObjectKey(
+        localManifest,
+        options.channel,
+        options.contractLane,
+    );
+    const localDatasetPath = localManifest.fileName === "characters.json.gz"
+        ? options.datasetPath
+        : resolveContainedObjectPath(options.dataRoot, localManifest.fileName);
+    if (!existsSync(localDatasetPath)) {
+        throw new Error(`Dataset bundle not found: ${localDatasetPath}`);
+    }
+    const localGzipBuffer = await readFile(localDatasetPath);
+    const characters = validateLocalCharacterBundle(localManifest, localGzipBuffer, {
+        channel: options.channel,
+        contractLane: options.contractLane,
+    });
     if (options.contractLane === "v1") {
         assertCharactersProjectedForAndroidV1(characters);
         await assertAndroidV1PublicationProof(options.v1ProjectionReportPath!, {
             characters: localManifest,
         });
     }
-    const remoteDatasetObjectKey = buildRemoteDatasetObjectKey(
-        localManifest,
-        options.channel,
-        options.contractLane,
-    );
     const remoteManifest: DatasetManifest = {
         ...localManifest,
         fileName: remoteDatasetObjectKey,
     };
-    const portraitKeys = collectReferencedPortraitKeys(characters);
-    const previousState = await readPublishState(options.statePath, options.channel, options.contractLane);
+    assertPortraitPublicationMode(characters, options.skipPortraits);
+    const portraitReferences = collectReferencedPortraitReferences(characters);
+    const portraitKeys = portraitReferences.map(reference => reference.objectKey);
+    const previousState = await readPublishState(
+        options.statePath,
+        options.bucket,
+        options.target,
+        options.channel,
+        options.contractLane,
+    );
     const publishedRemoteManifest = options.skipRemoteManifestCheck
         ? undefined
         : await tryReadRemoteManifest(options.bucket, options.target, options.manifestObjectKey);
@@ -642,11 +856,35 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
 
     const portraitEntries = options.skipPortraits
         ? []
-        : await buildPortraitEntries(portraitKeys, options.dataRoot);
+        : await buildPortraitEntries(portraitReferences, options.dataRoot, {
+            channel: options.channel,
+            contractLane: options.contractLane,
+        });
+    let verifiedPortraitState = previousState;
+    if (!options.skipPortraits && !options.forcePortraits && previousState) {
+        const temporaryDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-r2-portrait-verify-"));
+        try {
+            const reusablePortraits = await verifyReusablePortraitEntries(
+                portraitEntries,
+                previousState,
+                (entry, index) => readPublishedPortrait(
+                    options.bucket,
+                    options.target,
+                    temporaryDirectory,
+                    entry,
+                    index,
+                ),
+                options.concurrency,
+            );
+            verifiedPortraitState = { ...previousState, portraits: reusablePortraits };
+        } finally {
+            await rm(temporaryDirectory, { recursive: true, force: true });
+        }
+    }
     const portraitPlan = options.skipPortraits
         ? { toUpload: [], toDelete: [] }
-        : buildPortraitPublishPlan(portraitEntries, previousState, { forcePortraits: options.forcePortraits });
-    const projectedTotalBytes = statSync(options.datasetPath).size
+        : buildPortraitPublishPlan(portraitEntries, verifiedPortraitState, { forcePortraits: options.forcePortraits });
+    const projectedTotalBytes = statSync(localDatasetPath).size
         + manifestByteSize(remoteManifest)
         + portraitEntries.reduce((total, entry) => total + statSync(entry.filePath).size, 0);
 
@@ -706,7 +944,7 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         await uploadObject(
             options.bucket,
             remoteDatasetObjectKey,
-            options.datasetPath,
+            localDatasetPath,
             "application/gzip",
             "public, max-age=31536000, immutable",
             options.target,

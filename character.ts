@@ -17,6 +17,7 @@ export interface Character {
     id: string,
     legacyId?: string,
     portraitURL: string,
+    portraitLayers?: PortraitLayers,
     portraitFilename: string,
     portraitSpec?: PortraitSpec,
     leaderSkill: string,
@@ -210,6 +211,12 @@ export interface PortraitSpec {
     frameColorId: number,
     rarity: Rarities,
     elementCode: string,
+}
+
+export interface PortraitLayers {
+    backgroundURL: string,
+    thumbURL: string,
+    overlayURL: string,
 }
 
 export interface PassiveDetails {
@@ -662,6 +669,7 @@ export interface AwakeningReference {
     type: Types,
     releaseDate?: string,
     portraitURL: string,
+    portraitLayers?: PortraitLayers,
     portraitSpec?: PortraitSpec,
     artURL: string,
 }
@@ -798,6 +806,7 @@ export interface Transformation {
     domain: string,
     links:string[],
     portraitURL: string,
+    portraitLayers?: PortraitLayers,
     portraitFilename: string,
     portraitSpec?: PortraitSpec,
     artURL: string,

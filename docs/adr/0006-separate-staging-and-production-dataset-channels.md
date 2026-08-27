@@ -28,10 +28,15 @@ only through `-PdebugDatasetChannel=staging`. Dataset managers allowlist the
 known manifest keys and enforce that each manifest references a payload from
 its own channel.
 
-Portrait keys are not yet channel-scoped. Staging Character publication must
-therefore use `--skip-portraits` until portraits are isolated or made safely
-content-addressed. Each app release also receives a branch or tag so that its
-code and data compatibility can be reproduced when diagnosing production.
+Legacy portrait keys are not channel-scoped and staging Character publication
+must continue to skip them. New portrait candidates may instead use typed,
+channel/lane-scoped, content-addressed keys. The publisher accepts those assets
+only when every reference belongs to the selected channel and lane, every
+local object is present, and the SHA-256 embedded in its key matches its exact
+bytes. A typed layered candidate cannot be published with `--skip-portraits`,
+because that could promote a manifest before all of its dependencies exist.
+Each app release also receives a branch or tag so that its code and data
+compatibility can be reproduced when diagnosing production.
 
 ## Alternatives Considered
 
@@ -73,7 +78,8 @@ code and data compatibility can be reproduced when diagnosing production.
 - Publishers and clients must maintain two manifest namespaces and publisher
   state files.
 - Staging consumes additional R2 storage and requires its own cleanup policy.
-- Portrait changes cannot yet be validated through staging publication.
+- Layered portrait candidates require substantially more immutable staging
+  storage and local validation before manifest promotion.
 
 ### Risks
 

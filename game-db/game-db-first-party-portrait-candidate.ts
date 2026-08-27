@@ -3,12 +3,13 @@ import { lstat, mkdir, readFile, realpath, writeFile } from "fs/promises";
 import { isAbsolute, relative, resolve, sep } from "path";
 import { gunzipSync } from "zlib";
 import sharp = require("sharp");
-import type { AwakeningReference, Character, PortraitSpec, Transformation } from "../character";
+import type { AwakeningReference, Character, PortraitLayers, PortraitSpec, Transformation } from "../character";
 import { buildCharacterDatasetArtifact, type DatasetManifest } from "../dataset-artifacts";
 import {
-    composeFirstPartyPortraitLayers,
+    composeFirstPartyPortraitArtifacts,
     resolveFirstPartyPortraitLayerPaths,
     type FirstPartyPortraitLayerBytes,
+    type FirstPartyPortraitStaticLayers,
 } from "./first-party-portrait-compositor";
 import { overlayFirstPartyPortraitSpecs } from "./game-db-first-party-portrait-spec";
 import { readGameDbTable, resolveGameDbSourceConfig } from "./game-db-source";
@@ -21,6 +22,7 @@ export const FIRST_PARTY_PORTRAIT_CANDIDATE_ROOT = resolve(
 export const FIRST_PARTY_PORTRAIT_SOURCE_CONTRACT = "dokkan-official-installed-portrait-source";
 export const FIRST_PARTY_PORTRAIT_CANDIDATE_CONTRACT = "dokkan-first-party-portrait-staging-candidate";
 const PORTRAIT_OBJECT_KEY = /^staging\/v2\/images\/v4\/portrait_(\d+)\.([a-f0-9]{64})\.png$/;
+const PORTRAIT_LAYER_OBJECT_KEY = /^staging\/v2\/images\/v5\/layers\/(background|thumb|overlay)\.([a-f0-9]{64})\.png$/;
 const JSON_BYTES = (value: unknown) => Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
 const sha256 = (value: Buffer | string) => createHash("sha256").update(value).digest("hex");
 
@@ -79,6 +81,20 @@ interface PortraitCandidateEntry {
     sizeBytes: number,
     sha256: string,
     portraitSpec: PortraitSpec,
+}
+
+type PortraitLayerKind = keyof FirstPartyPortraitStaticLayers;
+
+interface PortraitLayerCandidateEntry {
+    kind: PortraitLayerKind,
+    objectKey: string,
+    localPath: string,
+    sizeBytes: number,
+    sha256: string,
+}
+
+interface PendingPortraitLayerCandidate extends PortraitLayerCandidateEntry {
+    bytes: Buffer,
 }
 
 type PortraitReference = Character | Transformation | AwakeningReference;
@@ -187,9 +203,39 @@ function stripPortraitDelivery(value: unknown): unknown {
     if (!value || typeof value !== "object") return value;
     const output: Record<string, unknown> = {};
     for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+        if (key === "portraitLayers") continue;
         output[key] = key === "portraitSpec" || key === "portraitURL" ? `<${key}>` : stripPortraitDelivery(nested);
     }
     return output;
+}
+
+async function assertPng150(bytes: Buffer, context: string, requireAlpha: boolean): Promise<void> {
+    const metadata = await sharp(bytes).metadata();
+    if (metadata.width !== 150 || metadata.height !== 150 || metadata.format !== "png"
+        || (requireAlpha && (metadata.channels !== 4 || metadata.hasAlpha !== true))) {
+        throw new Error(`${context} has invalid PNG geometry or alpha contract`);
+    }
+}
+
+async function writeVerifiedPngObject(
+    outputDir: string,
+    entry: { localPath: string, sizeBytes: number, sha256: string },
+    bytes: Buffer,
+    context: string,
+    requireAlpha: boolean,
+): Promise<void> {
+    if (bytes.length !== entry.sizeBytes || sha256(bytes) !== entry.sha256) {
+        throw new Error(`${context} in-memory identity rejected`);
+    }
+    await assertPng150(bytes, context, requireAlpha);
+    const absolutePath = containedPath(outputDir, entry.localPath);
+    await mkdir(resolve(absolutePath, ".."), { recursive: true });
+    await writeFile(absolutePath, bytes, { flag: "wx" });
+    const reread = await readFile(absolutePath);
+    if (reread.length !== entry.sizeBytes || sha256(reread) !== entry.sha256) {
+        throw new Error(`${context} write rejected`);
+    }
+    await assertPng150(reread, `${context} reread`, requireAlpha);
 }
 
 async function mapConcurrent<T, R>(values: T[], concurrency: number, mapper: (value: T) => Promise<R>): Promise<R[]> {
@@ -271,6 +317,8 @@ export async function buildFirstPartyPortraitCandidate(options: FirstPartyPortra
     payloadPath: string,
     reportPath: string,
     portraitCount: number,
+    portraitLayerObjectCount: number,
+    portraitLayerProjectedBytes: number,
 }> {
     const outputDir = resolve(options.outputDir);
     if (await lstat(outputDir).catch(() => undefined)) throw new Error("portrait candidate output must be a fresh directory");
@@ -368,32 +416,80 @@ export async function buildFirstPartyPortraitCandidate(options: FirstPartyPortra
     }
 
     await mkdir(resolve(outputDir, "objects"), { recursive: true });
+    const pendingLayerEntries = new Map<string, PendingPortraitLayerCandidate>();
     const candidateEntries = await mapConcurrent(
         [...referencesByCardId].sort(([left], [right]) => left.localeCompare(right, undefined, { numeric: true })),
         8,
         async ([cardId, cardReferences]): Promise<PortraitCandidateEntry> => {
             const spec = cardReferences[0].portraitSpec as PortraitSpec;
-            const bytes = await composeFirstPartyPortraitLayers(verifiedPortraitLayers(spec, {
+            const artifacts = await composeFirstPartyPortraitArtifacts(verifiedPortraitLayers(spec, {
                 sharedLayersRoot: options.sharedLayersRoot,
                 cardThumbsRoot: options.cardThumbsRoot,
             }, extractedInventory));
-            const metadata = await sharp(bytes).metadata();
-            if (metadata.width !== 150 || metadata.height !== 150 || metadata.format !== "png") {
-                throw new Error(`portrait candidate ${cardId} has invalid PNG geometry`);
-            }
+            const bytes = artifacts.portrait;
+            await assertPng150(bytes, `portrait candidate ${cardId}`, false);
             const hash = sha256(bytes);
             const objectKey = `staging/v2/images/v4/portrait_${cardId}.${hash}.png`;
             if (!PORTRAIT_OBJECT_KEY.test(objectKey)) throw new Error(`portrait candidate ${cardId} object key rejected`);
             const localPath = `objects/${objectKey}`;
-            const absolutePath = containedPath(outputDir, localPath);
-            await mkdir(resolve(absolutePath, ".."), { recursive: true });
-            await writeFile(absolutePath, bytes, { flag: "wx" });
-            const reread = await readFile(absolutePath);
-            if (reread.length !== bytes.length || sha256(reread) !== hash) throw new Error(`portrait candidate ${cardId} write rejected`);
-            for (const reference of cardReferences) reference.portraitURL = objectKey;
+            await writeVerifiedPngObject(
+                outputDir,
+                { localPath, sizeBytes: bytes.length, sha256: hash },
+                bytes,
+                `portrait candidate ${cardId}`,
+                false,
+            );
+
+            const portraitLayers = {} as PortraitLayers;
+            for (const kind of ["background", "thumb", "overlay"] as const) {
+                const layerBytes = artifacts.portraitLayers[kind];
+                await assertPng150(layerBytes, `portrait candidate ${cardId} ${kind} layer`, true);
+                const layerHash = sha256(layerBytes);
+                const layerObjectKey = `staging/v2/images/v5/layers/${kind}.${layerHash}.png`;
+                if (!PORTRAIT_LAYER_OBJECT_KEY.test(layerObjectKey)) {
+                    throw new Error(`portrait candidate ${cardId} ${kind} layer object key rejected`);
+                }
+                const pending: PendingPortraitLayerCandidate = {
+                    kind,
+                    objectKey: layerObjectKey,
+                    localPath: `objects/${layerObjectKey}`,
+                    sizeBytes: layerBytes.length,
+                    sha256: layerHash,
+                    bytes: layerBytes,
+                };
+                const existing = pendingLayerEntries.get(layerObjectKey);
+                if (existing && (existing.kind !== kind || existing.sizeBytes !== pending.sizeBytes
+                    || existing.sha256 !== pending.sha256 || !existing.bytes.equals(layerBytes))) {
+                    throw new Error(`portrait candidate ${cardId} ${kind} layer hash collision`);
+                }
+                if (!existing) pendingLayerEntries.set(layerObjectKey, pending);
+                if (kind === "background") portraitLayers.backgroundURL = layerObjectKey;
+                else if (kind === "thumb") portraitLayers.thumbURL = layerObjectKey;
+                else portraitLayers.overlayURL = layerObjectKey;
+            }
+            for (const reference of cardReferences) {
+                reference.portraitURL = objectKey;
+                reference.portraitLayers = portraitLayers;
+            }
             return { cardId, objectKey, localPath, sizeBytes: bytes.length, sha256: hash, portraitSpec: spec };
         },
     );
+
+    const pendingLayers = [...pendingLayerEntries.values()]
+        .sort((left, right) => left.objectKey.localeCompare(right.objectKey));
+    await mapConcurrent(pendingLayers, 8, async entry => {
+        await writeVerifiedPngObject(outputDir, entry, entry.bytes, `portrait ${entry.kind} layer ${entry.sha256}`, true);
+    });
+    const layerEntries: PortraitLayerCandidateEntry[] = pendingLayers.map(({ bytes: _bytes, ...entry }) => entry);
+    const portraitLayerProjectedBytes = layerEntries.reduce((total, entry) => total + entry.sizeBytes, 0);
+    const portraitLayerProjectedBytesByKind = {
+        background: layerEntries.filter(entry => entry.kind === "background")
+            .reduce((total, entry) => total + entry.sizeBytes, 0),
+        thumb: layerEntries.filter(entry => entry.kind === "thumb")
+            .reduce((total, entry) => total + entry.sizeBytes, 0),
+        overlay: layerEntries.filter(entry => entry.kind === "overlay")
+            .reduce((total, entry) => total + entry.sizeBytes, 0),
+    };
 
     if (JSON.stringify(stripPortraitDelivery(baseline.characters)) !== JSON.stringify(stripPortraitDelivery(overlay.characters))) {
         throw new Error("portrait candidate changed non-portrait data");
@@ -419,7 +515,7 @@ export async function buildFirstPartyPortraitCandidate(options: FirstPartyPortra
     const report = {
         schemaVersion: 1,
         contract: FIRST_PARTY_PORTRAIT_CANDIDATE_CONTRACT,
-        contractVersion: "1.0.0",
+        contractVersion: "1.1.0",
         generatedAt,
         source: {
             baseline: {
@@ -446,6 +542,17 @@ export async function buildFirstPartyPortraitCandidate(options: FirstPartyPortra
             inventorySha256: sha256(JSON_BYTES(candidateEntries)),
             entries: candidateEntries,
         },
+        portraitLayers: {
+            referenceCount: references.length,
+            uniqueObjectCount: layerEntries.length,
+            backgroundObjectCount: layerEntries.filter(entry => entry.kind === "background").length,
+            thumbObjectCount: layerEntries.filter(entry => entry.kind === "thumb").length,
+            overlayObjectCount: layerEntries.filter(entry => entry.kind === "overlay").length,
+            projectedBytes: portraitLayerProjectedBytes,
+            projectedBytesByKind: portraitLayerProjectedBytesByKind,
+            inventorySha256: sha256(JSON_BYTES(layerEntries)),
+            entries: layerEntries,
+        },
         dataset: manifest,
         checks: {
             everyReferenceJoinedByExactOfficialCardId: true,
@@ -459,6 +566,9 @@ export async function buildFirstPartyPortraitCandidate(options: FirstPartyPortra
             everyRequiredExtractedLayerPresentAndHashed: true,
             everyPortraitIsDeterministicPng150: true,
             everyPortraitUrlIsChannelScopedAndContentAddressed: true,
+            everyPortraitLayerIsDeterministicTransparentPng150: true,
+            everyPortraitLayerUrlIsChannelScopedAndContentAddressed: true,
+            portraitLayersDeduplicatedByContentHash: true,
             portraitSpecAndUrlUpdatedTogether: true,
             nonPortraitDataUnchanged: true,
             payloadManifestSizeAndShaMatch: true,
@@ -478,7 +588,14 @@ export async function buildFirstPartyPortraitCandidate(options: FirstPartyPortra
     };
     const reportPath = resolve(outputDir, "first-party-portrait-candidate-report.json");
     await writeFile(reportPath, JSON_BYTES(report), { flag: "wx" });
-    return { manifestPath, payloadPath, reportPath, portraitCount: candidateEntries.length };
+    return {
+        manifestPath,
+        payloadPath,
+        reportPath,
+        portraitCount: candidateEntries.length,
+        portraitLayerObjectCount: layerEntries.length,
+        portraitLayerProjectedBytes,
+    };
 }
 
 export function parseFirstPartyPortraitCandidateArgs(args: string[]): FirstPartyPortraitCandidateOptions {

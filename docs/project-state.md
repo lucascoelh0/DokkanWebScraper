@@ -2816,6 +2816,49 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   commit or push changed. The next separately authorized gate is a staging
   publisher dry-run and byte report; publication remains `NO-GO`.
 
+## Official layered portrait publisher dry-run checkpoint (2026-08-26)
+
+- The self-contained staging candidate is Character version
+  `2026-08-26T20:58:47.619Z`, 1,436 characters, 2,554,009 compressed
+  bytes and SHA-256
+  `403b40ce911147899986b8c7c618acbc40af8f67973793e63aab58281beb79f4`.
+  It references 1,627 content-addressed static portraits and 1,656
+  deduplicated typed layer objects (20 backgrounds, 1,579 thumbs and 57
+  overlays), 3,283 visual objects total.
+- Its exact Team Analysis pair is version
+  `2026-08-26T20:58:47.619Z:parser-1.9.16`, 2,288 states, 2,962,029
+  compressed bytes and SHA-256
+  `43a01d5efb74241fdd1661b92adb1d8fb961f1c68098b68003e36909265bc550`.
+  The manifest binds the Character version and SHA exactly.
+- The Character publisher now accepts an already channel/lane-scoped immutable
+  candidate payload while preserving legacy local manifests. It recursively
+  collects base, transformation and awakening portrait layers, validates
+  containment, structural object keys and embedded SHA-256 values, rejects
+  cross-channel/lane references, and refuses `--skip-portraits` for layered
+  payloads. Legacy unscoped staging portraits still require the skip mode.
+- Remote state can suppress an asset upload only after the exact remote length
+  and SHA-256 are reread successfully. Missing/corrupt objects are replanned;
+  authentication, transport, malformed-manifest and other non-404 failures are
+  fail-closed. State is bound to bucket, target, channel and contract lane.
+  Assets and immutable payload remain before the mutable no-store manifest;
+  release-aware GC is still future work.
+- Compiled focused validation passed 25 delivery/compositor/candidate checks.
+  The broader suite reached 1,861 passing and 13 expected pending; its two DD6
+  failures are the known committed-HEAD documentation lock, while the one WT
+  two-second timeout passed all 43 cases on a bounded rerun. Final read-only
+  contract re-review found no remaining P0-P2 issue.
+- The read-only remote Characters dry-run planned 3,283 visual uploads,
+  69,484,222 managed bytes and a conservative whole-bucket upper bound of
+  480,484,222/10,000,000,000 bytes. The exact Team dry-run planned 2,962,743
+  new bytes, retained all four tracked releases, no cleanup, and a
+  12,270,862/50,000,000-byte namespace peak. Executed together against the
+  current bucket, the conservative combined upper bound is
+  483,446,965/10,000,000,000 bytes.
+- This checkpoint changed no R2 object, mutable manifest, production endpoint,
+  Android source, Play track or production data. Remote staging upload is the
+  next separately authorized gate and must promote Characters + Team Analysis
+  as the exact validated pair; production remains `NO-GO`.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

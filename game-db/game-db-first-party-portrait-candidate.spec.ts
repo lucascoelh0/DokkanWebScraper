@@ -60,6 +60,16 @@ function fixtureCharacter(): Character {
         rainbowDefence: 0,
         kiMultiplier: "",
         standbySkill: "",
+        awakeningCards: [{
+            id: "1015850",
+            name: "Shared Super Awakening",
+            rarity: Rarities.SSR,
+            characterClass: Classes.Super,
+            type: Types.PHY,
+            portraitURL: "images/v3/portrait_1015850.old.png",
+            portraitSpec: { iconId: 1015820, frameColorId: 4, rarity: Rarities.SSR, elementCode: "14" },
+            artURL: "",
+        }],
         transformations: [{
             id: "1015841",
             baseCharacterId: "1015830",
@@ -112,7 +122,7 @@ async function inventory(entries: Array<{ path: string, absolutePath: string }>)
 
 describe("first-party portrait staging candidate", function () {
     it("deduplicates official shared thumbs while producing class-specific content-addressed portraits", async () => {
-        this.timeout(15_000);
+        this.timeout(20_000);
         const root = await mkdtemp(join(tmpdir(), "dokkan-portrait-candidate-test-"));
         temporaryDirectories.push(root);
         const baselineDir = join(root, "baseline");
@@ -133,6 +143,7 @@ describe("first-party portrait staging candidate", function () {
             "id,name,rarity,element,resource_id",
             "1015830,Shared Super,3,14,1015820",
             "1015841,Shared Extreme,4,24,1015821",
+            "1015850,Shared Super Awakening,3,14,1015822",
             "",
         ].join("\n"), "utf8");
         await Promise.all([
@@ -254,13 +265,26 @@ describe("first-party portrait staging candidate", function () {
 
         const result = await buildFirstPartyPortraitCandidate(candidateOptions);
 
-        equal(result.portraitCount, 2);
+        equal(result.portraitCount, 3);
+        equal(result.portraitLayerObjectCount, 4);
+        equal(result.portraitLayerProjectedBytes > 0, true);
         const report = JSON.parse(await readFile(result.reportPath, "utf8"));
+        equal(report.contractVersion, "1.1.0");
         equal(report.portraits.uniqueThumbAssetCount, 1);
+        equal(report.portraitLayers.referenceCount, 3);
+        equal(report.portraitLayers.uniqueObjectCount, 4);
+        equal(report.portraitLayers.backgroundObjectCount, 1);
+        equal(report.portraitLayers.thumbObjectCount, 1);
+        equal(report.portraitLayers.overlayObjectCount, 2);
+        equal(report.portraitLayers.projectedBytes, result.portraitLayerProjectedBytes);
+        equal(Object.values(report.portraitLayers.projectedBytesByKind)
+            .reduce((total: number, value) => total + Number(value), 0), result.portraitLayerProjectedBytes);
         equal(report.source.cpkInventory.entries.length, 2);
         equal(report.checks.baseApkIdentityMatchesProvenance, true);
         equal(report.checks.gameDbMetadataAndCardsCsvMatchProvenance, true);
         equal(report.checks.cpkAndExtractedInventoriesMatchProvenance, true);
+        equal(report.checks.nonPortraitDataUnchanged, true);
+        equal(report.checks.portraitLayersDeduplicatedByContentHash, true);
         equal(report.readiness.localPortraitCandidate, "GO");
         equal(report.readiness.publication, "NO-GO");
         const manifest = JSON.parse(await readFile(result.manifestPath, "utf8"));
@@ -268,12 +292,37 @@ describe("first-party portrait staging candidate", function () {
         match(manifest.fileName, /^staging\/v2\/releases\//);
         match(characters[0].portraitURL, /^staging\/v2\/images\/v4\/portrait_1015830\.[a-f0-9]{64}\.png$/);
         match(characters[0].transformations?.[0].portraitURL ?? "", /^staging\/v2\/images\/v4\/portrait_1015841\.[a-f0-9]{64}\.png$/);
+        match(characters[0].awakeningCards?.[0].portraitURL ?? "", /^staging\/v2\/images\/v4\/portrait_1015850\.[a-f0-9]{64}\.png$/);
         equal(characters[0].portraitURL === characters[0].transformations?.[0].portraitURL, false);
+        const references = [characters[0], characters[0].transformations?.[0], characters[0].awakeningCards?.[0]];
+        for (const reference of references) {
+            const layers = reference?.portraitLayers;
+            match(layers?.backgroundURL ?? "", /^staging\/v2\/images\/v5\/layers\/background\.[a-f0-9]{64}\.png$/);
+            match(layers?.thumbURL ?? "", /^staging\/v2\/images\/v5\/layers\/thumb\.[a-f0-9]{64}\.png$/);
+            match(layers?.overlayURL ?? "", /^staging\/v2\/images\/v5\/layers\/overlay\.[a-f0-9]{64}\.png$/);
+            for (const objectKey of Object.values(layers ?? {})) {
+                const object = await readFile(join(outputDir, "objects", ...objectKey.split("/")));
+                const metadata = await sharp(object).metadata();
+                equal(metadata.width, 150);
+                equal(metadata.height, 150);
+                equal(metadata.channels, 4);
+                equal(metadata.hasAlpha, true);
+            }
+        }
+        deepEqual(characters[0].portraitLayers, characters[0].awakeningCards?.[0].portraitLayers);
+        equal(characters[0].portraitLayers?.thumbURL, characters[0].transformations?.[0].portraitLayers?.thumbURL);
+        equal(characters[0].portraitLayers?.backgroundURL, characters[0].transformations?.[0].portraitLayers?.backgroundURL);
+        equal(characters[0].portraitLayers?.overlayURL === characters[0].transformations?.[0].portraitLayers?.overlayURL, false);
         deepEqual(characters[0].portraitSpec, {
             iconId: 1015820, frameColorId: 4, rarity: Rarities.SSR, elementCode: "14",
         });
         deepEqual(characters[0].transformations?.[0].portraitSpec, {
             iconId: 1015820, frameColorId: 4, rarity: Rarities.UR, elementCode: "24",
         });
+
+        const replay = await buildFirstPartyPortraitCandidate({ ...candidateOptions, outputDir: join(root, "candidate-replay") });
+        equal((await readFile(replay.payloadPath)).equals(await readFile(result.payloadPath)), true);
+        equal((await readFile(replay.manifestPath)).equals(await readFile(result.manifestPath)), true);
+        equal((await readFile(replay.reportPath)).equals(await readFile(result.reportPath)), true);
     });
 });

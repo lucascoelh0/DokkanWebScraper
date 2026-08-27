@@ -25,6 +25,32 @@ export interface FirstPartyPortraitLayerBytes {
     type: Buffer,
 }
 
+export interface FirstPartyPortraitStaticLayers {
+    background: Buffer,
+    thumb: Buffer,
+    overlay: Buffer,
+}
+
+export interface FirstPartyPortraitArtifacts {
+    portrait: Buffer,
+    portraitLayers: FirstPartyPortraitStaticLayers,
+}
+
+interface ResizedPortraitLayers {
+    background: Buffer,
+    thumb: Buffer,
+    rarity: Buffer,
+    type: Buffer,
+}
+
+const PORTRAIT_SIZE = 150;
+const BACKGROUND_PLACEMENT = { left: 15, top: 15, height: 120 } as const;
+const THUMB_PLACEMENT = { left: 0, top: 0, height: 150 } as const;
+const RARITY_PLACEMENT = { left: 0, top: 78, height: 72 } as const;
+const TYPE_PLACEMENT = { left: 93, top: 0, height: 57 } as const;
+const PNG_OPTIONS = { quality: 10, compressionLevel: 6 } as const;
+const STATIC_LAYER_PNG_OPTIONS = { compressionLevel: 6, palette: false } as const;
+
 function rarityNumber(rarity: Rarities): number {
     switch (rarity) {
         case Rarities.N: return 0;
@@ -92,24 +118,65 @@ export async function composeFirstPartyPortrait(
 export async function composeFirstPartyPortraitLayers(
     layers: FirstPartyPortraitLayerBytes,
 ): Promise<Buffer> {
+    return (await composeFirstPartyPortraitArtifacts(layers)).portrait;
+}
+
+export async function composeFirstPartyPortraitStaticLayers(
+    layers: FirstPartyPortraitLayerBytes,
+): Promise<FirstPartyPortraitStaticLayers> {
+    return (await composeFirstPartyPortraitArtifacts(layers)).portraitLayers;
+}
+
+async function resizePortraitLayers(layers: FirstPartyPortraitLayerBytes): Promise<ResizedPortraitLayers> {
     const { background, thumb, rarity, type } = layers;
     const [backgroundLayer, thumbLayer, rarityLayer, typeLayer] = await Promise.all([
-        sharp(background).resize({ height: 120 }).png().toBuffer(),
-        sharp(thumb).resize({ height: 150 }).png().toBuffer(),
-        sharp(rarity).resize({ height: 72 }).png().toBuffer(),
-        sharp(type).resize({ height: 57 }).png().toBuffer(),
+        sharp(background).resize({ height: BACKGROUND_PLACEMENT.height }).png().toBuffer(),
+        sharp(thumb).resize({ height: THUMB_PLACEMENT.height }).png().toBuffer(),
+        sharp(rarity).resize({ height: RARITY_PLACEMENT.height }).png().toBuffer(),
+        sharp(type).resize({ height: TYPE_PLACEMENT.height }).png().toBuffer(),
     ]);
-    return sharp({
+    return { background: backgroundLayer, thumb: thumbLayer, rarity: rarityLayer, type: typeLayer };
+}
+
+async function transparentPortraitCanvas(
+    inputs: Array<{ input: Buffer, left: number, top: number }>,
+    preserveAlpha: boolean,
+): Promise<Buffer> {
+    let pipeline = sharp({
         create: {
-            width: 150,
-            height: 150,
+            width: PORTRAIT_SIZE,
+            height: PORTRAIT_SIZE,
             channels: 4,
             background: { r: 0, g: 0, b: 0, alpha: 0 },
         },
-    }).composite([
-        { input: backgroundLayer, left: 15, top: 15 },
-        { input: thumbLayer, left: 0, top: 0 },
-        { input: rarityLayer, left: 0, top: 78 },
-        { input: typeLayer, left: 93, top: 0 },
-    ]).png({ quality: 10, compressionLevel: 6 }).toBuffer();
+    }).composite(inputs);
+    if (preserveAlpha) pipeline = pipeline.ensureAlpha();
+    return pipeline.png(preserveAlpha ? STATIC_LAYER_PNG_OPTIONS : PNG_OPTIONS).toBuffer();
+}
+
+async function transparentPng(bytes: Buffer): Promise<Buffer> {
+    return sharp(bytes).ensureAlpha().png(STATIC_LAYER_PNG_OPTIONS).toBuffer();
+}
+
+export async function composeFirstPartyPortraitArtifacts(
+    layers: FirstPartyPortraitLayerBytes,
+): Promise<FirstPartyPortraitArtifacts> {
+    const resized = await resizePortraitLayers(layers);
+    const [portrait, background, thumb, overlay] = await Promise.all([
+        transparentPortraitCanvas([
+            { input: resized.background, left: BACKGROUND_PLACEMENT.left, top: BACKGROUND_PLACEMENT.top },
+            { input: resized.thumb, left: THUMB_PLACEMENT.left, top: THUMB_PLACEMENT.top },
+            { input: resized.rarity, left: RARITY_PLACEMENT.left, top: RARITY_PLACEMENT.top },
+            { input: resized.type, left: TYPE_PLACEMENT.left, top: TYPE_PLACEMENT.top },
+        ], false),
+        transparentPortraitCanvas([
+            { input: resized.background, left: BACKGROUND_PLACEMENT.left, top: BACKGROUND_PLACEMENT.top },
+        ], true),
+        transparentPng(resized.thumb),
+        transparentPortraitCanvas([
+            { input: resized.rarity, left: RARITY_PLACEMENT.left, top: RARITY_PLACEMENT.top },
+            { input: resized.type, left: TYPE_PLACEMENT.left, top: TYPE_PLACEMENT.top },
+        ], true),
+    ]);
+    return { portrait, portraitLayers: { background, thumb, overlay } };
 }
