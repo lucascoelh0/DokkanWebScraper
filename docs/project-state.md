@@ -1,6 +1,6 @@
 # Dokkanpanion Project State
 
-**Last updated**: 2026-08-24
+**Last updated**: 2026-08-27
 
 This is the concise operational checkpoint for future sessions. Durable
 decisions live in [`adr/`](adr/), and current workflow instructions live in
@@ -2962,6 +2962,35 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   passed. Final contract review found no P0-P2 issue.
 - No R2 object, public manifest, production endpoint or Play track changed.
   The regenerated pair remains local and staging-only.
+
+## Open technical debt — first-party Support Memory and Stage sources (2026-08-27)
+
+- After the current app release, replace the community-derived Support Memory
+  and Stage pipelines with first-party game database/API projections, following
+  the structural-ID and field-scoped provenance approach already used for
+  Characters. This is a future source-migration gate, not authorization to
+  acquire, publish or promote data now.
+- The current Dokkan.fyi category projection is not authoritative for Support
+  Memory targets. Its live category `98 / DAIMA` payload incorrectly associates
+  `50015 / Broly's Inner Power`, whose player-facing effect targets only
+  `Movie Bosses` and `Revenge`. A local 75-memory audit found 29 apparent extra
+  and 14 missing category relations when compared with recognized category
+  names explicitly quoted in effect descriptions.
+- Support Memories remains staging-only: every production Android variant
+  disables its Tools entry, character-detail recommendations and dataset
+  updates. The staging consumer temporarily derives catalog filters, search
+  labels and detail category links only from recognized quoted category names
+  inside explicit plural `Category allies` / `Category enemies` target clauses.
+  It excludes singular `Category ally` / `Category enemy` condition clauses.
+  This compatibility projection deliberately ignores the source-provided
+  `categoryNames` authority and must be removed once structural first-party
+  target IDs are delivered. Existing character-applicability joins remain
+  source-derived and require a separate audit during that migration.
+- Exit criteria: define first-party structural identities and provenance for
+  Support Memory targets/effects/duration/enhancement/acquisition and for Stage
+  identity/relations/enemies/rewards; compare the replacement against the
+  current delivered contracts; preserve old-cache compatibility in Android;
+  then remove text-derived target parsing and community-source authority.
 
 ## Operating Constraints
 
