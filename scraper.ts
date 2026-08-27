@@ -1580,52 +1580,50 @@ function extractLeaderSkillKi(segment: string): number | undefined {
 function calculateLeaderSkillDisplayBoost(
     parsedLeaderSkills: Pick<LeaderSkillClause, 'stackGroup' | 'hp' | 'atk' | 'def' | 'boostForm'>[],
 ): number {
-    const percentageBoost = (leaderSkill: Pick<LeaderSkillClause, 'hp' | 'atk' | 'def' | 'boostForm'>): number | undefined => {
-        if (leaderSkill.boostForm !== 'percentage') {
-            return undefined;
-        }
-
-        const positiveStats = [leaderSkill.hp, leaderSkill.atk, leaderSkill.def]
-            .filter(value => value > 0);
-
-        return positiveStats.length > 0
-            ? positiveStats.reduce((sum, value) => sum + value, 0) / positiveStats.length
-            : 0;
+    type PercentagePath = { hp: number, atk: number, def: number };
+    const displayBoost = (path: PercentagePath): number => {
+        // Community leader labels describe the ATK/DEF ceiling, not an
+        // average across HP, ATK and DEF. HP is only a fallback when the whole
+        // path has no combat-stat boost.
+        const positiveCombatStats = [path.atk, path.def].filter(value => value > 0);
+        return positiveCombatStats.length > 0
+            ? Math.max(...positiveCombatStats)
+            : Math.max(path.hp, 0);
     };
 
-    // Primary and secondary clauses are alternatives introduced by "or". Only
-    // explicitly additional clauses can stack with the strongest base clause.
-    const baseBoost = Math.max(
-        0,
-        ...parsedLeaderSkills
-            .filter(leaderSkill => leaderSkill.stackGroup !== 'additional')
-            .map(percentageBoost)
-            .filter((boost): boost is number => boost !== undefined),
-    );
+    // Clauses retain their source order. A primary/secondary clause starts an
+    // alternative path, while an explicitly additional clause extends only the
+    // path immediately before it. This preserves fallback leaders such as
+    // `170 + 30; Super Class 150` and split leaders such as
+    // `Peppy Gals 200; Turtle School 170 + 30` without numeric exceptions.
+    let currentPath: PercentagePath | undefined;
+    let maximumPathBoost = 0;
 
-    if (baseBoost === 0) {
-        return 0;
+    for (const leaderSkill of parsedLeaderSkills) {
+        if (leaderSkill.stackGroup === 'additional') {
+            if (leaderSkill.boostForm === 'percentage' && currentPath) {
+                currentPath = {
+                    hp: currentPath.hp + leaderSkill.hp,
+                    atk: currentPath.atk + leaderSkill.atk,
+                    def: currentPath.def + leaderSkill.def,
+                };
+            }
+        } else {
+            // A flat/non-percentage alternative still closes the previous
+            // percentage path. Otherwise a later additional clause could be
+            // attached to an unrelated earlier alternative.
+            currentPath = leaderSkill.boostForm === 'percentage'
+                ? { hp: leaderSkill.hp, atk: leaderSkill.atk, def: leaderSkill.def }
+                : undefined;
+        }
+
+        maximumPathBoost = Math.max(
+            maximumPathBoost,
+            currentPath ? displayBoost(currentPath) : 0,
+        );
     }
 
-    let totalBoost = baseBoost;
-    for (const leaderSkill of parsedLeaderSkills.filter(skill => skill.stackGroup === 'additional')) {
-        const boost = percentageBoost(leaderSkill);
-        if (boost === undefined) {
-            continue;
-        }
-
-        if (boost < 40 && totalBoost > 0 && totalBoost < 200) {
-            totalBoost += boost;
-            break;
-        }
-
-        if (totalBoost !== 200 && totalBoost > 170 && totalBoost < 230 && boost <= 50) {
-            totalBoost += boost;
-            break;
-        }
-    }
-
-    return totalBoost;
+    return maximumPathBoost;
 }
 
 function characterExtraInfo(card: DokkanInfoCardSummary): CharacterExtraInfo {

@@ -2169,6 +2169,32 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
     }));
   });
 
+  it("keeps an inline attack phase attached to an explicitly capped ally scaling effect", () => {
+    const passive = parsePassive(
+      "class-scaling-cap:initial",
+      "Class Potential",
+      [
+        "Per Extreme Class ally on the team",
+        "- ATK & DEF 80% when attacking (up to 400%)",
+      ].join("\n"),
+    );
+
+    equal(passive.rules.length, 1);
+    equal(passive.rules[0].parseStatus, "supported");
+    passive.rules[0].effects.forEach(effect => {
+      equal(effect.stackCap, 400);
+      equal(effect.activationTiming?.moment, "when_attacking");
+      deepEqual(effect.scaling, {
+        kind: "per_class_ally",
+        scope: "team",
+        classes: ["Extreme"],
+        selfInclusion: "included",
+        membersPerIncrement: 1,
+        maximumCount: 7,
+      });
+    });
+  });
+
   it("types category-and-name ally scaling as one same-member filter", () => {
     const passive = parsePassive(
       "category-name-scaling:initial",
@@ -4880,7 +4906,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.16/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.17/);
   });
 });
 

@@ -19,6 +19,7 @@ import {
   parseWranglerBucketSize,
   PortraitPublishEntry,
   isMissingR2ObjectError,
+  isRetryableR2ReadError,
   verifyReusablePortraitEntries,
   validateLocalCharacterBundle,
 } from "./publish-r2";
@@ -139,6 +140,14 @@ describe("remote object read classification", function () {
     equal(isMissingR2ObjectError(new Error("authentication failed")), false);
     equal(isMissingR2ObjectError(new Error("Wrangler entrypoint was not found")), false);
     equal(isMissingR2ObjectError(new Error("malformed JSON")), false);
+  });
+
+  it("retries only bounded transient R2 read failures", () => {
+    equal(isRetryableR2ReadError(new Error("429: Too Many Requests")), true);
+    equal(isRetryableR2ReadError(new Error("503 Service Unavailable")), true);
+    equal(isRetryableR2ReadError(new Error("ECONNRESET")), true);
+    equal(isRetryableR2ReadError(new Error("authentication failed")), false);
+    equal(isRetryableR2ReadError(new Error("malformed JSON")), false);
   });
 });
 

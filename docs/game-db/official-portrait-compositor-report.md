@@ -277,3 +277,43 @@ Remote staging dry-run and the exact paired candidate are `GO`. Actual staging
 upload requires separate authorization and coordinated Character + Team
 manifest promotion. Production, Play and all production manifests remain
 `NO-GO`; this checkpoint performed no R2 mutation.
+
+## Layered portrait staging publication acceptance
+
+The separately authorized publication promoted the exact dry-run pair only to
+`staging/v2`. Characters is
+`2026-08-26T20:58:47.619Z` / 2,554,009 bytes /
+`403b40ce911147899986b8c7c618acbc40af8f67973793e63aab58281beb79f4`;
+Team Analysis is
+`2026-08-26T20:58:47.619Z:parser-1.9.16` / 2,962,029 bytes /
+`43a01d5efb74241fdd1661b92adb1d8fb961f1c68098b68003e36909265bc550`.
+The Team manifest binds the exact Character version and payload hash.
+
+All 1,627 static portraits and 1,656 typed layers were uploaded before the
+Character manifest. Complete post-publication R2 verification reread all 3,283
+visual objects and proved exact length and SHA-256; the resulting Character
+dry-run planned zero uploads, zero deletes and no dataset write. The paired
+Team dry-run also planned no payload, manifest, state or cleanup mutation while
+retaining all four tracked releases.
+
+Public delivery validation returned both manifests with `no-store`. Both public
+gzip payloads matched their declared size and SHA-256, and representative
+static/background/thumb/overlay objects matched the candidate byte for byte
+with immutable one-year caching. Wrangler reported approximately 469 MB in the
+bucket and the conservative post-publication upper bound was 470,000,000 of
+10,000,000,000 bytes.
+
+The exhaustive audit exposed two operational-only Windows/remote-read edges:
+temporary-directory cleanup can race a just-finished Wrangler child, and a
+large verification run can receive an R2 429. Cleanup now has bounded Windows
+retries, while reads retry only bounded 429/rate-limit, 502/503/504 and known
+transient transport failures. Missing objects still replan and every other
+error remains fail-closed. Twenty-two focused publisher tests pass.
+
+Production keys, manifests and payloads were not touched. Play and Android were
+not changed. A final public read confirmed the production Character and Team
+SHA-256 values remain respectively
+`34b2ce3918d0497b458f106f4e00b50cb039f0a280ef6bfe45c0ca76ee1a84bd`
+and `d7a8461c41484b0e25f61131476006b18eadad71c6bac265e7f0e289e7a96237`.
+Production promotion remains `NO-GO` pending its own compatibility and release
+authorization.

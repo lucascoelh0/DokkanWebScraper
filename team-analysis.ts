@@ -26,7 +26,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.16";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.17";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 export const HP_REMAINING_SCALING_DOMAIN_RULE_VERSION = "hp-remaining-scaling-v1";
 const EFFECT_DECISION_DOMAIN_RULE_VERSIONS = new Set([
@@ -7326,6 +7326,11 @@ function applyEffectModifiers(body: string, atoms: EffectAtomCandidate[]): Effec
     addModifiers(/\(\s*up to\s+\+(\d+(?:\.\d+)?)\s*\)/gi, match => atom => {
         if (atom.scaling?.kind !== "hp_remaining") atom.stackCap = Number(match[1]);
     });
+    // A standalone phase qualifier may sit between a typed value and its cap.
+    // Consume only that complete qualifier; longer phrases such as
+    // `when attacking as the 3rd attacker` remain evidence for the unsupported
+    // portion instead of being silently discarded.
+    addModifiers(/\bwhen attacking\b(?=\s*(?:\(\s*up to\b|$))/gi, () => () => undefined);
     for (const match of body.matchAll(/\bper\s+(?:(\d+)\s+)?(.*?)\s*Ki Spheres? obtained\b/gi)) {
         const start = match.index ?? 0;
         const spheresPerIncrement = Number(match[1] ?? 1);
@@ -7369,7 +7374,9 @@ function applyEffectModifiers(body: string, atoms: EffectAtomCandidate[]): Effec
         if (!preceding) {
             continue;
         }
-        const bridge = stripKnownModifierText(body.slice(preceding.end, modifier.start));
+        const bridge = stripKnownModifierText(body.slice(preceding.end, modifier.start))
+            .replace(/\bwhen attacking\b/gi, "")
+            .replace(/\bwhen receiving (?:an?|the) attack\b/gi, "");
         if (!/^[\s,()]*$/.test(bridge)) {
             continue;
         }

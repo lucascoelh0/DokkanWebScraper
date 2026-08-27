@@ -534,6 +534,11 @@ export function isMissingR2ObjectError(error: unknown): boolean {
     return /(?:\b404\b|nosuchkey|specified (?:object )?key does not exist|r2 object [^\r\n]* not found)/i.test(message);
 }
 
+export function isRetryableR2ReadError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /(?:\b429\b|too many requests|rate.?limit|\b50[0234]\b|econnreset|etimedout|fetch failed)/i.test(message);
+}
+
 async function readRemoteBucketSizeReport(bucket: string): Promise<BucketSizeReport> {
     let stdout: string;
     try {
@@ -602,20 +607,28 @@ async function readPublishedPortrait(
     index: number,
 ): Promise<Buffer | undefined> {
     const temporaryPath = resolve(temporaryDirectory, `${index}.png`);
-    try {
-        await runWranglerCommand([
-            "r2",
-            "object",
-            "get",
-            `${bucket}/${entry.objectKey}`,
-            "--file",
-            temporaryPath,
-            target === "remote" ? "--remote" : "--local",
-        ]);
-    } catch (error) {
-        if (isMissingR2ObjectError(error)) return undefined;
-        const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`Cannot verify published portrait ${entry.objectKey}: ${message}`);
+    const retryDelaysMilliseconds = [250, 500, 1_000, 2_000];
+    for (let attempt = 0; ; attempt += 1) {
+        try {
+            await runWranglerCommand([
+                "r2",
+                "object",
+                "get",
+                `${bucket}/${entry.objectKey}`,
+                "--file",
+                temporaryPath,
+                target === "remote" ? "--remote" : "--local",
+            ]);
+            break;
+        } catch (error) {
+            if (isMissingR2ObjectError(error)) return undefined;
+            if (isRetryableR2ReadError(error) && attempt < retryDelaysMilliseconds.length) {
+                await new Promise(resolveDelay => setTimeout(resolveDelay, retryDelaysMilliseconds[attempt]));
+                continue;
+            }
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`Cannot verify published portrait ${entry.objectKey}: ${message}`);
+        }
     }
     return readFile(temporaryPath);
 }
@@ -878,7 +891,12 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
             );
             verifiedPortraitState = { ...previousState, portraits: reusablePortraits };
         } finally {
-            await rm(temporaryDirectory, { recursive: true, force: true });
+            await rm(temporaryDirectory, {
+                recursive: true,
+                force: true,
+                maxRetries: 10,
+                retryDelay: 100,
+            });
         }
     }
     const portraitPlan = options.skipPortraits

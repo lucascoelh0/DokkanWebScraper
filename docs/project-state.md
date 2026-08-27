@@ -2859,6 +2859,80 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   next separately authorized gate and must promote Characters + Team Analysis
   as the exact validated pair; production remains `NO-GO`.
 
+## Official layered portrait staging publication checkpoint (2026-08-27)
+
+- The separately authorized `staging/v2` publication promoted the exact pair
+  from the preceding dry-run. Characters is version
+  `2026-08-26T20:58:47.619Z`, 1,436 characters, 2,554,009 compressed bytes and
+  SHA-256
+  `403b40ce911147899986b8c7c618acbc40af8f67973793e63aab58281beb79f4`.
+  Team Analysis is version
+  `2026-08-26T20:58:47.619Z:parser-1.9.16`, 2,288 states, 2,962,029 compressed
+  bytes and SHA-256
+  `43a01d5efb74241fdd1661b92adb1d8fb961f1c68098b68003e36909265bc550`.
+  The Team manifest binds the Character version and payload SHA exactly.
+- Characters uploaded all 3,283 referenced visual objects: 1,627 static
+  portraits plus 1,656 deduplicated typed layers (20 backgrounds, 1,579 thumbs
+  and 57 overlays). The payload and immutable assets were ready before the
+  mutable Character manifest; the paired Team payload was ready before its
+  manifest. No delete or release cleanup was requested.
+- Complete post-publication remote verification reread all 3,283 visual objects
+  and proved exact size and SHA-256. Its final dry-run planned zero uploads,
+  zero deletes and no dataset write. The exact Team rerun likewise planned no
+  payload, manifest, state or cleanup mutation and retained all four tracked
+  Team releases.
+- Public no-store reads returned both promoted manifests. Public payload
+  downloads matched their declared sizes and SHA-256 values exactly. Public
+  samples of a static portrait plus background, thumb and overlay layers were
+  byte-identical to the local candidate and returned
+  `public, max-age=31536000, immutable`.
+- Wrangler reports the bucket at approximately 469 MB; the conservative
+  post-publication whole-bucket upper bound is 470,000,000/10,000,000,000
+  bytes. Publisher remote reads now retry only bounded transient transport and
+  rate-limit failures, remain fail-closed for other errors, and use bounded
+  Windows cleanup retries. Twenty-two focused publisher tests pass.
+- This publication changed only `staging/v2`. Production manifests, production
+  payloads, Android source, Play tracks and the store release were not changed.
+  A final public no-store read confirmed production still points to Characters
+  `2026-08-22T21:14:10.019Z` / SHA-256
+  `34b2ce3918d0497b458f106f4e00b50cb039f0a280ef6bfe45c0ca76ee1a84bd`
+  and Team Analysis `2026-08-22T21:14:10.019Z:parser-1.9.0` / SHA-256
+  `d7a8461c41484b0e25f61131476006b18eadad71c6bac265e7f0e289e7a96237`.
+  Promotion to production remains `NO-GO` without a separate compatible
+  release gate and explicit authorization.
+
+## Catalog batch-add and typed display-semantics checkpoint (2026-08-27)
+
+- Catalog multi-selection now fails atomically when the selected addable units
+  exceed the remaining owned-team slots: no partial mutation occurs, the
+  selection stays active and a dismissible message reports the available slot
+  count. Duplicate IDs are still deduplicated before capacity is evaluated.
+- The obsolete catalog Help dialog and menu item were removed. Its instructions
+  described navigation and interactions that no longer exist; a general Tools
+  help surface remains a future option only when there is current, actionable
+  guidance to present.
+- The catalog's community-facing leader label now uses the maximum positive
+  ATK/DEF percentage on an ordered leader path, plus compatible additional
+  clauses, rather than averaging HP, ATK and DEF. The local 1,436-character
+  candidate therefore reports Panzy and Dr. Arinsu at 220%, Gamma 2 + Piccolo
+  at 220%, and Glorio at 200%. Actual leader coverage calculations are
+  unchanged.
+- Team Analysis parser `1.9.17` preserves an explicit stack cap across a
+  standalone inline attack-phase qualifier. The Android evaluator derives the
+  effective potential maximum from the typed `stackCap / per-member value`,
+  bounded by physical roster capacity. The affected `Per Extreme Class ally`
+  rule is consequently full at five increments instead of incorrectly showing
+  6/7 partial.
+- The exact local Character/Team pair is version
+  `2026-08-27T05:25:00.000Z` / parser `1.9.17`; pair validation passed for all
+  1,436 characters and 2,288 states. TypeScript parser suites passed 439 tests,
+  focused Android domain and staging app tests passed, final contract review
+  found no P0-P2 issue, and a stagingDebug APK
+  using the loopback-only local dataset endpoint was installed on the user's
+  Galaxy A56 without clearing app data.
+- No R2 object, public manifest, production endpoint, Play track, commit or
+  push changed. The local dataset and APK remain staging-only.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

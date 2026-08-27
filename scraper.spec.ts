@@ -33,10 +33,74 @@ describe("parseLeaderSkillDetails", function () {
     });
   });
 
-  it("parses mixed percentage boosts and preserves the display boost used by the app", () => {
+  it("adds a 50 percent additional clause to a 170 percent base path", () => {
+    const details = parseLeaderSkillDetails(`"Demonic Power" or "DAIMA" Category Ki +3 and HP, ATK & DEF +170%, plus an additional HP, ATK & DEF +50% for characters who also belong to the "Battle of Wits", "Realm of Gods" or "Pure Saiyans" Category`);
+
+    equal(details?.displayBoost, 220);
+    deepEqual(details?.clauses.map(clause => ({
+      stackGroup: clause.stackGroup,
+      hp: clause.hp,
+      atk: clause.atk,
+      def: clause.def,
+    })), [
+      { stackGroup: "primary", hp: 170, atk: 170, def: 170 },
+      { stackGroup: "additional", hp: 50, atk: 50, def: 50 },
+    ]);
+  });
+
+  it("does not add a later additional clause to a stronger alternative path", () => {
+    const details = parseLeaderSkillDetails(`"Peppy Gals" Category Ki +3 and HP, ATK & DEF +200%; "Turtle School" or "DB Saga" Category Ki +3 and HP, ATK & DEF +170%, plus an additional HP, ATK & DEF +30% for characters who also belong to the "Bond of Master and Disciple" or "Kamehameha" Category ("Peppy Gals" Category characters excluded)`);
+
+    equal(details?.displayBoost, 200);
+    deepEqual(details?.clauses.map(clause => ({
+      stackGroup: clause.stackGroup,
+      hp: clause.hp,
+      atk: clause.atk,
+      def: clause.def,
+    })), [
+      { stackGroup: "primary", hp: 200, atk: 200, def: 200 },
+      { stackGroup: "secondary", hp: 170, atk: 170, def: 170 },
+      { stackGroup: "additional", hp: 30, atk: 30, def: 30 },
+    ]);
+  });
+
+  it("keeps a fallback alternative separate from an earlier additional path", () => {
+    const details = parseLeaderSkillDetails(`"Battle of Fate", "Future Saga" or "Power Beyond Super Saiyan" Category Ki +3 and HP, ATK & DEF +170%, plus an additional HP, ATK & DEF +30% for characters who also belong to the "Realm of Gods" or "Time Travelers" Category; Super Class Ki +3 and HP, ATK & DEF +150% ("Battle of Fate", "Future Saga" or "Power Beyond Super Saiyan" Category characters excluded)`);
+
+    equal(details?.displayBoost, 200);
+    deepEqual(details?.clauses.map(clause => ({
+      stackGroup: clause.stackGroup,
+      hp: clause.hp,
+      atk: clause.atk,
+      def: clause.def,
+    })), [
+      { stackGroup: "primary", hp: 170, atk: 170, def: 170 },
+      { stackGroup: "additional", hp: 30, atk: 30, def: 30 },
+      { stackGroup: "secondary", hp: 150, atk: 150, def: 150 },
+    ]);
+  });
+
+  it("does not carry a percentage path across a flat alternative", () => {
+    const details = parseLeaderSkillDetails(`"Powerful Comeback" Category HP, ATK & DEF +170%; All Types ATK +2500; plus an additional HP, ATK & DEF +30% for characters who also belong to the "Battle of Fate" Category`);
+
+    equal(details?.displayBoost, 170);
+    deepEqual(details?.clauses.map(clause => ({
+      stackGroup: clause.stackGroup,
+      boostForm: clause.boostForm,
+      hp: clause.hp,
+      atk: clause.atk,
+      def: clause.def,
+    })), [
+      { stackGroup: "primary", boostForm: "percentage", hp: 170, atk: 170, def: 170 },
+      { stackGroup: "secondary", boostForm: "flat", hp: 0, atk: 2500, def: 0 },
+      { stackGroup: "additional", boostForm: "percentage", hp: 30, atk: 30, def: 30 },
+    ]);
+  });
+
+  it("labels mixed HP and ATK DEF leaders by their combat boost", () => {
     const details = parseLeaderSkillDetails(`"DAIMA", "Battle of Fate" or "Goku's Family" Category Ki +3, HP +200% and ATK & DEF +170%, plus an additional HP, ATK & DEF +50% for characters who also belong to the "Dragon Ball Seekers", "Full Power" or "Kamehameha" Category`);
 
-    equal(details?.displayBoost, 230);
+    equal(details?.displayBoost, 220);
     equal(details?.clauses.length, 2);
     deepEqual(details?.clauses[0], {
       rawText: `"DAIMA", "Battle of Fate" or "Goku's Family" Category Ki +3, HP +200% and ATK & DEF +170%`,
@@ -59,6 +123,21 @@ describe("parseLeaderSkillDetails", function () {
       def: 50,
       boostForm: "percentage",
     });
+  });
+
+  it("does not add an HP-only clause to an ATK and DEF display ceiling", () => {
+    const details = parseLeaderSkillDetails(`"Example" Category HP +200% and ATK & DEF +170%, plus an additional HP +30% for characters who also belong to the "Second" Category`);
+
+    equal(details?.displayBoost, 170);
+    deepEqual(details?.clauses.map(clause => ({
+      stackGroup: clause.stackGroup,
+      hp: clause.hp,
+      atk: clause.atk,
+      def: clause.def,
+    })), [
+      { stackGroup: "primary", hp: 200, atk: 170, def: 170 },
+      { stackGroup: "additional", hp: 30, atk: 0, def: 0 },
+    ]);
   });
 
   it("parses super class leader skills", () => {
