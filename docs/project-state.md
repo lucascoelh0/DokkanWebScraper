@@ -2933,6 +2933,36 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 - No R2 object, public manifest, production endpoint, Play track, commit or
   push changed. The local dataset and APK remain staging-only.
 
+## Ally-stack availability corpus checkpoint (2026-08-27)
+
+- Catalog batch-add capacity is evaluated against actual new owned characters,
+  not selections already present in the draft. With one slot open, selecting
+  one new and one existing character adds the new character atomically and now
+  reports that the other selection was already in the team.
+- Team Analysis parser `1.9.18` preserves typed caps across `at the start of
+  turn`, `before attacking`, attacker-position qualifiers and flat numeric
+  limits. Unsupported attacker-position semantics remain partial rather than
+  being silently promoted to supported.
+- A complete corpus audit found 374 ally-scaling groups, 176 with explicit
+  caps, zero invalid caps and zero remaining ally-scaling `up to` clauses
+  without a typed cap. Five previously missed source formats are now covered.
+- The Android Team Builder derives adjusted displayed caps with
+  `ceil(stackCap / per-member value)` only for typed ally scaling with one
+  member per increment. It uses the largest requirement across grouped effects,
+  retains physical capacity for uncapped grouped effects and fails closed when
+  the declared cap would require more members than the typed roster permits.
+  This is availability presentation only and is not a combat-damage formula.
+- The exact local pair remains Character version
+  `2026-08-27T05:25:00.000Z` / SHA-256
+  `36f25f2cf957349b4fe4aa3f1428cfe95282546d396bd009bd3516c613f2f508`;
+  regenerated Team Analysis is parser `1.9.18`, 2,288 states, 2,960,290 bytes
+  and SHA-256
+  `5e099ec5935cb84b7ee390a0b75da8e650e47dc7f0f773095fcaf5b6a73d9bc5`.
+  Pair validation, 1,119 parser tests and focused Android domain/app tests
+  passed. Final contract review found no P0-P2 issue.
+- No R2 object, public manifest, production endpoint or Play track changed.
+  The regenerated pair remains local and staging-only.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

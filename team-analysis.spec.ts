@@ -2195,6 +2195,58 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
     });
   });
 
+  it("keeps typed turn phases between ally scaling values and their caps", () => {
+    const startOfTurn = parsePassive(
+      "category-scaling-start-cap:initial",
+      "Category Potential",
+      [
+        "Per \"Giant Form\" Category ally on the team",
+        "- Recovers 6% HP at the start of turn (up to 18%)",
+      ].join("\n"),
+    );
+    const beforeAttacking = parsePassive(
+      "category-scaling-before-cap:initial",
+      "Category Potential",
+      [
+        "Per \"Ginyu Force\" Category ally on the team",
+        "- Damage reduction rate 7% before attacking (up to 35%)",
+      ].join("\n"),
+    );
+
+    equal(startOfTurn.rules[0].parseStatus, "supported");
+    equal(startOfTurn.rules[0].effects[0].stackCap, 18);
+    equal(startOfTurn.rules[0].effects[0].activationTiming?.moment, "start_of_turn");
+    equal(beforeAttacking.rules[0].parseStatus, "supported");
+    equal(beforeAttacking.rules[0].effects[0].stackCap, 35);
+    equal(beforeAttacking.rules[0].effects[0].activationTiming?.moment, "before_attacking");
+  });
+
+  it("types a flat ally scaling cap without treating a position clause as supported", () => {
+    const flat = parsePassive(
+      "category-scaling-flat-cap:initial",
+      "Category Potential",
+      [
+        "Per \"Giant Form\" Category ally on the team",
+        "- All allies' DEF 2000 (up to 6000)",
+      ].join("\n"),
+    );
+    const positioned = parsePassive(
+      "category-scaling-position-cap:initial",
+      "Category Potential",
+      [
+        "Per \"Peppy Gals\" Category ally on the team",
+        "- Chance of evading enemy's attack 5% as the 1st attacker in a turn (up to 15%)",
+      ].join("\n"),
+    );
+
+    equal(flat.rules[0].parseStatus, "supported");
+    equal(flat.rules[0].effects[0].unit, "flat");
+    equal(flat.rules[0].effects[0].stackCap, 6000);
+    equal(positioned.rules[0].parseStatus, "partial");
+    equal(positioned.rules[0].effects[0].stackCap, 15);
+    equal(positioned.rules[0].effects.some(effect => effect.kind === "unknown"), true);
+  });
+
   it("types category-and-name ally scaling as one same-member filter", () => {
     const passive = parsePassive(
       "category-name-scaling:initial",
@@ -4906,7 +4958,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.17/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.18/);
   });
 });
 
