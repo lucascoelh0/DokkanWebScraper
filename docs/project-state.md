@@ -2992,6 +2992,39 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   current delivered contracts; preserve old-cache compatibility in Android;
   then remove text-derived target parsing and community-source authority.
 
+## Production v2 release preflight (2026-08-27)
+
+- A production-v2-only Character candidate was projected from the reviewed
+  staging-v2 pair. It changes only the 3,283 portrait delivery references from
+  `staging/v2/images/...` to `v2/images/...`; the referenced content-addressed
+  object bytes are unchanged. The resulting 1,436-character payload is
+  2,550,114 bytes with SHA-256
+  `22532366108020106b10a2db50c1245d13c4c5831ded9fd859149102b03b2687`.
+- Team Analysis was regenerated from that exact Character payload at parser
+  `1.9.18`. The 2,288-state payload is 2,960,290 bytes with SHA-256
+  `2dd7364a74cb3b7af9d454b27be409231bda6c05a4d8a324df08f68f0c1afc94`;
+  local pair validation passed.
+- The Characters publisher now verifies the exact remote payload bytes, size
+  and SHA-256 before reuse and again before manifest promotion, then verifies
+  the uploaded manifest bytes. Every uploaded portrait is also read back and
+  checked by size and SHA-256 before manifest promotion. Remote writes require
+  exactly one baseline pin; first publication pins manifest absence with
+  `--expect-remote-manifest-absent`.
+- The Team Analysis publisher now refuses writes unless the corresponding
+  Character manifest and payload are already public and exactly match its
+  local source pair. It repeats that check immediately before promoting the
+  Team Analysis manifest, and its own remote manifest requires the same
+  SHA-or-absence baseline pin.
+- Hardened remote dry-runs found both `v2` manifests absent and planned 3,283
+  portrait uploads, zero deletes and 72,441,315 combined new bytes. From the
+  same Wrangler-reported 483 MB bucket baseline, the conservative combined
+  upper bound is 556,441,315 bytes against the 10 GB limit. The v1 keys are
+  outside the `v2/` namespace and are not part of either plan.
+- Build and 71 focused delivery tests pass. No R2 object or public manifest was
+  changed. A real release remains separately gated: publish and verify
+  Characters first, then rerun the Team Analysis dry-run and publish it only
+  after its remote Character dependency passes.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

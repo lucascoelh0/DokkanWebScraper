@@ -12,6 +12,7 @@ import {
   buildCharacterManifestObjectKey,
   buildRemoteDatasetObjectKey,
   assertExpectedRemoteBaselineSha256,
+  assertExpectedRemoteManifestBaseline,
   collectReferencedPortraitReferences,
   collectReferencedPortraitKeys,
   DatasetPublishState,
@@ -20,6 +21,7 @@ import {
   PortraitPublishEntry,
   isMissingR2ObjectError,
   isRetryableR2ReadError,
+  remoteObjectBytesMatch,
   verifyReusablePortraitEntries,
   validateLocalCharacterBundle,
 } from "./publish-r2";
@@ -131,6 +133,14 @@ describe("assertExpectedRemoteBaselineSha256", function () {
       /Cannot prove the expected remote baseline/,
     );
   });
+
+  it("pins an absent manifest for a first publication", () => {
+    assertExpectedRemoteManifestBaseline(undefined, true, undefined);
+    throws(
+      () => assertExpectedRemoteManifestBaseline(undefined, true, { sha256: "b".repeat(64) } as any),
+      /expected to be absent/,
+    );
+  });
 });
 
 describe("remote object read classification", function () {
@@ -148,6 +158,15 @@ describe("remote object read classification", function () {
     equal(isRetryableR2ReadError(new Error("ECONNRESET")), true);
     equal(isRetryableR2ReadError(new Error("authentication failed")), false);
     equal(isRetryableR2ReadError(new Error("malformed JSON")), false);
+  });
+
+  it("reuses a remote object only after exact size and SHA-256 verification", () => {
+    const bytes = Buffer.from("immutable payload");
+    const expectedSha256 = createHash("sha256").update(bytes).digest("hex");
+    equal(remoteObjectBytesMatch(bytes, expectedSha256, bytes.byteLength), true);
+    equal(remoteObjectBytesMatch(undefined, expectedSha256, bytes.byteLength), false);
+    equal(remoteObjectBytesMatch(Buffer.from("corrupt payload"), expectedSha256, bytes.byteLength), false);
+    equal(remoteObjectBytesMatch(bytes, expectedSha256, bytes.byteLength + 1), false);
   });
 });
 
@@ -182,6 +201,23 @@ describe("parsePublishArgs", function () {
         "--expected-remote-baseline-sha256", "A".repeat(64),
       ]).expectedRemoteBaselineSha256,
       "a".repeat(64),
+    );
+    equal(
+      parsePublishArgs([
+        "--bucket", "test",
+        "--contract-lane", "v2",
+        "--expect-remote-manifest-absent",
+      ]).expectRemoteManifestAbsent,
+      true,
+    );
+    throws(
+      () => parsePublishArgs([
+        "--bucket", "test",
+        "--contract-lane", "v2",
+        "--expect-remote-manifest-absent",
+        "--expected-remote-baseline-sha256", "a".repeat(64),
+      ]),
+      /cannot be combined/,
     );
   });
 

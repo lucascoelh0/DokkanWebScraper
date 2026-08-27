@@ -26,6 +26,7 @@ const DEFAULT_MANIFEST_PATH = "data/latest/characters-manifest.json";
 const DEFAULT_STATE_PATH = "data/latest/r2-publish-state.json";
 const DEFAULT_CONCURRENCY = 6;
 const DEFAULT_MAX_TOTAL_BYTES = 10_000_000_000;
+const UPLOAD_VERIFICATION_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000] as const;
 const PACKAGE_ROOT = existsSync(resolve(__dirname, "package.json"))
     ? __dirname
     : resolve(__dirname, "..");
@@ -67,6 +68,7 @@ interface PublishCliOptions {
     skipPortraits: boolean,
     skipRemoteManifestCheck: boolean,
     expectedRemoteBaselineSha256?: string,
+    expectRemoteManifestAbsent: boolean,
     target: "remote" | "local",
     concurrency: number,
     maxTotalBytes: number,
@@ -138,7 +140,7 @@ export function buildCharacterManifestObjectKey(
 
 export function assertExpectedRemoteBaselineSha256(
     expectedSha256: string | undefined,
-    remoteManifest: DatasetManifest | undefined,
+    remoteManifest: Pick<DatasetManifest, "sha256"> | undefined,
 ): void {
     if (!expectedSha256) return;
     if (!/^[a-f0-9]{64}$/.test(expectedSha256)) {
@@ -152,6 +154,25 @@ export function assertExpectedRemoteBaselineSha256(
             `Remote Character baseline changed: expected ${expectedSha256}, found ${remoteManifest.sha256.toLowerCase()}.`,
         );
     }
+}
+
+export function assertExpectedRemoteManifestBaseline(
+    expectedSha256: string | undefined,
+    expectAbsent: boolean,
+    remoteManifest: Pick<DatasetManifest, "sha256"> | undefined,
+): void {
+    if (expectedSha256 && expectAbsent) {
+        throw new Error("Choose exactly one remote manifest baseline pin.");
+    }
+    if (expectAbsent) {
+        if (remoteManifest) {
+            throw new Error(
+                `Character remote manifest was expected to be absent but now points to ${remoteManifest.sha256}.`,
+            );
+        }
+        return;
+    }
+    assertExpectedRemoteBaselineSha256(expectedSha256, remoteManifest);
 }
 
 function sha256(buffer: Buffer): string {
@@ -572,29 +593,114 @@ async function tryReadRemoteManifest(
     target: "remote" | "local",
     manifestObjectKey: string,
 ): Promise<DatasetManifest | undefined> {
-    const tempDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-r2-manifest-"));
-    const tempManifestPath = resolve(tempDirectory, "characters-manifest.json");
-
+    const bytes = await tryReadRemoteObject(
+        bucket,
+        target,
+        manifestObjectKey,
+        "Character remote manifest",
+    );
+    if (!bytes) return undefined;
     try {
-        const args = [
-            "r2",
-            "object",
-            "get",
-            `${bucket}/${manifestObjectKey}`,
-            "--file",
-            tempManifestPath,
-            target === "remote" ? "--remote" : "--local",
-        ];
-
-        await runWranglerCommand(args);
-        return JSON.parse(await readFile(tempManifestPath, "utf8")) as DatasetManifest;
+        const value = JSON.parse(bytes.toString("utf8")) as unknown;
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+            throw new Error("expected a JSON object");
+        }
+        return value as DatasetManifest;
     } catch (error) {
-        if (isMissingR2ObjectError(error)) return undefined;
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`Cannot read Character remote manifest ${manifestObjectKey}: ${message}`);
+        throw new Error(`Character remote manifest ${manifestObjectKey} is not valid JSON: ${message}`);
+    }
+}
+
+async function tryReadRemoteObject(
+    bucket: string,
+    target: "remote" | "local",
+    objectKey: string,
+    label: string,
+): Promise<Buffer | undefined> {
+    const tempDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-r2-object-"));
+    const temporaryPath = resolve(tempDirectory, "object.bin");
+    const retryDelaysMilliseconds = [250, 500, 1_000, 2_000];
+    try {
+        for (let attempt = 0; ; attempt += 1) {
+            try {
+                await runWranglerCommand([
+                    "r2",
+                    "object",
+                    "get",
+                    `${bucket}/${objectKey}`,
+                    "--file",
+                    temporaryPath,
+                    target === "remote" ? "--remote" : "--local",
+                ]);
+                return await readFile(temporaryPath);
+            } catch (error) {
+                if (isMissingR2ObjectError(error)) return undefined;
+                if (isRetryableR2ReadError(error) && attempt < retryDelaysMilliseconds.length) {
+                    await new Promise(resolveDelay => setTimeout(resolveDelay, retryDelaysMilliseconds[attempt]));
+                    continue;
+                }
+                const message = error instanceof Error ? error.message : String(error);
+                throw new Error(`Cannot read ${label} ${objectKey}: ${message}`);
+            }
+        }
     } finally {
         await rm(tempDirectory, { recursive: true, force: true });
     }
+}
+
+export function remoteObjectBytesMatch(
+    bytes: Buffer | undefined,
+    expectedSha256: string,
+    expectedSizeBytes: number,
+): boolean {
+    return Boolean(
+        bytes
+        && bytes.byteLength === expectedSizeBytes
+        && sha256(bytes) === expectedSha256.toLowerCase(),
+    );
+}
+
+async function remoteObjectMatches(
+    bucket: string,
+    target: "remote" | "local",
+    objectKey: string,
+    expectedSha256: string,
+    expectedSizeBytes: number,
+    label: string,
+): Promise<boolean> {
+    const bytes = await tryReadRemoteObject(bucket, target, objectKey, label);
+    return remoteObjectBytesMatch(bytes, expectedSha256, expectedSizeBytes);
+}
+
+async function assertRemoteObjectMatches(
+    bucket: string,
+    target: "remote" | "local",
+    objectKey: string,
+    expectedSha256: string,
+    expectedSizeBytes: number,
+    label: string,
+): Promise<void> {
+    if (await remoteObjectMatches(
+        bucket,
+        target,
+        objectKey,
+        expectedSha256,
+        expectedSizeBytes,
+        label,
+    )) return;
+    for (const delayMilliseconds of UPLOAD_VERIFICATION_RETRY_DELAYS_MS) {
+        await new Promise(resolveDelay => setTimeout(resolveDelay, delayMilliseconds));
+        if (await remoteObjectMatches(
+            bucket,
+            target,
+            objectKey,
+            expectedSha256,
+            expectedSizeBytes,
+            label,
+        )) return;
+    }
+    throw new Error(`${label} failed size/SHA-256 verification: ${objectKey}`);
 }
 
 type ReadPublishedPortrait = (entry: PortraitPublishEntry, index: number) => Promise<Buffer | undefined>;
@@ -605,6 +711,7 @@ async function readPublishedPortrait(
     temporaryDirectory: string,
     entry: PortraitPublishEntry,
     index: number,
+    retryMissing = false,
 ): Promise<Buffer | undefined> {
     const temporaryPath = resolve(temporaryDirectory, `${index}.png`);
     const retryDelaysMilliseconds = [250, 500, 1_000, 2_000];
@@ -621,7 +728,13 @@ async function readPublishedPortrait(
             ]);
             break;
         } catch (error) {
-            if (isMissingR2ObjectError(error)) return undefined;
+            if (isMissingR2ObjectError(error)) {
+                if (retryMissing && attempt < retryDelaysMilliseconds.length) {
+                    await new Promise(resolveDelay => setTimeout(resolveDelay, retryDelaysMilliseconds[attempt]));
+                    continue;
+                }
+                return undefined;
+            }
             if (isRetryableR2ReadError(error) && attempt < retryDelaysMilliseconds.length) {
                 await new Promise(resolveDelay => setTimeout(resolveDelay, retryDelaysMilliseconds[attempt]));
                 continue;
@@ -773,6 +886,17 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
             "--expected-remote-baseline-sha256 cannot be combined with --skip-remote-manifest-check.",
         );
     }
+    const expectRemoteManifestAbsent = flags.has("--expect-remote-manifest-absent");
+    if (expectedRemoteBaselineSha256 && expectRemoteManifestAbsent) {
+        throw new Error(
+            "--expected-remote-baseline-sha256 cannot be combined with --expect-remote-manifest-absent.",
+        );
+    }
+    if (expectRemoteManifestAbsent && flags.has("--skip-remote-manifest-check")) {
+        throw new Error(
+            "--expect-remote-manifest-absent cannot be combined with --skip-remote-manifest-check.",
+        );
+    }
     const channel = parseDatasetPublicationChannel(values.get("--channel"));
     const contractLane = parseDatasetContractLane(values.get("--contract-lane"));
     const v1ProjectionReportPath = values.get("--v1-projection-report");
@@ -796,6 +920,7 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
         skipPortraits: flags.has("--skip-portraits"),
         skipRemoteManifestCheck: flags.has("--skip-remote-manifest-check"),
         expectedRemoteBaselineSha256,
+        expectRemoteManifestAbsent,
         target: localFlag ? "local" : "remote",
         concurrency,
         maxTotalBytes,
@@ -811,14 +936,36 @@ function manifestsMatch(left: DatasetManifest, right?: DatasetManifest): boolean
     if (!right) {
         return false;
     }
+    return canonicalJson(left) === canonicalJson(right);
+}
 
-    return left.sha256 === right.sha256
-        && left.fileName === right.fileName
-        && left.datasetVersion === right.datasetVersion;
+function canonicalJson(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+    if (value && typeof value === "object") {
+        const record = value as Record<string, unknown>;
+        return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+    }
+    return JSON.stringify(value);
 }
 
 async function publishDataset(options: PublishCliOptions): Promise<PublishSummary> {
     assertDatasetPublicationWriteAuthorized(options);
+    if (options.target === "remote" && !options.dryRun && options.skipRemoteManifestCheck) {
+        throw new Error(
+            "Remote Character publication requires the baseline manifest check; "
+            + "--skip-remote-manifest-check is limited to local or read-only dry-run diagnostics.",
+        );
+    }
+    if (
+        options.target === "remote"
+        && !options.dryRun
+        && Boolean(options.expectedRemoteBaselineSha256) === options.expectRemoteManifestAbsent
+    ) {
+        throw new Error(
+            "Remote Character publication requires exactly one baseline pin: "
+            + "--expected-remote-baseline-sha256 or --expect-remote-manifest-absent.",
+        );
+    }
     if (!existsSync(options.manifestPath)) {
         throw new Error(`Manifest not found: ${options.manifestPath}`);
     }
@@ -863,8 +1010,21 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     const publishedRemoteManifest = options.skipRemoteManifestCheck
         ? undefined
         : await tryReadRemoteManifest(options.bucket, options.target, options.manifestObjectKey);
-    assertExpectedRemoteBaselineSha256(options.expectedRemoteBaselineSha256, publishedRemoteManifest);
-    const datasetNeedsUpload = !manifestsMatch(remoteManifest, publishedRemoteManifest);
+    assertExpectedRemoteManifestBaseline(
+        options.expectedRemoteBaselineSha256,
+        options.expectRemoteManifestAbsent,
+        publishedRemoteManifest,
+    );
+    const publishedDatasetMatches = manifestsMatch(remoteManifest, publishedRemoteManifest)
+        && await remoteObjectMatches(
+            options.bucket,
+            options.target,
+            remoteDatasetObjectKey,
+            remoteManifest.sha256,
+            remoteManifest.sizeBytes,
+            "Character remote payload",
+        );
+    const datasetNeedsUpload = !publishedDatasetMatches;
     const skippedBecauseRemoteMatches = !datasetNeedsUpload && !options.forcePortraits && !options.skipPortraits;
 
     const portraitEntries = options.skipPortraits
@@ -936,6 +1096,11 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     console.log(`Dataset version: ${remoteManifest.datasetVersion}`);
     console.log(`Dataset object key: ${remoteDatasetObjectKey}`);
     console.log(`Dataset upload needed: ${datasetNeedsUpload ? "yes" : "no"}`);
+    if (options.expectRemoteManifestAbsent) {
+        console.log("Expected remote baseline: manifest absent");
+    } else if (options.expectedRemoteBaselineSha256) {
+        console.log(`Expected remote baseline SHA-256: ${options.expectedRemoteBaselineSha256}`);
+    }
     console.log(`Portraits referenced: ${portraitKeys.length}`);
     console.log(`Portraits to upload: ${portraitPlan.toUpload.length}`);
     console.log(`Portraits to delete: ${portraitPlan.toDelete.length}`);
@@ -970,37 +1135,78 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     }
 
     if (portraitPlan.toUpload.length > 0) {
-        console.log("Uploading portraits...");
-        await runWithConcurrency(portraitPlan.toUpload, options.concurrency, async (entry, index) => {
-            await uploadObject(
-                options.bucket,
-                entry.objectKey,
-                entry.filePath,
-                "image/png",
-                "public, max-age=31536000, immutable",
-                options.target,
-            );
+        console.log("Uploading and verifying portraits...");
+        const temporaryDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-r2-portrait-upload-verify-"));
+        try {
+            await runWithConcurrency(portraitPlan.toUpload, options.concurrency, async (entry, index) => {
+                await uploadObject(
+                    options.bucket,
+                    entry.objectKey,
+                    entry.filePath,
+                    "image/png",
+                    "public, max-age=31536000, immutable",
+                    options.target,
+                );
+                const remoteBytes = await readPublishedPortrait(
+                    options.bucket,
+                    options.target,
+                    temporaryDirectory,
+                    entry,
+                    index,
+                    true,
+                );
+                if (!remoteObjectBytesMatch(remoteBytes, entry.sha256, statSync(entry.filePath).size)) {
+                    throw new Error(`Uploaded portrait failed size/SHA-256 verification: ${entry.objectKey}`);
+                }
 
-            if ((index + 1) % 25 === 0 || index + 1 === portraitPlan.toUpload.length) {
-                console.log(`Uploaded ${index + 1}/${portraitPlan.toUpload.length} portrait(s)`);
-            }
-        });
+                if ((index + 1) % 25 === 0 || index + 1 === portraitPlan.toUpload.length) {
+                    console.log(`Uploaded and verified ${index + 1}/${portraitPlan.toUpload.length} portrait(s)`);
+                }
+            });
+        } finally {
+            await rm(temporaryDirectory, {
+                recursive: true,
+                force: true,
+                maxRetries: 10,
+                retryDelay: 100,
+            });
+        }
     }
 
     if (datasetNeedsUpload) {
         console.log("Uploading manifest...");
+        await assertRemoteObjectMatches(
+            options.bucket,
+            options.target,
+            remoteDatasetObjectKey,
+            remoteManifest.sha256,
+            remoteManifest.sizeBytes,
+            "Uploaded Character payload",
+        );
         const manifestTempDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-r2-publish-manifest-"));
         const manifestTempPath = resolve(manifestTempDirectory, "characters-manifest.json");
-        await writeFile(manifestTempPath, `${JSON.stringify(remoteManifest, null, 2)}\n`, "utf8");
-        await uploadObject(
-            options.bucket,
-            options.manifestObjectKey,
-            manifestTempPath,
-            "application/json",
-            "no-store",
-            options.target,
-        );
-        await rm(manifestTempDirectory, { recursive: true, force: true });
+        const manifestBuffer = Buffer.from(`${JSON.stringify(remoteManifest, null, 2)}\n`, "utf8");
+        try {
+            await writeFile(manifestTempPath, manifestBuffer);
+            await uploadObject(
+                options.bucket,
+                options.manifestObjectKey,
+                manifestTempPath,
+                "application/json",
+                "no-store",
+                options.target,
+            );
+            await assertRemoteObjectMatches(
+                options.bucket,
+                options.target,
+                options.manifestObjectKey,
+                sha256(manifestBuffer),
+                manifestBuffer.byteLength,
+                "Uploaded Character manifest",
+            );
+        } finally {
+            await rm(manifestTempDirectory, { recursive: true, force: true });
+        }
     }
 
     // Character bundles are immutable and intentionally retained. Keeping the

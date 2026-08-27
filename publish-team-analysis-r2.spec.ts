@@ -27,6 +27,7 @@ import {
     ANDROID_V1_CONSUMER_COMMIT,
     ANDROID_V1_PROJECTOR_VERSION,
 } from "./android-v1-contract-projector";
+import { buildCharacterManifestObjectKey, buildRemoteDatasetObjectKey } from "./publish-r2";
 
 class FakeRunner implements TeamAnalysisCommandRunner {
     readonly objects = new Map<string, Buffer>();
@@ -232,6 +233,7 @@ describe("Team Analysis R2 delivery gate", function () {
         remoteManifest.parserVersion = "1.7.0";
         fixture.runner.objects.set(TEAM_ANALYSIS_MANIFEST_OBJECT_KEY, serialize(remoteManifest));
         fixture.runner.objects.set(remoteManifest.fileName, fixture.artifact.gzipBuffer);
+        pinRemoteTeamManifest(fixture, remoteManifest);
 
         const plan = await readTeamAnalysisR2PublishPlan(fixture.options, fixture.runner);
 
@@ -269,6 +271,35 @@ describe("Team Analysis R2 delivery gate", function () {
 
         const puts = putKeys(fixture.runner);
         deepEqual(puts, [buildTeamAnalysisDatasetObjectKey(fixture.artifact.manifest), TEAM_ANALYSIS_MANIFEST_OBJECT_KEY]);
+    });
+
+    it("refuses Team Analysis writes until the exact Character delivery is public", async () => {
+        const characterManifestKey = buildCharacterManifestObjectKey(
+            fixture.options.channel,
+            fixture.options.contractLane,
+        );
+        fixture.runner.objects.delete(characterManifestKey);
+
+        await rejects(
+            () => publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock),
+            /Required Character delivery is not public and identical/,
+        );
+        equal(fixture.runner.commands.some(args => args[2] === "put" || args[2] === "delete"), false);
+    });
+
+    it("refuses Team Analysis writes when the public Character payload is corrupt", async () => {
+        const payloadKey = buildRemoteDatasetObjectKey(
+            fixture.characterArtifact.manifest,
+            fixture.options.channel,
+            fixture.options.contractLane,
+        );
+        fixture.runner.objects.set(payloadKey, Buffer.from("corrupt"));
+
+        await rejects(
+            () => publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock),
+            /Required Character payload is missing or corrupt/,
+        );
+        equal(fixture.runner.commands.some(args => args[2] === "put" || args[2] === "delete"), false);
     });
 
     it("waits for a newly uploaded payload to become readable before promoting the manifest", async () => {
@@ -466,6 +497,8 @@ describe("Team Analysis R2 delivery gate", function () {
 
     it("is idempotent after a successful publish", async () => {
         await publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock);
+        fixture.options.expectRemoteManifestAbsent = false;
+        fixture.options.expectedRemoteBaselineSha256 = fixture.artifact.manifest.sha256;
         fixture.runner.commands.length = 0;
 
         const summary = await publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock);
@@ -481,6 +514,7 @@ describe("Team Analysis R2 delivery gate", function () {
         const minifiedManifest = Buffer.from(JSON.stringify(manifest), "utf8");
         fixture.runner.objects.set(manifest.fileName, fixture.artifact.gzipBuffer);
         fixture.runner.objects.set(TEAM_ANALYSIS_MANIFEST_OBJECT_KEY, minifiedManifest);
+        pinRemoteTeamManifest(fixture, manifest);
 
         const summary = await publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock);
         const state = JSON.parse(await readFile(fixture.options.statePath, "utf8")) as TeamAnalysisR2PublishState;
@@ -512,6 +546,7 @@ describe("Team Analysis R2 delivery gate", function () {
         const persisted = JSON.parse(await readFile(fixture.options.statePath, "utf8")) as TeamAnalysisR2PublishState;
         equal(persisted.retainedReleases.length + (persisted.cleanupPendingReleases?.length ?? 0), 22);
 
+        fixture.options.expectedRemoteBaselineSha256 = fixture.artifact.manifest.sha256;
         const retryPlan = await readTeamAnalysisR2PublishPlan(fixture.options, fixture.runner);
         equal(retryPlan.cleanupCandidates.length, 20);
         ok(!retryPlan.warnings.some(warning => warning.includes("old or invalid")));
@@ -567,6 +602,25 @@ describe("Team Analysis R2 delivery gate", function () {
         equal(fixture.runner.commands.length, 0);
     });
 
+    it("refuses remote writes without an exact baseline pin", async () => {
+        fixture.options.expectRemoteManifestAbsent = false;
+        fixture.options.expectedRemoteBaselineSha256 = undefined;
+
+        await rejects(
+            () => publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock),
+            /requires exactly one baseline pin/,
+        );
+        equal(fixture.runner.commands.length, 0);
+
+        fixture.options.expectRemoteManifestAbsent = true;
+        fixture.options.expectedRemoteBaselineSha256 = "a".repeat(64);
+        await rejects(
+            () => publishTeamAnalysisR2(fixture.options, fixture.runner, fixedClock),
+            /requires exactly one baseline pin/,
+        );
+        equal(fixture.runner.commands.length, 0);
+    });
+
     it("keeps generated data outside version control", () => {
         const trackedData = execFileSync("git", ["ls-files", "data"], { encoding: "utf8" }).trim();
         equal(trackedData, "");
@@ -583,6 +637,8 @@ describe("Team Analysis R2 delivery gate", function () {
         equal(defaults.maxNamespaceBytes, 50_000_000);
         equal(defaults.skipRemoteManifestCheck, false);
         equal(defaults.skipUploadVerification, false);
+        equal(defaults.expectedRemoteBaselineSha256, undefined);
+        equal(defaults.expectRemoteManifestAbsent, false);
         equal(defaults.retainAllReleases, false);
         equal(defaults.allowUnknownBucketSize, false);
         equal(defaults.channel, "production");
@@ -602,6 +658,16 @@ describe("Team Analysis R2 delivery gate", function () {
             "--retain-all-releases",
         ]);
         equal(preserveHistory.retainAllReleases, true);
+        const firstPublication = parseTeamAnalysisR2PublishArgs([
+            "--contract-lane", "v2",
+            "--expect-remote-manifest-absent",
+        ]);
+        equal(firstPublication.expectRemoteManifestAbsent, true);
+        rejects(async () => parseTeamAnalysisR2PublishArgs([
+            "--contract-lane", "v2",
+            "--expect-remote-manifest-absent",
+            "--expected-remote-baseline-sha256", "a".repeat(64),
+        ]), /cannot be combined/);
         const staging = parseTeamAnalysisR2PublishArgs([
             "--channel", "staging",
             "--contract-lane", "v1",
@@ -663,6 +729,7 @@ async function createFixture(extraArgs: string[] = []): Promise<Fixture> {
         "--state", statePath,
         "--contract-lane", "v1",
         "--v1-projection-report", projectionReportPath,
+        "--expect-remote-manifest-absent",
         ...(extraArgs.includes("staging") ? [] : ["--promote-production"]),
         ...extraArgs,
     ];
@@ -677,6 +744,19 @@ async function createFixture(extraArgs: string[] = []): Promise<Fixture> {
     };
     await writeFile(characterDatasetPath, characterArtifact.gzipBuffer);
     await writeFile(characterManifestPath, serialize(characterArtifact.manifest));
+    const remoteCharacterManifest: DatasetManifest = {
+        ...characterArtifact.manifest,
+        fileName: buildRemoteDatasetObjectKey(
+            characterArtifact.manifest,
+            fixture.options.channel,
+            fixture.options.contractLane,
+        ),
+    };
+    fixture.runner.objects.set(remoteCharacterManifest.fileName, characterArtifact.gzipBuffer);
+    fixture.runner.objects.set(
+        buildCharacterManifestObjectKey(fixture.options.channel, fixture.options.contractLane),
+        serialize(remoteCharacterManifest),
+    );
     await writeLocalArtifact(fixture);
     return fixture;
 }
@@ -743,6 +823,7 @@ function installCurrentRemote(fixture: Fixture): void {
     const manifest = makeRemoteManifest(fixture.artifact.manifest);
     fixture.runner.objects.set(manifest.fileName, fixture.artifact.gzipBuffer);
     fixture.runner.objects.set(TEAM_ANALYSIS_MANIFEST_OBJECT_KEY, serialize(manifest));
+    pinRemoteTeamManifest(fixture, manifest);
 }
 
 function installPreviousRemote(fixture: Fixture, version: string, content: string): TeamAnalysisRetainedRelease {
@@ -757,7 +838,13 @@ function installPreviousRemote(fixture: Fixture, version: string, content: strin
     };
     fixture.runner.objects.set(previous.datasetObjectKey, previous.buffer);
     fixture.runner.objects.set(TEAM_ANALYSIS_MANIFEST_OBJECT_KEY, serialize(manifest));
+    pinRemoteTeamManifest(fixture, manifest);
     return previous.release;
+}
+
+function pinRemoteTeamManifest(fixture: Fixture, manifest: TeamAnalysisManifest): void {
+    fixture.options.expectRemoteManifestAbsent = false;
+    fixture.options.expectedRemoteBaselineSha256 = manifest.sha256.toLowerCase();
 }
 
 function makeRelease(fixture: Fixture, version: string, content: string): {

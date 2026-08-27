@@ -13,6 +13,12 @@ import {
     parseDatasetPublicationChannel,
 } from "./dataset-publication-channel";
 import { assertAndroidV1PublicationProof } from "./android-v1-publication-proof";
+import { DatasetManifest } from "./dataset-artifacts";
+import {
+    assertExpectedRemoteManifestBaseline,
+    buildCharacterManifestObjectKey,
+    buildRemoteDatasetObjectKey,
+} from "./publish-r2";
 import { TeamAnalysisManifest, sha256 } from "./team-analysis-artifacts";
 import {
     TEAM_ANALYSIS_LOCAL_FILE_NAME,
@@ -46,6 +52,8 @@ export interface TeamAnalysisR2PublishOptions {
     target: "remote" | "local",
     skipRemoteManifestCheck: boolean,
     skipUploadVerification: boolean,
+    expectedRemoteBaselineSha256?: string,
+    expectRemoteManifestAbsent: boolean,
     retainAllReleases: boolean,
     allowUnknownBucketSize: boolean,
     maxTotalBytes: number,
@@ -99,6 +107,7 @@ export interface BucketSizeReport {
 export interface TeamAnalysisR2PublishPlan {
     options: TeamAnalysisR2PublishOptions,
     localManifest: TeamAnalysisManifest,
+    characterManifest: DatasetManifest,
     remoteManifest: TeamAnalysisManifest,
     remoteManifestSha256: string,
     remoteManifestStatus: "matching" | "different" | "missing" | "skipped",
@@ -142,11 +151,12 @@ export function parseTeamAnalysisR2PublishArgs(argv: string[]): TeamAnalysisR2Pu
     const valueNames = new Set([
         "--bucket", "--dataset", "--manifest", "--characters", "--character-manifest", "--state",
         "--max-total-bytes", "--max-namespace-bytes", "--channel", "--contract-lane",
-        "--v1-projection-report",
+        "--v1-projection-report", "--expected-remote-baseline-sha256",
     ]);
     const flagNames = new Set([
         "--dry-run", "--remote", "--local", "--skip-remote-manifest-check", "--skip-upload-verification",
         "--retain-all-releases", "--allow-unknown-bucket-size", "--promote-production",
+        "--expect-remote-manifest-absent",
     ]);
     const values = new Map<string, string>();
     const flags = new Set<string>();
@@ -182,6 +192,22 @@ export function parseTeamAnalysisR2PublishArgs(argv: string[]): TeamAnalysisR2Pu
     if (flags.has("--remote") && flags.has("--local")) {
         throw new Error("Choose only one of --remote or --local.");
     }
+    const expectedRemoteBaselineSha256 = values.get("--expected-remote-baseline-sha256")?.toLowerCase();
+    if (expectedRemoteBaselineSha256 && !/^[a-f0-9]{64}$/.test(expectedRemoteBaselineSha256)) {
+        throw new Error("Invalid --expected-remote-baseline-sha256 value.");
+    }
+    const expectRemoteManifestAbsent = flags.has("--expect-remote-manifest-absent");
+    if (expectedRemoteBaselineSha256 && expectRemoteManifestAbsent) {
+        throw new Error(
+            "--expected-remote-baseline-sha256 cannot be combined with --expect-remote-manifest-absent.",
+        );
+    }
+    if (
+        (expectedRemoteBaselineSha256 || expectRemoteManifestAbsent)
+        && flags.has("--skip-remote-manifest-check")
+    ) {
+        throw new Error("A remote baseline pin cannot be combined with --skip-remote-manifest-check.");
+    }
     const bucket = values.get("--bucket") ?? process.env.R2_BUCKET_NAME ?? DEFAULT_BUCKET;
     assertValidBucket(bucket);
     const channel = parseDatasetPublicationChannel(values.get("--channel"));
@@ -212,6 +238,8 @@ export function parseTeamAnalysisR2PublishArgs(argv: string[]): TeamAnalysisR2Pu
         target: flags.has("--local") ? "local" : "remote",
         skipRemoteManifestCheck: flags.has("--skip-remote-manifest-check"),
         skipUploadVerification: flags.has("--skip-upload-verification"),
+        expectedRemoteBaselineSha256,
+        expectRemoteManifestAbsent,
         retainAllReleases: flags.has("--retain-all-releases"),
         allowUnknownBucketSize: flags.has("--allow-unknown-bucket-size"),
         maxTotalBytes: parsePositiveSafeInteger(values.get("--max-total-bytes"), DEFAULT_MAX_TOTAL_BYTES),
@@ -287,6 +315,11 @@ export async function readTeamAnalysisR2PublishPlan(
     }
     const stateRead = await readPublishState(options.statePath, options);
     const remoteFacts = await inspectRemoteFacts(options, validated, stateRead, runner);
+    assertExpectedRemoteManifestBaseline(
+        options.expectedRemoteBaselineSha256,
+        options.expectRemoteManifestAbsent,
+        remoteFacts.manifest,
+    );
     return buildTeamAnalysisR2PublishPlan(options, validated, remoteFacts);
 }
 
@@ -396,6 +429,9 @@ export function buildTeamAnalysisR2PublishPlan(
     );
     const stateUpdateNeeded = !facts.state || !publishStatesOperationallyEqual(facts.state, nextState);
     const plannedActions: string[] = [];
+    plannedActions.push(
+        `verify remote Character delivery ${buildCharacterManifestObjectKey(options.channel, options.contractLane)}`,
+    );
     if (payloadUploadNeeded) plannedActions.push(`put ${datasetObjectKey}`);
     if (payloadUploadNeeded && !options.skipUploadVerification) plannedActions.push(`verify ${datasetObjectKey}`);
     if (manifestUpdateNeeded) {
@@ -413,6 +449,7 @@ export function buildTeamAnalysisR2PublishPlan(
     return {
         options,
         localManifest: validated.manifest,
+        characterManifest: validated.characterManifest,
         remoteManifest,
         remoteManifestSha256,
         remoteManifestStatus,
@@ -456,6 +493,8 @@ export async function publishTeamAnalysisR2(
         return { plan, cleanupFailures: [] };
     }
 
+    await assertRemoteCharacterDeliveryMatches(runner, options, plan.characterManifest);
+
     if (plan.payloadUploadNeeded) {
         await putObject(
             runner,
@@ -477,6 +516,7 @@ export async function publishTeamAnalysisR2(
     }
 
     if (plan.manifestUpdateNeeded) {
+        await assertRemoteCharacterDeliveryMatches(runner, options, plan.characterManifest);
         const temporaryDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-team-analysis-manifest-"));
         const temporaryManifestPath = resolve(temporaryDirectory, TEAM_ANALYSIS_MANIFEST_OBJECT_KEY);
         const manifestBuffer = serializeManifest(plan.remoteManifest);
@@ -547,6 +587,12 @@ function assertRemoteWriteVerificationEnabled(options: TeamAnalysisR2PublishOpti
             + "skip flags are limited to local or read-only dry-run diagnostics.",
         );
     }
+    if (Boolean(options.expectedRemoteBaselineSha256) === options.expectRemoteManifestAbsent) {
+        throw new Error(
+            "Remote Team Analysis publication requires exactly one baseline pin: "
+            + "--expected-remote-baseline-sha256 or --expect-remote-manifest-absent.",
+        );
+    }
 }
 
 export function printTeamAnalysisR2PublishPlan(plan: TeamAnalysisR2PublishPlan): void {
@@ -557,6 +603,11 @@ export function printTeamAnalysisR2PublishPlan(plan: TeamAnalysisR2PublishPlan):
     console.log(`Manifest object key: ${plan.options.manifestObjectKey}`);
     console.log(`Version: ${plan.remoteManifest.datasetVersion}`);
     console.log(`SHA-256: ${plan.remoteManifest.sha256}`);
+    if (plan.options.expectRemoteManifestAbsent) {
+        console.log("Expected remote baseline: manifest absent");
+    } else if (plan.options.expectedRemoteBaselineSha256) {
+        console.log(`Expected remote baseline SHA-256: ${plan.options.expectedRemoteBaselineSha256}`);
+    }
     console.log(`Payload key: ${plan.datasetObjectKey}`);
     console.log(`Payload upload needed: ${plan.payloadUploadNeeded ? "yes" : "no"}`);
     console.log(`Manifest update needed: ${plan.manifestUpdateNeeded ? "yes" : "no"} (${plan.remoteManifestStatus})`);
@@ -721,6 +772,45 @@ async function assertRemotePayloadMatches(
     }));
     if (!matches) {
         throw new Error(`Uploaded Team Analysis payload failed size/SHA-256 verification: ${objectKey}`);
+    }
+}
+
+async function assertRemoteCharacterDeliveryMatches(
+    runner: TeamAnalysisCommandRunner,
+    options: TeamAnalysisR2PublishOptions,
+    localManifest: DatasetManifest,
+): Promise<void> {
+    const manifestObjectKey = buildCharacterManifestObjectKey(options.channel, options.contractLane);
+    const expectedPayloadKey = buildRemoteDatasetObjectKey(
+        localManifest,
+        options.channel,
+        options.contractLane,
+    );
+    const expectedManifest: DatasetManifest = {
+        ...localManifest,
+        fileName: expectedPayloadKey,
+    };
+    const remote = await tryGetJsonObject<DatasetManifest>(
+        runner,
+        options,
+        manifestObjectKey,
+        "required Character remote manifest",
+    );
+    if (!remote || canonicalJson(remote.value) !== canonicalJson(expectedManifest)) {
+        throw new Error(
+            `Required Character delivery is not public and identical in ${options.channel}/${options.contractLane}: ${manifestObjectKey}`,
+        );
+    }
+    const payloadMatches = await remotePayloadMatches(runner, options, {
+        datasetVersion: expectedManifest.datasetVersion,
+        datasetObjectKey: expectedPayloadKey,
+        payloadSha256: expectedManifest.sha256,
+        sizeBytes: expectedManifest.sizeBytes,
+    });
+    if (!payloadMatches) {
+        throw new Error(
+            `Required Character payload is missing or corrupt in ${options.channel}/${options.contractLane}: ${expectedPayloadKey}`,
+        );
     }
 }
 
