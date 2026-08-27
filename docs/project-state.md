@@ -3018,12 +3018,25 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 - Hardened remote dry-runs found both `v2` manifests absent and planned 3,283
   portrait uploads, zero deletes and 72,441,315 combined new bytes. From the
   same Wrangler-reported 483 MB bucket baseline, the conservative combined
-  upper bound is 556,441,315 bytes against the 10 GB limit. The v1 keys are
-  outside the `v2/` namespace and are not part of either plan.
-- Build and 71 focused delivery tests pass. No R2 object or public manifest was
-  changed. A real release remains separately gated: publish and verify
-  Characters first, then rerun the Team Analysis dry-run and publish it only
-  after its remote Character dependency passes.
+  upper bound was 556,441,315 bytes against the 10 GB limit. The v1 keys are
+  outside the `v2/` namespace and were not part of either plan.
+- Commit `75f1825` added the production-v2 candidate and hardened publishers.
+  It was pushed to `origin/main` before publication. Build and 72 focused
+  delivery tests passed; final contract review found no P0/P1 blocker.
+- Production v2 was published with Characters first. All 3,283 portraits were
+  uploaded and read back with exact size/SHA verification, with zero deletes,
+  before `v2/characters-manifest.json` was promoted. The public Character
+  payload was then downloaded independently and matched the expected 2,550,114
+  bytes and SHA-256 exactly.
+- Team Analysis was published only after the remote Character manifest and
+  payload matched its local source pair. Its payload and manifest were
+  verified before and after promotion; an independent public download matched
+  the expected 2,960,290 bytes and SHA-256, and its source Character version
+  and SHA matched the public Characters manifest.
+- Post-publication dry-runs are idempotent: Characters reports zero payload or
+  portrait uploads and zero deletes after rereading all 3,283 remote portraits;
+  Team Analysis reports no payload/manifest update, no cleanup and zero new
+  bytes. Production v1 remains separate and unchanged.
 
 ## Operating Constraints
 
