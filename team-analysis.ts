@@ -26,7 +26,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.18";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.19";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 export const HP_REMAINING_SCALING_DOMAIN_RULE_VERSION = "hp-remaining-scaling-v1";
 const EFFECT_DECISION_DOMAIN_RULE_VERSIONS = new Set([
@@ -7065,30 +7065,40 @@ function parseEffectAtoms(body: string, context: EffectParseContext): {
             sourceText: match[0],
         }];
     });
-    addMatches(/\bChance of performing a critical hit\s*(?:&|and|,)\s*damage reduction(?: rate)?\s+(\d+(?:\.\d+)?)%/gi, match => {
-        const percent = Number(match[1]);
-        return [{
-            kind: "critical_chance",
-            value: percent,
-            unit: "percent",
-            ...activationChanceFields(percent),
-            sourceText: match[0],
-        }, {
-            kind: "damage_reduction",
-            value: percent,
-            unit: "percent",
-            sourceText: match[0],
-        }];
-    });
-    addMatches(/\bChance of performing a critical hit\s*(?:&|and|,)\s*(?:chance of\s+)?evading enemy(?:'s|’s) attack\s+(\d+(?:\.\d+)?)%/gi, match => {
-        const percent = Number(match[1]);
-        return ["critical_chance", "evade_chance"].map(kind => ({
-            kind: kind as "critical_chance" | "evade_chance",
-            value: percent,
-            unit: "percent",
-            ...activationChanceFields(percent),
-            sourceText: match[0],
-        }));
+    const coordinatedPercentEffect = String.raw`(?:Chance of performing a critical hit|(?:Chance of )?evading enemy(?:'s|’s) attack|damage reduction(?: rate)?)`;
+    addMatches(new RegExp(
+        String.raw`\b(${coordinatedPercentEffect}(?:\s*(?:,\s*(?:and\s+)?|&|\band\b)\s*${coordinatedPercentEffect})+)\s+(\d+(?:\.\d+)?)%`,
+        "gi",
+    ), match => {
+        const percent = Number(match[2]);
+        return [...match[1].matchAll(
+            /Chance of performing a critical hit|(?:Chance of )?evading enemy(?:'s|’s) attack|damage reduction(?: rate)?/gi,
+        )].map(effectMatch => {
+            if (/critical hit/i.test(effectMatch[0])) {
+                return {
+                    kind: "critical_chance" as const,
+                    value: percent,
+                    unit: "percent" as const,
+                    ...activationChanceFields(percent),
+                    sourceText: match[0],
+                };
+            }
+            if (/evading/i.test(effectMatch[0])) {
+                return {
+                    kind: "evade_chance" as const,
+                    value: percent,
+                    unit: "percent" as const,
+                    ...activationChanceFields(percent),
+                    sourceText: match[0],
+                };
+            }
+            return {
+                kind: "damage_reduction" as const,
+                value: percent,
+                unit: "percent" as const,
+                sourceText: match[0],
+            };
+        });
     });
     addMatches(/\b(?:(rare|medium|high|great)\s+chance(?:\s*\((\d+(?:\.\d+)?)%\))?|(a)\s+chance|(chance))\s+of performing a critical hit(?:\s+(\d+(?:\.\d+)?)%)?/gi, match => {
         const probability = resolveProbability(context, "critical_activation", match[1] ?? match[3], match[5] ?? match[2]);

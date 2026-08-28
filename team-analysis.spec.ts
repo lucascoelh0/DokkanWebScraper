@@ -2195,6 +2195,50 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
     });
   });
 
+  it("shares one trailing percent and cap across coordinated chance and reduction effects", () => {
+    const passive = parsePassive(
+      "coordinated-category-scaling-cap:initial",
+      "Menacing Legion",
+      [
+        'Per "Movie Bosses" or "Wicked Bloodline" Category ally on the team (depending on which Category has more members)',
+        "- Chance of performing a critical hit, chance of evading enemy's attack & damage reduction rate 10% (up to 50%)",
+      ].join("\n"),
+    );
+
+    equal(passive.rules.length, 1);
+    equal(passive.rules[0].parseStatus, "supported");
+    deepEqual(passive.rules[0].effects.map(effect => ({
+      kind: effect.kind,
+      value: effect.value,
+      stackCap: effect.stackCap,
+      activationChancePercent: effect.activationChancePercent,
+    })), [
+      { kind: "critical_chance", value: 10, stackCap: 50, activationChancePercent: 10 },
+      { kind: "evade_chance", value: 10, stackCap: 50, activationChancePercent: 10 },
+      { kind: "damage_reduction", value: 10, stackCap: 50, activationChancePercent: undefined },
+    ]);
+    passive.rules[0].effects.forEach(effect => deepEqual(effect.scaling, {
+      kind: "per_category_ally",
+      scope: "team",
+      categories: ["Movie Bosses", "Wicked Bloodline"],
+      selfInclusion: "included",
+      membersPerIncrement: 1,
+      maximumCount: 7,
+      selection: "largest_category_count",
+    }));
+
+    const oxfordList = parsePassive(
+      "coordinated-oxford-list:initial",
+      undefined,
+      "Basic effect(s)\n- Chance of performing a critical hit, chance of evading enemy's attack, and damage reduction rate 8% (up to 24%)",
+    );
+    deepEqual(oxfordList.rules[0].effects.map(effect => [effect.kind, effect.value, effect.stackCap]), [
+      ["critical_chance", 8, 24],
+      ["evade_chance", 8, 24],
+      ["damage_reduction", 8, 24],
+    ]);
+  });
+
   it("keeps typed turn phases between ally scaling values and their caps", () => {
     const startOfTurn = parsePassive(
       "category-scaling-start-cap:initial",
@@ -4958,7 +5002,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.18/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.19/);
   });
 });
 

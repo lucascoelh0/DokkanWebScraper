@@ -3060,6 +3060,22 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Team Analysis reports no payload/manifest update, no cleanup and zero new
   bytes. Production v1 remains separate and unchanged.
 
+## Coordinated passive percentage parsing (2026-08-28)
+
+- Team Analysis parser `1.9.19` recognizes coordinated critical-hit chance,
+  evasion chance and damage-reduction phrases whose single trailing percentage
+  applies to the whole list. The grammar is effect-based and contains no card
+  IDs or character-specific overrides.
+- A trailing stack cap is consequently attached to every coordinated effect.
+  Metal Cooler Army now emits `10%` with a `50%` cap for critical chance,
+  evasion chance and damage reduction, so every grouped potential has the
+  correct five-member ceiling. The same correction improves 12 other rules;
+  capped Chiaotzu and King Cold cases are covered by the same grammar.
+- The complete Team Analysis test file passed 409/409. A local regeneration
+  validated all 2,288 states and produced a 2,958,064-byte parser-`1.9.19`
+  payload with 9,797 supported, 1,894 partial and zero unknown rules. Generated
+  `data/` remains untracked, and no R2 object or public manifest changed.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
