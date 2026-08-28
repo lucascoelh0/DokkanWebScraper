@@ -634,6 +634,7 @@ export interface LeaderSkillClause {
     stackGroup: 'primary' | 'secondary' | 'additional',
     targetMode: 'base' | 'also-belong',
     categories?: string[],
+    excludedCategories?: string[],
     types?: string[],
     classes?: string[],
     teamConditions?: LeaderSkillTeamCondition[],

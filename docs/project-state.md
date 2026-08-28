@@ -2963,6 +2963,28 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 - No R2 object, public manifest, production endpoint or Play track changed.
   The regenerated pair remains local and staging-only.
 
+## Ordered Leader Skill path evaluation checkpoint (2026-08-27)
+
+- The production-v2 Character dataset was current at version
+  `2026-08-27T05:25:00.000Z`; Glorio already carried the correct top-level
+  `200%` display boost. The Android Leaders surface regressed because its
+  structured evaluator selected the largest base clause globally and then
+  added every matching additional clause globally, producing an impossible
+  `200% + 30% = 230%` combination across different ordered alternatives.
+- Android now evaluates each primary/secondary clause together with only the
+  additional clauses that follow it, applies exclusions to that whole path and
+  chooses the strongest complete matching path. Legacy cached payloads remain
+  compatible by deriving canonical `Category characters excluded` clauses from
+  their raw text when the typed field is absent.
+- The TypeScript contract now emits `excludedCategories` separately and removes
+  excluded names from positive category targets. A full 1,436-character corpus
+  audit found four such Leader Skills: SSB Goku & Vegeta, Fusion Zamasu, Master
+  Roshi and Glorio; all four parse into non-overlapping positive/excluded sets.
+- Focused parser tests passed 34/34 and the complete Android domain suite passed.
+  A productionDebug `2.0.9 (17)` candidate was installed over the existing app
+  without clearing data. No dataset, R2 object, public manifest or Play track
+  changed.
+
 ## Open technical debt — first-party Support Memory and Stage sources (2026-08-27)
 
 - After the current app release, replace the community-derived Support Memory

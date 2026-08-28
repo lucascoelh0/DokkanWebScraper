@@ -1378,7 +1378,12 @@ function parseLeaderSkillClause(clause: RawLeaderSkillClause): LeaderSkillClause
     const teamConditions = extractLeaderSkillTeamConditions(clause.rawText);
     const targetSegment = stripLeaderSkillTeamConditions(clause.rawText);
     const boost = parseLeaderSkillBoostValues(clause.rawText);
-    const categories = extractLeaderSkillCategories(targetSegment);
+    const excludedCategories = extractExcludedLeaderSkillCategories(targetSegment);
+    const excludedCategoryKeys = new Set(
+        (excludedCategories ?? []).map(category => category.toLowerCase()),
+    );
+    const categories = extractLeaderSkillCategories(targetSegment)
+        ?.filter(category => !excludedCategoryKeys.has(category.toLowerCase()));
     const types = extractLeaderSkillTypes(targetSegment);
     const classes = extractLeaderSkillClasses(targetSegment);
     const ki = extractLeaderSkillKi(targetSegment);
@@ -1388,6 +1393,7 @@ function parseLeaderSkillClause(clause: RawLeaderSkillClause): LeaderSkillClause
         stackGroup: clause.stackGroup,
         targetMode: clause.targetMode,
         categories,
+        excludedCategories,
         types,
         classes,
         teamConditions,
@@ -1506,6 +1512,18 @@ function extractLeaderSkillCategories(segment: string): string[] | undefined {
         .filter(Boolean);
 
     return categories.length ? Array.from(new Set(categories)) : undefined;
+}
+
+function extractExcludedLeaderSkillCategories(segment: string): string[] | undefined {
+    const excludedCategories = Array.from(
+        segment.matchAll(/\(([^()]*)\bCategor(?:y|ies)\s+characters\s+excluded\)/gi),
+    ).flatMap(match => Array.from(match[1].matchAll(/"([^"]+)"/g)))
+        .map(match => cleanInlineText(match[1]))
+        .filter(Boolean);
+
+    return excludedCategories.length
+        ? Array.from(new Set(excludedCategories))
+        : undefined;
 }
 
 function extractLeaderSkillTypes(segment: string): string[] | undefined {

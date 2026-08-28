@@ -54,13 +54,63 @@ describe("parseLeaderSkillDetails", function () {
     equal(details?.displayBoost, 200);
     deepEqual(details?.clauses.map(clause => ({
       stackGroup: clause.stackGroup,
+      categories: clause.categories,
+      excludedCategories: clause.excludedCategories,
       hp: clause.hp,
       atk: clause.atk,
       def: clause.def,
     })), [
-      { stackGroup: "primary", hp: 200, atk: 200, def: 200 },
-      { stackGroup: "secondary", hp: 170, atk: 170, def: 170 },
-      { stackGroup: "additional", hp: 30, atk: 30, def: 30 },
+      {
+        stackGroup: "primary",
+        categories: ["Peppy Gals"],
+        excludedCategories: undefined,
+        hp: 200,
+        atk: 200,
+        def: 200,
+      },
+      {
+        stackGroup: "secondary",
+        categories: ["Turtle School", "DB Saga"],
+        excludedCategories: undefined,
+        hp: 170,
+        atk: 170,
+        def: 170,
+      },
+      {
+        stackGroup: "additional",
+        categories: ["Bond of Master and Disciple", "Kamehameha"],
+        excludedCategories: ["Peppy Gals"],
+        hp: 30,
+        atk: 30,
+        def: 30,
+      },
+    ]);
+  });
+
+  it("keeps Glorio exclusions separate from the qualifying additional category", () => {
+    const details = parseLeaderSkillDetails(`"Demonic Power" Category Ki +3 and HP, ATK & DEF +200%; "Battle of Wits" or "Accelerated Battle" Category Ki +3 and HP, ATK & DEF +170%, plus an additional HP, ATK & DEF +30% for characters who also belong to the "Dragon Ball Seekers" Category ("Demonic Power" Category characters excluded)`);
+
+    equal(details?.displayBoost, 200);
+    deepEqual(details?.clauses.map(clause => ({
+      stackGroup: clause.stackGroup,
+      categories: clause.categories,
+      excludedCategories: clause.excludedCategories,
+    })), [
+      {
+        stackGroup: "primary",
+        categories: ["Demonic Power"],
+        excludedCategories: undefined,
+      },
+      {
+        stackGroup: "secondary",
+        categories: ["Battle of Wits", "Accelerated Battle"],
+        excludedCategories: undefined,
+      },
+      {
+        stackGroup: "additional",
+        categories: ["Dragon Ball Seekers"],
+        excludedCategories: ["Demonic Power"],
+      },
     ]);
   });
 
@@ -70,13 +120,36 @@ describe("parseLeaderSkillDetails", function () {
     equal(details?.displayBoost, 200);
     deepEqual(details?.clauses.map(clause => ({
       stackGroup: clause.stackGroup,
+      categories: clause.categories,
+      excludedCategories: clause.excludedCategories,
       hp: clause.hp,
       atk: clause.atk,
       def: clause.def,
     })), [
-      { stackGroup: "primary", hp: 170, atk: 170, def: 170 },
-      { stackGroup: "additional", hp: 30, atk: 30, def: 30 },
-      { stackGroup: "secondary", hp: 150, atk: 150, def: 150 },
+      {
+        stackGroup: "primary",
+        categories: ["Battle of Fate", "Future Saga", "Power Beyond Super Saiyan"],
+        excludedCategories: undefined,
+        hp: 170,
+        atk: 170,
+        def: 170,
+      },
+      {
+        stackGroup: "additional",
+        categories: ["Realm of Gods", "Time Travelers"],
+        excludedCategories: undefined,
+        hp: 30,
+        atk: 30,
+        def: 30,
+      },
+      {
+        stackGroup: "secondary",
+        categories: undefined,
+        excludedCategories: ["Battle of Fate", "Future Saga", "Power Beyond Super Saiyan"],
+        hp: 150,
+        atk: 150,
+        def: 150,
+      },
     ]);
   });
 
