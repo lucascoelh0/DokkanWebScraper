@@ -3071,10 +3071,24 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   evasion chance and damage reduction, so every grouped potential has the
   correct five-member ceiling. The same correction improves 12 other rules;
   capped Chiaotzu and King Cold cases are covered by the same grammar.
-- The complete Team Analysis test file passed 409/409. A local regeneration
-  validated all 2,288 states and produced a 2,958,064-byte parser-`1.9.19`
-  payload with 9,797 supported, 1,894 partial and zero unknown rules. Generated
-  `data/` remains untracked, and no R2 object or public manifest changed.
+- The complete Team Analysis test file passed 409/409. The production-v2
+  candidate was regenerated from the exact public Character pair and validated
+  all 2,288 states. Its 2,959,042-byte payload has SHA-256
+  `5c053970f970193c8dbf17f95c0bc96c9c2677aebc777b3336746e45df022955`,
+  with 9,798 supported, 1,893 partial and zero unknown rules.
+- The mandatory baseline-pinned dry-run projected 2,959,748 new bytes, zero
+  deletes, a 5,920,038/50,000,000-byte managed namespace peak and a
+  558,959,042/10,000,000,000-byte conservative bucket upper bound. Production
+  v2 publication verified the public Character pair, uploaded and read back the
+  immutable payload, then promoted and verified the manifest last. The prior
+  parser-`1.9.18` payload remains retained.
+- An independent public download matched the new payload size and SHA exactly,
+  remained bound to Character SHA-256
+  `22532366108020106b10a2db50c1245d13c4c5831ded9fd859149102b03b2687`,
+  and confirmed every Metal Cooler Army grouped effect has a five-member
+  ceiling. The post-publication dry-run is idempotent with zero new bytes,
+  uploads, manifest changes, cleanup candidates or deletes. Generated `data/`
+  remains untracked.
 
 ## Operating Constraints
 
