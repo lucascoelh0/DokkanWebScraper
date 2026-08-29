@@ -39,7 +39,7 @@ function attackStyle(variant: GameDbProjectionSuperAttackDetails["variant"]): st
     }
 }
 
-function toSuperAttackDetails(
+export function toSuperAttackDetails(
     attack: GameDbProjectionSuperAttackDetails,
     fallback?: SuperAttackDetails,
 ): SuperAttackDetails {
@@ -55,7 +55,7 @@ function toSuperAttackDetails(
     };
 }
 
-function toUnitSuperAttack(
+export function toUnitSuperAttack(
     attack: GameDbProjectionSuperAttackDetails,
     fallback?: UnitSuperAttack,
 ): UnitSuperAttack {

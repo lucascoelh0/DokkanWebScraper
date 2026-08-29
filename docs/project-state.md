@@ -3090,6 +3090,66 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   uploads, manifest changes, cleanup candidates or deletes. Generated `data/`
   remains untracked.
 
+## Official DB 1787900894 character refresh and dual-lane publication (2026-08-29)
+
+- The Global Dokkan `6.5.0` / version-code `342` database was acquired from
+  the installed game, decrypted and exported as first-party DB version
+  `1787900894` with asset version `1787810936`. The resulting SQLite has
+  SHA-256 `571efa97333bf4fc74a983d24cc5dd9d56c5246a56606e445ff48edfdc0d9feb`.
+  Binary CPK output must be written on-device and pulled with ADB; redirecting
+  binary stdout through PowerShell corrupts it.
+- The refresh added six primary characters (`1033971`, `1034001`, `1034031`,
+  `1034661`, `1034691`, `1034701`), four structurally related forms
+  (`4033981`, `4034041`, `4034671`, `4034711`) and the first-party SEZA state
+  for `1009381`. Wording-only changes on `1022631` and `1022751` were not
+  classified as new EZA states.
+- Official category `99` is **Golden Fighters**, not Golden Warriors. Its
+  first-party memberships were added to 261 existing characters; new Goku
+  `1034031` brings the delivered total to 262. Seven also belong to Planet
+  Namek Saga and 255 depend on Golden Fighters alone. No card-ID correction,
+  legacy-category alias or `UNKNOWN` wildcard was introduced.
+- The frozen Android 2.0.8 consumer decoded the complete v1 pair and retained
+  catalog, detail, manual team, save and legacy-category behavior. Its expected
+  limitation is that Golden Fighters is absent from the enum/UI and the new
+  Goku's leader coverage cannot include the 255 Golden-only characters.
+  Android 2.0.10 preserves raw `categoryLabels`, so leader coverage,
+  Recommended and Autobuild can match the future category text; adding the
+  enum, picker/filter and detail link remains an Android follow-up.
+- Production v1 Characters is version `2026-08-29T14:49:35.960Z`, 1,442
+  characters, 2,361,715 bytes and SHA-256
+  `dd1ce5b5e89affb9209dd8465ff6feb43f2803f4eec45e8748286f204b16e21e`.
+  Its parser-`1.9.19` Team pair contains 2,299 states, 3,078,143 bytes and
+  SHA-256 `3b52d6bcd1e9f4ec59dc00be0e662a9ed0436d24e1623f9e233bbdf9dbf838e2`.
+- Production v2 Characters is version `2026-08-29T14:49:52.832Z`, 1,442
+  characters, 2,572,246 bytes and SHA-256
+  `6da0b011bc933ed111ef0706a31215a3fa9da883261d66ab7ced8d03c1b4a2ef`.
+  Its parser-`1.9.19` Team pair contains 2,299 states, 3,181,518 bytes and
+  SHA-256 `c7dfd4bebdbce444661e16fef75f08462cbf832831cbd730f5465af20d750f48`.
+  Public manifests, payload sizes/SHA values, all six characters, all four
+  forms, the SEZA, 262 memberships and every new portrait/layer were verified.
+- Both Team publications used `--retain-all-releases` and deleted nothing.
+  The bucket remains approximately 558 MB with a conservative post-refresh
+  upper bound near 562 MB of the 10 GB allowance. The publication is complete;
+  no repeat upload is authorized or needed.
+- Operational debt remains in the Character publisher preflight: it starts one
+  Wrangler process per portrait and rereads remote objects for size/SHA proof.
+  Concurrency 24 and 8 eventually received HTTP 429, while concurrency 4 was
+  stable (about 8–9 minutes for v1 and 16–20 minutes for v2). Future work should
+  add bounded backoff plus connection/inventory reuse without weakening
+  fail-closed byte verification, typed v2 layer delivery or manifest-last
+  promotion.
+- The reusable refresh generator resolves category targets by official ID and
+  records ID/name provenance, seals all 33 first-party CSVs plus the exact
+  portrait inputs by size/SHA-256, detects table mutation during generation,
+  and emits the frozen Android-v1 projection inside a v1 run. A post-review
+  replay reproduced the public Character SHA exactly in both lanes; generated
+  replay directories remain ignored under `game-db/data/`.
+- Final contract re-review found no P0-P3 issue. The tracked TypeScript build
+  passed and the focused parser/materializer/validation suite passed 726 tests.
+  The remaining provenance risk is external to this generator: it proves the
+  exact local bytes consumed, but a future acquisition contract may add an
+  independently signed first-party chain-of-custody anchor.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

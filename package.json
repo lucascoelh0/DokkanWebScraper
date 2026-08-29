@@ -124,6 +124,7 @@
     "publish:game-db-r2": "npx ts-node game-db/game-db-publish-r2.ts",
     "run:game-db-update": "npx ts-node game-db/game-db-update-runner.ts",
     "run:game-db-character-release-candidate": "npx ts-node game-db/game-db-character-release-candidate.ts",
+    "run:game-db-lane-refresh-candidate": "npx ts-node game-db/game-db-lane-refresh-candidate.ts",
     "run:game-db-first-party-portrait-candidate": "node --max-old-space-size=768 lib/game-db/game-db-first-party-portrait-candidate.js",
     "run:game-db-production-v2-release-candidate": "node --max-old-space-size=768 lib/game-db/game-db-production-v2-release-candidate.js",
     "run:fyi-support-memories": "npx ts-node fyi-support-memories-run.ts",
