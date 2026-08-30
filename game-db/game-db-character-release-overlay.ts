@@ -1,12 +1,14 @@
 import type {
     Character,
     SuperAttackDetails,
+    Transformation,
     UnitSuperAttack,
 } from "../character";
 import type {
     GameDbDokkanpanionProjection,
     GameDbProjectionSuperAttackDetails,
 } from "./game-db-app-projection";
+import { rebindTransformationPassiveDetails } from "./game-db-transformation-passive-details";
 
 export interface GameDbCharacterReleaseOverlayPatch {
     cardId: string,
@@ -73,7 +75,7 @@ export function toUnitSuperAttack(
 }
 
 function applyEzaSuperAttacks(
-    character: Character,
+    character: Character | Transformation,
     attacks: GameDbProjectionSuperAttackDetails[],
     changedFields: Set<string>,
 ): void {
@@ -115,7 +117,7 @@ function applyEzaSuperAttacks(
 }
 
 function applyActiveSkillActivationConditions(
-    character: Character,
+    character: Character | Transformation,
     projection: GameDbDokkanpanionProjection,
     changedFields: Set<string>,
 ): void {
@@ -147,6 +149,59 @@ function applyActiveSkillActivationConditions(
     }
 }
 
+function applyTransformationProjection(
+    transformation: Transformation,
+    projection: GameDbDokkanpanionProjection,
+    baseCharacterId: string,
+    inheritedReleaseDates: Pick<Character, "ezaReleaseDate" | "sezaReleaseDate">,
+): string[] {
+    const changedFields = new Set<string>();
+
+    applyActiveSkillActivationConditions(transformation, projection, changedFields);
+
+    const ezaReleaseDate = projection.ezaReleaseDate
+        ?? (projection.hasEza ? inheritedReleaseDates.ezaReleaseDate : undefined);
+    if (ezaReleaseDate) {
+        transformation.ezaReleaseDate = ezaReleaseDate;
+        changedFields.add("ezaReleaseDate");
+    }
+
+    const sezaReleaseDate = projection.sezaReleaseDate
+        ?? (projection.hasSeza ? inheritedReleaseDates.sezaReleaseDate : undefined);
+    if (sezaReleaseDate) {
+        transformation.sezaReleaseDate = sezaReleaseDate;
+        changedFields.add("sezaReleaseDate");
+    }
+
+    if (projection.ezaPassive) {
+        transformation.ezaPassive = projection.ezaPassive;
+        transformation.ezaPassiveDetails = rebindTransformationPassiveDetails(
+            projection.ezaPassiveDetails,
+            baseCharacterId,
+            projection.id,
+        );
+        changedFields.add("ezaPassive");
+        if (projection.ezaPassiveDetails) changedFields.add("ezaPassiveDetails");
+    }
+
+    if (projection.sezaPassive) {
+        transformation.sezaPassive = projection.sezaPassive;
+        transformation.sezaPassiveDetails = rebindTransformationPassiveDetails(
+            projection.sezaPassiveDetails,
+            baseCharacterId,
+            projection.id,
+        );
+        changedFields.add("sezaPassive");
+        if (projection.sezaPassiveDetails) changedFields.add("sezaPassiveDetails");
+    }
+
+    if (projection.ezaSuperAttackDetails?.length) {
+        applyEzaSuperAttacks(transformation, projection.ezaSuperAttackDetails, changedFields);
+    }
+
+    return [...changedFields].sort();
+}
+
 function applyProjection(
     character: Character,
     projection: GameDbDokkanpanionProjection,
@@ -154,6 +209,11 @@ function applyProjection(
     const changedFields = new Set<string>();
 
     applyActiveSkillActivationConditions(character, projection, changedFields);
+
+    if (projection.releaseDate && projection.releaseDate !== character.releaseDate) {
+        character.releaseDate = projection.releaseDate;
+        changedFields.add("releaseDate");
+    }
 
     if (projection.ezaReleaseDate) {
         character.ezaReleaseDate = projection.ezaReleaseDate;
@@ -225,7 +285,20 @@ export function overlayGameDbCharacterReleaseStates(
 
     for (const cardId of targetIds) {
         const index = baselineById.get(cardId) as number;
-        const fields = applyProjection(characters[index], projectionById.get(cardId) as GameDbDokkanpanionProjection);
+        const character = characters[index];
+        const fields = applyProjection(character, projectionById.get(cardId) as GameDbDokkanpanionProjection);
+        for (const transformation of character.transformations ?? []) {
+            const transformationProjection = projectionById.get(transformation.id);
+            if (!transformationProjection) continue;
+            const transformationFields = applyTransformationProjection(
+                transformation,
+                transformationProjection,
+                cardId,
+                character,
+            );
+            fields.push(...transformationFields.map(field => `transformations.${transformation.id}.${field}`));
+        }
+        fields.sort();
         if (fields.length === 0) throw new Error(`target ${cardId} has no selected first-party game DB fields`);
         patches.push({ cardId, fields });
     }

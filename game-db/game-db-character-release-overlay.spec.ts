@@ -122,6 +122,32 @@ describe("game DB character release-state overlay", () => {
         equal(JSON.stringify(baseline), baselineBytes);
     });
 
+    it("corrects an alternative art variant to the canonical initial release date", () => {
+        const baseline = character("1034481");
+        baseline.releaseDate = "2026-05-21T06:00:00.000Z";
+        const firstParty = projection("1034481");
+        firstParty.releaseDate = "2024-04-26T06:00:00.000Z";
+        firstParty.hasEza = false;
+        firstParty.ezaReleaseDate = undefined;
+        firstParty.ezaLeaderSkill = undefined;
+        firstParty.ezaLeaderSkillDetails = undefined;
+        firstParty.ezaPassive = undefined;
+        firstParty.ezaPassiveDetails = undefined;
+        firstParty.ezaSuperAttackDetails = undefined;
+
+        const result = overlayGameDbCharacterReleaseStates(
+            [baseline],
+            [firstParty],
+            ["1034481"],
+        );
+
+        equal(result.characters[0].releaseDate, "2024-04-26T06:00:00.000Z");
+        deepEqual(result.patches[0], {
+            cardId: "1034481",
+            fields: ["releaseDate"],
+        });
+    });
+
     it("adds only the typed Active Skill activation condition to a matching baseline detail", () => {
         const baseline = character("1034341");
         baseline.activeSkillDetails = [{
@@ -183,6 +209,81 @@ describe("game DB character release-state overlay", () => {
         equal(detail?.activationCondition?.status, "supported");
         deepEqual(result.patches, [{ cardId: "1034341", fields: ["activeSkillDetails"] }]);
         equal(baseline.activeSkillDetails?.[0].activationCondition, undefined);
+    });
+
+    it("patches an existing transformed EZA state and rebinds its passive evidence to the base card", () => {
+        const baseline = character("1024291");
+        baseline.transformations = [{
+            id: "4024301",
+            baseCharacterId: "1024291",
+            name: "Super Saiyan Gohan (Youth)",
+            characterClass: Classes.Super,
+            type: Types.STR,
+            superAttack: "Base transformed Super Attack",
+            passive: "Base transformed passive",
+            domain: "",
+            links: [],
+            portraitURL: "portrait",
+            portraitFilename: "portrait_4024301",
+            artURL: "",
+            artFilename: "",
+            finishingMove: [],
+        }];
+        const rootProjection = projection("1024291");
+        const transformedProjection = projection("4024301");
+        transformedProjection.ezaPassive = "Surpass Your Dad!";
+        transformedProjection.ezaPassiveDetails = {
+            name: "Surpass Your Dad!",
+            text: "EZA transformed passive",
+            lines: ["EZA transformed passive"],
+            structuralSource: {
+                rawText: "EZA transformed passive",
+                rawTextSha256: "raw",
+                normalizedTextSha256: "normalized",
+                evidence: [{
+                    kind: "effect_markers",
+                    id: "4024301:4024301:eza:passive:4562:4",
+                    stateKey: "4024301:4024301:eza",
+                    characterId: "4024301",
+                    formId: "4024301",
+                    releaseState: "eza",
+                    channel: "passive",
+                    passiveSkillId: "4562",
+                    rawTextSha256: "raw",
+                    normalizedTextSha256: "normalized",
+                    anchor: {
+                        lineIndex: 0,
+                        normalizedText: "EZA transformed passive",
+                        structuralText: "EZA transformed passive",
+                        sourceSpan: { start: 4, end: 27 },
+                    },
+                    markers: [],
+                    resolution: "supported",
+                    provenance: {
+                        source: "first_party_game_db",
+                        sourceVersion: "1787900894",
+                        payloadField: "passive_skill_sets.itemized_description",
+                        markerSyntax: "passiveImg",
+                    },
+                }],
+            },
+        };
+
+        const result = overlayGameDbCharacterReleaseStates(
+            [baseline],
+            [rootProjection, transformedProjection],
+            ["1024291"],
+        );
+        const transformed = result.characters[0].transformations?.[0];
+
+        equal(transformed?.ezaPassive, "Surpass Your Dad!");
+        equal(transformed?.ezaReleaseDate, "2021-02-17T06:00:00.000Z");
+        equal(transformed?.ezaSuperAttackDetails?.sourceAttackId, "20432");
+        equal(transformed?.ezaPassiveDetails?.structuralSource?.evidence[0].characterId, "1024291");
+        equal(transformed?.ezaPassiveDetails?.structuralSource?.evidence[0].formId, "4024301");
+        equal(transformed?.ezaPassiveDetails?.structuralSource?.evidence[0].stateKey, "1024291:4024301:eza");
+        equal(baseline.transformations?.[0].ezaPassive, undefined);
+        equal(result.patches[0].fields.includes("transformations.4024301.ezaPassive"), true);
     });
 
     it("fails closed when the requested card is absent from either source", () => {

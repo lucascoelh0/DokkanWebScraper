@@ -720,8 +720,77 @@ function hasDbReversibleExchange(character: GameDbCharacterSnapshot): boolean {
     return character.formRelations.some(relation => relation.kind === "passive-reversible-exchange");
 }
 
+const CANONICAL_GAMEPLAY_CARD_FIELDS = [
+    "card_unique_info_id",
+    "name",
+    "character_id",
+    "cost",
+    "rarity",
+    "hp_init",
+    "hp_max",
+    "atk_init",
+    "atk_max",
+    "def_init",
+    "def_max",
+    "element",
+    "lv_max",
+    "skill_lv_max",
+    "grow_type",
+    "optimal_awakening_grow_type",
+    "passive_skill_set_id",
+    "leader_skill_set_id",
+    "link_skill1_id",
+    "link_skill2_id",
+    "link_skill3_id",
+    "link_skill4_id",
+    "link_skill5_id",
+    "link_skill6_id",
+    "link_skill7_id",
+    "eball_mod_min",
+    "eball_mod_num100",
+    "eball_mod_mid",
+    "eball_mod_mid_num",
+    "eball_mod_max",
+    "eball_mod_max_num",
+    "awakening_number",
+    "potential_board_id",
+] as const;
+
+function canonicalGameplayCardKey(card: GameDbRow): string | undefined {
+    // card_unique_info_id is a character identity and can span unrelated cards.
+    // Alternative-art rows are narrower: their gameplay-bearing card fields are
+    // identical even though id, open_at and presentation metadata differ.
+    if (!normalizeDbId(card.card_unique_info_id)) {
+        return undefined;
+    }
+
+    return CANONICAL_GAMEPLAY_CARD_FIELDS
+        .map(field => `${field}=${normalizeText(card[field])}`)
+        .join("\u001f");
+}
+
+function buildCanonicalInitialReleaseDates(cards: GameDbRow[]): Map<string, string> {
+    const releaseDateByGameplayKey = new Map<string, string>();
+
+    for (const card of cards) {
+        const gameplayKey = canonicalGameplayCardKey(card);
+        const releaseDate = parseDbDate(card.open_at);
+        if (!gameplayKey || !releaseDate) {
+            continue;
+        }
+
+        const existingReleaseDate = releaseDateByGameplayKey.get(gameplayKey);
+        if (!existingReleaseDate || releaseDate < existingReleaseDate) {
+            releaseDateByGameplayKey.set(gameplayKey, releaseDate);
+        }
+    }
+
+    return releaseDateByGameplayKey;
+}
+
 export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<string, GameDbRow[]>): GameDbCharacterSnapshot[] {
     const cardById = buildLookup(tables.cards);
+    const canonicalInitialReleaseDateByGameplayKey = buildCanonicalInitialReleaseDates(tables.cards);
     const leaderSkillSetById = buildLookup(tables.leader_skill_sets);
     const passiveSkillSetById = buildLookup(tables.passive_skill_sets);
     const passiveSkillById = buildLookup(tables.passive_skills);
@@ -779,6 +848,12 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
         const rarity = mapRarity(card.rarity);
         const baseMaxLevel = parseDbInt(card.lv_max) ?? 0;
         const baseMaxSaLevel = parseDbInt(card.skill_lv_max) ?? 0;
+        const cardUniqueInfoId = normalizeDbId(card.card_unique_info_id) ?? "";
+        const gameplayCardKey = canonicalGameplayCardKey(card);
+        const initialReleaseDate = (gameplayCardKey
+            ? canonicalInitialReleaseDateByGameplayKey.get(gameplayCardKey)
+            : undefined)
+            ?? parseDbDate(card.open_at);
         const outgoingAwakenings = mapAwakeningRoutes(outgoingAwakeningsByCardId.get(cardId) ?? [], "outgoing");
         const incomingAwakenings = mapAwakeningRoutes(incomingAwakeningsByCardId.get(cardId) ?? [], "incoming");
         const allSuperAttacks = mapSuperAttacks(
@@ -791,7 +866,7 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
         );
         const initialReleaseState = buildReleaseState({
             releaseState: "initial",
-            releaseDate: parseDbDate(card.open_at),
+            releaseDate: initialReleaseDate,
             maxLevel: baseMaxLevel,
             maxSaLevel: baseMaxSaLevel,
             leaderSkillSetId,
@@ -910,14 +985,14 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
             id: cardId,
             source: "game-db",
             characterId: normalizeDbId(card.character_id) ?? "",
-            cardUniqueInfoId: normalizeDbId(card.card_unique_info_id) ?? "",
+            cardUniqueInfoId,
             resourceId: normalizeDbId(card.resource_id),
             name: normalizeText(card.name),
             rarity,
             type: mapType(card.element),
             characterClass: mapCharacterClass(card.element),
             cost: parseDbInt(card.cost) ?? 0,
-            releaseDate: parseDbDate(card.open_at),
+            releaseDate: initialReleaseDate,
             baseMaxLevel,
             baseMaxSaLevel,
             stats: {

@@ -118,6 +118,36 @@ describe("finalizeFormRelations", function () {
     });
 });
 
+describe("canonical card release dates", function () {
+    it("keeps an alternative art variant at the original card release date", () => {
+        const tables = minimalTables();
+        tables.cards[0] = {
+            ...tables.cards[0],
+            id: "1034481",
+            card_unique_info_id: "326",
+            open_at: "2026-05-21 06:00:00",
+        };
+        tables.cards.push({
+            ...tables.cards[0],
+            id: "1028791",
+            open_at: "2024-04-26 06:00:00",
+        });
+        tables.cards.push({
+            ...tables.cards[0],
+            id: "1008891",
+            cost: "36",
+            open_at: "2017-10-12 06:30:00",
+        });
+        tables.card_specials[0].card_id = "1034481";
+
+        const [snapshot] = buildGameDbCharacterSnapshots(["1034481"], tables);
+
+        equal(snapshot.cardUniqueInfoId, "326");
+        equal(snapshot.releaseDate, "2024-04-26T06:00:00.000Z");
+        equal(snapshot.releaseStates?.initial.releaseDate, "2024-04-26T06:00:00.000Z");
+    });
+});
+
 describe("Super Attack effect snapshot integration", function () {
     it("propagates structurally joined specials and tolerates their absence in an older source", () => {
         const tables = minimalTables();
