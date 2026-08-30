@@ -3191,6 +3191,120 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   transient Wrangler OAuth 401 during read-only portrait verification and
   aborted before writes; the authenticated retry completed successfully.
 
+## Android Autobuild set diversity and runtime correction (2026-08-29)
+
+- LDPlayer screenshots proved that all three Autobuild alternatives could
+  contain the exact same added cards in different owned-slot orders. The
+  installed APK matched the latest local productionDebug artifact byte for
+  byte, so this was a current algorithm defect rather than an old build or data
+  issue.
+- Android now identifies an in-progress or final Autobuild team by the
+  unordered set of added card IDs. Slot permutations no longer consume beam
+  width or preview alternatives, and the flow returns fewer than three options
+  when fewer than three distinct teams survive.
+- The five-empty-slot seed phase now performs one full-catalog Recommended
+  evaluation instead of five equivalent evaluations. Its bounded pool expands
+  from the effective old 12 candidates to 36 when three or more slots are open,
+  and repeated rotation/Link/contribution comparator facts are cached per beam
+  state. Contextual Recommended ranks guide ordinary additions while hard
+  coverage and typed causal enablers retain priority.
+- New regressions cover distinct five-card sets, repeated contextual
+  Recommended parity and a contextual enabler initially below the former
+  top-12 cutoff. The complete Android domain suite passed 533 tests with zero
+  failures, Team Builder ViewModel passed 87 tests, productionDebug assembled,
+  and the replacement APK installed and launched on LDPlayer without clearing
+  data. Android Lint remains unavailable because its Compose detectors reject
+  Kotlin metadata 2.2 while supporting only 2.0; the crashes occurred in
+  unrelated `DatabaseBootstrapper.kt` and
+  `LeaderCategoryDictionaryRuntimeTest.kt`.
+- Tank, damage-dealer and slot-role semantics remain future work. They require
+  an explicit typed combat-calculation contract for pre/post-attack defense,
+  guard, damage reduction, evasion, stacking, build assumptions, enemy/event
+  context and rotation duration; no role is inferred from prose in this change.
+
+## Transformed awakening inheritance and Team Builder clarity (2026-08-29)
+
+- Release-state lane refreshes now project every existing related form of a
+  targeted base card before overlaying official EZA/SEZA fields. Transformation
+  passive evidence is rebound from the standalone form identity to the owning
+  `base:form:release` identity, and a missing form awakening date inherits the
+  owning release date only when the first-party projection proves that release
+  state.
+- The Dokkan.fyi fallback also inherits an owning EZA for a form only when the
+  form contains an awakened payload. It deliberately does not infer an owning
+  SEZA because that generic form payload cannot distinguish an EZA revision
+  from a SEZA revision.
+- A real v2 candidate generated from DB version `1787900894` confirmed Gohan
+  root `1024291`, form `4024301`, EZA date
+  `2025-04-03T05:00:00.000Z`, populated EZA passive evidence keyed as
+  `1024291:4024301:eza`, and the matching Team Analysis state. No R2 object was
+  published.
+- Android keeps runtime-only battle-context clauses green and available from
+  the team's point of view. Its separate Partial metric is reserved for
+  quantified team/rotation potential below the known maximum, so effects such
+  as Arinsu's category-ally scaling remain partial without implying that
+  attacking or receiving an attack is a roster failure. Autobuild previews use
+  `Slot N · Added`. The five-open-slot `1034031` Leader/Friend scenario
+  completed on LDPlayer in 19.26 seconds after independent beam evaluations
+  were parallelized without changing the ranking or beam contracts.
+- Focused scraper validation passed 45 tests, including fail-closed coverage
+  for a form without an awakened payload and deduplication when a related form
+  is also an explicit release target. The correct `--expose-gc` broad
+  run passed 1,898 tests with 13 pending; its only two failures are the known
+  DD6 source-lock checks caused by the intentionally edited project-state
+  checkpoint. Android passed all 533 domain tests, all 87 Team Builder
+  ViewModel tests and both focused Compose instrumentation regressions.
+
+## Canonical dates for alternative-art cards (2026-08-29)
+
+- The official DB can add a new card ID and `open_at` for an alternative art
+  while leaving the complete gameplay record unchanged. Treating that art date
+  as a new unit release incorrectly promotes an old card in catalog freshness
+  and Autobuild ranking.
+- Snapshot generation now groups only exact gameplay-equivalent records: the
+  shared card identity plus rarity/type, stats, levels, growth, Leader/Passive,
+  Links, Ki meter, awakening and potential-board fields must match. It then
+  uses the earliest release among those equivalent variants. Cards that merely
+  share a character identity keep independent dates.
+- A complete scan of selected primary cards found two alternative-art date
+  corrections: Super Saiyan God Goku `1034461` resolves to the original
+  `2023-03-18T06:18:00.000Z`, and Super Saiyan 3 Goku (Angel) `1034481`
+  resolves to `2024-04-26T04:00:00.000Z`. Unrelated older records sharing the
+  same character identity were not collapsed. A recent real EZA/SEZA date can
+  still refresh either card's effective freshness independently.
+- A local v2 lane candidate targeted both alternative-art IDs and carried the
+  canonical base dates into the existing baseline. No R2 object was published.
+- The release overlay can now carry a changed canonical base date into an
+  existing v2 baseline. Focused snapshot and overlay validation passed 738
+  tests after compilation, and the tracked `lib/` output matches the changed
+  TypeScript sources.
+- The final broad scraper suite passed 1,901 tests with 13 pending. Its only
+  two failures remain the known DD6 project-state source-lock checks caused by
+  this intentionally edited checkpoint, not runtime or dataset assertions.
+
+## Canonical alternative-art dates production-v2 publication (2026-08-30)
+
+- The separately authorized production-v2 publication promoted the validated
+  canonical-date pair. Characters version
+  `2026-08-30T02:57:02.108Z` contains 1,442 characters in a 2,576,426-byte
+  payload with SHA-256
+  `27cfa4d59fdef27b415600ccd40ef1cca3b2c6e7754cfbd1cc70c7248e1a493c`.
+- Team Analysis version
+  `2026-08-30T02:57:02.108Z:parser-1.9.19` contains 2,301 states in a
+  3,187,894-byte payload with SHA-256
+  `793b42e7351e9b1336e03a08765e9408a9961969abbaa21157a5adecea52e002`.
+  Its manifest is bound to the exact Character version and SHA above.
+- The mandatory remote dry-runs projected zero portrait uploads and zero
+  deletes. They retained all tracked releases and produced a conservative
+  whole-bucket upper bound of 585,187,894/10,000,000,000 bytes.
+- Characters and Team Analysis were promoted manifest-last. Independent R2
+  downloads after publication reproduced both advertised payload sizes and
+  SHA-256 values and confirmed the cross-manifest Character binding.
+- The same exact pair was downloaded through a loopback-only `stagingDebug`
+  build on LDPlayer. Android persisted both content-addressed payloads, loaded
+  the catalog and requested the new portraits successfully. Production Android
+  binaries and Play tracks were not changed by this dataset publication.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
