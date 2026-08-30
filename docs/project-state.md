@@ -3150,6 +3150,47 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   exact local bytes consumed, but a future acquisition contract may add an
   independently signed first-party chain-of-custody anchor.
 
+## Official super-attack categories and awakening dates refresh (2026-08-29)
+
+- The first-party export now includes `special_views` and
+  `special_categories`. Super-attack types are resolved structurally through
+  `card_specials.view_id -> special_views.special_category_id ->
+  special_categories.raw_attribute`, mapping official values to Ki Blast,
+  Unarmed, Armed or Other without relying on community data.
+- EZA and SEZA dates are now derived from exact final steps in
+  `CardAwakeningRoute::Optimal`, with awakening type 1 for EZA and type 2 for
+  SEZA. These dates propagate through the release projection, materializer and
+  overlay so recent awakenings sort by their actual release-state date.
+  Fail-closed validation rejects a new first-party EZA/SEZA super attack whose
+  official type could not be resolved.
+- The regenerated 35-table first-party export and both delivery lanes contain
+  1,442 characters and 2,299 Team Analysis states. Six new primary characters,
+  four forms and Frieza `1009381` SEZA were checked against the source DB;
+  relevant required fields were present. Focused validation passed 774 tests.
+  The broader suite passed 1,895 tests with 13 pending and only the two known,
+  unrelated DD6 project-state identity failures.
+- Production v1 Characters is now version `2026-08-29T21:37:02.958Z`,
+  2,361,771 bytes and SHA-256
+  `6423bc90508b45fae36967b7f0c07919ca02b0d5b5be53f47a6fc45df2ec4ea2`.
+  Its parser-`1.9.19` Team Analysis payload is 3,078,273 bytes with SHA-256
+  `42d9fe1daabf30da991527df708dbe8e5a3f6d6639067288fe20c6fceb9bc361`.
+- Production v2 Characters is now version `2026-08-29T21:36:08.245Z`,
+  2,572,330 bytes and SHA-256
+  `7c77f40158f3ac04c086660f521dd3ac160fe2bffcb81e42a2d5e80049f7bd1c`.
+  Its parser-`1.9.19` Team Analysis payload is 3,181,653 bytes with SHA-256
+  `77d9776fc66fa87a0957f381128cfcfc14e0b724c5f2f63f76aa1275cfeb11ff`.
+- Mandatory dry-runs projected zero portrait uploads and zero deletes in both
+  lanes. The live publishers reread all 1,637 v1 and 3,303 v2 portrait
+  references, uploaded only the immutable Character/Team payloads and promoted
+  each manifest last. Both Team publications retained all four tracked
+  releases and deleted nothing. The conservative post-publication bucket upper
+  bound is 574,181,653 bytes against the 10 GB allowance.
+- An independent post-publication R2 download verified all four payloads byte
+  for byte and confirmed that all four public manifests contain the expected
+  metadata and versioned object keys. The first v1 attempt encountered one
+  transient Wrangler OAuth 401 during read-only portrait verification and
+  aborted before writes; the authenticated retry completed successfully.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

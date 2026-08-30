@@ -1,5 +1,6 @@
 import { deepEqual, throws } from "assert";
 import { describe, it } from "mocha";
+import { AttackTypes } from "../character";
 import { mapSuperAttacks } from "./game-db-super-attack";
 import { GameDbRow } from "./game-db-source";
 
@@ -127,6 +128,74 @@ describe("mapSuperAttacks", function () {
                 { id: "10", special_set_id: "2" },
             ], new Map([["2", { id: "2", name: "Attack" }]])),
             /card_specials contains duplicate row id 10/,
+        );
+    });
+
+    it("maps the official special-view category and preserves its join provenance", () => {
+        const [attack] = mapSuperAttacks(
+            "1033971",
+            [{ id: "20313", special_set_id: "9200", view_id: "765" }],
+            new Map([["9200", { id: "9200", name: "Kamehameha" }]]),
+            new Map(),
+            new Map([["765", { id: "765", special_category_id: "1" }]]),
+            new Map([["1", { id: "1", raw_attribute: "1" }]]),
+        );
+
+        deepEqual({
+            attackType: attack.attackType,
+            provenance: attack.attackTypeProvenance,
+        }, {
+            attackType: AttackTypes.KiBlast,
+            provenance: {
+                specialView: { table: "special_views", rowId: "765" },
+                specialCategory: {
+                    table: "special_categories",
+                    rowId: "1",
+                    rawAttribute: 1,
+                },
+            },
+        });
+    });
+
+    it("maps an official uncategorized special view to Other", () => {
+        const [attack] = mapSuperAttacks(
+            "1034001",
+            [{ id: "20314", special_set_id: "9201", view_id: "766" }],
+            new Map([["9201", { id: "9201", name: "Other attack" }]]),
+            new Map(),
+            new Map([["766", { id: "766", special_category_id: "" }]]),
+            new Map(),
+        );
+
+        deepEqual(attack.attackType, AttackTypes.Other);
+        deepEqual(attack.attackTypeProvenance, {
+            specialView: { table: "special_views", rowId: "766" },
+        });
+    });
+
+    it("fails closed when the official Super Attack category join is broken or unknown", () => {
+        const specialSets = new Map([["9200", { id: "9200", name: "Attack" }]]);
+        throws(
+            () => mapSuperAttacks(
+                "1033971",
+                [{ id: "20313", special_set_id: "9200", view_id: "765" }],
+                specialSets,
+                new Map(),
+                new Map(),
+                new Map(),
+            ),
+            /references missing special_views row 765/,
+        );
+        throws(
+            () => mapSuperAttacks(
+                "1033971",
+                [{ id: "20313", special_set_id: "9200", view_id: "765" }],
+                specialSets,
+                new Map(),
+                new Map([["765", { id: "765", special_category_id: "9" }]]),
+                new Map([["9", { id: "9", raw_attribute: "99" }]]),
+            ),
+            /unsupported raw_attribute 99/,
         );
     });
 

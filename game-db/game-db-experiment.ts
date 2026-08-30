@@ -24,7 +24,11 @@ import {
 } from "./game-db-contract";
 import { mapActiveSkillSets } from "./game-db-active-skill";
 import { mapSuperAttacks } from "./game-db-super-attack";
-import { CORE_GAME_DB_TABLES, SUPER_ATTACK_EFFECT_GAME_DB_TABLES } from "./game-db-table-inventory";
+import {
+    CORE_GAME_DB_TABLES,
+    SUPER_ATTACK_CATEGORY_GAME_DB_TABLES,
+    SUPER_ATTACK_EFFECT_GAME_DB_TABLES,
+} from "./game-db-table-inventory";
 import {
     GameDbRow,
     normalizeDbId,
@@ -339,6 +343,7 @@ function releaseGrowthStepNumbers(rarity: Rarities): { eza?: number, seza?: numb
 
 function buildReleaseState(args: {
     releaseState: GameDbCharacterReleaseStateName,
+    releaseDate?: string,
     maxLevel: number,
     maxSaLevel: number,
     leaderSkillSetId?: string,
@@ -353,6 +358,7 @@ function buildReleaseState(args: {
 }): GameDbCharacterReleaseState {
     return {
         releaseState: args.releaseState,
+        releaseDate: args.releaseDate,
         maxLevel: args.maxLevel,
         maxSaLevel: args.maxSaLevel,
         leaderSkill: mapLeaderSkillSet(args.leaderSkillSetId, args.leaderSkillSetById, args.leaderSkillsBySetId),
@@ -365,6 +371,26 @@ function buildReleaseState(args: {
         superAttacks: selectSuperAttacksAtMaxLevel(args.allSuperAttacks, args.maxSaLevel),
         growthStep: args.growthStep,
     };
+}
+
+function optimalAwakeningReleaseDate(
+    cardId: string,
+    routes: GameDbAwakeningRoute[],
+    releaseState: "eza" | "seza",
+    expectedStep: number | undefined,
+): string | undefined {
+    if (expectedStep === undefined) return undefined;
+    const expectedType = releaseState === "eza" ? "1" : "2";
+    const matches = routes.filter(route =>
+        route.type === "CardAwakeningRoute::Optimal"
+        && route.fromCardId === cardId
+        && route.toCardId === cardId
+        && route.optimalAwakeningType === expectedType
+        && route.optimalAwakeningStep === expectedStep);
+    if (matches.length > 1) {
+        throw new Error(`Card ${cardId} has ambiguous ${releaseState.toUpperCase()} awakening release routes`);
+    }
+    return matches[0]?.openAt;
 }
 
 function mapAwakeningRoutes(rows: GameDbRow[], direction: "incoming" | "outgoing"): GameDbAwakeningRoute[] {
@@ -700,6 +726,13 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
     const passiveSkillSetById = buildLookup(tables.passive_skill_sets);
     const passiveSkillById = buildLookup(tables.passive_skills);
     const specialSetById = buildLookup(tables.special_sets);
+    const hasSpecialViews = (tables.special_views?.length ?? 0) > 0;
+    const hasSpecialCategories = (tables.special_categories?.length ?? 0) > 0;
+    if (hasSpecialViews !== hasSpecialCategories) {
+        throw new Error("Incomplete Super Attack category table inventory");
+    }
+    const specialViewById = hasSpecialViews ? buildLookup(tables.special_views) : undefined;
+    const specialCategoryById = hasSpecialCategories ? buildLookup(tables.special_categories) : undefined;
     const activeSkillSetById = buildLookup(tables.active_skill_sets);
     const ultimateSpecialById = buildLookup(tables.ultimate_specials);
     const linkById = buildLookup(tables.link_skills);
@@ -746,14 +779,19 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
         const rarity = mapRarity(card.rarity);
         const baseMaxLevel = parseDbInt(card.lv_max) ?? 0;
         const baseMaxSaLevel = parseDbInt(card.skill_lv_max) ?? 0;
+        const outgoingAwakenings = mapAwakeningRoutes(outgoingAwakeningsByCardId.get(cardId) ?? [], "outgoing");
+        const incomingAwakenings = mapAwakeningRoutes(incomingAwakeningsByCardId.get(cardId) ?? [], "incoming");
         const allSuperAttacks = mapSuperAttacks(
             cardId,
             cardSpecialsByCardId.get(cardId) ?? [],
             specialSetById,
             specialEffectsBySetId,
+            specialViewById,
+            specialCategoryById,
         );
         const initialReleaseState = buildReleaseState({
             releaseState: "initial",
+            releaseDate: parseDbDate(card.open_at),
             maxLevel: baseMaxLevel,
             maxSaLevel: baseMaxSaLevel,
             leaderSkillSetId,
@@ -771,6 +809,7 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
         const ezaReleaseState = ezaGrowthStep
             ? buildReleaseState({
                 releaseState: "eza",
+                releaseDate: optimalAwakeningReleaseDate(cardId, outgoingAwakenings, "eza", releaseSteps.eza),
                 maxLevel: ezaGrowthStep.maxLevel ?? baseMaxLevel,
                 maxSaLevel: ezaGrowthStep.maxSaLevel ?? baseMaxSaLevel,
                 leaderSkillSetId: ezaGrowthStep.leaderSkillSetId ?? initialReleaseState.leaderSkill?.id,
@@ -787,6 +826,7 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
         const sezaReleaseState = sezaGrowthStep
             ? buildReleaseState({
                 releaseState: "seza",
+                releaseDate: optimalAwakeningReleaseDate(cardId, outgoingAwakenings, "seza", releaseSteps.seza),
                 maxLevel: sezaGrowthStep.maxLevel ?? ezaReleaseState?.maxLevel ?? baseMaxLevel,
                 maxSaLevel: sezaGrowthStep.maxSaLevel ?? ezaReleaseState?.maxSaLevel ?? baseMaxSaLevel,
                 leaderSkillSetId: sezaGrowthStep.leaderSkillSetId
@@ -832,8 +872,6 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
 
         const categories = mapReferences(categoriesByCardId.get(cardId) ?? [], "card_category_id", categoryById);
 
-        const outgoingAwakenings = mapAwakeningRoutes(outgoingAwakeningsByCardId.get(cardId) ?? [], "outgoing");
-        const incomingAwakenings = mapAwakeningRoutes(incomingAwakeningsByCardId.get(cardId) ?? [], "incoming");
 
         const standbySkillSets = mapStandbySkillSets(
             standbyRelationsByCardId.get(cardId) ?? [],
@@ -1044,7 +1082,7 @@ export async function loadRequiredGameDbTables(
     );
 
     const optionalEntries = await Promise.all(
-        SUPER_ATTACK_EFFECT_GAME_DB_TABLES.map(async tableName => {
+        [...SUPER_ATTACK_EFFECT_GAME_DB_TABLES, ...SUPER_ATTACK_CATEGORY_GAME_DB_TABLES].map(async tableName => {
             try {
                 return [tableName, await readGameDbTable(sourceConfig, tableName)] as const;
             } catch (error: any) {

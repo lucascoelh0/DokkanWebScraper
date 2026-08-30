@@ -1,7 +1,7 @@
 import { deepEqual, equal, throws } from "assert";
 import { describe, it } from "mocha";
 import type { Character } from "../character";
-import { Classes, Rarities, Types } from "../character";
+import { AttackTypes, Classes, Rarities, Types } from "../character";
 import type { GameDbDokkanpanionProjection } from "./game-db-app-projection";
 import { overlayGameDbCharacterReleaseStates } from "./game-db-character-release-overlay";
 
@@ -65,13 +65,14 @@ function projection(id: string): GameDbDokkanpanionProjection {
         maxSALevel: 20,
         leaderSkill: "Base leader",
         ezaLeaderSkill: "EZA leader",
+        ezaReleaseDate: "2021-02-17T06:00:00.000Z",
         ezaLeaderSkillDetails: { rawText: "EZA leader", displayBoost: 200, clauses: [] },
         passive: "Base passive",
         ezaPassive: "EZA passive",
         ezaPassiveDetails: { name: "EZA passive name", text: "EZA passive", lines: ["EZA passive"] },
         ezaSuperAttackDetails: [
-            { id: "20432", name: "EZA Super", description: "EZA Super effect", variant: "super", requiredKi: 12, attackIncrease: { level1Percent: 200, maxLevelPercent: 320, maxLevel: 25 } },
-            { id: "20434", name: "EZA Ultra", description: "EZA Ultra effect", variant: "ultra", requiredKi: 18, attackIncrease: { level1Percent: 250, maxLevelPercent: 490, maxLevel: 25 } },
+            { id: "20432", name: "EZA Super", description: "EZA Super effect", variant: "super", requiredKi: 12, type: AttackTypes.Unarmed, attackIncrease: { level1Percent: 200, maxLevelPercent: 320, maxLevel: 25 } },
+            { id: "20434", name: "EZA Ultra", description: "EZA Ultra effect", variant: "ultra", requiredKi: 18, type: AttackTypes.KiBlast, attackIncrease: { level1Percent: 250, maxLevelPercent: 490, maxLevel: 25 } },
         ],
         activeSkill: "",
         activeSkillCondition: "",
@@ -108,7 +109,9 @@ describe("game DB character release-state overlay", () => {
         equal(result.characters[1].ezaLeaderSkill, "EZA leader");
         equal(result.characters[1].ezaPassiveDetails?.name, "EZA passive name");
         equal(result.characters[1].ezaSuperAttackDetails?.sourceAttackId, "20432");
+        equal(result.characters[1].ezaSuperAttackDetails?.type, AttackTypes.Unarmed);
         equal(result.characters[1].ezaUltraSuperAttackDetails?.attackIncrease?.maxLevelPercent, 490);
+        equal(result.characters[1].ezaReleaseDate, "2021-02-17T06:00:00.000Z");
         deepEqual(result.checks, {
             characterCountPreserved: true,
             characterOrderPreserved: true,
@@ -135,6 +138,7 @@ describe("game DB character release-state overlay", () => {
         const firstParty = projection("1034341");
         firstParty.ezaLeaderSkill = undefined;
         firstParty.ezaLeaderSkillDetails = undefined;
+        firstParty.ezaReleaseDate = undefined;
         firstParty.ezaPassive = undefined;
         firstParty.ezaPassiveDetails = undefined;
         firstParty.ezaSuperAttackDetails = undefined;
@@ -189,6 +193,16 @@ describe("game DB character release-state overlay", () => {
         throws(
             () => overlayGameDbCharacterReleaseStates([character("1")], [], ["1"]),
             /missing from the game DB projection/,
+        );
+    });
+
+    it("fails closed when a first-party EZA Super Attack has no category", () => {
+        const firstParty = projection("1028061");
+        if (firstParty.ezaSuperAttackDetails?.[0]) firstParty.ezaSuperAttackDetails[0].type = undefined;
+
+        throws(
+            () => overlayGameDbCharacterReleaseStates([character("1028061")], [firstParty], ["1028061"]),
+            /EZA Super Attack 20432 has no first-party attack type/,
         );
     });
 });

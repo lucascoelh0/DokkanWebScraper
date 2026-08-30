@@ -46,6 +46,7 @@ export interface GameDbProjectionSuperAttackDetails {
     condition?: string,
     variant: GameDbSuperAttack["variant"],
     requiredKi?: number,
+    type?: GameDbSuperAttack["attackType"],
     attackIncrease?: {
         level1Percent: number,
         maxLevelPercent: number,
@@ -59,6 +60,8 @@ export interface GameDbDokkanpanionProjection {
     name: string,
     title: string,
     releaseDate?: string,
+    ezaReleaseDate?: string,
+    sezaReleaseDate?: string,
     rarity: GameDbCharacterSnapshot["rarity"],
     type: GameDbCharacterSnapshot["type"],
     characterClass: GameDbCharacterSnapshot["characterClass"],
@@ -740,6 +743,7 @@ function mapSuperAttackDetails(
             condition: cleanMultilineText(attack.conditionDescription),
             variant: attack.variant,
             requiredKi: attack.requiredKi,
+            type: attack.attackType,
             ...(attackIncrease ? { attackIncrease } : {}),
         };
     });
@@ -748,6 +752,7 @@ function mapSuperAttackDetails(
 function fallbackInitialReleaseState(character: GameDbCharacterSnapshot): GameDbCharacterReleaseState {
     return character.releaseStates?.initial ?? {
         releaseState: "initial",
+        releaseDate: character.releaseDate,
         maxLevel: character.baseMaxLevel,
         maxSaLevel: character.baseMaxSaLevel,
         leaderSkill: character.leaderSkill,
@@ -797,6 +802,8 @@ export function projectGameDbCharacterToDokkanpanion(
         name: character.name,
         title: initialReleaseState.leaderSkill?.name ?? "",
         releaseDate: character.releaseDate,
+        ezaReleaseDate: ezaReleaseState?.releaseDate,
+        sezaReleaseDate: sezaReleaseState?.releaseDate,
         rarity: character.rarity,
         type: character.type,
         characterClass: character.characterClass,

@@ -1,6 +1,6 @@
 import { deepEqual, equal } from "assert";
 import { describe, it } from "mocha";
-import { Rarities, Types, Classes } from "../character";
+import { AttackTypes, Rarities, Types, Classes } from "../character";
 import { GameDbCharacterSnapshot, GameDbSuperAttackEffect } from "./game-db-contract";
 import { projectGameDbCharacterToDokkanpanion } from "./game-db-app-projection";
 
@@ -498,6 +498,7 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
             specialSetId: "5147",
             name: "Rivalry Between Three Great Super Saiyans",
             description: "Greatly raises ATK for 3 turns and causes colossal damage",
+            attackType: AttackTypes.KiBlast,
             variant: "super" as const,
             levelStart: 0,
             requiredKi: 12,
@@ -534,6 +535,7 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
             releaseStates: {
                 initial: {
                     releaseState: "initial",
+                    releaseDate: "2021-02-16T23:00:00.000Z",
                     maxLevel: 150,
                     maxSaLevel: 20,
                     leaderSkill: snapshot.leaderSkill,
@@ -542,6 +544,7 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
                 },
                 eza: {
                     releaseState: "eza",
+                    releaseDate: "2021-02-17T06:00:00.000Z",
                     maxLevel: 150,
                     maxSaLevel: 25,
                     leaderSkill: {
@@ -561,6 +564,7 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
                 },
                 seza: {
                     releaseState: "seza",
+                    releaseDate: "2026-08-29T12:00:00.000Z",
                     maxLevel: 150,
                     maxSaLevel: 25,
                     passiveSkillSet: {
@@ -592,6 +596,10 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
         });
         equal(projection.superAttackDetails?.[0].id, "13330");
         equal(projection.ezaSuperAttackDetails?.[0].id, "20432");
+        equal(projection.superAttackDetails?.[0].type, AttackTypes.KiBlast);
+        equal(projection.ezaSuperAttackDetails?.[0].type, AttackTypes.KiBlast);
+        equal(projection.ezaReleaseDate, "2021-02-17T06:00:00.000Z");
+        equal(projection.sezaReleaseDate, "2026-08-29T12:00:00.000Z");
     });
 
     it("falls back cleanly when optional mechanics are absent", () => {

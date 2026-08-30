@@ -1,3 +1,4 @@
+import { AttackTypes } from "../character";
 import { GameDbSuperAttack, GameDbSuperAttackEffect } from "./game-db-contract";
 import { GameDbRow, normalizeDbId, parseDbInt } from "./game-db-source";
 
@@ -41,6 +42,54 @@ function rawOperand(value?: string): string | null {
 function rawOptionalText(value?: string): string | undefined {
     const trimmed = value?.trim() ?? "";
     return trimmed.length > 0 ? value : undefined;
+}
+
+function resolveAttackType(
+    cardId: string,
+    cardSpecialId: string,
+    viewId: string | undefined,
+    specialViewById: Map<string, GameDbRow> | undefined,
+    specialCategoryById: Map<string, GameDbRow> | undefined,
+): Pick<GameDbSuperAttack, "attackType" | "attackTypeProvenance"> {
+    if (!specialViewById || !specialCategoryById) return {};
+    if (!viewId) throw new Error(`card_specials row ${cardSpecialId} for card ${cardId} has no view_id`);
+    const view = specialViewById.get(viewId);
+    if (!view) throw new Error(`card_specials row ${cardSpecialId} references missing special_views row ${viewId}`);
+    const categoryId = normalizeDbId(view.special_category_id);
+    if (!categoryId) {
+        return {
+            attackType: AttackTypes.Other,
+            attackTypeProvenance: {
+                specialView: { table: "special_views", rowId: viewId },
+            },
+        };
+    }
+    const category = specialCategoryById.get(categoryId);
+    if (!category) {
+        throw new Error(`special_views row ${viewId} references missing special_categories row ${categoryId}`);
+    }
+    const rawAttribute = parseDbInt(category.raw_attribute);
+    const attackType = rawAttribute === 1
+        ? AttackTypes.KiBlast
+        : rawAttribute === 2
+            ? AttackTypes.Unarmed
+            : rawAttribute === 4
+                ? AttackTypes.Armed
+                : undefined;
+    if (!attackType) {
+        throw new Error(`special_categories row ${categoryId} has unsupported raw_attribute ${category.raw_attribute}`);
+    }
+    return {
+        attackType,
+        attackTypeProvenance: {
+            specialView: { table: "special_views", rowId: viewId },
+            specialCategory: {
+                table: "special_categories",
+                rowId: categoryId,
+                rawAttribute,
+            },
+        },
+    };
 }
 
 function auditedSemantics(type: string | undefined, efficacyType: number | undefined): GameDbSuperAttackEffect["semantic"] {
@@ -105,6 +154,8 @@ export function mapSuperAttacks(
     rows: GameDbRow[],
     specialSetById: Map<string, GameDbRow>,
     specialEffectsBySetId: Map<string, GameDbRow[]> = new Map(),
+    specialViewById?: Map<string, GameDbRow>,
+    specialCategoryById?: Map<string, GameDbRow>,
 ): GameDbSuperAttack[] {
     const seenCardSpecialIds = new Set<string>();
     return [...rows].sort((left, right) => {
@@ -130,6 +181,7 @@ export function mapSuperAttacks(
         }
         const style = normalizeText(row.style);
 
+        const viewId = normalizeDbId(row.view_id);
         return {
             cardSpecialId,
             specialSetId,
@@ -142,7 +194,14 @@ export function mapSuperAttacks(
             variant: variantFromStyle(style),
             levelStart: parseDbInt(row.lv_start),
             requiredKi: parseDbInt(row.eball_num_start),
-            viewId: normalizeDbId(row.view_id),
+            viewId,
+            ...resolveAttackType(
+                cardId,
+                cardSpecialId,
+                viewId,
+                specialViewById,
+                specialCategoryById,
+            ),
             increaseRate: parseDbInt(specialSet.increase_rate),
             levelBonus: parseDbInt(specialSet.lv_bonus),
             cardCostumeConditionId: normalizeDbId(row.card_costume_condition_id),

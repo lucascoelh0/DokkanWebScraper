@@ -1,6 +1,6 @@
 import { deepStrictEqual, throws } from "assert";
 import { describe, it } from "mocha";
-import { Classes, Rarities, Types } from "../character";
+import { AttackTypes, Classes, Rarities, Types } from "../character";
 import type { GameDbDokkanpanionProjection } from "./game-db-app-projection";
 import { materializeGameDbCharacter } from "./game-db-character-materializer";
 
@@ -29,6 +29,7 @@ function projection(id: string): GameDbDokkanpanionProjection {
             description: "Damage",
             variant: "super",
             requiredKi: 12,
+            type: AttackTypes.KiBlast,
         }],
         activeSkill: "",
         activeSkillCondition: "",
@@ -62,16 +63,29 @@ describe("game DB Character materializer", () => {
         deepStrictEqual({
             id: result.id,
             superAttack: result.superAttack,
+            superAttackType: result.superAttackDetails?.type,
             freeDupeHP: result.freeDupeHP,
             rainbowAttack: result.rainbowAttack,
             transformations: result.transformations,
         }, {
             id: "1034001",
             superAttack: "Damage",
+            superAttackType: AttackTypes.KiBlast,
             freeDupeHP: 0,
             rainbowAttack: 0,
             transformations: [],
         });
+    });
+
+    it("fails closed when a new first-party card has no Super Attack category", () => {
+        const source = projection("1034001");
+        if (source.superAttackDetails?.[0]) source.superAttackDetails[0].type = undefined;
+
+        throws(() => materializeGameDbCharacter(
+            source,
+            new Map([[source.id, source]]),
+            new Map([[source.id, { portraitURL: "portrait", portraitFilename: "portrait.png" }]]),
+        ), /Super Attack sa-1 has no first-party attack type/);
     });
 
     it("requires exact projections and portraits for related forms", () => {

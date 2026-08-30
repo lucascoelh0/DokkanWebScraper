@@ -40,23 +40,44 @@ interface EzaAttackFields {
     ezaUnitSuperAttacks?: ReturnType<typeof toUnitSuperAttack>[],
 }
 
+function materializedSuperAttackDetails(attack: GameDbProjectionSuperAttackDetails) {
+    const details = toSuperAttackDetails(attack);
+    if (!details.type) {
+        throw new Error(`game DB Super Attack ${attack.id} has no first-party attack type`);
+    }
+    return details;
+}
+
+function materializedUnitSuperAttack(attack: GameDbProjectionSuperAttackDetails) {
+    const details = toUnitSuperAttack(attack);
+    if (!details.type) {
+        throw new Error(`game DB Unit Super Attack ${attack.id} has no first-party attack type`);
+    }
+    return details;
+}
+
 function mapAttackFields(attacks: GameDbProjectionSuperAttackDetails[] | undefined): AttackFields {
+    for (const attack of attacks ?? []) {
+        if (!attack.type) {
+            throw new Error(`game DB Super Attack ${attack.id} has no first-party attack type`);
+        }
+    }
     const normal = attacks?.find(attack => attack.variant === "super");
     const ultra = attacks?.find(attack => attack.variant === "ultra");
     const extra = attacks?.find(attack => attack.variant === "extra");
     const units = attacks?.filter(attack => attack.variant === "unit") ?? [];
     return {
         superAttack: normal?.description ?? "",
-        ...(normal ? { superAttackDetails: toSuperAttackDetails(normal) } : {}),
+        ...(normal ? { superAttackDetails: materializedSuperAttackDetails(normal) } : {}),
         ...(ultra ? {
             ultraSuperAttack: ultra.description,
-            ultraSuperAttackDetails: toSuperAttackDetails(ultra),
+            ultraSuperAttackDetails: materializedSuperAttackDetails(ultra),
         } : {}),
         ...(extra ? {
             exSuperAttack: extra.description,
-            exSuperAttackDetails: toSuperAttackDetails(extra),
+            exSuperAttackDetails: materializedSuperAttackDetails(extra),
         } : {}),
-        ...(units.length > 0 ? { unitSuperAttacks: units.map(attack => toUnitSuperAttack(attack)) } : {}),
+        ...(units.length > 0 ? { unitSuperAttacks: units.map(materializedUnitSuperAttack) } : {}),
     };
 }
 
@@ -143,6 +164,8 @@ function materializeTransformation(
         baseCharacterId,
         name: projection.name,
         releaseDate: projection.releaseDate,
+        ezaReleaseDate: projection.ezaReleaseDate,
+        sezaReleaseDate: projection.sezaReleaseDate,
         isFreeToPlay: projection.isFreeToPlay,
         obtainability: projection.obtainability,
         characterClass: projection.characterClass,
@@ -202,6 +225,8 @@ export function materializeGameDbCharacter(
         maxSALevel: projection.maxSALevel,
         rarity: projection.rarity,
         releaseDate: projection.releaseDate,
+        ezaReleaseDate: projection.ezaReleaseDate,
+        sezaReleaseDate: projection.sezaReleaseDate,
         isFreeToPlay: projection.isFreeToPlay,
         obtainability: projection.obtainability,
         characterClass: projection.characterClass,

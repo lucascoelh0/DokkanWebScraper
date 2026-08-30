@@ -151,6 +151,16 @@ describe("Super Attack effect snapshot integration", function () {
         );
     });
 
+    it("fails closed when only one Super Attack category table is available", () => {
+        const tables = minimalTables();
+        tables.special_views = [{ id: "1", special_category_id: "1" }];
+
+        throws(
+            () => buildGameDbCharacterSnapshots(["1031501"], tables),
+            /Incomplete Super Attack category table inventory/,
+        );
+    });
+
     it("loads specials when present and keeps older source directories compatible", async () => {
         const dataDir = await mkdtemp(join(tmpdir(), "game-db-specials-"));
         try {
@@ -159,6 +169,8 @@ describe("Super Attack effect snapshot integration", function () {
 
             const oldTables = await loadRequiredGameDbTables(sourceConfig);
             deepEqual(oldTables.specials, []);
+            deepEqual(oldTables.special_views, []);
+            deepEqual(oldTables.special_categories, []);
 
             await writeFile(join(dataDir, "specials.csv"), "id,special_set_id,efficacy_type\n1007731,7731,111\n", "utf8");
             const currentTables = await loadRequiredGameDbTables(sourceConfig);
@@ -182,6 +194,7 @@ describe("release-state snapshot projection", function () {
             leader_skill_set_id: "1028060",
             passive_skill_set_id: "3984",
             optimal_awakening_grow_type: "1147",
+            open_at: "2021-02-16 23:00:00",
         }];
         tables.leader_skill_sets = [
             { id: "1028060", name: "Base leader", description: "Ki +3 and HP, ATK & DEF +170%" },
@@ -197,10 +210,10 @@ describe("release-state snapshot projection", function () {
             { id: "3", optimal_awakening_grow_type: "1147", step: "3", lv_max: "150", skill_lv_max: "25", passive_skill_set_id: "5036", leader_skill_set_id: "1028061" },
         ];
         tables.card_specials = [
-            { id: "13330", card_id: "1028061", special_set_id: "5147", style: "Normal", lv_start: "0", eball_num_start: "12" },
-            { id: "13332", card_id: "1028061", special_set_id: "5148", style: "Hyper", lv_start: "0", eball_num_start: "18" },
-            { id: "20432", card_id: "1028061", special_set_id: "9148", style: "Normal", lv_start: "24", eball_num_start: "12" },
-            { id: "20434", card_id: "1028061", special_set_id: "9149", style: "Hyper", lv_start: "24", eball_num_start: "18" },
+            { id: "13330", card_id: "1028061", special_set_id: "5147", style: "Normal", lv_start: "0", eball_num_start: "12", view_id: "100" },
+            { id: "13332", card_id: "1028061", special_set_id: "5148", style: "Hyper", lv_start: "0", eball_num_start: "18", view_id: "101" },
+            { id: "20432", card_id: "1028061", special_set_id: "9148", style: "Normal", lv_start: "24", eball_num_start: "12", view_id: "102" },
+            { id: "20434", card_id: "1028061", special_set_id: "9149", style: "Hyper", lv_start: "24", eball_num_start: "18", view_id: "103" },
         ];
         tables.special_sets = [
             { id: "5147", name: "Base Super Attack" },
@@ -208,6 +221,25 @@ describe("release-state snapshot projection", function () {
             { id: "9148", name: "Extreme Super Attack" },
             { id: "9149", name: "Extreme Ultra Super Attack" },
         ];
+        tables.special_views = [
+            { id: "100", special_category_id: "2" },
+            { id: "101", special_category_id: "1" },
+            { id: "102", special_category_id: "2" },
+            { id: "103", special_category_id: "1" },
+        ];
+        tables.special_categories = [
+            { id: "1", raw_attribute: "1" },
+            { id: "2", raw_attribute: "2" },
+        ];
+        tables.card_awakening_routes = [{
+            id: "eza-release",
+            type: "CardAwakeningRoute::Optimal",
+            card_id: "1028061",
+            awaked_card_id: "1028061",
+            optimal_awakening_type: "1",
+            optimal_awakening_step: "3",
+            open_at: "2021-02-17 06:00:00",
+        }];
 
         const [snapshot] = buildGameDbCharacterSnapshots(["1028061"], tables);
 
@@ -219,8 +251,12 @@ describe("release-state snapshot projection", function () {
         equal(snapshot.releaseStates?.eza?.leaderSkill?.id, "1028061");
         equal(snapshot.releaseStates?.initial.maxSaLevel, 20);
         equal(snapshot.releaseStates?.eza?.maxSaLevel, 25);
+        equal(snapshot.releaseStates?.initial.releaseDate, "2021-02-16T23:00:00.000Z");
+        equal(snapshot.releaseStates?.eza?.releaseDate, "2021-02-17T06:00:00.000Z");
         deepEqual(snapshot.releaseStates?.initial.superAttacks.map(attack => attack.cardSpecialId), ["13330", "13332"]);
         deepEqual(snapshot.releaseStates?.eza?.superAttacks.map(attack => attack.cardSpecialId), ["20432", "20434"]);
+        deepEqual(snapshot.releaseStates?.initial.superAttacks.map(attack => attack.attackType), ["Unarmed", "Ki Blast"]);
+        deepEqual(snapshot.releaseStates?.eza?.superAttacks.map(attack => attack.attackType), ["Unarmed", "Ki Blast"]);
     });
 
     it("does not claim an EZA from an incomplete growth sequence", () => {
@@ -239,6 +275,33 @@ describe("release-state snapshot projection", function () {
 
         equal(snapshot.hasEza, false);
         equal(snapshot.releaseStates?.eza, undefined);
+    });
+
+    it("uses the exact official final awakening route as the SEZA release date", () => {
+        const tables = minimalTables();
+        tables.cards[0].rarity = "4";
+        tables.cards[0].optimal_awakening_grow_type = "seza-growth";
+        tables.optimal_awakening_growths = [{
+            id: "seza-final",
+            optimal_awakening_grow_type: "seza-growth",
+            step: "8",
+            lv_max: "140",
+            skill_lv_max: "15",
+        }];
+        tables.card_awakening_routes = [{
+            id: "seza-release",
+            type: "CardAwakeningRoute::Optimal",
+            card_id: "1031501",
+            awaked_card_id: "1031501",
+            optimal_awakening_type: "2",
+            optimal_awakening_step: "8",
+            open_at: "2026-08-29 09:00:00",
+        }];
+
+        const [snapshot] = buildGameDbCharacterSnapshots(["1031501"], tables);
+
+        equal(snapshot.hasSeza, true);
+        equal(snapshot.releaseStates?.seza?.releaseDate, "2026-08-29T09:00:00.000Z");
     });
 
     it("inherits unchanged leader and passive sets when the final EZA step omits them", () => {

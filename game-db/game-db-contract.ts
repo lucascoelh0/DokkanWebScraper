@@ -1,4 +1,4 @@
-import { ActiveSkillActivationConditionDetails, Classes, Rarities, Types } from "../character";
+import { ActiveSkillActivationConditionDetails, AttackTypes, Classes, Rarities, Types } from "../character";
 import type { GameDbSnapshotAuditedCreatedDomain } from "./game-db-dokkan-field-created-domain";
 
 export type GameDbCharacterClass = Classes | "None";
@@ -51,6 +51,18 @@ export interface GameDbSuperAttack {
     levelStart?: number,
     requiredKi?: number,
     viewId?: string,
+    attackType?: AttackTypes,
+    attackTypeProvenance?: {
+        specialView: {
+            table: "special_views",
+            rowId: string,
+        },
+        specialCategory?: {
+            table: "special_categories",
+            rowId: string,
+            rawAttribute: number,
+        },
+    },
     increaseRate?: number,
     levelBonus?: number,
     cardCostumeConditionId?: string,
@@ -224,6 +236,7 @@ export type GameDbCharacterReleaseStateName = "initial" | "eza" | "seza";
 
 export interface GameDbCharacterReleaseState {
     releaseState: GameDbCharacterReleaseStateName,
+    releaseDate?: string,
     maxLevel: number,
     maxSaLevel: number,
     leaderSkill?: GameDbLeaderSkillSet,

@@ -46,7 +46,7 @@ export function toSuperAttackDetails(
     return {
         name: attack.name,
         effect: attack.description,
-        type: fallback?.type,
+        type: attack.type ?? fallback?.type,
         ki: attack.requiredKi,
         style: attackStyle(attack.variant) ?? fallback?.style,
         condition: attack.condition,
@@ -62,7 +62,7 @@ export function toUnitSuperAttack(
     return {
         name: attack.name,
         effect: attack.description,
-        type: fallback?.type,
+        type: attack.type ?? fallback?.type,
         ki: attack.requiredKi,
         style: attackStyle(attack.variant) ?? fallback?.style,
         unitSuperAttack: [attack.name, attack.description].filter(Boolean).join(": "),
@@ -77,6 +77,11 @@ function applyEzaSuperAttacks(
     attacks: GameDbProjectionSuperAttackDetails[],
     changedFields: Set<string>,
 ): void {
+    for (const attack of attacks) {
+        if (!attack.type) {
+            throw new Error(`game DB EZA Super Attack ${attack.id} has no first-party attack type`);
+        }
+    }
     const normal = attacks.find(attack => attack.variant === "super");
     if (normal) {
         character.ezaSuperAttack = normal.description;
@@ -149,6 +154,16 @@ function applyProjection(
     const changedFields = new Set<string>();
 
     applyActiveSkillActivationConditions(character, projection, changedFields);
+
+    if (projection.ezaReleaseDate) {
+        character.ezaReleaseDate = projection.ezaReleaseDate;
+        changedFields.add("ezaReleaseDate");
+    }
+
+    if (projection.sezaReleaseDate) {
+        character.sezaReleaseDate = projection.sezaReleaseDate;
+        changedFields.add("sezaReleaseDate");
+    }
 
     if (projection.ezaLeaderSkill) {
         character.ezaLeaderSkill = projection.ezaLeaderSkill;

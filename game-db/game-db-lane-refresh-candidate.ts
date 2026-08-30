@@ -32,6 +32,7 @@ import { composeFirstPartyPortraitArtifacts } from "./first-party-portrait-compo
 import { GameDbRow, normalizeDbId, parseGameDbTableCsvText } from "./game-db-source";
 import {
     FIRST_PARTY_EXPORT_GAME_DB_TABLES,
+    SUPER_ATTACK_CATEGORY_GAME_DB_TABLES,
     SUPER_ATTACK_EFFECT_GAME_DB_TABLES,
 } from "./game-db-table-inventory";
 import { buildGameDbTransformationActivationContract } from "./game-db-transformation-activation";
@@ -181,7 +182,11 @@ function inventoryReport(inventory: SourceInventory): Omit<SourceInventory, "byt
 }
 
 function loadInventoriedGameDbTables(inventory: SourceInventory): Record<string, GameDbRow[]> {
-    const tableNames = [...REQUIRED_GAME_DB_TABLES, ...SUPER_ATTACK_EFFECT_GAME_DB_TABLES];
+    const tableNames = [
+        ...REQUIRED_GAME_DB_TABLES,
+        ...SUPER_ATTACK_EFFECT_GAME_DB_TABLES,
+        ...SUPER_ATTACK_CATEGORY_GAME_DB_TABLES,
+    ];
     return Object.fromEntries(tableNames.map(tableName => {
         const path = `${tableName}.csv`;
         const bytes = inventory.bytesByPath.get(path);
