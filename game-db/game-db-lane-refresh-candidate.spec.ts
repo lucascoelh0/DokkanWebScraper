@@ -3,6 +3,7 @@ import { describe, it } from "mocha";
 import type { Character } from "../character";
 import {
     applyAdditiveCategoryAssignments,
+    mergeReleaseProjections,
     parseGameDbLaneRefreshArgs,
     resolveOfficialCategoryAssignments,
 } from "./game-db-lane-refresh-candidate";
@@ -45,6 +46,21 @@ describe("game DB lane refresh candidate", () => {
             "--baseline-dir", "baseline",
             "--output-dir", "output",
         ]), /cannot be both new and release-state targets: 1034001/);
+    });
+
+    it("does not duplicate a related form that is also an explicit release target", () => {
+        const root = { id: "1024291", source: "root" };
+        const explicitlyTargetedForm = { id: "4024301", source: "explicit" };
+        const relatedCopy = { id: "4024301", source: "related" };
+        const otherRelatedForm = { id: "4024302", source: "related" };
+
+        deepStrictEqual(
+            mergeReleaseProjections(
+                [root, explicitlyTargetedForm],
+                [relatedCopy, otherRelatedForm],
+            ),
+            [root, explicitlyTargetedForm, otherRelatedForm],
+        );
     });
 
     it("resolves category membership by official ID and rejects ambiguous display labels", () => {

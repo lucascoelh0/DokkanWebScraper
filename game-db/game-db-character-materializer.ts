@@ -1,6 +1,5 @@
 import type {
     Character,
-    PassiveDetails,
     PortraitLayers,
     Transformation,
 } from "../character";
@@ -13,6 +12,7 @@ import {
     toSuperAttackDetails,
     toUnitSuperAttack,
 } from "./game-db-character-release-overlay";
+import { rebindTransformationPassiveDetails } from "./game-db-transformation-passive-details";
 
 export interface MaterializedPortraitAsset {
     portraitURL: string,
@@ -107,47 +107,6 @@ function assertPlayableClass(
     if (projection.characterClass !== "Super" && projection.characterClass !== "Extreme") {
         throw new Error(`game DB character ${projection.id} has no playable class`);
     }
-}
-
-function rebindTransformationPassiveDetails(
-    details: PassiveDetails | undefined,
-    baseCharacterId: string,
-    formId: string,
-): PassiveDetails | undefined {
-    if (!details) return undefined;
-    const rebound = JSON.parse(JSON.stringify(details)) as PassiveDetails;
-    for (const evidence of rebound.structuralSource?.evidence ?? []) {
-        const expectedStateKey = `${formId}:${formId}:${evidence.releaseState}`;
-        const expectedEvidenceId = [
-            expectedStateKey,
-            evidence.channel,
-            evidence.passiveSkillId ?? "unknown",
-            evidence.anchor.sourceSpan.start,
-        ].join(":");
-        if (evidence.characterId !== formId || evidence.formId !== formId
-            || evidence.stateKey !== expectedStateKey || evidence.id !== expectedEvidenceId
-            || evidence.channel !== "passive") {
-            throw new Error(`related form ${formId} has mismatched structural passive evidence`);
-        }
-        evidence.characterId = baseCharacterId;
-        evidence.stateKey = `${baseCharacterId}:${evidence.formId}:${evidence.releaseState}`;
-        evidence.id = [
-            evidence.stateKey,
-            evidence.channel,
-            evidence.passiveSkillId ?? "unknown",
-            evidence.anchor.sourceSpan.start,
-        ].join(":");
-    }
-    for (const evidence of rebound.conditionEvidence ?? []) {
-        const expectedStateKey = `${formId}:${formId}:${evidence.releaseState}`;
-        if (evidence.characterId !== formId || evidence.formId !== formId
-            || evidence.stateKey !== expectedStateKey) {
-            throw new Error(`related form ${formId} has mismatched passive condition evidence`);
-        }
-        evidence.characterId = baseCharacterId;
-        evidence.stateKey = `${baseCharacterId}:${evidence.formId}:${evidence.releaseState}`;
-    }
-    return rebound;
 }
 
 function materializeTransformation(

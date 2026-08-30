@@ -731,6 +731,7 @@ async function buildTransformations(
     initialEntries: FyiTransformationPathEntry[],
     client: DokkanFyiClient,
 ): Promise<Transformation[]> {
+    const inheritedAwakening = inheritedTransformationAwakening(rootCharacter);
     const visited = new Set<number>();
     const queue: TransformationBuildEntry[] = initialEntries.map(entry => ({
         entry,
@@ -753,6 +754,7 @@ async function buildTransformations(
             targetPage.payload.props.character,
             current.entry,
             targetPage.version,
+            inheritedAwakening,
         ));
 
         for (const nestedEntry of targetPage.payload.props.transformationPath ?? []) {
@@ -777,6 +779,7 @@ async function attachStandbyMetadataToTransformations(
     }
 
     const nextTransformations = [...transformations];
+    const inheritedAwakening = inheritedTransformationAwakening(rootCharacter);
 
     if (standby.targetCharacterId) {
         const standbyTransformation = await ensureTransformation(
@@ -811,6 +814,7 @@ async function attachStandbyMetadataToTransformations(
                 source: "Standby Skill",
             },
             client,
+            inheritedAwakening,
         );
 
         standbyTransformation.finishSkills = standby.finishSkills;
@@ -858,6 +862,7 @@ async function attachStandbyMetadataToTransformations(
                 source: "Finish Effect",
             },
             client,
+            inheritedAwakening,
         );
 
         finishTransformation.transformationSource = "finish-skill";
@@ -876,6 +881,7 @@ async function ensureTransformation(
     baseCharacterId: number,
     fallbackEntry: FyiTransformationPathEntry,
     client: DokkanFyiClient,
+    inheritedAwakening?: InheritedTransformationAwakening,
 ): Promise<Transformation> {
     const existing = transformations.find(transformation => transformation.id === targetCharacterId);
     if (existing) {
@@ -888,6 +894,7 @@ async function ensureTransformation(
         targetPage.payload.props.character,
         fallbackEntry,
         targetPage.version,
+        inheritedAwakening,
     );
     transformations.push(transformation);
     return transformation;
@@ -898,9 +905,10 @@ function mapDokkanFyiTransformation(
     character: FyiCharacter,
     entry: FyiTransformationPathEntry,
     sourceVersion: string,
+    inheritedAwakening?: InheritedTransformationAwakening,
 ): Transformation {
     const initialState = selectInitialState(character);
-    const awakenedState = selectAwakenedState(character);
+    const awakenedState = selectAwakenedState(character, inheritedAwakening?.latestType);
     const releaseState = awakenedState
         ? releaseStateFromLatestType(awakenedState.latestType)
         : "initial";
@@ -937,8 +945,10 @@ function mapDokkanFyiTransformation(
         legacyId: character.thumbnail_id?.toString(),
         name: cleanInlineText(character.name),
         releaseDate: releaseDate(character.release_dates?.initial),
-        ezaReleaseDate: releaseDate(character.release_dates?.eza),
-        sezaReleaseDate: releaseDate(character.release_dates?.seza),
+        ezaReleaseDate: releaseDate(character.release_dates?.eza)
+            ?? (releaseState === "eza" ? inheritedAwakening?.ezaReleaseDate : undefined),
+        sezaReleaseDate: releaseDate(character.release_dates?.seza)
+            ?? (releaseState === "seza" ? inheritedAwakening?.sezaReleaseDate : undefined),
         summonable: summonableLabel(character),
         isSummonable: isSummonable(character),
         isFreeToPlay: obtainability.isFreeToPlay,
@@ -1022,8 +1032,14 @@ export function selectInitialState(character: FyiCharacter): CurrentState {
     };
 }
 
-export function selectAwakenedState(character: FyiCharacter): CurrentState | undefined {
-    const latestType = character.release_dates?.latest_type;
+export function selectAwakenedState(
+    character: FyiCharacter,
+    inheritedLatestType?: "eza" | "seza",
+): CurrentState | undefined {
+    const localLatestType = character.release_dates?.latest_type;
+    const latestType = localLatestType === "eza" || localLatestType === "seza"
+        ? localLatestType
+        : inheritedLatestType;
     if ((latestType !== "eza" && latestType !== "seza") || !character.extreme_z_awakening) {
         return undefined;
     }
@@ -1035,6 +1051,26 @@ export function selectAwakenedState(character: FyiCharacter): CurrentState | und
         leaderSkill: character.extreme_z_awakening.leader_skill,
         passiveSkill: character.extreme_z_awakening.passive_skill,
         currentSuperAttacks: preferredSuperAttacks(character.super_attacks ?? [], true),
+    };
+}
+
+interface InheritedTransformationAwakening {
+    latestType: "eza" | "seza",
+    ezaReleaseDate?: string,
+    sezaReleaseDate?: string,
+}
+
+function inheritedTransformationAwakening(
+    rootCharacter: FyiCharacter,
+): InheritedTransformationAwakening | undefined {
+    const awakenedState = selectAwakenedState(rootCharacter);
+    // A form payload exposes only one generic `extreme_z_awakening` object. An
+    // owning EZA safely identifies that object as EZA, but an owning SEZA does
+    // not prove whether the form object is its EZA or SEZA revision.
+    if (!awakenedState || awakenedState.latestType !== "eza") return undefined;
+    return {
+        latestType: "eza",
+        ezaReleaseDate: releaseDate(rootCharacter.release_dates?.eza),
     };
 }
 

@@ -229,6 +229,130 @@ describe("selectAwakenedState", function () {
     equal(state?.maxLevel, 0);
     equal(state?.maxSuperAttackLevel, 0);
   });
+
+  it("inherits an owning card's EZA state only when the form has an awakened payload", () => {
+    const state = selectAwakenedState({
+      release_dates: { latest_type: "initial" },
+      extreme_z_awakening: {
+        max_level: 140,
+        max_super_attack_level: 15,
+        passive_skill: { name: "EZA form passive", description: "EZA form effect" },
+      },
+    } as any, "eza");
+
+    equal(state?.latestType, "eza");
+    equal(state?.passiveSkill?.description, "EZA form effect");
+    equal(selectAwakenedState({
+      release_dates: { latest_type: "initial" },
+      extreme_z_awakening: null,
+    } as any, "eza"), undefined);
+  });
+});
+
+describe("mapDokkanFyiCharacter transformed release inheritance", function () {
+  it("maps an EZA transformed passive and inherited EZA release date", async () => {
+    const common = {
+      canonical_id: 1,
+      character_id: 1,
+      rarity: 3,
+      rarity_text: "UR",
+      type: 2,
+      type_text: "STR",
+      awakening_type: 0,
+      awakening_type_text: "Super",
+      stats: { hp: {}, atk: {}, def: {} },
+      max_level: 120,
+      max_super_attack_level: 10,
+      cost: 42,
+      has_images: true,
+    };
+    const form = {
+      ...common,
+      id: 4024301,
+      base_character_id: 4024301,
+      thumbnail_id: 4024301,
+      name: "Super Saiyan Gohan (Youth)",
+      release_dates: { initial: "2019-09-01T00:00:00Z", latest_type: "initial" },
+      passive_skill: { name: "Base form passive", description: "Base form effect" },
+      super_attacks: [],
+      extreme_z_awakening: {
+        max_level: 140,
+        max_super_attack_level: 15,
+        passive_skill: { name: "Surpass Your Dad!", description: "EZA transformed effect" },
+      },
+    };
+    const root = {
+      ...common,
+      id: 1024291,
+      base_character_id: 1024291,
+      thumbnail_id: 1024291,
+      name: "Super Saiyan Goku/Super Saiyan Gohan (Youth)",
+      release_dates: {
+        initial: "2019-09-01T00:00:00Z",
+        eza: "2025-04-03T06:00:00Z",
+        latest_type: "eza",
+      },
+      passive_skill: { name: "Base root passive", description: "Base root effect" },
+      super_attacks: [],
+      extreme_z_awakening: {
+        max_level: 140,
+        max_super_attack_level: 15,
+        passive_skill: { name: "EZA root passive", description: "EZA root effect" },
+      },
+    };
+    const mapped = await mapDokkanFyiCharacter({
+      version: "fixture-version",
+      payload: {
+        props: {
+          character: root,
+          transformationPath: [{
+            character: form,
+            description: "Exchange with Gohan",
+            source: "Active Skill",
+          }],
+        },
+      },
+    } as any, {
+      fetchCharacterPage: async () => ({
+        version: "fixture-version",
+        payload: { props: { character: form, transformationPath: [] } },
+      }),
+    } as any);
+
+    const transformed = mapped.transformations?.[0];
+    equal(transformed?.ezaReleaseDate, "2025-04-03T06:00:00.000Z");
+    equal(transformed?.ezaPassive, "EZA transformed effect");
+    equal(transformed?.ezaPassiveDetails?.conditionEvidence?.[0]?.stateKey, undefined);
+
+    const formWithoutAwakenedPayload = {
+      ...form,
+      id: 4024302,
+      base_character_id: 4024302,
+      thumbnail_id: 4024302,
+      extreme_z_awakening: null,
+    };
+    const mappedWithoutAwakenedPayload = await mapDokkanFyiCharacter({
+      version: "fixture-version",
+      payload: {
+        props: {
+          character: root,
+          transformationPath: [{
+            character: formWithoutAwakenedPayload,
+            description: "Exchange with another form",
+            source: "Active Skill",
+          }],
+        },
+      },
+    } as any, {
+      fetchCharacterPage: async () => ({
+        version: "fixture-version",
+        payload: { props: { character: formWithoutAwakenedPayload, transformationPath: [] } },
+      }),
+    } as any);
+
+    equal(mappedWithoutAwakenedPayload.transformations?.[0].ezaReleaseDate, undefined);
+    equal(mappedWithoutAwakenedPayload.transformations?.[0].ezaPassive, undefined);
+  });
 });
 
 describe("currentMaxStat", function () {

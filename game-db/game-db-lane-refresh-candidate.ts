@@ -51,6 +51,21 @@ interface LaneRefreshOptions {
     catalogPath: string,
 }
 
+export function mergeReleaseProjections<T extends { id: string }>(
+    releaseRoots: T[],
+    relatedForms: T[],
+): T[] {
+    const merged = new Map<string, T>();
+    for (const projection of releaseRoots) {
+        if (merged.has(projection.id)) throw new Error(`duplicate release-root projection ${projection.id}`);
+        merged.set(projection.id, projection);
+    }
+    for (const projection of relatedForms) {
+        if (!merged.has(projection.id)) merged.set(projection.id, projection);
+    }
+    return [...merged.values()];
+}
+
 function csvList(value: string | undefined, option: string, allowEmpty = false): string[] {
     const values = value?.split(",").map(item => item.trim()).filter(Boolean) ?? [];
     if ((!allowEmpty && values.length === 0) || new Set(values).size !== values.length) {
@@ -389,19 +404,35 @@ export async function buildGameDbLaneRefreshCandidate(options: LaneRefreshOption
         { sourceVersion: metadata.dbVersion },
     );
     const newProjections = requestedProjections.filter(projection => options.newCardIds.includes(projection.id));
-    const relatedIds = [...new Set(newProjections.flatMap(projection => projection.transformations.map(item => item.id)))];
+    const releaseRootProjections = requestedProjections.filter(projection =>
+        options.releaseStateCardIds.includes(projection.id));
+    const newRelatedIds = [...new Set(
+        newProjections.flatMap(projection => projection.transformations.map(item => item.id)),
+    )];
+    const releaseRelatedIds = [...new Set(
+        releaseRootProjections.flatMap(projection => projection.transformations.map(item => item.id)),
+    )];
+    const relatedIds = [...new Set([...newRelatedIds, ...releaseRelatedIds])];
     const relatedProjections = relatedIds.length > 0
         ? projectGameDbCharactersToDokkanpanion(
             buildGameDbCharacterSnapshots(relatedIds, tables),
             { sourceVersion: metadata.dbVersion },
         )
         : [];
-    const allMaterializedProjections = [...newProjections, ...relatedProjections];
+    const newRelatedIdSet = new Set(newRelatedIds);
+    const releaseRelatedIdSet = new Set(releaseRelatedIds);
+    const allMaterializedProjections = [
+        ...newProjections,
+        ...relatedProjections.filter(projection => newRelatedIdSet.has(projection.id)),
+    ];
     const projectionById = new Map(allMaterializedProjections.map(projection => [projection.id, projection]));
     if (projectionById.size !== allMaterializedProjections.length) throw new Error("duplicate new/form projection ID");
     const portraits = await materializePortraits(allMaterializedProjections, options);
 
-    const releaseProjections = requestedProjections.filter(projection => options.releaseStateCardIds.includes(projection.id));
+    const releaseProjections = mergeReleaseProjections(
+        releaseRootProjections,
+        relatedProjections.filter(projection => releaseRelatedIdSet.has(projection.id)),
+    );
     const releaseOverlay = options.releaseStateCardIds.length > 0
         ? overlayGameDbCharacterReleaseStates(
             baseline.characters,
