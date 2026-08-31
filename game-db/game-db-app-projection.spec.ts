@@ -414,6 +414,69 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
         equal(source?.evidence[1].anchor.normalizedText, "ATK 200%");
     });
 
+    it("keeps additive Standard and Survival passive channels distinct", () => {
+        const projection = projectGameDbCharacterToDokkanpanion({
+            ...makeBaseSnapshot(),
+            passiveSkillSet: {
+                id: "5047",
+                name: "Captain's Counterattack",
+                itemizedDescription: "*Basic effect(s)*\n- ATK & DEF 250%{passiveImg:up_g}",
+                groupItemizedDescription: [
+                    "*When facing only 1 enemy, or when there is a Super Class enemy*",
+                    "- Guards all attacks",
+                    "*Per \"Planet Namek Saga\" Category ally on the team*",
+                    "- ATK & DEF 100% (up to 300%)",
+                    "*For every attack performed*",
+                    "- ATK 30% and DEF 20%",
+                ].join("\n"),
+                characterItemizedDescription: [
+                    "*Per \"Ginyu Force\" Category ally on the team*",
+                    "- ATK & DEF 180%{passiveImg:up_g} (up to 540%)",
+                    "*When there is a \"Planet Namek Saga\" Category enemy*",
+                    "- Attacks are effective against all Types",
+                    "*When attacking*",
+                    "- ATK 100% per LOST ally in the same group",
+                    "*When receiving an attack*",
+                    "- DEF 100% per LOST ally in the same group",
+                ].join("\n"),
+                passiveSkills: [],
+            },
+        }, { sourceVersion: "1787900894" });
+
+        equal(projection.passiveDetails?.text, "Basic effect(s)\n- ATK & DEF 250%");
+        equal(projection.passiveDetails?.modes?.length, 2);
+        deepEqual(projection.passiveDetails?.modes?.map(mode => ({
+            mode: mode.mode,
+            availability: mode.availability,
+            label: mode.label,
+            payloadField: mode.structuralSource?.evidence[0]?.provenance.payloadField,
+        })), [
+            {
+                mode: "standard",
+                availability: "normal",
+                label: "Standard",
+                payloadField: undefined,
+            },
+            {
+                mode: "survival",
+                availability: "dokkan_frontier",
+                label: "Survival",
+                payloadField: "passive_skill_sets.character_itemized_description",
+            },
+        ]);
+        deepEqual(projection.passiveDetails?.modes?.[0].sections?.map(section => section.label), [
+            "When facing only 1 enemy, or when there is a Super Class enemy",
+            "Per \"Planet Namek Saga\" Category ally on the team",
+            "For every attack performed",
+        ]);
+        deepEqual(projection.passiveDetails?.modes?.[1].sections?.map(section => section.label), [
+            "Per \"Ginyu Force\" Category ally on the team",
+            "When there is a \"Planet Namek Saga\" Category enemy",
+            "When attacking",
+            "When receiving an attack",
+        ]);
+    });
+
     it("projects first-party passive enemy-status markers as typed condition evidence", () => {
         const rawPassive = [
             "*When attacking with 12 or more Ki if the target enemy is in the following status: {passiveImg:atk_down}, {passiveImg:def_down} or {passiveImg:astute}*",
@@ -655,7 +718,7 @@ describe("projectGameDbCharacterToDokkanpanion", function () {
             }],
         });
 
-        equal(projection.domain, "Earth Shrouded in Minus Energy");
+        equal(projection.domain, "Earth Shrouded in Minus Energy: Enemies' and allies' ATK +25%");
         deepEqual(projection.createdDomain, {
             semanticStatus: "snapshot-audited",
             sourceSnapshotId: "glb-db-1782367825",

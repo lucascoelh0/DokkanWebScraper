@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { mkdir, readFile, writeFile } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
 import { resolve } from "path";
 import { gzipSync } from "zlib";
 import { DatasetManifest } from "../dataset-artifacts";
@@ -14,11 +14,10 @@ import {
 } from "./game-db-experiment";
 import { readSourceSettings } from "./game-db-source-settings";
 import {
-    buildSnapshotAuditedCreatedDomainEnrichedCharacters,
-    CREATED_DOMAIN_AUDITED_SNAPSHOT_ID,
+    buildCurrentSnapshotAuditedCreatedDomainProjection,
+    enrichGameDbCharacterSnapshotsWithCreatedDomains,
 } from "./game-db-dokkan-field-created-domain";
-import { buildGameDbDokkanFieldSidecar, loadGameDbDokkanFieldSidecarTablesIfPresent } from "./game-db-dokkan-field-sidecar";
-import { buildGameDbDokkanFieldSidecarArtifact } from "./game-db-dokkan-field-sidecar-artifact";
+import { loadGameDbDokkanFieldSidecarTablesIfPresent } from "./game-db-dokkan-field-sidecar";
 import { GameDbCharacterSnapshot } from "./game-db-contract";
 import { writeFormattedJson } from "../format-json";
 import {
@@ -27,13 +26,14 @@ import {
     normalizeDbId,
     parseDbDate,
     parseDbInt,
+    readGameDbTable,
     resolveGameDbSourceConfig,
 } from "./game-db-source";
 
 const PRIMARY_CARD_ID_MAX = 4_000_000;
 const MINIMUM_HP_INIT = 300;
 const DEFAULT_OUTPUT_DIR = resolve(__dirname, "data", "game-db-dataset", "latest");
-export const GAME_DB_DATASET_CONTENT_REVISION = "super-attack-details-v4";
+export const GAME_DB_DATASET_CONTENT_REVISION = "created-domain-details-v5";
 
 export function resolveCreatedDomainSourceSnapshotId(
     sourceSettings?: GameDbDatasetReport["sourceSettings"],
@@ -69,7 +69,7 @@ export interface GameDbDatasetReport {
         glbApkVersion?: string,
     },
     createdDomainEnrichment: {
-        status: "absent" | "snapshot-audited" | "unsupported-snapshot",
+        status: "absent" | "snapshot-audited",
         sourceSnapshotId?: string,
         linkCount: number,
     },
@@ -96,29 +96,21 @@ export async function enrichGameDbDatasetCreatedDomainsIfSupported(options: {
         options.sourceSettings,
         options.sourceSnapshotIdHint,
     );
-    if (sourceSnapshotId !== CREATED_DOMAIN_AUDITED_SNAPSHOT_ID) {
-        return {
-            characters: options.characters,
-            report: { status: "unsupported-snapshot", sourceSnapshotId, linkCount: 0 },
-        };
+    if (!sourceSnapshotId) {
+        throw new Error("Created Domain enrichment requires an identified first-party snapshot");
     }
 
-    const sidecarArtifact = buildGameDbDokkanFieldSidecarArtifact(
-        buildGameDbDokkanFieldSidecar(sourceSnapshotId, fieldTables),
-    );
-    const activeSkillSetsCsv = await readFile(resolve(options.sourceConfig.dataDir, "active_skill_sets.csv"));
-    const enriched = buildSnapshotAuditedCreatedDomainEnrichedCharacters({
-        characters: options.characters,
-        sidecarPayload: sidecarArtifact.payload,
-        sidecarManifest: sidecarArtifact.manifest,
-        activeSkillSetsCsv,
+    const projection = buildCurrentSnapshotAuditedCreatedDomainProjection({
+        sourceSnapshotId,
+        fieldTables,
+        activeSkillSetRows: await readGameDbTable(options.sourceConfig, "active_skill_sets"),
     });
     return {
-        characters: enriched.characters,
+        characters: enrichGameDbCharacterSnapshotsWithCreatedDomains(options.characters, projection),
         report: {
             status: "snapshot-audited",
             sourceSnapshotId,
-            linkCount: Object.keys(enriched.projection.byActiveSkillSetId).length,
+            linkCount: Object.keys(projection.byActiveSkillSetId).length,
         },
     };
 }

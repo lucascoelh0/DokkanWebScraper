@@ -1,5 +1,8 @@
 import { deepEqual, equal, throws } from "assert";
+import { mkdtemp, rm, writeFile } from "fs/promises";
 import { describe, it } from "mocha";
+import { join } from "path";
+import { tmpdir } from "os";
 import {
     applyOptionalCardLimit,
     datasetVersionFromSourceSettings,
@@ -10,6 +13,16 @@ import {
     selectPrimaryGameDbCardIds,
 } from "./game-db-dataset";
 import { GameDbRow } from "./game-db-source";
+import { AUDITED_CREATED_DOMAIN_LINKS } from "./game-db-dokkan-field-created-domain";
+import type { GameDbCharacterSnapshot } from "./game-db-contract";
+
+function csv(rows: GameDbRow[], headers: string[]): string {
+    const encode = (value: unknown) => {
+        const text = String(value ?? "");
+        return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    return `${headers.join(",")}\n${rows.map(row => headers.map(header => encode(row[header])).join(",")).join("\n")}\n`;
+}
 
 describe("isPrimaryPlayableCardRow", function () {
     it("accepts released base card rows and rejects temporary or future rows", () => {
@@ -115,6 +128,64 @@ describe("enrichGameDbDatasetCreatedDomainsIfSupported", function () {
         equal(result.characters, characters);
         deepEqual(result.report, { status: "absent", linkCount: 0 });
     });
+
+    it("audits and enriches a newer first-party snapshot instead of dropping Omega's Domain", async () => {
+        const dataDir = await mkdtemp(join(tmpdir(), "dokkan-created-domain-"));
+        try {
+            const fields = [...new Map(AUDITED_CREATED_DOMAIN_LINKS.map(link => [link.fieldId, link])).values()];
+            await Promise.all([
+                writeFile(join(dataDir, "dokkan_fields.csv"), csv(fields.map(link => ({
+                    id: link.fieldId,
+                    dokkan_field_efficacy_set_id: link.fieldId,
+                    name: link.fieldName,
+                    description: `${link.fieldName} field effect`,
+                    resource_id: link.resourceId,
+                })), ["id", "dokkan_field_efficacy_set_id", "name", "description", "resource_id"])),
+                writeFile(join(dataDir, "dokkan_field_efficacy_sets.csv"), csv(
+                    fields.map(link => ({ id: link.fieldId })),
+                    ["id"],
+                )),
+                writeFile(join(dataDir, "dokkan_field_efficacies.csv"), csv([], [
+                    "id", "dokkan_field_efficacy_set_id",
+                ])),
+                writeFile(join(dataDir, "dokkan_field_active_skill_set_relations.csv"), csv(
+                    AUDITED_CREATED_DOMAIN_LINKS.map(link => ({
+                        id: link.relationRowId,
+                        dokkan_field_id: link.fieldId,
+                        active_skill_set_id: link.activeSkillSetId,
+                    })),
+                    ["id", "dokkan_field_id", "active_skill_set_id"],
+                )),
+                writeFile(join(dataDir, "dokkan_field_passive_skill_relations.csv"), csv([], [
+                    "id", "dokkan_field_id", "passive_skill_id",
+                ])),
+                writeFile(join(dataDir, "active_skill_sets.csv"), csv(
+                    AUDITED_CREATED_DOMAIN_LINKS.map(link => ({
+                        id: link.activeSkillSetId,
+                        effect_description: `Creates the Domain "${link.fieldName}" for 3 turns`,
+                    })),
+                    ["id", "effect_description"],
+                )),
+            ]);
+            const omega = {
+                id: "1031501",
+                activeSkillSets: [{ id: "323" }],
+            } as unknown as GameDbCharacterSnapshot;
+
+            const result = await enrichGameDbDatasetCreatedDomainsIfSupported({
+                characters: [omega],
+                sourceConfig: { sourceRoot: dataDir, dataDir },
+                sourceSnapshotIdHint: "glb-db-1787900894",
+            });
+
+            equal(result.report.status, "snapshot-audited");
+            equal(result.report.linkCount, 15);
+            equal(result.characters[0].activeSkillSets[0].createdDomain?.field.name,
+                "Earth Shrouded in Minus Energy");
+        } finally {
+            await rm(dataDir, { recursive: true, force: true });
+        }
+    });
 });
 
 describe("Created Domain dataset release identity", function () {
@@ -122,12 +193,12 @@ describe("Created Domain dataset release identity", function () {
         equal(datasetVersionFromSourceSettings("2026-01-01T00:00:00.000Z", {
             glbDbVersion: 1782367825,
             glbAssetVersion: 1782367204,
-        }), "glb-db-1782367825__asset-1782367204__super-attack-details-v4");
+        }), "glb-db-1782367825__asset-1782367204__created-domain-details-v5");
         equal(datasetVersionFromSourceSettings(
             "2026-01-01T00:00:00.000Z",
             undefined,
             ["glb-db-1782367825"],
-        ), "glb-db-1782367825__super-attack-details-v4");
+        ), "glb-db-1782367825__created-domain-details-v5");
     });
 
     it("uses the explicit hint and rejects conflicting source settings", () => {

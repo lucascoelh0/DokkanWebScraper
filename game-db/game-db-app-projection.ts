@@ -12,6 +12,8 @@ import {
     LeaderSkillDetails,
     PassiveConditionEvidence,
     PassiveDetails,
+    PassiveModeDetails,
+    PassiveSection,
     PassiveEnemyStatus,
     PortraitSpec,
     Rarities,
@@ -445,20 +447,88 @@ function gameDbPassiveStructuralSource(
     return evidence.length > 0 ? { rawText, rawTextSha256, normalizedTextSha256, evidence } : undefined;
 }
 
-function passiveDescription(passiveSkillSet?: GameDbPassiveSkillSet): {
-    rawText: string,
+function passiveDescriptionDetails(
+    passiveSkillSet: GameDbPassiveSkillSet | undefined,
+    rawText: string | undefined,
     payloadField: GameDbPassiveDescriptionField,
-} {
-    if (passiveSkillSet?.itemizedDescription) {
-        return { rawText: passiveSkillSet.itemizedDescription, payloadField: "passive_skill_sets.itemized_description" };
-    }
-    if (passiveSkillSet?.groupItemizedDescription) {
-        return { rawText: passiveSkillSet.groupItemizedDescription, payloadField: "passive_skill_sets.group_itemized_description" };
-    }
+    context?: {
+        characterId: string,
+        releaseState: GameDbCharacterReleaseState["releaseState"],
+        sourceVersion: string,
+    },
+): Omit<PassiveModeDetails, "mode" | "availability" | "label"> | undefined {
+    const text = cleanMultilineText(rawText);
+    if (!text) return undefined;
+
+    const lines = linesFromText(text);
+    const structuralSource = context && passiveSkillSet
+        ? gameDbPassiveStructuralSource(rawText ?? "", text, {
+            ...context,
+            payloadField,
+            passiveSkillId: passiveSkillSet.id,
+        })
+        : undefined;
+    const conditionEvidence = context && passiveSkillSet
+        ? gameDbPassiveConditionEvidence(rawText ?? "", text, {
+            ...context,
+            payloadField,
+            passiveSkillId: passiveSkillSet.id,
+        })
+        : [];
+
     return {
-        rawText: passiveSkillSet?.characterItemizedDescription ?? "",
-        payloadField: "passive_skill_sets.character_itemized_description",
+        text,
+        lines,
+        sections: lines ? splitGameDbPassiveSections(rawText ?? "", lines) : undefined,
+        ...(conditionEvidence.length > 0 ? { conditionEvidence } : {}),
+        ...(structuralSource ? { structuralSource } : {}),
+        sourceSkillId: passiveSkillSet?.id,
     };
+}
+
+function splitGameDbPassiveSections(rawText: string, normalizedLines: string[]): PassiveSection[] {
+    const sections: PassiveSection[] = [];
+    let current: PassiveSection | undefined;
+    let foundStructuralHeader = false;
+    const pushCurrent = () => {
+        if (current && (current.label || current.lines.length > 0)) sections.push(current);
+        current = undefined;
+    };
+
+    for (const rawLine of rawText.split(/\r?\n/)) {
+        const trimmed = rawLine.trim();
+        if (!trimmed) continue;
+        const structuralHeader = trimmed.match(/^\*([^*]+)\*$/);
+        if (structuralHeader) {
+            pushCurrent();
+            current = {
+                label: cleanMultilineText(structuralHeader[1]) || undefined,
+                lines: [],
+            };
+            foundStructuralHeader = true;
+            continue;
+        }
+
+        const bullet = trimmed.match(/^-\s*(.*)$/);
+        if (bullet) {
+            if (!current) current = { lines: [] };
+            const line = cleanMultilineText(bullet[1]);
+            if (line) current.lines.push(line);
+            continue;
+        }
+
+        const continuation = cleanMultilineText(trimmed);
+        if (!continuation) continue;
+        if (!current) current = { lines: [] };
+        if (current.lines.length === 0) {
+            current.lines.push(continuation);
+        } else {
+            current.lines[current.lines.length - 1] =
+                `${current.lines[current.lines.length - 1]} ${continuation}`.trim();
+        }
+    }
+    pushCurrent();
+    return foundStructuralHeader ? sections : splitPassiveSections(normalizedLines);
 }
 
 function passiveDetailsFromSkillSet(
@@ -469,37 +539,48 @@ function passiveDetailsFromSkillSet(
         sourceVersion: string,
     },
 ): PassiveDetails | undefined {
-    const { rawText, payloadField } = passiveDescription(passiveSkillSet);
-    const text = cleanMultilineText(rawText);
+    const basic = passiveDescriptionDetails(
+        passiveSkillSet,
+        passiveSkillSet?.itemizedDescription,
+        "passive_skill_sets.itemized_description",
+        context,
+    );
+    if (!basic) return undefined;
 
-    if (!text) {
-        return undefined;
+    const standard = passiveDescriptionDetails(
+        passiveSkillSet,
+        passiveSkillSet?.groupItemizedDescription,
+        "passive_skill_sets.group_itemized_description",
+        context,
+    );
+    const survival = passiveDescriptionDetails(
+        passiveSkillSet,
+        passiveSkillSet?.characterItemizedDescription,
+        "passive_skill_sets.character_itemized_description",
+        context,
+    );
+    const modes: PassiveModeDetails[] = [];
+    if (standard) {
+        modes.push({
+            mode: "standard" as const,
+            availability: "normal" as const,
+            label: "Standard",
+            ...standard,
+        });
     }
-
-    const lines = linesFromText(text);
-    const structuralSource = context && passiveSkillSet
-        ? gameDbPassiveStructuralSource(rawText, text, {
-            ...context,
-            payloadField,
-            passiveSkillId: passiveSkillSet.id,
-        })
-        : undefined;
-    const conditionEvidence = context && passiveSkillSet
-        ? gameDbPassiveConditionEvidence(rawText, text, {
-            ...context,
-            payloadField,
-            passiveSkillId: passiveSkillSet.id,
-        })
-        : [];
+    if (survival) {
+        modes.push({
+            mode: "survival" as const,
+            availability: "dokkan_frontier" as const,
+            label: "Survival",
+            ...survival,
+        });
+    }
 
     return {
         name: passiveSkillSet?.name,
-        text,
-        lines,
-        sections: lines ? splitPassiveSections(lines) : undefined,
-        ...(conditionEvidence.length > 0 ? { conditionEvidence } : {}),
-        ...(structuralSource ? { structuralSource } : {}),
-        sourceSkillId: passiveSkillSet?.id,
+        ...basic,
+        ...(modes.length > 0 ? { modes } : {}),
     };
 }
 
@@ -839,7 +920,9 @@ export function projectGameDbCharacterToDokkanpanion(
         activeSkillCondition: activeSkillCondition(character),
         activeSkillDetails: activeSkillDetails(character),
         createdDomain,
-        domain: createdDomain?.field.name ?? "",
+        domain: createdDomain
+            ? [createdDomain.field.name, createdDomain.field.description].filter(Boolean).join(": ")
+            : "",
         standbySkill: standby?.legacyText ?? "",
         standby,
         finishSkills,

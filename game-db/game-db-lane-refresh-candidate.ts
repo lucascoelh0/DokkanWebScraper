@@ -23,6 +23,15 @@ import {
     assertTeamAnalysisBoundToCharacterArtifact,
 } from "./game-db-character-release-candidate";
 import { overlayGameDbCharacterReleaseStates } from "./game-db-character-release-overlay";
+import {
+    applySnapshotAuditedCreatedDomainsToCharacters,
+    buildCurrentSnapshotAuditedCreatedDomainProjection,
+    GameDbSnapshotAuditedCreatedDomainProjectionV1,
+} from "./game-db-dokkan-field-created-domain";
+import {
+    DOKKAN_FIELD_SIDECAR_TABLES,
+    GameDbDokkanFieldSidecarTables,
+} from "./game-db-dokkan-field-sidecar";
 import { buildGameDbCharacterSnapshots, REQUIRED_GAME_DB_TABLES } from "./game-db-experiment";
 import {
     buildGameDbCardIdentityContract,
@@ -64,6 +73,26 @@ export function mergeReleaseProjections<T extends { id: string }>(
         if (!merged.has(projection.id)) merged.set(projection.id, projection);
     }
     return [...merged.values()];
+}
+
+export function buildCreatedDomainEnrichedLaneCharacterArtifact(
+    inputCharacters: Character[],
+    projection: GameDbSnapshotAuditedCreatedDomainProjectionV1,
+    generatedAt: string,
+) {
+    const enrichment = applySnapshotAuditedCreatedDomainsToCharacters(inputCharacters, projection);
+    if (new Set(enrichment.characters.map(character => character.id)).size !== enrichment.characters.length) {
+        throw new Error("lane refresh candidate contains duplicate Character IDs");
+    }
+    return {
+        characters: enrichment.characters,
+        patches: enrichment.patches,
+        artifact: buildCharacterDatasetArtifact(enrichment.characters, {
+            datasetVersion: generatedAt,
+            generatedAt,
+            fileName: "characters.json.gz",
+        }),
+    };
 }
 
 function csvList(value: string | undefined, option: string, allowEmpty = false): string[] {
@@ -196,13 +225,15 @@ function inventoryReport(inventory: SourceInventory): Omit<SourceInventory, "byt
     return report;
 }
 
-function loadInventoriedGameDbTables(inventory: SourceInventory): Record<string, GameDbRow[]> {
-    const tableNames = [
+export const LANE_REFRESH_GAME_DB_TABLES = [...new Set([
         ...REQUIRED_GAME_DB_TABLES,
         ...SUPER_ATTACK_EFFECT_GAME_DB_TABLES,
         ...SUPER_ATTACK_CATEGORY_GAME_DB_TABLES,
-    ];
-    return Object.fromEntries(tableNames.map(tableName => {
+        ...DOKKAN_FIELD_SIDECAR_TABLES,
+    ])];
+
+function loadInventoriedGameDbTables(inventory: SourceInventory): Record<string, GameDbRow[]> {
+    return Object.fromEntries(LANE_REFRESH_GAME_DB_TABLES.map(tableName => {
         const path = `${tableName}.csv`;
         const bytes = inventory.bytesByPath.get(path);
         if (!bytes) throw new Error(`inventoried first-party table is missing: ${path}`);
@@ -398,6 +429,14 @@ export async function buildGameDbLaneRefreshCandidate(options: LaneRefreshOption
         FIRST_PARTY_EXPORT_GAME_DB_TABLES.map(table => `${table}.csv`),
     );
     const tables = loadInventoriedGameDbTables(firstPartyInventory);
+    const createdDomainProjection = buildCurrentSnapshotAuditedCreatedDomainProjection({
+        sourceSnapshotId: `glb-db-${metadata.dbVersion}`,
+        fieldTables: Object.fromEntries(DOKKAN_FIELD_SIDECAR_TABLES.map(table => [
+            table,
+            tables[table],
+        ])) as GameDbDokkanFieldSidecarTables,
+        activeSkillSetRows: tables.active_skill_sets,
+    });
     const requestedIds = [...options.newCardIds, ...options.releaseStateCardIds];
     const requestedProjections = projectGameDbCharactersToDokkanpanion(
         buildGameDbCharacterSnapshots(requestedIds, tables),
@@ -456,17 +495,14 @@ export async function buildGameDbLaneRefreshCandidate(options: LaneRefreshOption
             categories: [...character.categories].sort((left, right) => left.localeCompare(right)),
         }))
         .sort((left, right) => Number(left.id) - Number(right.id));
-    const characters = [...categories.characters, ...addedCharacters];
-    if (new Set(characters.map(character => character.id)).size !== characters.length) {
-        throw new Error("lane refresh candidate contains duplicate Character IDs");
-    }
-
     const generatedAt = new Date().toISOString();
-    const artifact = buildCharacterDatasetArtifact(characters, {
-        datasetVersion: generatedAt,
+    const laneCharacters = buildCreatedDomainEnrichedLaneCharacterArtifact(
+        [...categories.characters, ...addedCharacters],
+        createdDomainProjection,
         generatedAt,
-        fileName: "characters.json.gz",
-    });
+    );
+    const characters = laneCharacters.characters;
+    const artifact = laneCharacters.artifact;
     await writeCharacterDatasetBundle(options.outputDir, artifact, { manifestFileName: "characters-manifest.json" });
 
     const nameIdentityContract = buildGameDbNameIdentityContract(tables);
@@ -538,6 +574,12 @@ export async function buildGameDbLaneRefreshCandidate(options: LaneRefreshOption
             relatedFormIds: character.transformations?.map(form => form.id) ?? [],
         })),
         releaseStatePatches: releaseOverlay.patches,
+        createdDomainEnrichment: {
+            status: "snapshot-audited",
+            sourceSnapshotId: createdDomainProjection.sourceSnapshotId,
+            linkCount: Object.keys(createdDomainProjection.byActiveSkillSetId).length,
+            patches: laneCharacters.patches,
+        },
         additiveCategoryPatches: categories.patches,
         portraitAssets: portraits.assets,
         canonicalOutput: artifact.manifest,

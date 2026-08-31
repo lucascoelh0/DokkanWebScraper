@@ -227,6 +227,22 @@ export interface PassiveDetails {
     conditionEvidence?: PassiveConditionEvidence[],
     structuralSource?: EffectStructuralSource,
     sourceSkillId?: string,
+    /** Additive passive channels exposed by the game DB for newer cards. */
+    modes?: PassiveModeDetails[],
+}
+
+export type PassiveModeKind = "standard" | "survival";
+
+export interface PassiveModeDetails {
+    mode: PassiveModeKind,
+    availability: "normal" | "dokkan_frontier",
+    label: string,
+    text: string,
+    lines?: string[],
+    sections?: PassiveSection[],
+    conditionEvidence?: PassiveConditionEvidence[],
+    structuralSource?: EffectStructuralSource,
+    sourceSkillId?: string,
 }
 
 export type EffectStructuralChannel = "passive" | "super_attack";

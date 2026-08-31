@@ -2786,6 +2786,28 @@ describe("team-analysis first-party Entrance Animation conditions", function () 
     equal(predicate.combatEvent?.relativeTiming, "during_event");
   });
 
+  it("preserves the attack style when an enemy launches a typed Super Attack at the character", () => {
+    const cases = [
+      ["Ki Blast", "ki_blast"],
+      ["Unarmed", "unarmed"],
+      ["Physical", "physical"],
+    ] as const;
+
+    cases.forEach(([label, expectedStyle]) => {
+      const passive = parsePassive(
+        `incoming-${expectedStyle}-after:initial`,
+        undefined,
+        `After the enemy launches a ${label} Super Attack at the character\n- DEF 100%`,
+      );
+
+      equal(passive.rules[0].conditionStatus, "supported", label);
+      const predicate = flattenPredicates(passive.rules[0].condition)[0];
+      equal(predicate.kind, "incoming_super_attack", label);
+      equal(predicate.combatEvent?.attackStyle, expectedStyle, label);
+      equal(predicate.combatEvent?.relativeTiming, "during_event", label);
+    });
+  });
+
   it("types turn and existing-enemy scaling headers without turning them into conditions", () => {
     const passive = parsePassive(
       "runtime-scaling:initial",
@@ -4344,6 +4366,61 @@ describe("team-analysis validation and artifacts", function () {
     ok(reorderedCodes.includes("condition-evidence-output"));
   });
 
+  it("validates condition and structural provenance for additive passive modes", () => {
+    const characters = JSON.parse(JSON.stringify(fixture.characters)) as Character[];
+    const modeDetails = passiveDetailsFromSkill({
+      id: 4124,
+      name: "Standard evidence validation",
+      description: "*When the target enemy is in the following status: {passiveImg:stun}*\n- {passiveImg:once}ATK 20%{passiveImg:up_g}",
+    }, {
+      characterId: characters[0].id,
+      formId: characters[0].id,
+      releaseState: "initial",
+      sourceVersion: "c".repeat(32),
+      payloadField: "props.character.passive_skill.description",
+    });
+    ok(modeDetails?.text && modeDetails.conditionEvidence?.[0] && modeDetails.structuralSource);
+    characters[0].passiveDetails = {
+      name: "Basic",
+      text: characters[0].passive,
+      modes: [{
+        mode: "standard",
+        availability: "normal",
+        label: "Standard",
+        ...modeDetails,
+        text: modeDetails.text,
+      }],
+    };
+    const validDataset = buildTeamAnalysisDataset(characters, fixture.catalogEntries, options);
+    deepEqual(validateTeamAnalysisDataset(validDataset, characters, fixture.catalogEntries), []);
+
+    const invalidContract = JSON.parse(JSON.stringify(validDataset)) as typeof validDataset;
+    invalidContract.states[0].passiveModes![0].availability = "dokkan_frontier";
+    invalidContract.states[0].passiveModes!.push(
+      JSON.parse(JSON.stringify(invalidContract.states[0].passiveModes![0])),
+    );
+    const contractCodes = validateTeamAnalysisDataset(invalidContract, characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(contractCodes.includes("passive-mode-contract"));
+
+    const broken = JSON.parse(JSON.stringify(validDataset)) as typeof validDataset;
+    const modePassive = broken.states[0].passiveModes![0].passive;
+    modePassive.conditionEvidence![0].statuses[0].order = 3;
+    modePassive.structuralEvidence![0].rawTextSha256 = "0".repeat(64);
+    const brokenCodes = validateTeamAnalysisDataset(broken, characters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(brokenCodes.includes("condition-evidence-output"));
+    ok(brokenCodes.includes("structural-evidence-output"));
+
+    const invalidSourceCharacters = JSON.parse(JSON.stringify(characters)) as Character[];
+    invalidSourceCharacters[0].passiveDetails!.modes![0]
+      .structuralSource!.evidence[0].rawTextSha256 = "f".repeat(64);
+    const ignored = buildTeamAnalysisDataset(invalidSourceCharacters, fixture.catalogEntries, options);
+    const sourceCodes = validateTeamAnalysisDataset(ignored, invalidSourceCharacters, fixture.catalogEntries)
+      .map(issue => issue.code);
+    ok(sourceCodes.includes("structural-evidence-source"));
+  });
+
   it("reports coverage by passive/rule status and supported effect", () => {
     const dataset = buildTeamAnalysisDataset(fixture.characters, fixture.catalogEntries, options);
     const coverage = buildTeamAnalysisCoverageReport(dataset);
@@ -5002,7 +5079,7 @@ describe("team-analysis validation and artifacts", function () {
     equal(first.manifest.stateCount, dataset.stateCount);
     deepEqual(validateTeamAnalysisArtifact(first, dataset), []);
     deepEqual(JSON.parse(gunzipSync(first.gzipBuffer).toString("utf8")), dataset);
-    match(first.manifest.datasetVersion, /characters-v1:parser-1\.9\.19/);
+    match(first.manifest.datasetVersion, /characters-v1:parser-1\.10\.0/);
   });
 });
 

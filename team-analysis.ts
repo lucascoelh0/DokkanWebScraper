@@ -9,6 +9,8 @@ import {
     EffectStructuralSource,
     PassiveConditionEvidence,
     PassiveDetails,
+    PassiveModeDetails,
+    PassiveModeKind,
     SuperAttackDetails,
     SuperAttackEffectDetails,
     SuperAttackIncreaseDetails,
@@ -26,7 +28,7 @@ import { resolveFirstPartyProbability } from "./team-analysis-first-party-probab
 
 export const TEAM_ANALYSIS_SCHEMA_VERSION = 1;
 export const TEAM_ANALYSIS_RULES_VERSION = "1";
-export const TEAM_ANALYSIS_PARSER_VERSION = "1.9.19";
+export const TEAM_ANALYSIS_PARSER_VERSION = "1.10.0";
 export const SUPER_ATTACK_STAT_RAISE_DOMAIN_RULE_VERSION = "sa-stat-raise-lifecycle-v1";
 export const HP_REMAINING_SCALING_DOMAIN_RULE_VERSION = "hp-remaining-scaling-v1";
 const EFFECT_DECISION_DOMAIN_RULE_VERSIONS = new Set([
@@ -296,7 +298,15 @@ export interface CharacterStateAnalysis {
     activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
     transformationActivationCondition?: TransformationActivationConditionDetails,
     passive?: ParsedPassive,
+    passiveModes?: ParsedPassiveMode[],
     superAttacks?: ParsedSuperAttack[],
+}
+
+export interface ParsedPassiveMode {
+    mode: PassiveModeKind,
+    availability: "normal" | "dokkan_frontier",
+    label: string,
+    passive: ParsedPassive,
 }
 
 export type TeamAnalysisActiveSkillActivationContract = ReadonlyMap<
@@ -828,6 +838,7 @@ interface AnalysisReleaseSource {
     passiveText: string,
     passiveName?: string,
     passiveDetails?: PassiveDetails,
+    passiveModes?: PassiveModeDetails[],
 }
 
 export interface AnalysisSuperAttackSource {
@@ -966,6 +977,30 @@ function buildCharacterStates(
                 },
             )
             : undefined;
+        const passiveModes = (releaseSource.passiveModes ?? []).map(mode => {
+            const modeStateKey = `${stateKey}:mode:${mode.mode}`;
+            const modeDetails = passiveModeDetailsForState(mode, modeStateKey);
+            const parsed = parsePassive(
+                modeStateKey,
+                mode.label,
+                mode.text,
+                modeDetails,
+                {
+                    characterId: identity.characterId,
+                    formId: identity.formId,
+                    canonicalId: identity.canonicalId,
+                    releaseState: identity.releaseState,
+                    ...(mode.sourceSkillId ? { passiveSkillSetId: mode.sourceSkillId } : {}),
+                    ...(nameIdentityContract ? { nameIdentityContract } : {}),
+                },
+            );
+            return {
+                mode: mode.mode,
+                availability: mode.availability,
+                label: mode.label,
+                passive: parsed,
+            };
+        });
         const superAttacks = analysisSuperAttackSources(
             form,
             releaseSource.releaseState,
@@ -997,10 +1032,32 @@ function buildCharacterStates(
             ...(activeSkillActivationCondition ? { activeSkillActivationCondition } : {}),
             ...(transformationActivationCondition ? { transformationActivationCondition } : {}),
             ...(passive ? { passive } : {}),
+            ...(passiveModes.length > 0 ? { passiveModes } : {}),
             ...(superAttacks.length > 0 ? { superAttacks } : {}),
         };
         });
     });
+}
+
+function passiveModeDetailsForState(
+    mode: PassiveModeDetails,
+    modeStateKey: string,
+): PassiveDetails {
+    return {
+        ...mode,
+        conditionEvidence: mode.conditionEvidence?.map(evidence => ({
+            ...evidence,
+            stateKey: modeStateKey,
+        })),
+        structuralSource: mode.structuralSource ? {
+            ...mode.structuralSource,
+            evidence: mode.structuralSource.evidence.map(evidence => ({
+                ...evidence,
+                id: `${modeStateKey}:passive:${evidence.passiveSkillId ?? "unknown"}:${evidence.anchor.sourceSpan.start}`,
+                stateKey: modeStateKey,
+            })),
+        } : undefined,
+    };
 }
 
 function analysisActiveSkillActivationCondition(
@@ -1065,6 +1122,7 @@ function analysisReleaseSources(form: AnalysisFormSource): AnalysisReleaseSource
             passiveText: initialPassiveText,
             passiveName: initialPassiveDetails?.name,
             passiveDetails: initialPassiveDetails,
+            passiveModes: initialPassiveDetails?.modes,
         };
         return hasMaterialEzaSuperAttackSource(form)
             ? [initial, { releaseState: "eza", passiveText: "" }]
@@ -1076,6 +1134,7 @@ function analysisReleaseSources(form: AnalysisFormSource): AnalysisReleaseSource
         passiveText: initialPassiveText,
         passiveName: initialPassiveDetails?.name,
         passiveDetails: initialPassiveDetails,
+        passiveModes: initialPassiveDetails?.modes,
     }];
     if (ezaPassiveText) {
         releases.push({
@@ -1083,6 +1142,7 @@ function analysisReleaseSources(form: AnalysisFormSource): AnalysisReleaseSource
             passiveText: ezaPassiveText,
             passiveName: ezaPassiveDetails?.name,
             passiveDetails: ezaPassiveDetails,
+            passiveModes: ezaPassiveDetails?.modes,
         });
     }
     if (sezaPassiveText) {
@@ -1091,6 +1151,7 @@ function analysisReleaseSources(form: AnalysisFormSource): AnalysisReleaseSource
             passiveText: sezaPassiveText,
             passiveName: sezaPassiveDetails?.name,
             passiveDetails: sezaPassiveDetails,
+            passiveModes: sezaPassiveDetails?.modes,
         });
     }
     return releases;
@@ -4633,7 +4694,7 @@ function parseExactCombatEventCondition(text: string, sourceText: string): Condi
         { pattern: /^(?:when )?performing an? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super|Ultra Super) Attack)$/i, direction: "performed", timing: "during_event" },
         { pattern: /^after performing an? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:Super|Ultra Super) Attack)$/i, direction: "performed", timing: "after_event" },
         { pattern: /^(?:when )?receiving an? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?(?:normal|Super) attack)$/i, direction: "targeted", timing: "during_event" },
-        { pattern: /^after the enemy launches an? (Super Attack) at the character$/i, direction: "targeted", timing: "during_event" },
+        { pattern: /^after the enemy launches an? ((?:(?:Ki Blast|Unarmed|Physical)\s+)?Super Attack) at the character$/i, direction: "targeted", timing: "during_event" },
         { pattern: /^(?:receiving|when receiving) an? attack$/i, direction: "targeted", timing: "during_event" },
         { pattern: /^before receiving an? attack(?: within the turn)?$/i, direction: "targeted", timing: "before_event" },
         { pattern: /^after (?:receiving|being hit by) an? attack$/i, direction: "landed", timing: "after_event" },
@@ -7774,12 +7835,19 @@ function aggregatePassiveStatus(rules: PassiveRule[]): ParseStatus {
 function countRuleStatuses(states: CharacterStateAnalysis[]): Record<ParseStatus, number> {
     const counts: Record<ParseStatus, number> = { supported: 0, partial: 0, unknown: 0 };
     for (const state of states) {
-        for (const rule of state.passive?.rules ?? []) {
-            counts[rule.parseStatus] += 1;
+        for (const passive of statePassives(state)) {
+            for (const rule of passive.rules) {
+                counts[rule.parseStatus] += 1;
+            }
         }
     }
     return counts;
 }
+
+const statePassives = (state: CharacterStateAnalysis): ParsedPassive[] => [
+    ...(state.passive ? [state.passive] : []),
+    ...(state.passiveModes ?? []).map(mode => mode.passive),
+];
 
 export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): TeamAnalysisCoverageReport {
     const passiveStatusCounts: Record<ParseStatus, number> = { supported: 0, partial: 0, unknown: 0 };
@@ -7959,14 +8027,16 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
                 }
             }
         }
-        if (!state.passive) {
+        const passives = statePassives(state);
+        if (passives.length === 0) {
             continue;
         }
         passiveStateCount += 1;
-        passiveStatusCounts[state.passive.parseStatus] += 1;
-        unknownFragmentCount += state.passive.unparsedFragments.length;
-        const statusEvidence = state.passive.conditionEvidence ?? [];
-        for (const evidence of state.passive.structuralEvidence ?? []) {
+        for (const passive of passives) {
+        passiveStatusCounts[passive.parseStatus] += 1;
+        unknownFragmentCount += passive.unparsedFragments.length;
+        const statusEvidence = passive.conditionEvidence ?? [];
+        for (const evidence of passive.structuralEvidence ?? []) {
             passiveStructuralEvidenceCount += 1;
             collectStructuralEvidenceMetrics(
                 evidence,
@@ -7999,7 +8069,7 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
             }
         }
 
-        for (const rule of state.passive.rules) {
+        for (const rule of passive.rules) {
             ruleStatusCounts[rule.parseStatus] += 1;
             conditionStatusCounts[rule.conditionStatus] += 1;
             effectStatusCounts[rule.effectStatus] += 1;
@@ -8121,6 +8191,7 @@ export function buildTeamAnalysisCoverageReport(dataset: TeamAnalysisDataset): T
             if (ruleHasCombatHistory) {
                 historyRuleCount += 1;
             }
+        }
         }
     }
 
@@ -8446,6 +8517,28 @@ export function validateTeamAnalysisDataset(
             );
         }
         validatePassive(state, ruleIds, issues);
+        const passiveModeKinds = new Set<PassiveModeKind>();
+        for (const mode of state.passiveModes ?? []) {
+            if (!(["standard", "survival"] as PassiveModeKind[]).includes(mode.mode)
+                || (mode.mode === "standard" && mode.availability !== "normal")
+                || (mode.mode === "survival" && mode.availability !== "dokkan_frontier")
+                || !mode.label.trim()
+                || passiveModeKinds.has(mode.mode)) {
+                issues.push({
+                    code: "passive-mode-contract",
+                    message: "Passive mode has an invalid kind, availability or label.",
+                    stateKey: state.stateKey,
+                });
+            }
+            passiveModeKinds.add(mode.mode);
+            validatePassive(
+                state,
+                ruleIds,
+                issues,
+                mode.passive,
+                `${state.stateKey}:mode:${mode.mode}`,
+            );
+        }
     }
 
     for (const stateKey of expectedStates.keys()) {
@@ -8596,6 +8689,7 @@ function expectedStateSources(
     displayName: string,
     passiveText: string,
     passiveDetails?: PassiveDetails,
+    passiveModes?: PassiveModeDetails[],
     activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
     transformationActivationCondition?: TransformationActivationConditionDetails,
     superAttacks: AnalysisSuperAttackSource[],
@@ -8604,6 +8698,7 @@ function expectedStateSources(
         displayName: string,
         passiveText: string,
         passiveDetails?: PassiveDetails,
+        passiveModes?: PassiveModeDetails[],
         activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
         transformationActivationCondition?: TransformationActivationConditionDetails,
         superAttacks: AnalysisSuperAttackSource[],
@@ -8616,6 +8711,7 @@ function expectedStateSources(
                     displayName: form.name,
                     passiveText: releaseSource.passiveText,
                     ...(releaseSource.passiveDetails ? { passiveDetails: releaseSource.passiveDetails } : {}),
+                    ...(releaseSource.passiveModes?.length ? { passiveModes: releaseSource.passiveModes } : {}),
                     ...(resolvedActiveSkillActivationCondition(
                         form,
                         releaseSource.releaseState,
@@ -8680,6 +8776,7 @@ function validateStateSource(
         displayName: string,
         passiveText: string,
         passiveDetails?: PassiveDetails,
+        passiveModes?: PassiveModeDetails[],
         activeSkillActivationCondition?: ActiveSkillActivationConditionDetails,
         transformationActivationCondition?: TransformationActivationConditionDetails,
         superAttacks: AnalysisSuperAttackSource[],
@@ -8720,85 +8817,138 @@ function validateStateSource(
             issues.push({ code: "passive-text-source", message: `Passive rawText does not exactly match the character form.`, stateKey: state.stateKey });
         }
         if (expected.passiveDetails) {
-            const sourceMap = mapPassiveDetailsToSource(expected.passiveText, expected.passiveDetails);
-            if (sourceMap.unmappedTexts.length > 0) {
-                issues.push({
-                    code: "passive-details-source-map",
-                    message: `${sourceMap.unmappedTexts.length} PassiveDetails text(s) do not map to rawText offsets.`,
-                    stateKey: state.stateKey,
-                });
-            }
-            const sourceEvidence = expected.passiveDetails.conditionEvidence ?? [];
-            const validEvidence = validConditionEvidence(
-                state.stateKey,
+            validatePassiveDetailsSource(
+                state,
+                state.passive,
                 expected.passiveText,
-                sourceMap.sourceFragments,
-                sourceEvidence,
-                {
-                    characterId: state.characterId,
-                    formId: state.formId,
-                    releaseState: state.releaseState,
-                    ...(expected.passiveDetails.sourceSkillId
-                        ? { passiveSkillSetId: expected.passiveDetails.sourceSkillId }
-                        : {}),
-                },
-            );
-            if (validEvidence.length !== sourceEvidence.length) {
-                issues.push({
-                    code: "condition-evidence-source",
-                    message: `${sourceEvidence.length - validEvidence.length} condition evidence record(s) failed source validation.`,
-                    stateKey: state.stateKey,
-                });
-            }
-            if (JSON.stringify(state.passive?.conditionEvidence ?? []) !== JSON.stringify(validEvidence)) {
-                issues.push({
-                    code: "condition-evidence-output",
-                    message: `Serialized condition evidence does not match the validated PassiveDetails evidence.`,
-                    stateKey: state.stateKey,
-                });
-            }
-            const sourceStructuralEvidence = expected.passiveDetails.structuralSource?.evidence ?? [];
-            const validStructural = validStructuralEvidence(
-                state.stateKey,
-                expected.passiveText,
-                expected.passiveDetails.structuralSource,
-                "passive",
-                undefined,
-                expected.passiveDetails.sourceSkillId,
-            );
-            if (validStructural.length !== sourceStructuralEvidence.length) {
-                issues.push({
-                    code: "structural-evidence-source",
-                    message: `${sourceStructuralEvidence.length - validStructural.length} passive structural evidence record(s) failed source validation.`,
-                    stateKey: state.stateKey,
-                });
-            }
-            const expectedStructuralOutput = parsePassive(
-                state.stateKey,
                 expected.passiveDetails.name,
-                expected.passiveText,
                 expected.passiveDetails,
-                {
-                    characterId: state.characterId,
-                    formId: state.formId,
-                    releaseState: state.releaseState,
-                    ...(expected.passiveDetails.sourceSkillId
-                        ? { passiveSkillSetId: expected.passiveDetails.sourceSkillId }
-                        : {}),
-                },
-            ).structuralEvidence ?? [];
-            if (JSON.stringify(state.passive?.structuralEvidence ?? []) !== JSON.stringify(expectedStructuralOutput)) {
-                issues.push({
-                    code: "structural-evidence-output",
-                    message: `Serialized passive structural evidence does not match validated source evidence.`,
-                    stateKey: state.stateKey,
-                });
-            }
+                state.stateKey,
+                issues,
+            );
         }
     } else if (state.passive) {
         issues.push({ code: "unexpected-passive", message: `Analysis contains a passive absent from the character form.`, stateKey: state.stateKey });
     }
+    const expectedModes = (expected.passiveModes ?? []).map(mode => ({
+        mode: mode.mode,
+        availability: mode.availability,
+        label: mode.label,
+        rawText: mode.text,
+    }));
+    const actualModes = (state.passiveModes ?? []).map(mode => ({
+        mode: mode.mode,
+        availability: mode.availability,
+        label: mode.label,
+        rawText: mode.passive.rawText,
+    }));
+    if (JSON.stringify(actualModes) !== JSON.stringify(expectedModes)) {
+        issues.push({
+            code: "passive-mode-source",
+            message: "Passive modes do not match the character payload.",
+            stateKey: state.stateKey,
+        });
+    }
+    for (const expectedMode of expected.passiveModes ?? []) {
+        const modeStateKey = `${state.stateKey}:mode:${expectedMode.mode}`;
+        const modeDetails = passiveModeDetailsForState(expectedMode, modeStateKey);
+        const actualMode = state.passiveModes?.find(mode => mode.mode === expectedMode.mode);
+        validatePassiveDetailsSource(
+            state,
+            actualMode?.passive,
+            expectedMode.text,
+            expectedMode.label,
+            modeDetails,
+            modeStateKey,
+            issues,
+        );
+    }
     validateSuperAttacks(state, expected.superAttacks, issues);
+}
+
+function validatePassiveDetailsSource(
+    state: CharacterStateAnalysis,
+    passive: ParsedPassive | undefined,
+    passiveText: string,
+    passiveName: string | undefined,
+    passiveDetails: PassiveDetails,
+    sourceStateKey: string,
+    issues: TeamAnalysisValidationIssue[],
+): void {
+    const sourceMap = mapPassiveDetailsToSource(passiveText, passiveDetails);
+    if (sourceMap.unmappedTexts.length > 0) {
+        issues.push({
+            code: "passive-details-source-map",
+            message: `${sourceMap.unmappedTexts.length} PassiveDetails text(s) do not map to rawText offsets.`,
+            stateKey: state.stateKey,
+        });
+    }
+    const sourceEvidence = passiveDetails.conditionEvidence ?? [];
+    const validEvidence = validConditionEvidence(
+        sourceStateKey,
+        passiveText,
+        sourceMap.sourceFragments,
+        sourceEvidence,
+        {
+            characterId: state.characterId,
+            formId: state.formId,
+            releaseState: state.releaseState,
+            ...(passiveDetails.sourceSkillId
+                ? { passiveSkillSetId: passiveDetails.sourceSkillId }
+                : {}),
+        },
+    );
+    if (validEvidence.length !== sourceEvidence.length) {
+        issues.push({
+            code: "condition-evidence-source",
+            message: `${sourceEvidence.length - validEvidence.length} condition evidence record(s) failed source validation.`,
+            stateKey: state.stateKey,
+        });
+    }
+    if (JSON.stringify(passive?.conditionEvidence ?? []) !== JSON.stringify(validEvidence)) {
+        issues.push({
+            code: "condition-evidence-output",
+            message: `Serialized condition evidence does not match the validated PassiveDetails evidence.`,
+            stateKey: state.stateKey,
+        });
+    }
+    const sourceStructuralEvidence = passiveDetails.structuralSource?.evidence ?? [];
+    const validStructural = validStructuralEvidence(
+        sourceStateKey,
+        passiveText,
+        passiveDetails.structuralSource,
+        "passive",
+        undefined,
+        passiveDetails.sourceSkillId,
+    );
+    if (validStructural.length !== sourceStructuralEvidence.length) {
+        issues.push({
+            code: "structural-evidence-source",
+            message: `${sourceStructuralEvidence.length - validStructural.length} passive structural evidence record(s) failed source validation.`,
+            stateKey: state.stateKey,
+        });
+    }
+    const expectedStructuralOutput = parsePassive(
+        sourceStateKey,
+        passiveName,
+        passiveText,
+        passiveDetails,
+        {
+            characterId: state.characterId,
+            formId: state.formId,
+            releaseState: state.releaseState,
+            ...(passiveDetails.sourceSkillId
+                ? { passiveSkillSetId: passiveDetails.sourceSkillId }
+                : {}),
+        },
+    ).structuralEvidence ?? [];
+    if (JSON.stringify(passive?.structuralEvidence ?? []) !== JSON.stringify(expectedStructuralOutput)) {
+        issues.push({
+            code: "structural-evidence-output",
+            message: `Serialized passive structural evidence does not match validated source evidence.`,
+            stateKey: state.stateKey,
+        });
+    }
 }
 
 function isValidExternalActiveSkillCondition(
@@ -9322,8 +9472,9 @@ function validatePassive(
     state: CharacterStateAnalysis,
     ruleIds: Set<string>,
     issues: TeamAnalysisValidationIssue[],
+    passive: ParsedPassive | undefined = state.passive,
+    ruleStateKey: string = state.stateKey,
 ): void {
-    const passive = state.passive;
     if (!passive) {
         return;
     }
@@ -9338,7 +9489,7 @@ function validatePassive(
         }
         ruleIds.add(rule.id);
         const positionFragment = rule.source[rule.source.length - 1];
-        if (!positionFragment || rule.id !== ruleIdFromFragment(state.stateKey, positionFragment)) {
+        if (!positionFragment || rule.id !== ruleIdFromFragment(ruleStateKey, positionFragment)) {
             issues.push({ code: "unstable-rule-id", message: `Rule ID does not match state key and source position.`, stateKey: state.stateKey, ruleId: rule.id });
         }
         if (rule.effects.length === 0) {
