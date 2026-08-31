@@ -317,3 +317,51 @@ SHA-256 values remain respectively
 and `d7a8461c41484b0e25f61131476006b18eadad71c6bac265e7f0e289e7a96237`.
 Production promotion remains `NO-GO` pending its own compatibility and release
 authorization.
+
+## Static portrait polish candidate — 2026-08-31
+
+A new immutable local candidate recomposes the current 1,442-character
+`staging/v2` corpus from the preserved first-party layers. It reduces both the
+rarity mark and typed class/type badge by 10%, keeps their established anchors,
+and requires every generated 150x150 portrait to retain an alpha channel. The
+pipeline does not color-key black pixels: dark artwork is preserved byte for
+byte in the source thumb and only the official transparent layers participate
+in composition.
+
+| Check | Result |
+| --- | ---: |
+| Character version | `2026-08-31T21:15:00.000Z` |
+| Character gzip bytes | 2,581,728 |
+| Character gzip SHA-256 | `51d207414fa826ab66717562d17a5014bbc66377ce15dd4238c6a95beb997462` |
+| Characters / portrait references | 1,442 / 1,637 |
+| Self-contained visual objects | 3,303 |
+| Visual object bytes | 63.92 MiB |
+| Unique thumbs audited | 1,589 |
+| Missing alpha / no transparent pixels / opaque corners | 0 / 0 / 0 |
+| Near-black edge pixels | 20 across 5 thumbs, preserved intentionally |
+| Complete replay | 3,306 files, 0 byte differences |
+
+The candidate preserves every background and thumb URL and byte from its input;
+only the overlay geometry, derived static portrait bytes and the corresponding
+content-addressed references change. Non-portrait Character data is unchanged.
+All 22 compositor, portrait, lane-refresh and production-v2 release contract
+checks passed after compilation. The Impeccable polish detector reported no
+finding on the implementation targets.
+
+An isolated `stagingDebug` build consumed the candidate from an ADB-loopback
+server in LDPlayer. Initial consent resolved all five enabled datasets and the
+app persisted the exact Character hash above. Team Analysis was rebound to the
+same Character version/hash and validated on-device as
+`066c71c6a089749e144d4a2043705f5944936aea5b2e4c40900ff94659c6711e`
+(3,191,302 compressed bytes, 2,301 states). The Data screen reported every
+dataset downloaded and up to date.
+
+Native inspection covered list, compact grid, Character Details and a
+base→transformed→base LR form cycle. Portrait edges remained transparent, the
+smaller badges stayed legible at dense-grid size, and the LR animation resumed
+after returning to the base form. No fatal exception, ANR or image-loader error
+was observed.
+
+This checkpoint is local `GO` only. No R2 object, staging manifest, production
+lane, APK release or Play artifact was changed. Publication remains `NO-GO`
+until a separate authorized dry-run reports the exact remote byte plan.

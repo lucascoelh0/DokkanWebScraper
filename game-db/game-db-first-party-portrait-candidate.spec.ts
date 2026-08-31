@@ -96,9 +96,12 @@ function fixtureCharacter(): Character {
 
 async function writePng(path: string, color: string): Promise<void> {
     await mkdir(dirname(path), { recursive: true });
+    const fill = await sharp({
+        create: { width: 200, height: 200, channels: 4, background: color },
+    }).png().toBuffer();
     await writeFile(path, await sharp({
-        create: { width: 250, height: 250, channels: 4, background: color },
-    }).png().toBuffer());
+        create: { width: 250, height: 250, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    }).composite([{ input: fill, left: 25, top: 25 }]).png().toBuffer());
 }
 
 async function inventory(entries: Array<{ path: string, absolutePath: string }>): Promise<{
@@ -269,7 +272,7 @@ describe("first-party portrait staging candidate", function () {
         equal(result.portraitLayerObjectCount, 4);
         equal(result.portraitLayerProjectedBytes > 0, true);
         const report = JSON.parse(await readFile(result.reportPath, "utf8"));
-        equal(report.contractVersion, "1.1.0");
+        equal(report.contractVersion, "1.2.0");
         equal(report.portraits.uniqueThumbAssetCount, 1);
         equal(report.portraitLayers.referenceCount, 3);
         equal(report.portraitLayers.uniqueObjectCount, 4);
@@ -285,6 +288,7 @@ describe("first-party portrait staging candidate", function () {
         equal(report.checks.cpkAndExtractedInventoriesMatchProvenance, true);
         equal(report.checks.nonPortraitDataUnchanged, true);
         equal(report.checks.portraitLayersDeduplicatedByContentHash, true);
+        equal(report.checks.everyPortraitPreservesTransparency, true);
         equal(report.readiness.localPortraitCandidate, "GO");
         equal(report.readiness.publication, "NO-GO");
         const manifest = JSON.parse(await readFile(result.manifestPath, "utf8"));

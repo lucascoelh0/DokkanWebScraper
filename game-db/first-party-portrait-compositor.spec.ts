@@ -86,7 +86,7 @@ describe("first-party portrait compositor", function () {
         ]).png({ quality: 10, compressionLevel: 6 }).toBuffer();
         const first = await composeFirstPartyPortrait(spec, { sharedLayers, cardThumbs });
         equal(first.equals(firstArtifacts.portrait), true);
-        equal(firstArtifacts.portrait.equals(legacyCombined), true);
+        equal(firstArtifacts.portrait.equals(legacyCombined), false);
         equal(firstArtifacts.portrait.equals(secondArtifacts.portrait), true);
         for (const kind of ["background", "thumb", "overlay"] as const) {
             equal(firstArtifacts.portraitLayers[kind].equals(secondArtifacts.portraitLayers[kind]), true);
@@ -99,6 +99,8 @@ describe("first-party portrait compositor", function () {
         const metadata = await sharp(firstArtifacts.portrait).metadata();
         equal(metadata.width, 150);
         equal(metadata.height, 150);
+        equal(metadata.channels, 4);
+        equal(metadata.hasAlpha, true);
 
         equal((await rgbaAt(firstArtifacts.portraitLayers.background, 14, 15))[3], 0);
         deepEqual(await rgbaAt(firstArtifacts.portraitLayers.background, 15, 15), [102, 51, 153, 255]);
@@ -106,11 +108,12 @@ describe("first-party portrait compositor", function () {
         equal((await rgbaAt(firstArtifacts.portraitLayers.background, 135, 134))[3], 0);
         deepEqual(await rgbaAt(firstArtifacts.portraitLayers.thumb, 0, 0), [0, 127, 127, 128]);
         deepEqual(await rgbaAt(firstArtifacts.portraitLayers.thumb, 149, 149), [0, 127, 127, 128]);
-        deepEqual(await rgbaAt(firstArtifacts.portraitLayers.overlay, 0, 78), [255, 255, 0, 255]);
-        deepEqual(await rgbaAt(firstArtifacts.portraitLayers.overlay, 71, 149), [255, 255, 0, 255]);
-        deepEqual(await rgbaAt(firstArtifacts.portraitLayers.overlay, 93, 0), [0, 255, 255, 255]);
-        deepEqual(await rgbaAt(firstArtifacts.portraitLayers.overlay, 149, 56), [0, 255, 255, 255]);
-        equal((await rgbaAt(firstArtifacts.portraitLayers.overlay, 92, 0))[3], 0);
+        deepEqual(await rgbaAt(firstArtifacts.portraitLayers.overlay, 0, 85), [255, 255, 0, 255]);
+        deepEqual(await rgbaAt(firstArtifacts.portraitLayers.overlay, 64, 149), [255, 255, 0, 255]);
+        deepEqual(await rgbaAt(firstArtifacts.portraitLayers.overlay, 99, 0), [0, 255, 255, 255]);
+        deepEqual(await rgbaAt(firstArtifacts.portraitLayers.overlay, 149, 50), [0, 255, 255, 255]);
+        equal((await rgbaAt(firstArtifacts.portraitLayers.overlay, 98, 0))[3], 0);
+        equal((await rgbaAt(firstArtifacts.portraitLayers.overlay, 0, 84))[3], 0);
     });
 
     it("rejects invalid layer identities before reading files", async () => {

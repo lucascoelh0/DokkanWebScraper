@@ -427,7 +427,7 @@ export async function buildFirstPartyPortraitCandidate(options: FirstPartyPortra
                 cardThumbsRoot: options.cardThumbsRoot,
             }, extractedInventory));
             const bytes = artifacts.portrait;
-            await assertPng150(bytes, `portrait candidate ${cardId}`, false);
+            await assertPng150(bytes, `portrait candidate ${cardId}`, true);
             const hash = sha256(bytes);
             const objectKey = `staging/v2/images/v4/portrait_${cardId}.${hash}.png`;
             if (!PORTRAIT_OBJECT_KEY.test(objectKey)) throw new Error(`portrait candidate ${cardId} object key rejected`);
@@ -437,7 +437,7 @@ export async function buildFirstPartyPortraitCandidate(options: FirstPartyPortra
                 { localPath, sizeBytes: bytes.length, sha256: hash },
                 bytes,
                 `portrait candidate ${cardId}`,
-                false,
+                true,
             );
 
             const portraitLayers = {} as PortraitLayers;
@@ -515,7 +515,7 @@ export async function buildFirstPartyPortraitCandidate(options: FirstPartyPortra
     const report = {
         schemaVersion: 1,
         contract: FIRST_PARTY_PORTRAIT_CANDIDATE_CONTRACT,
-        contractVersion: "1.1.0",
+        contractVersion: "1.2.0",
         generatedAt,
         source: {
             baseline: {
@@ -565,6 +565,7 @@ export async function buildFirstPartyPortraitCandidate(options: FirstPartyPortra
             everyRequiredCpkPresentAndHashed: true,
             everyRequiredExtractedLayerPresentAndHashed: true,
             everyPortraitIsDeterministicPng150: true,
+            everyPortraitPreservesTransparency: true,
             everyPortraitUrlIsChannelScopedAndContentAddressed: true,
             everyPortraitLayerIsDeterministicTransparentPng150: true,
             everyPortraitLayerUrlIsChannelScopedAndContentAddressed: true,
