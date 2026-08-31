@@ -3305,6 +3305,82 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   the catalog and requested the new portraits successfully. Production Android
   binaries and Play tracks were not changed by this dataset publication.
 
+## Staging v2 passive-mode dataset publication (2026-08-31)
+
+- The validated `mode-passive-local-v2-20260831-v5` pair was projected to the
+  staging-v2 delivery namespace without semantic Character or Team Analysis
+  changes. Only portrait references changed from `v2/images/...` to
+  `staging/v2/images/...`; Team Analysis retained its exact 10,251 supported,
+  1,602 partial and zero unknown rules and was rebound to the channel-specific
+  Character payload SHA.
+- The mandatory Character dry-run verified all 3,303 referenced portraits and
+  projected 20 portrait uploads, zero deletes, 69,920,337 managed bytes and a
+  conservative whole-bucket upper bound of 590,990,580/10,000,000,000 bytes.
+  The first write attempt aborted before manifest promotion after a transient
+  Wrangler OAuth 401 while rereading one uploaded portrait. Authentication
+  remained valid; the baseline-pinned retry verified 20/20 portraits, uploaded
+  the immutable payload and promoted the Character manifest last.
+- Public staging-v2 Characters is version `2026-08-31T03:58:32.844Z`, contains
+  1,442 characters in 2,581,517 bytes and has SHA-256
+  `da568f833c2da3a050cb96d49da639ff0875d3030f86cda2fa7ec1bba2afb6a3`.
+- The Team Analysis dry-run retained all five tracked releases, planned zero
+  deletes, 15,462,164 managed bytes and a conservative bucket upper bound of
+  591,191,302 bytes. Publication verified the public Character pair, uploaded
+  and reread the immutable payload, then promoted the Team manifest last.
+- Public staging-v2 Team Analysis is version
+  `2026-08-31T03:58:32.844Z:parser-1.10.0`, contains 2,301 states in 3,191,302
+  bytes and has SHA-256
+  `2c372d2b7e7577f29c80d59a548796636d93aff968d4ca52be2b8925968403e0`.
+  Independent public downloads reproduced both advertised payload sizes and
+  SHA-256 values and confirmed the Team-to-Character version/SHA binding.
+  Production v1 and v2 were not changed.
+
+## Production dual-lane Created Domain and passive-mode publication (2026-08-31)
+
+- Commit `7a96450` repaired the first-party Created Domain path and was pushed
+  to `origin/main` before publication. Current snapshot projection audits all
+  15 official Active Skill-to-field relations, enriches both inherited
+  baseline cards and additions, and fails closed on structural or descriptive
+  drift. The lane loader now materializes every inventoried Dokkan Field table;
+  a real generation attempt exposed and blocked the formerly omitted tables
+  before any R2 write, and a regression test now pins that boundary.
+- The generated v1 and v2 pairs each contain 1,442 Characters, 2,301 Team
+  Analysis states, 15 audited Domain relations and 10 Character Domain patches.
+  Omega Shenron carries `Earth Shrouded in Minus Energy`, Cell Max carries
+  `New Red Ribbon Army's Base (Ruined)`, and Ginyu (Goku) carries additive
+  `standard` plus Dokkan Frontier-only `survival` passive modes. The v1 legacy
+  fallback preserves the complete Domain name and effect text.
+- Exact consumer checks passed before publication. Android 2.0.8 commit
+  `6ac55fe20872d8c3ee1678d4e34fc010243ebb51` decoded the complete pair in the
+  frozen JVM harness and in an R8-minified LDPlayer smoke. The Play-review
+  2.0.11 tag at `5e387374b5ac5a2e82959b7919cb51980ea6b96e` and current Android master at
+  `077a70cc5da2d0d841c89b906d6dd5df985e21ef` each decoded all 1,442 Characters
+  and 2,301 states from the exact v2 pair. Current master passive-mode wire,
+  evaluator, dataset-audit and Character Overview tests also passed.
+- Mandatory remote dry-runs verified all 1,637 v1 and 3,303 v2 portrait
+  references, planned zero portrait uploads and zero deletes, and retained all
+  tracked Team Analysis releases. The largest conservative whole-bucket upper
+  bound was 597,191,302/10,000,000,000 bytes. Both live Character publishers
+  repeated the full remote verification, uploaded only their immutable gzip,
+  and promoted their mutable manifest last; Team Analysis was published only
+  after its corresponding public Character pair matched exactly.
+- Production v1 Characters is version `2026-08-31T17:45:52.288Z`, 2,369,207
+  bytes and SHA-256
+  `eecdff48285d18bb06138228b5b45e311a58a1a001fb324e3f65bfa891d67f8c`.
+  Its parser-`1.10.0` Team Analysis payload contains 2,301 states, is 3,087,703
+  bytes and has SHA-256
+  `c2676051a87fe91d91aa18276f8c46cf9476bb929e25aca81cd0832fc2678e2a`.
+- Production v2 Characters is version `2026-08-31T17:45:31.293Z`, 2,580,807
+  bytes and SHA-256
+  `53b7eb745b67259dd14f224ee8dcff8b0dfa7d21cb0277d116508c75c28bddfb`.
+  Its parser-`1.10.0` Team Analysis payload contains 2,301 states, is 3,191,302
+  bytes and has SHA-256
+  `2a3477edb7b9a7468e91c705f32825fbb7522b5764a11c01c72d7a053ef57878`.
+- Independent no-cache public downloads reproduced all four advertised sizes
+  and SHA-256 values, confirmed exact Team-to-Character version/SHA binding,
+  and found the expected Omega, Red Ribbon and Ginyu mode contracts in both
+  lanes. No portrait or historical Team Analysis release was deleted.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
