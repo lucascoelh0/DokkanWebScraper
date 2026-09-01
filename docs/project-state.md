@@ -3381,6 +3381,48 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   and found the expected Omega, Red Ribbon and Ginyu mode contracts in both
   lanes. No portrait or historical Team Analysis release was deleted.
 
+## First-party Support Memory candidate (2026-08-31)
+
+- The first migration slice is implemented locally and has not been published.
+  First-party exports now inventory the Support Memory, structural target and
+  mission tables. `run:game-db-support-memory-candidate` consumes those CSVs,
+  the exact delivered Character artifact and the previous Support Memory
+  payload, then emits a wire-compatible candidate plus a field-scoped audit and
+  SHA-256 manifest.
+- The projector no longer parses category names from prose. It joins
+  `support_memory_skills.sub_target_type_set_id` to `sub_target_types` and uses
+  the native-proven value types: 1/2 are category include/exclude and 4/5 are
+  card-unique-info-set include/exclude. Filters within one set compose as AND;
+  targetable cards from separate effects are unioned and intersected with the
+  2,629-card consumer artifact.
+- A real read-only projection from Global DB snapshot `1787900894`, SHA-256
+  `571efa97333bf4fc74a983d24cc5dd9d56c5246a56606e445ff48edfdc0d9feb`,
+  produced 76 roots from 191 memory rows and 115 enhancement edges. It adds
+  `20024 / Vow to Return`, released `2026-08-22T05:00:00.000Z`, with the
+  official Saiyan Saga target and mission. It removes no existing root.
+- The only core changes among the previous 75 entries are newly discovered
+  level-2/3 chains and official descriptions for `20005 / Power Level 530000`
+  and `20006 / Warrior Awakened through Fury`. Six memories lose false
+  category relations caused by treating a card-unique-info set ID as a category
+  ID: 30006, 40007, 40009, 50003, 50006 and 50015. Broly's Inner Power now has
+  only Movie Bosses/Revenge and 372 applicable delivered cards instead of the
+  source-derived 396.
+- Official mission joins cover 57 roots. Eighteen existing roots retain legacy
+  acquisition fallback presentation. Official level descriptions and
+  enhancement quantities replace matching enrichment facts, while DokkanInfo
+  images, animation assets, URLs and navigation remain explicitly
+  presentation-only. First-party game-asset acquisition is therefore the
+  remaining gate before this candidate can replace the staging payload.
+- Focused TypeScript validation passes the structural Broly case, official
+  mission overlay and fail-closed cases for unknown target semantics, malformed
+  effect JSON and broken enhancement chains. Android's current Gson consumer
+  passes the new `dokkan-game-db` source and an entry without optional
+  DokkanInfo enrichment. New entries carry field-scoped
+  `game-db-structural` authority markers; current Android trusts their supplied
+  category targets, while marker-less old caches keep the narrow text fallback.
+  Old Android decoders ignore the additive fields. No R2 object or public
+  manifest changed.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

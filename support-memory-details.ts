@@ -13,7 +13,7 @@ import {
 
 export interface SupportMemoryDetailsDataset {
     generatedAt: string,
-    source: "dokkan.fyi",
+    source: "dokkan.fyi" | "dokkan-game-db",
     count: number,
     entries: SupportMemoryDetailsEntry[],
 }
@@ -22,7 +22,9 @@ export interface SupportMemoryDetailsEntry extends SupportMemory {
     filmName?: string,
     categoryIds: string[],
     categoryNames: string[],
+    categoryTargetSource?: "game-db-structural",
     applicableCharacterIds: string[],
+    applicableCharacterSource?: "game-db-structural",
     unlockMethod: SupportMemoryUnlockMethod,
     unlockAcquisition?: SupportMemoryAcquisitionSummary,
     filmAcquisition?: SupportMemoryAcquisitionSummary,

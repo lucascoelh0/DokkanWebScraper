@@ -45,9 +45,24 @@ export const DOKKAN_FIELD_SIDECAR_TABLES = [
     "dokkan_field_passive_skill_relations",
 ] as const;
 
+export const SUPPORT_MEMORY_GAME_DB_TABLES = [
+    "mission_categories",
+    "mission_rewards",
+    "missions",
+    "sub_target_type_sets",
+    "sub_target_types",
+    "support_films",
+    "support_memories",
+    "support_memory_enhancement_items",
+    "support_memory_enhancement_levels",
+    "support_memory_enhancement_require_items",
+    "support_memory_skills",
+] as const;
+
 export const FIRST_PARTY_EXPORT_GAME_DB_TABLES = [
     ...CORE_GAME_DB_TABLES,
     ...SUPER_ATTACK_EFFECT_GAME_DB_TABLES,
     ...SUPER_ATTACK_CATEGORY_GAME_DB_TABLES,
     ...DOKKAN_FIELD_SIDECAR_TABLES,
+    ...SUPPORT_MEMORY_GAME_DB_TABLES,
 ] as const;
