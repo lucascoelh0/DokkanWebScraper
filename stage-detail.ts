@@ -223,8 +223,21 @@ export interface StageDetailZBattle {
     unlockConditions?: unknown,
     enemyRanges: StageDetailZBattleEnemyRange[],
     statusCurves: Array<{ escalationTypeId: string, points: Array<{ level: number, value: number }> }>,
-    cardEscalations: Array<{ escalationTypeId: string, level: number, cardId: string }>,
-    skillEscalations: Array<{ escalationTypeId: string, level: number, enemySkillId: string }>,
+    cardEscalations: Array<{
+        escalationTypeId: string,
+        level: number,
+        cardId: string,
+        cardName?: string,
+    }>,
+    skillEscalations: Array<{
+        escalationTypeId: string,
+        level: number,
+        enemySkillId: string,
+        name?: string,
+        description?: string,
+        effectTypeRaw?: number,
+        effectValues?: Array<number | null>,
+    }>,
     powerupThreshold?: { hp: number, atk: number, def: number, specialAtk: number },
     checkpoints?: Array<{
         id: string,

@@ -111,6 +111,11 @@ describe("Stage first-party candidate", () => {
         equal(zBattle?.enemyRanges[0].stats.hp, 1000000);
         deepEqual(zBattle?.enemyRanges[0].stats.unknowns, ["application_formula", "curve_precedence", "runtime_modifiers"]);
         deepEqual(zBattle?.statusCurves, [{ escalationTypeId: "1", points: [{ level: 1, value: 100 }] }]);
+        equal(zBattle?.cardEscalations[0].cardName, "Enemy");
+        equal(zBattle?.skillEscalations[0].name, "Enemy Skill");
+        equal(zBattle?.skillEscalations[0].description, "Seals Super Attack");
+        equal(zBattle?.skillEscalations[0].effectTypeRaw, 10);
+        deepEqual(zBattle?.skillEscalations[0].effectValues, [1, 0, 0]);
         deepEqual(zBattle?.checkpoints?.[0].repeatRewards, [{ itemId: "2", itemType: "AwakeningItem", quantity: 2, cardExpInitial: 0 }]);
         deepEqual(zBattle?.firstRewards?.[0].rewards, [{ itemId: "1", itemType: "Point::Stone", quantity: 1, cardExpInitial: 0 }]);
     });

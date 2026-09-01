@@ -12,9 +12,13 @@ skills and round-skill sets, drop and category-bonus tables, mission relations,
 and the Z-Battle topology, escalation and reward tables. It writes:
 
 - `stage-details.json`, a readable audit artifact;
-- `stage-details.json.gz`, the compact deterministic transport candidate;
+- `stage-details.json.gz`, a compact monolithic audit/compatibility candidate;
 - `stage-first-party-audit.json`, including authority limits and unresolved
   relations; and
+- `stage-details-manifest.json`, a schema-2 delivery pointer to one catalog and
+  bounded content-addressed detail shards;
+- `stage-delivery-audit.json`, recording route totals and expanded-size
+  percentiles; and
 - `candidate-manifest.json`, binding every output by size and SHA-256.
 
 ## Supported joins
@@ -37,7 +41,9 @@ and the Z-Battle topology, escalation and reward tables. It writes:
   explicitly unknown rather than inferred.
 - Z-Battle rows preserve base HP/ATK/DEF ranges, escalation curves, card/skill
   escalation IDs, thresholds, checkpoints, stamina/key costs and first/repeat
-  reward item rows.
+  reward item rows. Card and enemy-skill escalation IDs are fail-closed joins:
+  the delivery also includes the official card name and enemy-skill name,
+  description, raw effect kind and raw effect values.
 
 ## Support Memory relation
 
@@ -85,8 +91,14 @@ It produces 481 unique Support Memory relations covering 52 memories; the
 forward Support Memory projection and inverse Stage projection have identical
 relation keys.
 
-The formatted JSON is 47,887,747 bytes. The deterministic compact gzip is
-979,470 bytes and expands to 26,775,174 compact JSON bytes. Android should
-consume a gzip-aware, staged/on-demand contract before this lane is enabled;
-loading the complete object graph during startup is not an accepted production
-design.
+The current complete-source projection produces 5,625 typed catalog routes
+(5,391 quest levels and 234 Z-Battles). Its formatted audit JSON is 49,133,562
+bytes; the compact monolith is 1,021,207 bytes and expands to 27,494,263 bytes.
+
+The actual Android delivery is not that monolith. It is a 181,245-byte catalog
+plus 14 deterministic detail shards, each capped at 2,097,152 expanded bytes.
+The measured maximum is 2,096,949 bytes; catalog plus shards total 1,215,406
+compressed and 30,181,216 expanded bytes. Every route resolves exactly one
+shard, every Support Memory relation resolves a typed target, and manifest
+size/SHA-256 metadata binds every immutable object. These artifacts remain
+local and non-production; no R2 object or public manifest was changed.

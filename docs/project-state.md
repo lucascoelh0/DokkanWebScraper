@@ -3460,11 +3460,23 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   mismatches in stamina, keys, Rank EXP, Zeni, Link Skill level-up rate, quest
   ID or area ID. The previous dataset is comparison-only; the candidate
   contains no Dokkan.fyi, DokkanInfo or HTTP source.
-- The readable JSON is 47,887,747 bytes. Its deterministic compact gzip is
-  979,470 bytes and expands to 26,775,174 JSON bytes. Production remains
-  disabled: Android needs a gzip-aware, staged/on-demand consumer instead of
-  loading the full object graph during startup, and no R2 object or manifest
-  was changed.
+- The product delivery and staging-only Android consumer are now implemented
+  locally. Schema 2 points to a 181,245-byte searchable catalog and 14
+  content-addressed detail shards; the largest shard expands to 2,096,949
+  bytes under the 2 MiB fail-closed limit. The complete delivery represents
+  5,625 typed routes and 481 Support Memory relations in 1,215,406 compressed
+  bytes without constructing the full detail graph at startup.
+- Z-Battle delivery now joins escalated card and enemy-skill IDs back to their
+  official rows, preserving card names plus skill names, descriptions, raw
+  effect kinds and raw values. Android renders these separately from raw base
+  stats, curves and thresholds and continues to label the final formula as
+  unproved.
+- Focused TypeScript contract/CLI tests pass 10 scenarios. Android mapper,
+  repository-manager, initial-download and ViewModel tests cover strict
+  contracts, on-demand single-flight loading, verified offline cache and
+  filtering. A real local staging build loaded the catalog and quest/Z-Battle
+  shards in LDPlayer, including offline cached details and graceful uncached
+  failure. No R2 object, staging pointer or production lane changed.
 
 ## Operating Constraints
 

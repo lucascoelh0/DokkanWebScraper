@@ -5,6 +5,7 @@ import { gzipSync } from "zlib";
 import { writeFormattedJson } from "../format-json";
 import { StageDetailsDataset } from "../stage-detail";
 import { buildStageFirstPartyCandidate, StageFirstPartyTables } from "./game-db-stage";
+import { buildStageDelivery } from "./game-db-stage-delivery";
 import { GameDbSourceConfig, readGameDbTable } from "./game-db-source";
 
 interface Options {
@@ -133,15 +134,38 @@ async function main(): Promise<void> {
     const datasetPath = resolve(options.outputDir, "stage-details.json");
     const auditPath = resolve(options.outputDir, "stage-first-party-audit.json");
     const transportPath = resolve(options.outputDir, "stage-details.json.gz");
+    const deliveryManifestPath = resolve(options.outputDir, "stage-details-manifest.json");
+    const deliveryAuditPath = resolve(options.outputDir, "stage-delivery-audit.json");
     await writeFormattedJson(datasetPath, candidate.dataset);
     await writeFormattedJson(auditPath, { ...candidate.audit, comparison });
     const compactDatasetBytes = Buffer.from(JSON.stringify(candidate.dataset), "utf8");
     await writeFile(transportPath, gzipSync(compactDatasetBytes, { level: 9 }), { flag: "wx" });
+    const delivery = buildStageDelivery(candidate.dataset);
+    await writeFormattedJson(deliveryManifestPath, delivery.manifest);
+    await writeFormattedJson(deliveryAuditPath, delivery.audit);
+    const deliveryObjectRoot = resolve(options.outputDir, "stage-details", "objects");
+    await mkdir(deliveryObjectRoot, { recursive: true });
+    const deliveryObjects = [
+        { object: delivery.manifest.catalog, bytes: delivery.catalogGzip },
+        ...delivery.shards.map(shard => ({ object: shard.manifest, bytes: shard.gzip })),
+    ];
+    for (const item of deliveryObjects) {
+        const objectPath = resolve(options.outputDir, item.object.objectKey);
+        await mkdir(dirname(objectPath), { recursive: true });
+        await writeFile(objectPath, item.bytes, { flag: "wx" });
+    }
     const datasetBytes = await readFile(datasetPath);
     const auditBytes = await readFile(auditPath);
     const transportBytes = await readFile(transportPath);
+    const deliveryManifestBytes = await readFile(deliveryManifestPath);
+    const deliveryAuditBytes = await readFile(deliveryAuditPath);
+    const deliveryFileEntries = deliveryObjects.map(item => ({
+        name: item.object.objectKey,
+        sizeBytes: item.bytes.byteLength,
+        sha256: createHash("sha256").update(item.bytes).digest("hex"),
+    }));
     await writeFile(resolve(options.outputDir, "candidate-manifest.json"), `${JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         generatedAt: options.generatedAt,
         sourceSnapshotVersion: options.sourceSnapshotVersion,
         sourceDatabaseSha256: options.sourceDatabaseSha256,
@@ -153,16 +177,28 @@ async function main(): Promise<void> {
             contentEncoding: "gzip",
             uncompressedSizeBytes: compactDatasetBytes.byteLength,
         },
+        delivery: {
+            manifestFileName: "stage-details-manifest.json",
+            catalogObjectKey: delivery.manifest.catalog.objectKey,
+            shardCount: delivery.manifest.shards.length,
+            totalCompressedBytes: delivery.audit.totalCompressedBytes,
+            totalExpandedBytes: delivery.audit.totalExpandedBytes,
+            shardMaxExpandedBytes: delivery.audit.shardMaxExpandedBytes,
+        },
         files: [
             { name: "stage-details.json", sizeBytes: datasetBytes.byteLength, sha256: createHash("sha256").update(datasetBytes).digest("hex") },
             { name: "stage-details.json.gz", sizeBytes: transportBytes.byteLength, sha256: createHash("sha256").update(transportBytes).digest("hex") },
             { name: "stage-first-party-audit.json", sizeBytes: auditBytes.byteLength, sha256: createHash("sha256").update(auditBytes).digest("hex") },
+            { name: "stage-details-manifest.json", sizeBytes: deliveryManifestBytes.byteLength, sha256: createHash("sha256").update(deliveryManifestBytes).digest("hex") },
+            { name: "stage-delivery-audit.json", sizeBytes: deliveryAuditBytes.byteLength, sha256: createHash("sha256").update(deliveryAuditBytes).digest("hex") },
+            ...deliveryFileEntries,
         ],
     }, null, 2)}\n`, { encoding: "utf8", flag: "w" });
     console.log(JSON.stringify({
         outputDir: options.outputDir,
         counts: candidate.audit.counts,
         comparison,
+        delivery: delivery.audit,
     }, null, 2));
 }
 
