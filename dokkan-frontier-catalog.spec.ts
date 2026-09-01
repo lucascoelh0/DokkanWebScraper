@@ -4,6 +4,7 @@ import { DokkanFrontierChaptersDataset, DokkanFrontierSeriesDataset } from "./do
 import { buildDokkanFrontierCatalog } from "./dokkan-frontier-catalog";
 import { DokkanInfoFrontierDataset } from "./dokkaninfo-special-event";
 import { Character } from "./character";
+import { DokkanStatsFrontierDataset } from "./dokkanstats-frontier";
 
 describe("Dokkan Frontier catalog", () => {
     it("joins all current nodes and encounter enemies by exact IDs", async () => {
@@ -73,6 +74,39 @@ describe("Dokkan Frontier catalog", () => {
         assert(node);
         assert.equal(node.requiredCharacters[0].portraitSpec, undefined);
     });
+
+    it("replaces every Japanese card-skin reward label through exact DokkanStats IDs", async () => {
+        const inputs = await readInputs();
+        const dokkanStats = dokkanStatsFor(inputs.dokkanFyiChapters);
+        const dataset = buildDokkanFrontierCatalog({ ...inputs, dokkanStats });
+        const rewards = dataset.series.flatMap(value => value.chapters)
+            .flatMap(value => [
+                ...value.missions.flatMap(mission => mission.rewards),
+                ...value.pages.flatMap(page => page.nodes).flatMap(node => node.missions).flatMap(mission => mission.rewards),
+            ])
+            .filter(value => value.itemType === "CardSkinItem");
+
+        assert.equal(dataset.counts.cardSkinRewardsEnriched, 100);
+        assert.equal(rewards.length, 100);
+        assert(rewards.every(value => value.name?.startsWith("English Card")));
+        assert(rewards.every(value => !/[\u3040-\u30ff\u3400-\u9fff]/u.test(value.name ?? "")));
+        assert(rewards.every(value => value.cardSkinTitle === "English Card"));
+        assert(rewards.every(value => value.cardSkinCharacterName === value.cardId));
+        assert(rewards.every(value => value.portraitSpec?.iconId && value.portraitSpec.elementCode === "20"));
+        assert.equal(dataset.sources.dokkanStatsGeneratedAt, dokkanStats.generatedAt);
+        assert.equal(dataset.fieldAuthority.dokkanStats?.length, 1);
+    });
+
+    it("fails closed when a DokkanStats skin disagrees with the FYI card ID or step", async () => {
+        const inputs = await readInputs();
+        const dokkanStats = dokkanStatsFor(inputs.dokkanFyiChapters);
+        dokkanStats.cardSkins[0].cardId = "9999999";
+
+        assert.throws(
+            () => buildDokkanFrontierCatalog({ ...inputs, dokkanStats }),
+            /differs from DokkanStats card ID or step/,
+        );
+    });
 });
 
 async function readInputs(): Promise<{
@@ -89,4 +123,39 @@ async function readInputs(): Promise<{
         read<Character[]>("data/characters.json"),
     ]);
     return { dokkanInfo, dokkanFyiSeries, dokkanFyiChapters, characters };
+}
+
+function dokkanStatsFor(chapters: DokkanFrontierChaptersDataset): DokkanStatsFrontierDataset {
+    const missions = [
+        ...chapters.chapters.flatMap(value => value.chapterMissions),
+        ...chapters.chapters.flatMap(value => value.pages).flatMap(value => value.nodes).flatMap(value => value.missions),
+    ];
+    const rewards = missions.flatMap(value => value.rewards).filter(value => value.itemType === "CardSkinItem");
+    const cardSkins = [...new Map(rewards.map(reward => {
+        assert(reward.itemId && reward.cardId && reward.step);
+        return [reward.itemId, {
+            id: reward.itemId,
+            cardId: reward.cardId,
+            step: reward.step,
+            displayName: `English Card ${reward.cardId}`,
+            cardTitle: "English Card",
+            characterName: reward.cardId,
+            type: "AGL",
+            characterClass: "Extreme",
+            rarity: "UR",
+            sourceUrl: `https://dokkanstats.com/en/items/card-skins/${reward.itemId}/`,
+        }];
+    })).values()];
+    return {
+        schemaVersion: 1,
+        contract: "dokkanstats-frontier-enrichment",
+        contractVersion: "1.0.0",
+        generatedAt: "2026-09-01T00:00:00.000Z",
+        source: "dokkanstats.com",
+        cardSkinCount: cardSkins.length,
+        missionCategoryCount: 0,
+        missionCount: 0,
+        cardSkins,
+        missionCategories: [],
+    };
 }

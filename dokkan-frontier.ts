@@ -1,4 +1,4 @@
-import { Classes, Rarities, Types } from "./character";
+import { Classes, PortraitSpec, Rarities, Types } from "./character";
 
 export interface DokkanFrontierSeriesDataset {
     generatedAt: string,
@@ -129,6 +129,9 @@ export interface DokkanFrontierReward {
     amount?: number,
     cardId?: string,
     step?: number,
+    cardSkinTitle?: string,
+    cardSkinCharacterName?: string,
+    portraitSpec?: PortraitSpec,
     linkTo?: string,
     bgmId?: string,
 }

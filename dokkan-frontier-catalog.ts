@@ -21,8 +21,9 @@ import {
     DokkanInfoSpecialReward,
 } from "./dokkaninfo-special-event";
 import { writeFormattedJson } from "./format-json";
-import { Character, PortraitSpec, Rarities } from "./character";
-import { portraitSpecFromElement } from "./game-db/portrait-asset-contract";
+import { Character, Classes, PortraitSpec, Rarities, Types } from "./character";
+import { portraitSpecFromElement, portraitSpecFromTypeAndClass } from "./game-db/portrait-asset-contract";
+import { DokkanStatsCardSkin, DokkanStatsFrontierDataset } from "./dokkanstats-frontier";
 
 const OUTPUT_DIR = "data/dokkan-frontier-catalog/latest";
 const PAYLOAD_FILE = "frontier.json";
@@ -37,10 +38,12 @@ export interface DokkanFrontierCatalogDataset {
     sources: {
         dokkanInfoGeneratedAt: string,
         dokkanFyiGeneratedAt: string,
+        dokkanStatsGeneratedAt?: string,
     },
     fieldAuthority: {
         dokkanInfo: string[],
         dokkanFyi: string[],
+        dokkanStats?: string[],
     },
     counts: {
         series: number,
@@ -49,6 +52,7 @@ export interface DokkanFrontierCatalogDataset {
         nodes: number,
         enemies: number,
         missions: number,
+        cardSkinRewardsEnriched: number,
     },
     series: DokkanFrontierCatalogSeries[],
 }
@@ -144,14 +148,19 @@ interface FrontierCatalogInputs {
     dokkanFyiChapters: DokkanFrontierChaptersDataset,
     generatedAt?: string,
     characters?: Character[],
+    dokkanStats?: DokkanStatsFrontierDataset,
 }
 
 export function buildDokkanFrontierCatalog(inputs: FrontierCatalogInputs): DokkanFrontierCatalogDataset {
     assertCompleteDokkanInfo(inputs.dokkanInfo);
     const infoBattles = flattenDokkanInfoBattles(inputs.dokkanInfo);
     const portraits = portraitLookup(inputs.characters);
+    const cardSkins = inputs.dokkanStats ? cardSkinLookup(inputs.dokkanStats.cardSkins) : undefined;
     const fyiNodes = inputs.dokkanFyiChapters.chapters.flatMap(chapter => chapter.pages.flatMap(page => page.nodes));
     assertExactIdSet("Frontier nodes", infoBattles.map(value => value.id), fyiNodes.map(value => value.id));
+    const cardSkinRewardsEnriched = cardSkins
+        ? validateCardSkinCoverage(inputs.dokkanFyiChapters, cardSkins)
+        : 0;
 
     const infoBattleById = uniqueMap(infoBattles, value => value.id, "DokkanInfo battle");
     const infoEpisodeById = uniqueMap(
@@ -170,7 +179,7 @@ export function buildDokkanFrontierCatalog(inputs: FrontierCatalogInputs): Dokka
             if (!chapter) throw new Error(`dokkan.fyi chapter ${summary.id} is missing.`);
             const infoEpisode = infoEpisodeById.get(summary.id);
             if (!infoEpisode) throw new Error(`DokkanInfo episode ${summary.id} is missing.`);
-            return mapChapter(chapter, infoEpisode.title, infoEpisode.bannerPath, infoBattleById, portraits);
+            return mapChapter(chapter, infoEpisode.title, infoEpisode.bannerPath, infoBattleById, portraits, cardSkins);
         });
         return {
             id: fyiSeries.id,
@@ -192,6 +201,7 @@ export function buildDokkanFrontierCatalog(inputs: FrontierCatalogInputs): Dokka
         nodes: catalogNodes.length,
         enemies: catalogNodes.flatMap(value => value.rounds).flatMap(value => value.enemies).length,
         missions: catalogChapters.flatMap(value => value.missions).length + catalogNodes.flatMap(value => value.missions).length,
+        cardSkinRewardsEnriched,
     };
 
     return {
@@ -203,10 +213,12 @@ export function buildDokkanFrontierCatalog(inputs: FrontierCatalogInputs): Dokka
         sources: {
             dokkanInfoGeneratedAt: inputs.dokkanInfo.generatedAt,
             dokkanFyiGeneratedAt: inputs.dokkanFyiChapters.generatedAt,
+            ...(inputs.dokkanStats ? { dokkanStatsGeneratedAt: inputs.dokkanStats.generatedAt } : {}),
         },
         fieldAuthority: {
             dokkanInfo: ["node titles", "encounter portraits and types", "enemy stats", "super attacks", "clear rewards", "bonus passive cards"],
-            dokkanFyi: ["series topology", "map backgrounds", "unlock conditions", "required characters", "intensity effects", "enemy skills", "missions"],
+            dokkanFyi: ["series topology", "map backgrounds", "unlock conditions", "required characters", "intensity effects", "enemy skills", "missions except enriched card-skin display names"],
+            ...(inputs.dokkanStats ? { dokkanStats: ["English card-skin reward names and portrait metadata joined by item ID, card ID and step"] } : {}),
         },
         counts,
         series,
@@ -248,6 +260,7 @@ function mapChapter(
     infoBannerPath: string | undefined,
     battleById: Map<string, DokkanInfoFrontierBattle>,
     portraits: Map<string, PortraitSpec>,
+    cardSkins?: Map<string, DokkanStatsCardSkin>,
 ): DokkanFrontierCatalogChapter {
     return {
         id: chapter.id,
@@ -255,7 +268,7 @@ function mapChapter(
         name: infoTitle || chapter.name,
         bannerImageUrl: infoBannerPath || chapter.bannerImagePath,
         groupExchange: chapter.groupExchange,
-        missions: chapter.chapterMissions,
+        missions: enrichMissions(chapter.chapterMissions, cardSkins),
         pages: chapter.pages.map(page => ({
             id: page.id,
             number: page.pageNumber,
@@ -280,7 +293,7 @@ function mapChapter(
                     bonusPassiveCards: enrichCardRefs(battle.bonusPassiveCards, portraits),
                     intensityEffects: node.intensityEffects,
                     rounds: mergeEnemyRounds(battle, node.rounds, portraits),
-                    missions: node.missions,
+                    missions: enrichMissions(node.missions, cardSkins),
                     clearRewards: battle.clearRewards,
                     sourceUrls: {
                         dokkanInfo: battle.sourcePath,
@@ -371,6 +384,81 @@ function enrichCardRefs(refs: DokkanInfoSpecialCardReference[], portraits: Map<s
     return refs.map(ref => ({ ...ref, portraitSpec: specialCardPortraitSpec(ref) ?? portraits.get(ref.id) }));
 }
 
+function enrichMissions(
+    missions: DokkanFrontierMission[],
+    cardSkins: Map<string, DokkanStatsCardSkin> | undefined,
+): DokkanFrontierMission[] {
+    if (!cardSkins) return missions;
+    return missions.map(mission => ({
+        ...mission,
+        rewards: mission.rewards.map(reward => enrichCardSkinReward(reward, cardSkins)),
+    }));
+}
+
+function enrichCardSkinReward(
+    reward: DokkanFrontierReward,
+    cardSkins: Map<string, DokkanStatsCardSkin>,
+): DokkanFrontierReward {
+    if (reward.itemType !== "CardSkinItem") return reward;
+    const itemId = requiredRewardId(reward.itemId, "item ID");
+    const cardId = requiredRewardId(reward.cardId, "card ID");
+    if (!Number.isInteger(reward.step) || (reward.step ?? 0) <= 0) {
+        throw new Error(`Frontier card-skin reward ${itemId} has no valid step.`);
+    }
+    const skin = cardSkins.get(itemId);
+    if (!skin) throw new Error(`Frontier card-skin reward ${itemId} is missing from DokkanStats.`);
+    if (skin.cardId !== cardId || skin.step !== reward.step) {
+        throw new Error(`Frontier card-skin reward ${itemId} differs from DokkanStats card ID or step.`);
+    }
+    return {
+        ...reward,
+        name: skin.displayName,
+        cardSkinTitle: skin.cardTitle,
+        cardSkinCharacterName: skin.characterName,
+        portraitSpec: cardSkinPortraitSpec(skin),
+    };
+}
+
+function cardSkinPortraitSpec(skin: DokkanStatsCardSkin): PortraitSpec {
+    const type = skin.type?.trim().toUpperCase() as Types | undefined;
+    const characterClass = skin.characterClass?.trim() as Classes | undefined;
+    const rarity = skin.rarity?.trim().toUpperCase() as Rarities | undefined;
+    const typeDigit = type === Types.AGL ? 0
+        : type === Types.TEQ ? 1
+            : type === Types.INT ? 2
+                : type === Types.STR ? 3
+                    : type === Types.PHY ? 4
+                        : undefined;
+    if (typeDigit === undefined || !Object.values(Classes).includes(characterClass as Classes)
+        || !Object.values(Rarities).includes(rarity as Rarities)) {
+        throw new Error(`DokkanStats card skin ${skin.id} has incomplete portrait metadata.`);
+    }
+    return portraitSpecFromTypeAndClass(skin.cardId, rarity as Rarities, typeDigit, characterClass as Classes);
+}
+
+function cardSkinLookup(cardSkins: DokkanStatsCardSkin[]): Map<string, DokkanStatsCardSkin> {
+    return uniqueMap(cardSkins, value => value.id, "DokkanStats card skin");
+}
+
+function validateCardSkinCoverage(
+    chapters: DokkanFrontierChaptersDataset,
+    cardSkins: Map<string, DokkanStatsCardSkin>,
+): number {
+    const missions = [
+        ...chapters.chapters.flatMap(value => value.chapterMissions),
+        ...chapters.chapters.flatMap(value => value.pages).flatMap(value => value.nodes).flatMap(value => value.missions),
+    ];
+    const rewards = missions.flatMap(value => value.rewards).filter(value => value.itemType === "CardSkinItem");
+    rewards.forEach(reward => enrichCardSkinReward(reward, cardSkins));
+    return rewards.length;
+}
+
+function requiredRewardId(value: string | undefined, label: string): string {
+    const normalized = value?.trim() ?? "";
+    if (!/^\d+$/.test(normalized)) throw new Error(`Frontier card-skin reward ${label} is missing or invalid.`);
+    return normalized;
+}
+
 function specialCardPortraitSpec(ref: DokkanInfoSpecialCardReference): PortraitSpec | undefined {
     const rarity = ref.rarityRaw === undefined ? undefined : [
         Rarities.N,
@@ -421,17 +509,27 @@ function uniqueMap<T>(values: T[], id: (value: T) => string, label: string): Map
 }
 
 async function readDefaultInputs(): Promise<FrontierCatalogInputs> {
-    const [dokkanInfo, dokkanFyiSeries, dokkanFyiChapters] = await Promise.all([
+    const [dokkanInfo, dokkanFyiSeries, dokkanFyiChapters, dokkanStats] = await Promise.all([
         readJson<DokkanInfoFrontierDataset>("data/dokkaninfo-frontier/latest/frontier.json"),
         readJson<DokkanFrontierSeriesDataset>("data/dokkan-frontier/latest/dokkan-frontier-series.json"),
         readJson<DokkanFrontierChaptersDataset>("data/dokkan-frontier/latest/dokkan-frontier-chapters.json"),
+        readOptionalJson<DokkanStatsFrontierDataset>("data/dokkanstats-frontier/latest/frontier.json"),
     ]);
     const characters = await readJson<Character[]>("data/characters.json");
-    return { dokkanInfo, dokkanFyiSeries, dokkanFyiChapters, characters };
+    return { dokkanInfo, dokkanFyiSeries, dokkanFyiChapters, characters, dokkanStats };
 }
 
 async function readJson<T>(path: string): Promise<T> {
     return JSON.parse(await readFile(resolve(process.cwd(), path), "utf8")) as T;
+}
+
+async function readOptionalJson<T>(path: string): Promise<T | undefined> {
+    try {
+        return await readJson<T>(path);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+        throw error;
+    }
 }
 
 function sha256(bytes: Buffer): string {

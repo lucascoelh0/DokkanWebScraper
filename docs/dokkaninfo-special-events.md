@@ -57,6 +57,7 @@ From the repository root:
 ```powershell
 npm run run:dokkaninfo-frontier
 npm run run:fyi-frontier
+npm run run:dokkanstats-frontier
 npm run run:dokkan-frontier-catalog
 npm run run:dokkaninfo-burst-mode
 npm run run:dokkaninfo-ultimate-clash
@@ -69,9 +70,10 @@ Ignored local outputs are written to:
 - `data/dokkaninfo-ultimate-clash/latest/ultimate-clash.json`
 - `data/dokkan-frontier-catalog/latest/frontier.json`
 - `data/dokkan-frontier-catalog/latest/frontier-manifest.json`
+- `data/dokkanstats-frontier/latest/frontier.json`
 
-`run:dokkan-frontier-catalog` consumes the two latest Frontier outputs and
-builds the Android delivery contract. Run both source collectors first when a
+`run:dokkan-frontier-catalog` consumes the latest Frontier outputs and
+builds the Android delivery contract. Run all three source collectors first when a
 fresh remote snapshot is required. The merge requires exact battle-ID parity
 between DokkanInfo and Dokkan.fyi and exact enemy-card joins. DokkanInfo remains
 authoritative for node titles, encounter portraits and types, runtime stats,
@@ -79,6 +81,16 @@ Super Attacks, rewards and bonus-passive cards. Dokkan.fyi adds series/map
 topology, map backgrounds, unlock conditions, required characters, intensity,
 enemy mechanic descriptions and missions. A missing or duplicate join fails
 the build instead of silently producing a partial catalog.
+
+DokkanStats supplies an authorized, additive English enrichment for card-skin
+mission rewards. Its card-skin index is cached locally and joined only when the
+DokkanStats item ID, card ID and step all match the Dokkan.fyi reward. The raw
+Dokkan.fyi label remains in the source snapshot; only the Android delivery
+label is replaced with the English card title/name and explicit skin step. A
+missing or conflicting skin fails closed. DokkanStats mission-category pages
+are retained as independent evidence with reward IDs, quantities, images and
+displayed dates; they are not joined to individual FYI missions because the
+rendered pages do not expose mission IDs.
 
 The generated manifest records the payload byte size and SHA-256. Its version
 is derived from the canonical payload, so unchanged source data keeps the same
@@ -92,3 +104,9 @@ are `DOKKANINFO_FRONTIER`, `DOKKANINFO_BURST_MODE` and
 The collectors validate advertised pagination totals and record detail failures
 explicitly. They do not download referenced images, modify Android, publish to
 R2 or promote any production dataset.
+
+DokkanStats responses use a 168-hour mapped-response cache. Set
+`DOKKANSTATS_FRONTIER_REFRESH=1` to refresh, and optionally configure
+`DOKKANSTATS_FRONTIER_DELAY_MS` or `DOKKANSTATS_FRONTIER_CACHE_TTL_HOURS`.
+The default collector is sequential and waits 500 ms between mission-category
+requests.
