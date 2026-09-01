@@ -392,6 +392,20 @@ families, `DOKKANINFO_EVENT_REWARD_LIMIT` can run a small batch, and
 `DOKKANINFO_EVENT_REWARD_CONCURRENCY` tunes parallel requests. Pages that
 remain unavailable are recorded in `failedEventIds`.
 
+### DokkanInfo quest-event details
+
+```powershell
+npm run run:dokkaninfo-db-stories
+npm run run:dokkaninfo-stories
+```
+
+These collectors rediscover event IDs from the live DB Stories or Story index,
+then capture stages, missions, rewards and the enemy data exposed by each quest
+page. New events are picked up automatically after the index cache expires, or
+immediately with the documented family-specific refresh flag. See
+[`docs/dokkaninfo-quest-events.md`](docs/dokkaninfo-quest-events.md) for cache,
+refresh, provenance and failure-state details.
+
 ### Wallpapers
 
 ```powershell

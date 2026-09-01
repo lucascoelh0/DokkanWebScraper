@@ -28,7 +28,7 @@ const DEFAULT_EVENT_TYPES = [
     "sdbattle",
 ];
 
-interface DokkanInfoEventSummary {
+export interface DokkanInfoEventSummary {
     id: string,
     type: string,
     name: string,
@@ -214,7 +214,7 @@ async function fetchAndMapEvent(summary: DokkanInfoEventSummary): Promise<Dokkan
     return event;
 }
 
-function mapEventRewards(
+export function mapEventRewards(
     document: Document,
     summary: DokkanInfoEventSummary,
     eventName: string,

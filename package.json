@@ -137,6 +137,8 @@
     "run:dokkaninfo-support-memory-enrichment": "npx ts-node dokkaninfo-support-memory-enrichment-run.ts",
     "run:dokkaninfo-awakening-medal-enrichment": "npx ts-node dokkaninfo-awakening-medal-enrichment-run.ts",
     "run:dokkaninfo-event-rewards": "npx ts-node dokkaninfo-event-rewards-run.ts",
+    "run:dokkaninfo-db-stories": "npx ts-node dokkaninfo-db-stories-run.ts",
+    "run:dokkaninfo-stories": "npx ts-node dokkaninfo-stories-run.ts",
     "run:dokkaninfo-item-catalog": "npx ts-node dokkaninfo-item-catalog-run.ts",
     "publish:dokkaninfo-items-r2": "npx ts-node publish-dokkaninfo-items-r2.ts",
     "publish:support-memory-r2": "npx ts-node publish-support-memory-r2.ts",
