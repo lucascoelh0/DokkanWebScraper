@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
-import { SupportMemoryDetailsDataset, SupportMemoryDetailsEntry, SupportMemoryDokkanInfoPresentation, SupportMemoryAcquisitionSummary, SupportMemoryAcquisitionSourceEntry } from "../support-memory-details";
+import { SupportMemoryDetailsDataset, SupportMemoryDetailsEntry, SupportMemoryDokkanInfoPresentation, SupportMemoryAcquisitionSummary, SupportMemoryAcquisitionSourceEntry, SupportMemoryOfficialStageRelation } from "../support-memory-details";
 import { SupportMemory, SupportMemoryEffect, SupportMemoryEnhancementStep, SupportMemoryFilm } from "../support-memory";
+import { createMissionStageResolver } from "./game-db-mission-stage-relations";
 import { GameDbRow, normalizeDbId, parseDbDate } from "./game-db-source";
 
 export const SUPPORT_MEMORY_FIRST_PARTY_CONTRACT = "dokkan-support-memory-first-party-candidate";
@@ -105,6 +106,7 @@ interface MissionJoin {
     description?: string,
     startsAt?: string,
     endsAt?: string,
+    officialStageRelations: SupportMemoryOfficialStageRelation[],
 }
 
 const numericCompare = (left: string, right: string) => Number(left) - Number(right) || left.localeCompare(right);
@@ -239,6 +241,7 @@ function enhancementChain(
 function buildMissionJoins(tables: SupportMemoryFirstPartyTables): MissionJoin[] {
     const missions = uniqueById(tables.missions, "mission");
     const categories = uniqueById(tables.mission_categories, "mission category");
+    const resolveMissionStages = createMissionStageResolver(tables.missions);
     return tables.mission_rewards
         .filter(row => row.item_type === "SupportMemory" || row.item_type === "SupportFilm")
         .map(row => {
@@ -248,6 +251,12 @@ function buildMissionJoins(tables: SupportMemoryFirstPartyTables): MissionJoin[]
             const categoryId = id(mission, "mission_category_id");
             const category = categories.get(categoryId);
             if (!category) throw new Error(`Mission ${missionId} references missing category ${categoryId}`);
+            const resolution = resolveMissionStages(missionId);
+            const officialStageRelations: SupportMemoryOfficialStageRelation[] = [
+                ...[...resolution.stageIds].map(([targetId, relation]) => ({ targetKind: "quest-level" as const, targetId, relation })),
+                ...[...resolution.areaIds].map(([targetId, relation]) => ({ targetKind: "area" as const, targetId, relation })),
+                ...[...resolution.zBattleIds].map(([targetId, relation]) => ({ targetKind: "z-battle" as const, targetId, relation })),
+            ].sort((left, right) => left.targetKind.localeCompare(right.targetKind) || numericCompare(left.targetId, right.targetId));
             return {
                 rewardId: id(row),
                 missionId,
@@ -260,6 +269,7 @@ function buildMissionJoins(tables: SupportMemoryFirstPartyTables): MissionJoin[]
                 description: text(mission.description) || undefined,
                 startsAt: date(mission, "start_at"),
                 endsAt: date(mission, "end_at"),
+                officialStageRelations,
             };
         });
 }
@@ -275,6 +285,7 @@ function officialMissionSource(join: MissionJoin): SupportMemoryAcquisitionSourc
         quantity: join.quantity,
         ...(join.startsAt ? { startsAt: join.startsAt } : {}),
         ...(join.endsAt ? { endsAt: join.endsAt } : {}),
+        ...(join.officialStageRelations.length > 0 ? { officialStageRelations: join.officialStageRelations } : {}),
     };
 }
 

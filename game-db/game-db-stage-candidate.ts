@@ -1,0 +1,174 @@
+import { createHash } from "crypto";
+import { mkdir, readFile, stat, writeFile } from "fs/promises";
+import { dirname, resolve } from "path";
+import { gzipSync } from "zlib";
+import { writeFormattedJson } from "../format-json";
+import { StageDetailsDataset } from "../stage-detail";
+import { buildStageFirstPartyCandidate, StageFirstPartyTables } from "./game-db-stage";
+import { GameDbSourceConfig, readGameDbTable } from "./game-db-source";
+
+interface Options {
+    sourceDataDir: string,
+    sourceSnapshotVersion: string,
+    sourceDatabaseSha256: string,
+    outputDir: string,
+    generatedAt: string,
+    previousDatasetPath?: string,
+}
+
+export const REQUIRED_STAGE_TABLES: Array<keyof StageFirstPartyTables> = [
+    "areas",
+    "cards",
+    "card_categories",
+    "chapters",
+    "db_stories",
+    "enemy_round_skill_set_relations",
+    "enemy_round_skill_sets",
+    "enemy_round_skills",
+    "enemy_skill_cutin_extensions",
+    "enemy_skills",
+    "link_skills",
+    "mission_rewards",
+    "missions",
+    "passive_skill_sets",
+    "quest_category_bonus_groups",
+    "quest_category_bonus_rarity_tables",
+    "quest_category_bonuses",
+    "quest_drop_item_views",
+    "quests",
+    "related_card_categories",
+    "related_link_skills",
+    "related_optimal_awakenings",
+    "related_passive_skill_sets",
+    "sugoroku_map_boss_drop_items",
+    "sugoroku_map_enemy_informations",
+    "sugoroku_map_puzzle_colors",
+    "sugoroku_maps",
+    "z_battle_check_points",
+    "z_battle_enemies",
+    "z_battle_enemy_card_escalations",
+    "z_battle_enemy_skill_escalations",
+    "z_battle_enemy_status_escalations",
+    "z_battle_first_reward_level_ranges",
+    "z_battle_first_rewards",
+    "z_battle_normal_reward_tables",
+    "z_battle_normal_rewards",
+    "z_battle_powerup_thresholds",
+    "z_battle_stage_views",
+    "z_battle_stages",
+];
+
+export function parseStageCandidateArgs(args: string[]): Options {
+    const supported = new Set([
+        "--source-data-dir",
+        "--source-snapshot-version",
+        "--source-database-sha256",
+        "--output-dir",
+        "--generated-at",
+        "--previous-dataset",
+    ]);
+    const values = new Map<string, string>();
+    for (let index = 0; index < args.length; index += 1) {
+        const token = args[index];
+        const separator = token.indexOf("=");
+        const key = separator >= 0 ? token.slice(0, separator) : token;
+        if (!supported.has(key)) throw new Error(`Unexpected Stage candidate argument: ${token}`);
+        const value = separator >= 0 ? token.slice(separator + 1) : args[++index];
+        if (!value || values.has(key)) throw new Error(`Missing or duplicate Stage candidate argument: ${key}`);
+        values.set(key, value);
+    }
+    for (const key of ["--source-data-dir", "--source-snapshot-version", "--source-database-sha256", "--output-dir"]) {
+        if (!values.has(key)) throw new Error(`Missing Stage candidate argument: ${key}`);
+    }
+    const generatedAt = values.get("--generated-at") ?? new Date().toISOString();
+    if (Number.isNaN(Date.parse(generatedAt))) throw new Error("Invalid Stage --generated-at");
+    return {
+        sourceDataDir: resolve(values.get("--source-data-dir")!),
+        sourceSnapshotVersion: values.get("--source-snapshot-version")!,
+        sourceDatabaseSha256: values.get("--source-database-sha256")!,
+        outputDir: resolve(values.get("--output-dir")!),
+        generatedAt,
+        ...(values.get("--previous-dataset") ? { previousDatasetPath: resolve(values.get("--previous-dataset")!) } : {}),
+    };
+}
+
+async function loadTables(sourceDataDir: string): Promise<StageFirstPartyTables> {
+    const config: GameDbSourceConfig = { sourceRoot: sourceDataDir, dataDir: sourceDataDir };
+    const entries = await Promise.all(REQUIRED_STAGE_TABLES.map(async table => [table, await readGameDbTable(config, table)] as const));
+    return Object.fromEntries(entries) as unknown as StageFirstPartyTables;
+}
+
+async function requireMissing(path: string): Promise<void> {
+    try {
+        await stat(path);
+        throw new Error(`Stage candidate output must not already exist: ${path}`);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+}
+
+async function main(): Promise<void> {
+    const options = parseStageCandidateArgs(process.argv.slice(2));
+    await requireMissing(options.outputDir);
+    const tables = await loadTables(options.sourceDataDir);
+    const candidate = buildStageFirstPartyCandidate({
+        generatedAt: options.generatedAt,
+        sourceSnapshotVersion: options.sourceSnapshotVersion,
+        sourceDatabaseSha256: options.sourceDatabaseSha256,
+        tables,
+    });
+    const previous = options.previousDatasetPath
+        ? JSON.parse(await readFile(options.previousDatasetPath, "utf8")) as StageDetailsDataset
+        : undefined;
+    const previousIds = new Set(previous?.entries.map(entry => entry.id) ?? []);
+    const candidateIds = new Set(candidate.dataset.entries.map(entry => entry.id));
+    const comparison = {
+        previousCount: previous?.count ?? 0,
+        candidateCount: candidate.dataset.count,
+        addedIds: [...candidateIds].filter(stageId => !previousIds.has(stageId)).sort((left, right) => Number(left) - Number(right)),
+        removedIds: [...previousIds].filter(stageId => !candidateIds.has(stageId)).sort((left, right) => Number(left) - Number(right)),
+    };
+    await mkdir(dirname(options.outputDir), { recursive: true });
+    await mkdir(options.outputDir);
+    const datasetPath = resolve(options.outputDir, "stage-details.json");
+    const auditPath = resolve(options.outputDir, "stage-first-party-audit.json");
+    const transportPath = resolve(options.outputDir, "stage-details.json.gz");
+    await writeFormattedJson(datasetPath, candidate.dataset);
+    await writeFormattedJson(auditPath, { ...candidate.audit, comparison });
+    const compactDatasetBytes = Buffer.from(JSON.stringify(candidate.dataset), "utf8");
+    await writeFile(transportPath, gzipSync(compactDatasetBytes, { level: 9 }), { flag: "wx" });
+    const datasetBytes = await readFile(datasetPath);
+    const auditBytes = await readFile(auditPath);
+    const transportBytes = await readFile(transportPath);
+    await writeFile(resolve(options.outputDir, "candidate-manifest.json"), `${JSON.stringify({
+        schemaVersion: 1,
+        generatedAt: options.generatedAt,
+        sourceSnapshotVersion: options.sourceSnapshotVersion,
+        sourceDatabaseSha256: options.sourceDatabaseSha256,
+        stageCount: candidate.dataset.count,
+        zBattleCount: candidate.dataset.zBattles?.length ?? 0,
+        transport: {
+            fileName: "stage-details.json.gz",
+            contentType: "application/json",
+            contentEncoding: "gzip",
+            uncompressedSizeBytes: compactDatasetBytes.byteLength,
+        },
+        files: [
+            { name: "stage-details.json", sizeBytes: datasetBytes.byteLength, sha256: createHash("sha256").update(datasetBytes).digest("hex") },
+            { name: "stage-details.json.gz", sizeBytes: transportBytes.byteLength, sha256: createHash("sha256").update(transportBytes).digest("hex") },
+            { name: "stage-first-party-audit.json", sizeBytes: auditBytes.byteLength, sha256: createHash("sha256").update(auditBytes).digest("hex") },
+        ],
+    }, null, 2)}\n`, { encoding: "utf8", flag: "w" });
+    console.log(JSON.stringify({
+        outputDir: options.outputDir,
+        counts: candidate.audit.counts,
+        comparison,
+    }, null, 2));
+}
+
+if (require.main === module) {
+    main().catch(error => {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 1;
+    });
+}

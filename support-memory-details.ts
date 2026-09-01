@@ -91,4 +91,11 @@ export interface SupportMemoryAcquisitionSourceEntry {
     endsAt?: string,
     navigationTarget?: AcquisitionNavigationTarget,
     stageReferences?: AcquisitionStageReference[],
+    officialStageRelations?: SupportMemoryOfficialStageRelation[],
+}
+
+export interface SupportMemoryOfficialStageRelation {
+    targetKind: "quest-level" | "area" | "z-battle",
+    targetId: string,
+    relation: "direct-stage-condition" | "transitive-mission-condition" | "mission-owner",
 }

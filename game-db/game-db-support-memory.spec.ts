@@ -30,6 +30,7 @@ function fixture(): SupportMemoryFirstPartyTables {
         missions: [row({
             id: 25331, mission_category_id: 798, name: "Official mission", description: "Official description",
             start_at: "2024-09-20 06:00:00", end_at: "2038-01-01 00:00:00",
+            conditions: '{"sugoroku_map_ids":[1302001]}', area_id: 130, z_battle_stage_id: 42,
         })],
         sub_target_type_sets: [row({ id: 31 }), row({ id: 618 }), row({ id: 619 })],
         sub_target_types: [
@@ -96,6 +97,11 @@ describe("Support Memory first-party candidate", function () {
         equal(memory.unlockAcquisition?.sources[0].title, "Official mission");
         equal(memory.unlockAcquisition?.sources[0].quantity, 100);
         equal(memory.unlockAcquisition?.groups[0].title, "Broly missions");
+        deepEqual(memory.unlockAcquisition?.sources[0].officialStageRelations, [
+            { targetKind: "area", targetId: "130", relation: "mission-owner" },
+            { targetKind: "quest-level", targetId: "1302001", relation: "direct-stage-condition" },
+            { targetKind: "z-battle", targetId: "42", relation: "mission-owner" },
+        ]);
         equal(memory.dokkanInfo, undefined);
         deepEqual(candidate.audit.compatibility.categoryChangedIds, ["50015"]);
         equal(candidate.audit.entries[0].targetRules.length, 3);
@@ -112,6 +118,21 @@ describe("Support Memory first-party candidate", function () {
         equal(memory.unlockAcquisition, undefined);
         equal(memory.dokkanInfo, undefined);
         equal(candidate.audit.counts.unresolvedUnlockMemoryCount, 1);
+    });
+
+    it("resolves transitive official stage relations without text parsing", () => {
+        const tables = fixture();
+        tables.missions[0].conditions = '{"mission_ids":[25330]}';
+        tables.missions[0].area_id = "";
+        tables.missions[0].z_battle_stage_id = "";
+        tables.missions.push(row({
+            id: 25330, mission_category_id: 798, name: "Required mission", description: "Required",
+            conditions: '{"sugoroku_map_ids":[1302002]}', area_id: null, z_battle_stage_id: null,
+        }));
+        const memory = buildSupportMemoryFirstPartyCandidate(options(tables)).dataset.entries[0];
+        deepEqual(memory.unlockAcquisition?.sources[0].officialStageRelations, [
+            { targetKind: "quest-level", targetId: "1302002", relation: "transitive-mission-condition" },
+        ]);
     });
 
     it("accepts only a complete official game-asset presentation map", () => {

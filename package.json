@@ -130,6 +130,7 @@
     "run:game-db-production-v2-release-candidate": "node --max-old-space-size=768 lib/game-db/game-db-production-v2-release-candidate.js",
     "run:game-db-support-memory-candidate": "node --max-old-space-size=768 lib/game-db/game-db-support-memory-candidate.js",
     "run:game-db-support-memory-assets-acquire": "node --max-old-space-size=768 lib/game-db/game-db-support-memory-assets-acquire.js",
+    "run:game-db-stage-candidate": "node --max-old-space-size=1024 lib/game-db/game-db-stage-candidate.js",
     "run:fyi-support-memories": "npx ts-node fyi-support-memories-run.ts",
     "run:fyi-event-missions": "npx ts-node fyi-event-missions-run.ts",
     "run:fyi-support-memory-details": "npx ts-node fyi-support-memory-details-run.ts",

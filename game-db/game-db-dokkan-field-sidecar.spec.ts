@@ -13,6 +13,7 @@ import {
     FIRST_PARTY_EXPORT_GAME_DB_TABLES,
     SUPER_ATTACK_CATEGORY_GAME_DB_TABLES,
     SUPER_ATTACK_EFFECT_GAME_DB_TABLES,
+    STAGE_GAME_DB_TABLES,
     SUPPORT_MEMORY_GAME_DB_TABLES,
 } from "./game-db-table-inventory";
 
@@ -24,6 +25,7 @@ describe("buildGameDbDokkanFieldSidecar", function () {
             ...SUPER_ATTACK_CATEGORY_GAME_DB_TABLES,
             ...DOKKAN_FIELD_SIDECAR_TABLES,
             ...SUPPORT_MEMORY_GAME_DB_TABLES,
+            ...STAGE_GAME_DB_TABLES,
         ]);
         equal(new Set(FIRST_PARTY_EXPORT_GAME_DB_TABLES).size, FIRST_PARTY_EXPORT_GAME_DB_TABLES.length);
     });

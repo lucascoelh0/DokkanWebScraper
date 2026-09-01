@@ -3431,6 +3431,41 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   three official descriptions, film, enhancement items, and completed image.
   No R2 object or public manifest changed.
 
+## First-party Stage candidate (2026-08-31)
+
+- The local, non-production `run:game-db-stage-candidate` lane now projects
+  Stage topology directly from the Global game database. Its first real run is
+  bound to snapshot `1787900894` and SQLite SHA-256
+  `571efa97333bf4fc74a983d24cc5dd9d56c5246a56606e445ff48edfdc0d9feb`.
+- The candidate contains 5,391 bound quest levels, 146 explicitly unbound map
+  rows, 6,635 battles, 9,503 rounds, 13,925 ordered enemy positions, 5,390
+  referenced enemy skills and 31 round-skill sets. It also projects official
+  cut-ins, Chapter/Story joins, map presentation IDs, Link Skill level-up rate,
+  clear rewards, boss drops, displayed drops and category bonuses.
+- Z-Battle projection covers 234 stages, 254 enemy ranges, 932 checkpoints and
+  5,503 first-reward levels. Base stats, escalation curves, card/skill changes,
+  thresholds, stamina/key costs and reward items are preserved as structured
+  first-party rows. Their final application formula remains explicitly
+  unproved.
+- Standard quest enemy HP, ATK, DEF, attacks per turn and runtime scaling are
+  absent from the SQLite contract. Player-card stats are never substituted;
+  each enemy records `unavailable-in-game-db`. Exact runtime values require a
+  separately proven official briefing/start API contract or native formula.
+- One shared structural mission resolver now supplies both directions of the
+  Support Memory relation without regex or localized text. The real candidate
+  has 481 identical forward/inverse relation keys covering 52 memories: 427
+  quest-level and 54 area relations. The five default elemental memories
+  remain valid without a specific Stage relation.
+- The previous 1,477 Stage entries all exist in the candidate and have zero
+  mismatches in stamina, keys, Rank EXP, Zeni, Link Skill level-up rate, quest
+  ID or area ID. The previous dataset is comparison-only; the candidate
+  contains no Dokkan.fyi, DokkanInfo or HTTP source.
+- The readable JSON is 47,887,747 bytes. Its deterministic compact gzip is
+  979,470 bytes and expands to 26,775,174 JSON bytes. Production remains
+  disabled: Android needs a gzip-aware, staged/on-demand consumer instead of
+  loading the full object graph during startup, and no R2 object or manifest
+  was changed.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
