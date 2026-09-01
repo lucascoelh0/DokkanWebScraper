@@ -12,6 +12,7 @@ export const SUPPORT_MEMORY_DETAILS_FILE_NAME = "support-memory-details.json";
 export const SUPPORT_MEMORY_MANIFEST_FILE_NAME = "support-memory-manifest.json";
 export const SUPPORT_MEMORY_ASSET_PREFIX = "support-memories/assets/";
 export const SUPPORT_MEMORY_ASSET_ROOT = "data/support-memories/assets/dokkaninfo";
+export const SUPPORT_MEMORY_GAME_ASSET_ROOT = "data/support-memories/assets/game";
 
 export interface SupportMemoryDatasetManifest {
     schemaVersion: 1,
@@ -87,13 +88,16 @@ export async function inspectSupportMemoryDatasetAssets(
 ): Promise<SupportMemoryDatasetAsset[]> {
     const assetRefs = collectSupportMemoryAssetRefs(dataset);
     const assets: SupportMemoryDatasetAsset[] = [];
-    const assetRoot = resolve(projectRoot, SUPPORT_MEMORY_ASSET_ROOT);
+    const assetRoots = [SUPPORT_MEMORY_ASSET_ROOT, SUPPORT_MEMORY_GAME_ASSET_ROOT].map(root => resolve(projectRoot, root));
 
     for (const assetRef of assetRefs.values()) {
         const localPath = normalizeProjectPath(assetRef.localPath as string);
         const absolutePath = resolve(projectRoot, localPath);
-        const relativeAssetPath = relative(assetRoot, absolutePath).replace(/\\/g, "/");
-        if (!relativeAssetPath || relativeAssetPath === ".." || relativeAssetPath.startsWith("../")) {
+        const isManagedAsset = assetRoots.some(assetRoot => {
+            const relativeAssetPath = relative(assetRoot, absolutePath).replace(/\\/g, "/");
+            return Boolean(relativeAssetPath && relativeAssetPath !== ".." && !relativeAssetPath.startsWith("../"));
+        });
+        if (!isManagedAsset) {
             throw new Error(`Support memory asset is outside the managed asset directory: ${localPath}`);
         }
 

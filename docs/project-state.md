@@ -3407,21 +3407,29 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   ID: 30006, 40007, 40009, 50003, 50006 and 50015. Broly's Inner Power now has
   only Movie Bosses/Revenge and 372 applicable delivered cards instead of the
   source-derived 396.
-- Official mission joins cover 57 roots. Eighteen existing roots retain legacy
-  acquisition fallback presentation. Official level descriptions and
-  enhancement quantities replace matching enrichment facts, while DokkanInfo
-  images, animation assets, URLs and navigation remain explicitly
-  presentation-only. First-party game-asset acquisition is therefore the
-  remaining gate before this candidate can replace the staging payload.
-- Focused TypeScript validation passes the structural Broly case, official
-  mission overlay and fail-closed cases for unknown target semantics, malformed
-  effect JSON and broken enhancement chains. Android's current Gson consumer
-  passes the new `dokkan-game-db` source and an entry without optional
-  DokkanInfo enrichment. New entries carry field-scoped
-  `game-db-structural` authority markers; current Android trusts their supplied
-  category targets, while marker-less old caches keep the narrow text fallback.
-  Old Android decoders ignore the additive fields. No R2 object or public
-  manifest changed.
+- Official mission joins cover 57 roots; the other 19 are reported as
+  unresolved and use `film-only`/`unknown` without copying acquisition,
+  navigation, image, stage, or URL fields from the comparison dataset. The
+  previous payload is now comparison-only.
+- The installed Global 6.5.0 package supplied 76 numeric animation CPKs plus
+  the static and enhancement CPKs. A pinned CriFsV2Lib reader at commit
+  `169b001c748dfffc28c9fc14fcec269dd45e6eec` extracted and audited them.
+  The official-only candidate contains 76 presentations, 1,970 unique assets,
+  and 317,375,873 bytes. All 1,970 on-disk sizes and SHA-256 values match the
+  audit. The `20011 -> sm20010` non-identity animation join is explicit.
+- The compatible JSON property remains named `dokkanInfo`, but all of its
+  values now come from game DB rows or official CPK bytes and entries carry
+  `presentationSource: game-assets`. The payload contains zero Dokkan.fyi,
+  DokkanInfo, HTTP, navigation, stage-reference, or legacy presentation URLs.
+- Focused TypeScript validation passes 23 candidate, acquisition, asset,
+  managed-path, publisher, and fail-closed scenarios. The committed acquisition
+  command reproduced all 78 archive hashes and all 2,056 extracted file hashes
+  from the independently collected bundle. Android domain tests pass the
+  additive source marker.
+  Current master and the exact Play-review 2.0.11 tag both built and rendered
+  the real 76-memory candidate in LDPlayer, including Vow to Return's image,
+  three official descriptions, film, enhancement items, and completed image.
+  No R2 object or public manifest changed.
 
 ## Operating Constraints
 

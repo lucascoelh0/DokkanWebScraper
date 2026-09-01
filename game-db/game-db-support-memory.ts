@@ -1,10 +1,10 @@
 import { createHash } from "crypto";
-import { SupportMemoryDetailsDataset, SupportMemoryDetailsEntry, SupportMemoryAcquisitionSummary, SupportMemoryAcquisitionSourceEntry } from "../support-memory-details";
+import { SupportMemoryDetailsDataset, SupportMemoryDetailsEntry, SupportMemoryDokkanInfoPresentation, SupportMemoryAcquisitionSummary, SupportMemoryAcquisitionSourceEntry } from "../support-memory-details";
 import { SupportMemory, SupportMemoryEffect, SupportMemoryEnhancementStep, SupportMemoryFilm } from "../support-memory";
 import { GameDbRow, normalizeDbId, parseDbDate } from "./game-db-source";
 
 export const SUPPORT_MEMORY_FIRST_PARTY_CONTRACT = "dokkan-support-memory-first-party-candidate";
-export const SUPPORT_MEMORY_FIRST_PARTY_CONTRACT_VERSION = "1.0.0";
+export const SUPPORT_MEMORY_FIRST_PARTY_CONTRACT_VERSION = "2.0.0";
 
 export interface SupportMemoryFirstPartyTables {
     cards: GameDbRow[],
@@ -50,7 +50,7 @@ export interface SupportMemoryEntryProvenanceAudit {
     categoryIds: string[],
     targetRules: SupportMemoryTargetRuleAudit[],
     missionRewardRowIds: string[],
-    legacyPresentationFields: string[],
+    presentationFields: string[],
 }
 
 export interface SupportMemoryFirstPartyAudit {
@@ -73,8 +73,8 @@ export interface SupportMemoryFirstPartyAudit {
         structuralTargetRows: number,
         missionRewardRows: number,
         officialUnlockMemoryCount: number,
-        legacyUnlockFallbackCount: number,
-        legacyDokkanInfoCount: number,
+        unresolvedUnlockMemoryCount: number,
+        officialPresentationCount: number,
     },
     compatibility: {
         previousCount: number,
@@ -84,7 +84,7 @@ export interface SupportMemoryFirstPartyAudit {
         coreChangedIds: string[],
         categoryChangedIds: string[],
     },
-    fieldAuthority: Record<string, "first-party" | "first-party-with-legacy-presentation" | "legacy-presentation-only">,
+    fieldAuthority: Record<string, "first-party">,
     entries: SupportMemoryEntryProvenanceAudit[],
 }
 
@@ -97,6 +97,7 @@ interface MissionJoin {
     rewardId: string,
     missionId: string,
     categoryId: string,
+    categoryTitle: string,
     itemType: string,
     itemId: string,
     quantity: number,
@@ -245,11 +246,13 @@ function buildMissionJoins(tables: SupportMemoryFirstPartyTables): MissionJoin[]
             const mission = missions.get(missionId);
             if (!mission) throw new Error(`Mission reward ${id(row)} references missing mission ${missionId}`);
             const categoryId = id(mission, "mission_category_id");
-            if (!categories.has(categoryId)) throw new Error(`Mission ${missionId} references missing category ${categoryId}`);
+            const category = categories.get(categoryId);
+            if (!category) throw new Error(`Mission ${missionId} references missing category ${categoryId}`);
             return {
                 rewardId: id(row),
                 missionId,
                 categoryId,
+                categoryTitle: text(category.name) || `Mission category ${categoryId}`,
                 itemType: row.item_type,
                 itemId: id(row, "item_id"),
                 quantity: integer(row, "quantity")!,
@@ -261,9 +264,8 @@ function buildMissionJoins(tables: SupportMemoryFirstPartyTables): MissionJoin[]
         });
 }
 
-function officialMissionSource(join: MissionJoin, legacy?: SupportMemoryAcquisitionSourceEntry): SupportMemoryAcquisitionSourceEntry {
+function officialMissionSource(join: MissionJoin): SupportMemoryAcquisitionSourceEntry {
     return {
-        ...(legacy ? clone(legacy) : {}),
         sourceKey: `event-mission:${join.categoryId}:${join.missionId}:${join.rewardId}:${join.itemId}`,
         sourceKind: "event-mission",
         groupKey: `event-mission-category:${join.categoryId}`,
@@ -277,40 +279,26 @@ function officialMissionSource(join: MissionJoin, legacy?: SupportMemoryAcquisit
 }
 
 function mergeMissionAcquisition(
-    legacy: SupportMemoryAcquisitionSummary | undefined,
     itemType: "SupportMemory" | "SupportFilm",
     itemId: string,
     requiredQuantity: number,
     joins: MissionJoin[],
 ): SupportMemoryAcquisitionSummary | undefined {
     const official = joins.filter(join => join.itemType === itemType && join.itemId === itemId);
-    if (official.length === 0) return legacy ? clone(legacy) : undefined;
-    const legacyByRewardId = new Map<string, SupportMemoryAcquisitionSourceEntry>();
-    for (const source of legacy?.sources ?? []) {
-        const parts = source.sourceKey.split(":");
-        if (parts[0] === "event-mission" && parts.length >= 5) legacyByRewardId.set(parts[3], source);
-    }
-    const officialRewardIds = new Set(official.map(join => join.rewardId));
-    const sources = [
-        ...official.map(join => officialMissionSource(join, legacyByRewardId.get(join.rewardId))),
-        ...(legacy?.sources ?? []).filter(source => {
-            const parts = source.sourceKey.split(":");
-            return parts[0] !== "event-mission" || !officialRewardIds.has(parts[3]);
-        }).map(clone),
-    ].sort((left, right) => left.sourceKey.localeCompare(right.sourceKey, "en", { numeric: true }));
-    const previousGroups = new Map((legacy?.groups ?? []).map(group => [group.groupKey, group]));
+    if (official.length === 0) return undefined;
+    const sources = official.map(officialMissionSource)
+        .sort((left, right) => left.sourceKey.localeCompare(right.sourceKey, "en", { numeric: true }));
     const grouped = new Map<string, SupportMemoryAcquisitionSourceEntry[]>();
     for (const source of sources) grouped.set(source.groupKey, [...(grouped.get(source.groupKey) ?? []), source]);
     const groups = [...grouped.entries()].map(([groupKey, groupSources]) => {
-        const previous = previousGroups.get(groupKey);
+        const join = official.find(candidate => `event-mission-category:${candidate.categoryId}` === groupKey)!;
         const quantities = groupSources.map(source => source.quantity).filter((value): value is number => value !== undefined);
         const totalQuantity = quantities.length > 0 ? quantities.reduce((sum, value) => sum + value, 0) : undefined;
         const maxQuantity = quantities.length > 0 ? Math.max(...quantities) : undefined;
         return {
-            ...(previous ? clone(previous) : {}),
             groupKey,
             groupKind: groupSources[0].groupKind,
-            title: groupSources[0].title,
+            title: join.categoryTitle,
             sourceCount: groupSources.length,
             ...(totalQuantity !== undefined ? { totalQuantity } : {}),
             ...(maxQuantity !== undefined ? { maxQuantity, satisfiesRequiredQuantity: maxQuantity >= requiredQuantity } : {}),
@@ -322,7 +310,7 @@ function mergeMissionAcquisition(
         itemType,
         itemId,
         sourceModel: "acquisition-item",
-        requiredQuantity: legacy?.requiredQuantity ?? requiredQuantity,
+        requiredQuantity,
         groupCount: groups.length,
         sourceCount: sources.length,
         groups,
@@ -349,6 +337,7 @@ export function buildSupportMemoryFirstPartyCandidate(options: {
     sourceDatabaseSha256: string,
     tables: SupportMemoryFirstPartyTables,
     previousDataset?: SupportMemoryDetailsDataset,
+    presentations?: ReadonlyMap<string, SupportMemoryDokkanInfoPresentation>,
     consumerCharacterIds?: ReadonlySet<string>,
 }): SupportMemoryFirstPartyCandidate {
     if (!/^\d+$/.test(options.sourceSnapshotVersion)) throw new Error("Support Memory source snapshot version must be numeric");
@@ -417,6 +406,10 @@ export function buildSupportMemoryFirstPartyCandidate(options: {
     if (options.previousDataset && options.previousDataset.count !== previousEntries.length) throw new Error("Previous Support Memory dataset count mismatch");
     const previousById = new Map(previousEntries.map(entry => [entry.id, entry]));
     if (previousById.size !== previousEntries.length) throw new Error("Previous Support Memory dataset contains duplicate IDs");
+    if (options.presentations) {
+        for (const rootId of rootIds) if (!options.presentations.has(rootId)) throw new Error(`Missing official Support Memory presentation ${rootId}`);
+        for (const presentationId of options.presentations.keys()) if (!rootIds.has(presentationId)) throw new Error(`Unexpected official Support Memory presentation ${presentationId}`);
+    }
     const provenanceEntries: SupportMemoryEntryProvenanceAudit[] = [];
 
     const entries = rootRows.map(rootRow => {
@@ -452,21 +445,10 @@ export function buildSupportMemoryFirstPartyCandidate(options: {
         const filmId = normalizeDbId(rootRow.support_film_id);
         const film = filmId ? filmsById.get(filmId) : undefined;
         if (filmId && !film) throw new Error(`Support Memory ${rootId} references missing film ${filmId}`);
-        const previous = previousById.get(rootId);
-        const officialUnlock = mergeMissionAcquisition(previous?.unlockAcquisition, "SupportMemory", rootId, 1, missionJoins);
-        const officialFilm = filmId ? mergeMissionAcquisition(previous?.filmAcquisition, "SupportFilm", filmId, integer(rootRow, "unlock_quantity")!, missionJoins) : undefined;
+        const officialUnlock = mergeMissionAcquisition("SupportMemory", rootId, 1, missionJoins);
+        const officialFilm = filmId ? mergeMissionAcquisition("SupportFilm", filmId, integer(rootRow, "unlock_quantity")!, missionJoins) : undefined;
         const requirementRows = variantIds.flatMap(memoryId => requirementsByMemory.get(memoryId) ?? []);
-        const officialRequirements = new Map(requirementRows.map(row => [id(row, "support_memory_enhancement_item_id"), integer(row, "quantity")!]));
-        const dokkanInfo = previous?.dokkanInfo ? clone(previous.dokkanInfo) : undefined;
-        if (dokkanInfo) {
-            dokkanInfo.levelDescriptions = variantIds.map((memoryId, index) => ({
-                level: index + 1,
-                description: text(memoryRows.get(memoryId)!.description),
-            }));
-            dokkanInfo.enhancementItems = dokkanInfo.enhancementItems.map(item => officialRequirements.has(item.id)
-                ? { ...item, quantity: officialRequirements.get(item.id) }
-                : item);
-        }
+        const presentation = options.presentations?.get(rootId);
         const memory: SupportMemory = {
             id: rootId,
             name: text(rootRow.name) || `Support Memory ${rootId}`,
@@ -492,10 +474,10 @@ export function buildSupportMemoryFirstPartyCandidate(options: {
             categoryTargetSource: "game-db-structural",
             applicableCharacterIds: [...applicableCardIds].sort(numericCompare),
             applicableCharacterSource: "game-db-structural",
-            unlockMethod: officialUnlock ? "direct-item" : previous?.unlockMethod ?? (filmId ? "film-only" : "unknown"),
+            unlockMethod: officialUnlock ? "direct-item" : filmId ? "film-only" : "unknown",
             ...(officialUnlock ? { unlockAcquisition: officialUnlock } : {}),
             ...(officialFilm ? { filmAcquisition: officialFilm } : {}),
-            ...(dokkanInfo ? { dokkanInfo } : {}),
+            ...(presentation ? { presentationSource: "game-assets" as const, dokkanInfo: clone(presentation) } : {}),
         };
         provenanceEntries.push({
             memoryId: rootId,
@@ -506,11 +488,7 @@ export function buildSupportMemoryFirstPartyCandidate(options: {
             categoryIds: sortedCategoryIds,
             targetRules: targetRules.sort((left, right) => numericCompare(left.skillId, right.skillId)),
             missionRewardRowIds: missionJoins.filter(join => (join.itemType === "SupportMemory" && join.itemId === rootId) || (join.itemType === "SupportFilm" && join.itemId === filmId)).map(join => join.rewardId).sort(numericCompare),
-            legacyPresentationFields: [
-                ...(previous?.dokkanInfo ? ["dokkanInfo.assets"] : []),
-                ...(previous?.unlockAcquisition ? ["unlockAcquisition.navigation"] : []),
-                ...(previous?.filmAcquisition ? ["filmAcquisition.navigation"] : []),
-            ],
+            presentationFields: presentation ? ["dokkanInfo"] : [],
         });
         return entry;
     });
@@ -537,8 +515,8 @@ export function buildSupportMemoryFirstPartyCandidate(options: {
             structuralTargetRows: targetRows.size,
             missionRewardRows: missionJoins.length,
             officialUnlockMemoryCount: entries.filter(entry => missionJoins.some(join => join.itemType === "SupportMemory" && join.itemId === entry.id)).length,
-            legacyUnlockFallbackCount: entries.filter(entry => !missionJoins.some(join => join.itemType === "SupportMemory" && join.itemId === entry.id) && previousById.get(entry.id)?.unlockAcquisition).length,
-            legacyDokkanInfoCount: entries.filter(entry => entry.dokkanInfo).length,
+            unresolvedUnlockMemoryCount: entries.filter(entry => !missionJoins.some(join => join.itemType === "SupportMemory" && join.itemId === entry.id)).length,
+            officialPresentationCount: entries.filter(entry => entry.presentationSource === "game-assets").length,
         },
         compatibility: {
             previousCount: previousEntries.length,
@@ -552,10 +530,8 @@ export function buildSupportMemoryFirstPartyCandidate(options: {
             "id,name,description,film,cost,unlockQuantity,releaseDate": "first-party",
             "enhancementChain,effects,duration": "first-party",
             "categoryIds,categoryNames,applicableCharacterIds": "first-party",
-            "unlockAcquisition,filmAcquisition": "first-party-with-legacy-presentation",
-            "dokkanInfo.levelDescriptions": "first-party",
-            "dokkanInfo.assets": "legacy-presentation-only",
-            "dokkanInfo.enhancementItems.quantity": "first-party-with-legacy-presentation",
+            "unlockAcquisition,filmAcquisition": "first-party",
+            "dokkanInfo.levelDescriptions,dokkanInfo.assets,dokkanInfo.enhancementItems": "first-party",
         },
         entries: provenanceEntries,
     };

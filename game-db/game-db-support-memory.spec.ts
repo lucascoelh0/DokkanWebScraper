@@ -1,6 +1,6 @@
 import { deepEqual, equal, throws } from "assert";
 import { describe, it } from "mocha";
-import { SupportMemoryDetailsDataset } from "../support-memory-details";
+import { SupportMemoryDetailsDataset, SupportMemoryDokkanInfoPresentation } from "../support-memory-details";
 import { buildSupportMemoryFirstPartyCandidate, SupportMemoryFirstPartyTables } from "./game-db-support-memory";
 import { GameDbRow } from "./game-db-source";
 
@@ -63,6 +63,7 @@ function previous(): SupportMemoryDetailsDataset {
             id: "50015", name: "Old", description: "Old", maxLevel: 1, enhancementChain: [], effects: [],
             categoryIds: ["16", "48", "98"], categoryNames: ["DAIMA", "Movie Bosses", "Revenge"],
             applicableCharacterIds: ["1"], unlockMethod: "direct-item",
+            dokkanInfo: { detailUrl: "https://dokkan.fyi/old", levelDescriptions: [], enhancementItems: [] },
             unlockAcquisition: {
                 itemKey: "SupportMemory:50015", itemType: "SupportMemory", itemId: "50015", sourceModel: "acquisition-item",
                 requiredQuantity: 1, groupCount: 1, sourceCount: 1,
@@ -94,8 +95,42 @@ describe("Support Memory first-party candidate", function () {
         equal(memory.lastsEntireBattle, true);
         equal(memory.unlockAcquisition?.sources[0].title, "Official mission");
         equal(memory.unlockAcquisition?.sources[0].quantity, 100);
+        equal(memory.unlockAcquisition?.groups[0].title, "Broly missions");
+        equal(memory.dokkanInfo, undefined);
         deepEqual(candidate.audit.compatibility.categoryChangedIds, ["50015"]);
         equal(candidate.audit.entries[0].targetRules.length, 3);
+        equal(candidate.audit.counts.officialPresentationCount, 0);
+    });
+
+    it("never copies acquisition or presentation fields from the comparison dataset", () => {
+        const tables = fixture();
+        tables.mission_rewards = [];
+        tables.missions = [];
+        const candidate = buildSupportMemoryFirstPartyCandidate(options(tables));
+        const memory = candidate.dataset.entries[0];
+        equal(memory.unlockMethod, "film-only");
+        equal(memory.unlockAcquisition, undefined);
+        equal(memory.dokkanInfo, undefined);
+        equal(candidate.audit.counts.unresolvedUnlockMemoryCount, 1);
+    });
+
+    it("accepts only a complete official game-asset presentation map", () => {
+        const presentation: SupportMemoryDokkanInfoPresentation = {
+            detailUrl: "",
+            levelDescriptions: [{ level: 1, description: "Official memory text" }],
+            enhancementItems: [],
+        };
+        const candidate = buildSupportMemoryFirstPartyCandidate({
+            ...options(fixture()),
+            presentations: new Map([["50015", presentation]]),
+        });
+        equal(candidate.dataset.entries[0].presentationSource, "game-assets");
+        deepEqual(candidate.dataset.entries[0].dokkanInfo, presentation);
+        equal(candidate.audit.counts.officialPresentationCount, 1);
+        throws(() => buildSupportMemoryFirstPartyCandidate({
+            ...options(fixture()),
+            presentations: new Map(),
+        }), /Missing official Support Memory presentation 50015/);
     });
 
     it("fails closed for unknown structural target semantics", () => {

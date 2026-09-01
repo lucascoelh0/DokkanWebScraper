@@ -50,12 +50,18 @@ export function supportMemoryEnhancementItemKey(id: string): string {
 
 export function supportMemoryAssetObjectKey(localPath?: string): string | undefined {
     const normalizedPath = localPath?.replace(/\\/g, "/");
-    const assetPrefix = "data/support-memories/assets/dokkaninfo/";
-    if (!normalizedPath?.startsWith(assetPrefix)) {
-        return undefined;
+    if (!normalizedPath || normalizedPath.startsWith("/") || /^[a-z]:\//i.test(normalizedPath)) return undefined;
+    if (normalizedPath.split("/").some(segment => !segment || segment === "." || segment === "..")) return undefined;
+    const legacyPrefix = "data/support-memories/assets/dokkaninfo/";
+    if (normalizedPath?.startsWith(legacyPrefix)) {
+        return `support-memories/assets/${normalizedPath.slice(legacyPrefix.length)}`;
     }
-
-    return `support-memories/assets/${normalizedPath.slice(assetPrefix.length)}`;
+    const gamePrefix = "data/support-memories/assets/game/";
+    if (!normalizedPath?.startsWith(gamePrefix)) return undefined;
+    const afterPrefix = normalizedPath.slice(gamePrefix.length);
+    const snapshotSeparator = afterPrefix.indexOf("/");
+    if (snapshotSeparator <= 0 || snapshotSeparator === afterPrefix.length - 1) return undefined;
+    return `support-memories/assets/${afterPrefix.slice(snapshotSeparator + 1)}`;
 }
 
 export interface SupportMemoryDokkanInfoAnimationAssetSet {

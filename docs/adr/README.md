@@ -13,6 +13,7 @@ data pipeline and its Android consumer. Mutable progress belongs in
 | [0005](0005-use-an-optional-database-first-team-analysis-sidecar.md) | Use an optional database-first Team Analysis sidecar | accepted | 2026-08-07 |
 | [0006](0006-separate-staging-and-production-dataset-channels.md) | Separate staging and production dataset channels | accepted | 2026-08-23 |
 | [0007](0007-version-production-datasets-by-consumer-contract-lane.md) | Version production datasets by consumer contract lane | accepted | 2026-08-23 |
+| [0008](0008-use-only-first-party-support-memory-content.md) | Use only first-party Support Memory content | accepted | 2026-08-31 |
 
 ## Usage
 

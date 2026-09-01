@@ -25,6 +25,7 @@ export interface SupportMemoryDetailsEntry extends SupportMemory {
     categoryTargetSource?: "game-db-structural",
     applicableCharacterIds: string[],
     applicableCharacterSource?: "game-db-structural",
+    presentationSource?: "game-assets",
     unlockMethod: SupportMemoryUnlockMethod,
     unlockAcquisition?: SupportMemoryAcquisitionSummary,
     filmAcquisition?: SupportMemoryAcquisitionSummary,
