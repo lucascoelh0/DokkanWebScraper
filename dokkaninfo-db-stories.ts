@@ -49,6 +49,56 @@ const STORIES_CONFIG: QuestEventConfig = {
     logLabel: "DOKKANINFO-STORIES",
 };
 
+const GROWTH_CONFIG: QuestEventConfig = {
+    eventType: "growth",
+    indexUrl: `${DOKKAN_INFO_BASE_URL}/events/growth`,
+    cacheDir: "data/dokkaninfo-growth/cache",
+    outputDir: "data/dokkaninfo-growth/latest",
+    outputFile: "growth.json",
+    envPrefix: "DOKKANINFO_GROWTH",
+    logLabel: "DOKKANINFO-GROWTH",
+};
+
+const LIMITED_CONFIG: QuestEventConfig = {
+    eventType: "limited",
+    indexUrl: `${DOKKAN_INFO_BASE_URL}/events/limited`,
+    cacheDir: "data/dokkaninfo-limited/cache",
+    outputDir: "data/dokkaninfo-limited/latest",
+    outputFile: "limited.json",
+    envPrefix: "DOKKANINFO_LIMITED",
+    logLabel: "DOKKANINFO-LIMITED",
+};
+
+const CHALLENGE_CONFIG: QuestEventConfig = {
+    eventType: "challenge",
+    indexUrl: `${DOKKAN_INFO_BASE_URL}/events/challenge`,
+    cacheDir: "data/dokkaninfo-challenge/cache",
+    outputDir: "data/dokkaninfo-challenge/latest",
+    outputFile: "challenge.json",
+    envPrefix: "DOKKANINFO_CHALLENGE",
+    logLabel: "DOKKANINFO-CHALLENGE",
+};
+
+const BONUS_CONFIG: QuestEventConfig = {
+    eventType: "bonus",
+    indexUrl: `${DOKKAN_INFO_BASE_URL}/events/bonus`,
+    cacheDir: "data/dokkaninfo-bonus/cache",
+    outputDir: "data/dokkaninfo-bonus/latest",
+    outputFile: "bonus.json",
+    envPrefix: "DOKKANINFO_BONUS",
+    logLabel: "DOKKANINFO-BONUS",
+};
+
+const QUEST_CONFIG: QuestEventConfig = {
+    eventType: "quest",
+    indexUrl: `${DOKKAN_INFO_BASE_URL}/events/quest`,
+    cacheDir: "data/dokkaninfo-quest/cache",
+    outputDir: "data/dokkaninfo-quest/latest",
+    outputFile: "quest.json",
+    envPrefix: "DOKKANINFO_QUEST",
+    logLabel: "DOKKANINFO-QUEST",
+};
+
 interface QuestEventSummary {
     id: string,
     sourcePath: string,
@@ -78,6 +128,26 @@ export async function getDokkanInfoDbStories(): Promise<DokkanInfoDbStoryDataset
 
 export async function getDokkanInfoStories(): Promise<DokkanInfoDbStoryDataset> {
     return getDokkanInfoQuestEvents(STORIES_CONFIG);
+}
+
+export async function getDokkanInfoGrowthEvents(): Promise<DokkanInfoDbStoryDataset> {
+    return getDokkanInfoQuestEvents(GROWTH_CONFIG);
+}
+
+export async function getDokkanInfoLimitedEvents(): Promise<DokkanInfoDbStoryDataset> {
+    return getDokkanInfoQuestEvents(LIMITED_CONFIG);
+}
+
+export async function getDokkanInfoChallengeEvents(): Promise<DokkanInfoDbStoryDataset> {
+    return getDokkanInfoQuestEvents(CHALLENGE_CONFIG);
+}
+
+export async function getDokkanInfoBonusEvents(): Promise<DokkanInfoDbStoryDataset> {
+    return getDokkanInfoQuestEvents(BONUS_CONFIG);
+}
+
+export async function getDokkanInfoQuestAreas(): Promise<DokkanInfoDbStoryDataset> {
+    return getDokkanInfoQuestEvents(QUEST_CONFIG);
 }
 
 async function getDokkanInfoQuestEvents(config: QuestEventConfig): Promise<DokkanInfoDbStoryDataset> {
@@ -142,6 +212,26 @@ export async function writeDokkanInfoStories(dataset?: DokkanInfoDbStoryDataset)
     return writeDokkanInfoQuestEvents(STORIES_CONFIG, dataset ?? await getDokkanInfoStories());
 }
 
+export async function writeDokkanInfoGrowthEvents(dataset?: DokkanInfoDbStoryDataset): Promise<string> {
+    return writeDokkanInfoQuestEvents(GROWTH_CONFIG, dataset ?? await getDokkanInfoGrowthEvents());
+}
+
+export async function writeDokkanInfoLimitedEvents(dataset?: DokkanInfoDbStoryDataset): Promise<string> {
+    return writeDokkanInfoQuestEvents(LIMITED_CONFIG, dataset ?? await getDokkanInfoLimitedEvents());
+}
+
+export async function writeDokkanInfoChallengeEvents(dataset?: DokkanInfoDbStoryDataset): Promise<string> {
+    return writeDokkanInfoQuestEvents(CHALLENGE_CONFIG, dataset ?? await getDokkanInfoChallengeEvents());
+}
+
+export async function writeDokkanInfoBonusEvents(dataset?: DokkanInfoDbStoryDataset): Promise<string> {
+    return writeDokkanInfoQuestEvents(BONUS_CONFIG, dataset ?? await getDokkanInfoBonusEvents());
+}
+
+export async function writeDokkanInfoQuestAreas(dataset?: DokkanInfoDbStoryDataset): Promise<string> {
+    return writeDokkanInfoQuestEvents(QUEST_CONFIG, dataset ?? await getDokkanInfoQuestAreas());
+}
+
 async function writeDokkanInfoQuestEvents(config: QuestEventConfig, dataset: DokkanInfoDbStoryDataset): Promise<string> {
     const outputPath = resolve(__dirname, config.outputDir, config.outputFile);
     await mkdir(resolve(__dirname, config.outputDir), { recursive: true });
@@ -199,6 +289,26 @@ export function mapStoryIndex(document: Document): QuestEventSummary[] {
     return mapQuestEventIndex(document, STORIES_CONFIG);
 }
 
+export function mapGrowthIndex(document: Document): QuestEventSummary[] {
+    return mapQuestEventIndex(document, GROWTH_CONFIG);
+}
+
+export function mapLimitedIndex(document: Document): QuestEventSummary[] {
+    return mapQuestEventIndex(document, LIMITED_CONFIG);
+}
+
+export function mapChallengeIndex(document: Document): QuestEventSummary[] {
+    return mapQuestEventIndex(document, CHALLENGE_CONFIG);
+}
+
+export function mapBonusIndex(document: Document): QuestEventSummary[] {
+    return mapQuestEventIndex(document, BONUS_CONFIG);
+}
+
+export function mapQuestIndex(document: Document): QuestEventSummary[] {
+    return mapQuestEventIndex(document, QUEST_CONFIG);
+}
+
 function mapQuestEventIndex(document: Document, config: QuestEventConfig): QuestEventSummary[] {
     assertUsableDokkanInfoPage(document);
     const componentPayload = parseJsonAttribute<Array<{ id?: number | string | null }>>(
@@ -231,7 +341,7 @@ export function mapDbStoryShell(document: Document, summary: QuestEventSummary):
 function mapQuestEventShell(document: Document, summary: QuestEventSummary, config: QuestEventConfig): StoryShell {
     assertUsableDokkanInfoPage(document);
     const name = cleanText(document.title).replace(/\s*\|\s*Dokkan Info!?$/i, "")
-        || `${config.eventType === "dbstories" ? "DB Story" : "Story"} ${summary.id}`;
+        || `${eventFallbackLabel(config.eventType)} ${summary.id}`;
     const eventSummary: DokkanInfoEventSummary = {
         id: summary.id,
         type: config.eventType,
@@ -522,6 +632,18 @@ function compareEnemies(left: DokkanInfoQuestEnemy, right: DokkanInfoQuestEnemy)
 
 function compareIds(left: string, right: string): number {
     return left.localeCompare(right, "en", { numeric: true });
+}
+
+function eventFallbackLabel(eventType: DokkanInfoQuestEventType): string {
+    switch (eventType) {
+        case "dbstories": return "DB Story";
+        case "growth": return "Growth Event";
+        case "limited": return "Limited Event";
+        case "challenge": return "Challenge Event";
+        case "bonus": return "Bonus Event";
+        case "quest": return "Quest Area";
+        default: return "Story";
+    }
 }
 
 function uniqueSorted(values: string[]): string[] | undefined {

@@ -1,7 +1,7 @@
 import { DokkanInfoEventMissionReference, DokkanInfoEventReward } from "./dokkaninfo-event-reward";
 
 export type DokkanInfoEnemyDataStatus = "available" | "not-provided" | "fetch-failed";
-export type DokkanInfoQuestEventType = "dbstories" | "story";
+export type DokkanInfoQuestEventType = "dbstories" | "story" | "growth" | "limited" | "challenge" | "bonus" | "quest";
 
 export interface DokkanInfoDbStoryDataset {
     schemaVersion: "1.0.0",

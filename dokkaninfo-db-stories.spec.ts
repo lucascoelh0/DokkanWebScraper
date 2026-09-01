@@ -2,9 +2,14 @@ import { deepEqual, equal, throws } from "assert";
 import { JSDOM } from "jsdom";
 import {
     buildDokkanInfoDbStoryDataset,
+    mapBonusIndex,
     mapDbStoryIndex,
     mapDbStoryStageDetail,
     mapDbStoryStages,
+    mapChallengeIndex,
+    mapGrowthIndex,
+    mapLimitedIndex,
+    mapQuestIndex,
     mapStoryIndex,
 } from "./dokkaninfo-db-stories";
 
@@ -33,6 +38,72 @@ describe("DokkanInfo DB Stories dataset", () => {
         deepEqual(mapStoryIndex(dom.window.document), [
             { id: "133", sourcePath: "https://dokkaninfo.com/events/story/133" },
             { id: "1314", sourcePath: "https://dokkaninfo.com/events/story/1314" },
+        ]);
+    });
+
+    it("discovers Growth events from the server component payload", () => {
+        const dom = new JSDOM(`<events></events>`);
+        dom.window.document.querySelector("events")!.setAttribute("v-bind:eventjson", JSON.stringify([
+            { id: 292, name: "Ginyu Force Special Training" },
+            { id: 130, name: "Training in the Clouds" },
+        ]));
+
+        deepEqual(mapGrowthIndex(dom.window.document), [
+            { id: "130", sourcePath: "https://dokkaninfo.com/events/growth/130" },
+            { id: "292", sourcePath: "https://dokkaninfo.com/events/growth/292" },
+        ]);
+    });
+
+    it("discovers Limited events from the server component payload", () => {
+        const dom = new JSDOM(`<events></events>`);
+        dom.window.document.querySelector("events")!.setAttribute("v-bind:eventjson", JSON.stringify([
+            { id: 248, name: "Pilaf's Pure Tenacity?!" },
+            { id: 213, name: "Majin Buu's Shape-Up Training" },
+        ]));
+
+        deepEqual(mapLimitedIndex(dom.window.document), [
+            { id: "213", sourcePath: "https://dokkaninfo.com/events/limited/213" },
+            { id: "248", sourcePath: "https://dokkaninfo.com/events/limited/248" },
+        ]);
+    });
+
+    it("discovers Challenge events from the server component payload", () => {
+        const dom = new JSDOM(`<events></events>`);
+        dom.window.document.querySelector("events")!.setAttribute("v-bind:eventjson", JSON.stringify([
+            { id: 1769, name: "Collection of Epic Battles" },
+            { id: 701, name: "Dokkan Event Boss Rush!!" },
+        ]));
+
+        deepEqual(mapChallengeIndex(dom.window.document), [
+            { id: "701", sourcePath: "https://dokkaninfo.com/events/challenge/701" },
+            { id: "1769", sourcePath: "https://dokkaninfo.com/events/challenge/1769" },
+        ]);
+    });
+
+    it("discovers Bonus events from the server component payload", () => {
+        const dom = new JSDOM(`<events></events>`);
+        dom.window.document.querySelector("events")!.setAttribute("v-bind:eventjson", JSON.stringify([
+            { id: 1222, name: "Grand Elder Guru's Guidance" },
+            { id: 101, name: "Get AGL Awakening Medals!" },
+        ]));
+
+        deepEqual(mapBonusIndex(dom.window.document), [
+            { id: "101", sourcePath: "https://dokkaninfo.com/events/bonus/101" },
+            { id: "1222", sourcePath: "https://dokkaninfo.com/events/bonus/1222" },
+        ]);
+    });
+
+    it("discovers Quest areas from server-rendered links", () => {
+        const dom = new JSDOM(`
+            <a href="/events/quest/42">Area 42</a>
+            <a href="https://dokkaninfo.com/events/quest/1">Area 1</a>
+            <a href="/events/quest/1">Duplicate</a>
+            <a href="/events/bonus/1">Wrong type</a>
+        `);
+
+        deepEqual(mapQuestIndex(dom.window.document), [
+            { id: "1", sourcePath: "https://dokkaninfo.com/events/quest/1" },
+            { id: "42", sourcePath: "https://dokkaninfo.com/events/quest/42" },
         ]);
     });
 

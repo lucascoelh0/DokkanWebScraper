@@ -397,9 +397,17 @@ remain unavailable are recorded in `failedEventIds`.
 ```powershell
 npm run run:dokkaninfo-db-stories
 npm run run:dokkaninfo-stories
+npm run run:dokkaninfo-growth
+npm run run:dokkaninfo-limited
+npm run run:dokkaninfo-challenge
+npm run run:dokkaninfo-bonus
+npm run run:dokkaninfo-quest
+npm run run:dokkaninfo-z-battles
 ```
 
-These collectors rediscover event IDs from the live DB Stories or Story index,
+The quest collectors rediscover event IDs from the live DB Stories, Story,
+Growth, Limited, Challenge, Bonus or Quest index. Z-Battle uses a specialized collector because its
+event-range table and per-level stats page do not share the quest-stage model.
 then capture stages, missions, rewards and the enemy data exposed by each quest
 page. New events are picked up automatically after the index cache expires, or
 immediately with the documented family-specific refresh flag. See
