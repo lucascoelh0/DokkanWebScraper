@@ -61,8 +61,8 @@
     {
       "key": "acquisition_contract",
       "fileName": "docs/game-db/specs/game-db-first-party-acquisition-contract.md",
-      "sizeBytes": 6827,
-      "sha256": "ad7cfa8f6230facddbb3a25edc72bc728cf05de7fdb4a113b091cb1c4504c5e4"
+      "sizeBytes": 10715,
+      "sha256": "9ea6106f89acae11c8ccdc90fd44b17815a44b4721f2aa7073bd5e6a64cb35dd"
     },
     {
       "key": "manual_sqlite_acquisition_contract",
@@ -73,20 +73,20 @@
     {
       "key": "acquisition_playbook",
       "fileName": "docs/game-db/game-db-first-party-acquisition-playbook.md",
-      "sizeBytes": 21176,
-      "sha256": "a7618a212b42fc0d2c592522b7ce04a4f743b8a77716d74b92073ea721d6a99b"
+      "sizeBytes": 24028,
+      "sha256": "2bf425f8a2258fb75b21876c8e3ced4f22d1835296a13964a176036a1753b699"
     },
     {
       "key": "c4_contract",
       "fileName": "docs/game-db/specs/database-first-integration-c4.md",
-      "sizeBytes": 6013,
-      "sha256": "c688b740d2096a5d35ed349aecbb8b527ab552d17bc20b37722d7c376c3f1de6"
+      "sizeBytes": 6979,
+      "sha256": "a1e3f629949ceaf1e93f4b4199aee2e82ed9ccb185306f55f87d8d1a06b23718"
     },
     {
       "key": "game_db_readme",
       "fileName": "game-db/README.md",
-      "sizeBytes": 10184,
-      "sha256": "0c521023532b1b254d37bf055ed09c6fd8613a65b199e56d3890c993caa3a8ed"
+      "sizeBytes": 13188,
+      "sha256": "d6c6e4882355cc6cca911903276ff5255ad98526b4eac9168d0f2f7e378b9a10"
     },
     {
       "key": "r2_adr",
@@ -103,14 +103,14 @@
     {
       "key": "sqlite_compatibility",
       "fileName": "game-db/game-db-sqlite-compatibility.ts",
-      "sizeBytes": 36223,
-      "sha256": "a8599c68f08989a352f7bd40fe7b99374cc499af6dce471713dc7b05d11b7089"
+      "sizeBytes": 48831,
+      "sha256": "a9c9b4c3f883cf88944bf34213ac12fa0e7a96d0faf780918a3616f0560c455e"
     },
     {
       "key": "current_update_runner",
       "fileName": "game-db/game-db-update-runner.ts",
-      "sizeBytes": 10043,
-      "sha256": "9b5f1737cbaffe79b7c155ee7fa9ce468af192b20c20ec87ed9627b671861edf"
+      "sizeBytes": 10249,
+      "sha256": "4c0887ee1c8cd7b79e6d2f40af638a063258fd6d21e52e98f9fc0a76ace97c09"
     },
     {
       "key": "artifact_path",
