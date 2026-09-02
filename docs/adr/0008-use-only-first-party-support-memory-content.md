@@ -1,7 +1,7 @@
 # ADR-0008: Use only first-party Support Memory content
 
 **Date**: 2026-08-31
-**Status**: accepted
+**Status**: superseded in part by ADR-0009 for reconciled acquisition presentation metadata
 **Deciders**: Lucas Coelho, Codex
 
 ## Context

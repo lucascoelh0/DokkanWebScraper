@@ -149,6 +149,8 @@
     "run:dokkaninfo-frontier": "npx ts-node dokkaninfo-frontier-run.ts",
     "run:fyi-frontier": "npx ts-node fyi-dokkan-frontier-run.ts",
     "run:dokkanstats-frontier": "npx ts-node dokkanstats-frontier-run.ts",
+    "run:dokkanstats-support-memories": "npx ts-node dokkanstats-support-memories-run.ts",
+    "run:support-memory-how-to-get": "npx ts-node support-memory-how-to-get-run.ts",
     "run:dokkan-frontier-catalog": "npx ts-node dokkan-frontier-catalog-run.ts",
     "run:dokkaninfo-burst-mode": "npx ts-node dokkaninfo-burst-mode-run.ts",
     "run:dokkaninfo-ultimate-clash": "npx ts-node dokkaninfo-ultimate-clash-run.ts",

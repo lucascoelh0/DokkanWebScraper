@@ -8,6 +8,7 @@ export type AcquisitionSourceKind =
     | "awakening-medal-z-battle"
     | "awakening-medal-baba-shop"
     | "awakening-medal-world-tournament"
+    | "support-memory-stage-drop"
     | "dokkaninfo-event-reward";
 
 export interface AcquisitionDataset {

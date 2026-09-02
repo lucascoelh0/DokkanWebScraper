@@ -72,6 +72,8 @@ export interface SupportMemoryAcquisitionGroupEntry {
     totalQuantity?: number,
     maxQuantity?: number,
     satisfiesRequiredQuantity?: boolean,
+    sourceCategoryType?: string,
+    isAlwaysAvailable?: boolean,
     navigationTarget?: AcquisitionNavigationTarget,
     sourceKeys: string[],
 }
@@ -97,5 +99,5 @@ export interface SupportMemoryAcquisitionSourceEntry {
 export interface SupportMemoryOfficialStageRelation {
     targetKind: "quest-level" | "area" | "z-battle",
     targetId: string,
-    relation: "direct-stage-condition" | "transitive-mission-condition" | "mission-owner",
+    relation: "direct-stage-condition" | "transitive-mission-condition" | "mission-owner" | "stage-drop",
 }

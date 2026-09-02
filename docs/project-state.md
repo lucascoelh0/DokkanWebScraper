@@ -3478,6 +3478,46 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   shards in LDPlayer, including offline cached details and graceful uncached
   failure. No R2 object, staging pointer or production lane changed.
 
+## DokkanStats Support Memory enrichment (2026-09-02)
+
+- An authorized, optional DokkanStats sidecar now collects the English Support
+  Memory catalog and every root detail page. It remains separate from the
+  first-party consumer payload and cannot override game-database identity,
+  gameplay, targeting, enhancement requirements, or game-asset presentation.
+- The parser joins strictly by numeric Support Memory ID, requires every live
+  catalog row to belong to exactly one root/enhancement chain, verifies each
+  detail payload against its catalog record, and rejects duplicate identities,
+  broken level chains, catalog/detail drift, malformed sources, and unknown
+  acquisition kinds.
+- The first complete live run produced 76 roots, 191 total levels, and 328
+  acquisition sources for 75 memories: 285 mission sources and 43 stage-drop
+  sources. `10003 / Training Complete!` explicitly exposed no acquisition
+  source. The 76 roots match the first-party candidate exactly by ID, English
+  name, and maximum level.
+- Responses use the shared 168-hour mapped cache and a default 500 ms delay.
+  Six focused parser/contract tests, TypeScript compilation, and the complete
+  live collection passed. Generated `data/` remains local; nothing was
+  published or promoted.
+- A fail-closed promotion lane now reconciles the sidecar with the first-party
+  Support Memory and Stage candidates. Its real run preserved 1,061 official
+  mission-source occurrences, added the 43 official Support Memory boss drops,
+  and produced 540 acquisition groups. All 285 DokkanStats mission occurrences
+  and all 43 stage drops matched; no DokkanStats source or first-party stage
+  drop was unmatched. DokkanStats contributes only banner, category,
+  availability, and source-link presentation metadata.
+- The Android consumer now renders `How to get` by event with an optional wide
+  banner, an availability label, up to three compact mission rows, and group or
+  exact-stage navigation. Missing group data keeps the previous flat-source
+  rendering, missing banners are omitted, and film-only acquisition remains
+  visible. Focused domain/app tests and a staging debug build pass; LDPlayer
+  loaded the real promoted candidate and rendered a live DokkanStats banner.
+- Stage drops now group by event area plus quest instead of difficulty-specific
+  map ID. The real candidate collapsed 21 duplicate Normal/Z-Hard blocks (540
+  acquisition groups to 519) while preserving all 43 exact drop sources. The
+  event banner/title navigates to the area-filtered Stage catalog and each
+  difficulty row navigates to its exact quest level. Android also consolidates
+  the prior per-map group shape so compatible old caches remain readable.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.

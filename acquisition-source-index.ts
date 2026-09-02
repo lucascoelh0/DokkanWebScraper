@@ -9,6 +9,7 @@ export type AcquisitionSourceGroupKind =
     | "awakening-stage-area"
     | "awakening-baba-shop"
     | "awakening-world-tournament"
+    | "support-memory-stage-drop"
     | "dokkaninfo-event"
     | "standalone";
 

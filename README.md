@@ -76,6 +76,19 @@ This writes:
 
 ### Support memories
 
+Authorized DokkanStats acquisition enrichment (separate, optional sidecar):
+
+```powershell
+npm run run:dokkanstats-support-memories
+npm run run:support-memory-how-to-get -- --support-memories <details.json> --stages <stages.json> --dokkanstats <sidecar.json> --output-dir <new-directory>
+```
+
+This writes `./data/dokkanstats-support-memories/latest/support-memories.json`.
+It joins catalog and detail pages strictly by Support Memory ID, validates the
+complete enhancement-level set, and preserves typed mission and stage-drop
+evidence without overriding first-party gameplay or presentation fields. See
+`docs/dokkanstats-support-memories.md` for the contract and cache controls.
+
 ```powershell
 npm run run:fyi-support-memories
 ```
