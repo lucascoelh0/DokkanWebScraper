@@ -51,6 +51,16 @@ export interface StageDetailRoundSkillSet {
     skills: StageDetailSkill[],
 }
 
+export interface StageDetailSuperAttack {
+    id: string,
+    specialSetId: string,
+    name: string,
+    description?: string,
+    style?: string,
+    ki?: number,
+    attackType?: "Ki Blast" | "Unarmed" | "Armed" | "Other",
+}
+
 export interface StageDetailEnemy {
     id: string,
     battle: number,
@@ -65,10 +75,12 @@ export interface StageDetailEnemy {
     portrait?: StageDetailAsset,
     rarityRaw?: number,
     elementRaw?: number,
+    detailCharacterId?: string,
     hp?: number,
     atk?: number,
     def?: number,
     stats?: StageDetailEnemyStats,
+    superAttacks?: StageDetailSuperAttack[],
     skills: StageDetailSkill[],
     roundSkillSet?: StageDetailRoundSkillSet,
     turnAttacks?: number,
@@ -82,6 +94,11 @@ export interface StageDetailBossDrop {
     cardExpInitial?: number,
     quantityStatus: "unknown",
     chanceStatus: "unknown",
+    name?: string,
+    thumbnailId?: string,
+    rarityRaw?: number,
+    elementRaw?: number,
+    detailCharacterId?: string,
 }
 
 export interface StageDetailCategoryBonus {
@@ -100,6 +117,10 @@ export interface StageDetailItem {
     itemType: string,
     quantity?: number,
     cardExpInitial?: number,
+    name?: string,
+    thumbnailId?: string,
+    rarityRaw?: number,
+    elementRaw?: number,
 }
 
 export interface StageDetailDropPreview {

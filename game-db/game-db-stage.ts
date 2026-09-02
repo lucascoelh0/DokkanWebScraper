@@ -4,11 +4,13 @@ import {
     StageDetailCategoryBonus,
     StageDetailEnemy,
     StageDetailSkill,
+    StageDetailSuperAttack,
     StageDetailSupportMemoryLink,
     StageDetailSupportMemoryRelation,
     StageDetailZBattle,
     StageDetailsDataset,
 } from "../stage-detail";
+import { AttackTypes } from "../character";
 import { createMissionStageResolver, MissionStageRelation } from "./game-db-mission-stage-relations";
 import { GameDbRow, normalizeDbId, parseDbDate } from "./game-db-source";
 
@@ -17,7 +19,9 @@ export const STAGE_FIRST_PARTY_CONTRACT_VERSION = "1.0.0";
 
 export interface StageFirstPartyTables {
     areas: GameDbRow[],
+    card_awakening_routes: GameDbRow[],
     cards: GameDbRow[],
+    card_specials: GameDbRow[],
     card_categories: GameDbRow[],
     chapters: GameDbRow[],
     db_stories: GameDbRow[],
@@ -43,6 +47,9 @@ export interface StageFirstPartyTables {
     sugoroku_map_enemy_informations: GameDbRow[],
     sugoroku_map_puzzle_colors: GameDbRow[],
     sugoroku_maps: GameDbRow[],
+    special_sets: GameDbRow[],
+    special_views: GameDbRow[],
+    special_categories: GameDbRow[],
     z_battle_check_points: GameDbRow[],
     z_battle_enemies: GameDbRow[],
     z_battle_enemy_card_escalations: GameDbRow[],
@@ -73,6 +80,7 @@ export interface StageFirstPartyAudit {
         battles: number,
         rounds: number,
         enemyPositions: number,
+        enemySuperAttacks: number,
         referencedEnemySkills: number,
         referencedRoundSkillSets: number,
         questDropViews: number,
@@ -91,6 +99,7 @@ export interface StageFirstPartyAudit {
     authority: {
         topology: "first-party",
         enemies: "first-party",
+        superAttacks: "first-party",
         skillsAndGimmickPresentation: "first-party-structured-raw",
         linkLevelRate: "first-party",
         rewardsAndCosts: "first-party-structured-raw",
@@ -166,10 +175,96 @@ function optionalInteger(row: GameDbRow, column: string): number | undefined {
     return integer(row, column);
 }
 
+function cardRewardPresentation(
+    itemType: string,
+    itemId: string,
+    cards: ReadonlyMap<string, GameDbRow>,
+    canonicalAwakenedCards: ReadonlyMap<string, string>,
+): { name?: string, thumbnailId?: string, rarityRaw?: number, elementRaw?: number, detailCharacterId?: string } {
+    if (itemType !== "Card") return {};
+    const card = cards.get(itemId);
+    if (!card) return {};
+    return {
+        ...(text(card.name) ? { name: text(card.name) } : {}),
+        ...(optionalId(card, "resource_id") ? { thumbnailId: optionalId(card, "resource_id") } : {}),
+        ...(optionalInteger(card, "rarity") !== undefined ? { rarityRaw: optionalInteger(card, "rarity") } : {}),
+        ...(optionalInteger(card, "element") !== undefined ? { elementRaw: optionalInteger(card, "element") } : {}),
+        ...(canonicalAwakenedCards.get(itemId) ? { detailCharacterId: canonicalAwakenedCards.get(itemId) } : {}),
+    };
+}
+
+function canonicalAwakenedCardIds(
+    routes: GameDbRow[],
+    cards: ReadonlyMap<string, GameDbRow>,
+): Map<string, string> {
+    const direct = new Map<string, string>();
+    for (const [cardId, rows] of groupBy(routes, "card_id")) {
+        const targets = [...new Set(rows.map(row => id(row, "awaked_card_id")).filter(target => target !== cardId))];
+        if (targets.length === 1 && cards.has(targets[0])) direct.set(cardId, targets[0]);
+    }
+    const result = new Map<string, string>();
+    for (const cardId of cards.keys()) {
+        const visited = new Set([cardId]);
+        let current = cardId;
+        while (direct.has(current)) {
+            const next = direct.get(current)!;
+            if (visited.has(next)) break;
+            visited.add(next);
+            current = next;
+        }
+        if (current !== cardId) result.set(cardId, current);
+    }
+    return result;
+}
+
 function booleanValue(row: GameDbRow, column: string): boolean {
     const value = integer(row, column);
     if (value !== 0 && value !== 1) throw new Error(`Stage row ${id(row)} has invalid boolean ${column}`);
     return value === 1;
+}
+
+function superAttacksForCard(
+    cardId: string,
+    cardSpecials: Map<string, GameDbRow[]>,
+    specialSets: Map<string, GameDbRow>,
+    specialViews: Map<string, GameDbRow>,
+    specialCategories: Map<string, GameDbRow>,
+): StageDetailSuperAttack[] {
+    return [...(cardSpecials.get(cardId) ?? [])]
+        .sort((left, right) => integer(left, "priority") - integer(right, "priority") || numericCompare(id(left), id(right)))
+        .map(relation => {
+            const specialSetId = id(relation, "special_set_id");
+            const specialSet = specialSets.get(specialSetId);
+            if (!specialSet) throw new Error(`Card ${cardId} references missing special set ${specialSetId}`);
+            const name = text(specialSet.name);
+            if (!name) throw new Error(`Special set ${specialSetId} is missing its official name`);
+            const ki = optionalInteger(relation, "eball_num_start");
+            const viewId = optionalId(relation, "view_id");
+            const view = viewId ? specialViews.get(viewId) : undefined;
+            const categoryId = view ? optionalId(view, "special_category_id") : undefined;
+            const category = categoryId ? specialCategories.get(categoryId) : undefined;
+            const rawAttribute = category ? optionalInteger(category, "raw_attribute") : undefined;
+            const attackType = !view
+                ? undefined
+                : !categoryId
+                    ? AttackTypes.Other
+                    : rawAttribute === 1
+                        ? AttackTypes.KiBlast
+                        : rawAttribute === 2
+                            ? AttackTypes.Unarmed
+                            : rawAttribute === 4
+                                ? AttackTypes.Armed
+                                : undefined;
+            return {
+                id: id(relation),
+                specialSetId,
+                name,
+                ...(text(specialSet.description) ? { description: text(specialSet.description) } : {}),
+                ...(text(relation.style) ? { style: text(relation.style) } : {}),
+                ...(ki !== undefined ? { ki } : {}),
+                ...(attackType ? { attackType } : {}),
+            };
+        });
 }
 
 function date(row: GameDbRow, column: string): string | undefined {
@@ -404,6 +499,11 @@ export function buildStageFirstPartyCandidate(options: {
     const chapters = uniqueById(options.tables.chapters, "chapter");
     const stories = uniqueById(options.tables.db_stories, "DB story");
     const cards = uniqueById(options.tables.cards, "card");
+    const canonicalAwakenedCards = canonicalAwakenedCardIds(options.tables.card_awakening_routes, cards);
+    const cardSpecials = groupBy(options.tables.card_specials, "card_id");
+    const specialSets = uniqueById(options.tables.special_sets, "special set");
+    const specialViews = uniqueById(options.tables.special_views, "special view");
+    const specialCategories = uniqueById(options.tables.special_categories, "special category");
     const quests = uniqueById(options.tables.quests, "quest");
     const maps = uniqueById(options.tables.sugoroku_maps, "quest level");
     const encounters = uniqueById(options.tables.sugoroku_map_enemy_informations, "encounter", "sugoroku_map_id");
@@ -441,7 +541,7 @@ export function buildStageFirstPartyCandidate(options: {
     const supportLinks = supportMemoryStageLinks(options.tables, new Set(maps.keys()), new Set(areas.keys()), new Set(zStages.keys()));
     const referencedSkillIds = new Set<string>();
     const referencedRoundSetIds = new Set<string>();
-    let battleCount = 0, roundCount = 0, enemyCount = 0;
+    let battleCount = 0, roundCount = 0, enemyCount = 0, enemySuperAttackCount = 0;
 
     const entries: StageDetail[] = [];
     const unboundQuestLevelIds: string[] = [];
@@ -474,6 +574,14 @@ export function buildStageFirstPartyCandidate(options: {
                     enemyCount += 1;
                     const card = cards.get(enemy.cardId);
                     if (!card) throw new Error(`Stage ${mapId} references missing enemy card ${enemy.cardId}`);
+                    const superAttacks = superAttacksForCard(
+                        enemy.cardId,
+                        cardSpecials,
+                        specialSets,
+                        specialViews,
+                        specialCategories,
+                    );
+                    enemySuperAttackCount += superAttacks.length;
                     const skills = enemy.enemySkillIds.map(skillId => {
                         referencedSkillIds.add(skillId);
                         const row = enemySkills.get(skillId);
@@ -506,6 +614,7 @@ export function buildStageFirstPartyCandidate(options: {
                             source: "game-db",
                             unknowns: ["hp", "atk", "def", "attacks_per_turn", "runtime_scaling"],
                         },
+                        superAttacks,
                         skills,
                         ...(roundSetId && roundSet ? {
                             roundSkillSet: {
@@ -546,7 +655,7 @@ export function buildStageFirstPartyCandidate(options: {
                 const itemType = text(row[`item${index}_type`]);
                 if (!itemId && !itemType) return [];
                 if (!itemId || !itemType) throw new Error(`Quest drop view ${id(row)} has an incomplete item ${index}`);
-                return [{ itemId, itemType }];
+                return [{ itemId, itemType, ...cardRewardPresentation(itemType, itemId, cards, canonicalAwakenedCards) }];
             });
             return [{ sourceRowId: id(row), difficultyValues, items }];
         });
@@ -588,6 +697,7 @@ export function buildStageFirstPartyCandidate(options: {
                 cardExpInitial: optionalInteger(drop, "card_exp_init"),
                 quantityStatus: "unknown",
                 chanceStatus: "unknown",
+                ...cardRewardPresentation(text(drop.item_type), id(drop, "item_id"), cards, canonicalAwakenedCards),
             })),
             dropPreviews,
             categoryBonuses,
@@ -800,6 +910,7 @@ export function buildStageFirstPartyCandidate(options: {
                 battles: battleCount,
                 rounds: roundCount,
                 enemyPositions: enemyCount,
+                enemySuperAttacks: enemySuperAttackCount,
                 referencedEnemySkills: referencedSkillIds.size,
                 referencedRoundSkillSets: referencedRoundSetIds.size,
                 questDropViews: options.tables.quest_drop_item_views.length,
@@ -818,6 +929,7 @@ export function buildStageFirstPartyCandidate(options: {
             authority: {
                 topology: "first-party",
                 enemies: "first-party",
+                superAttacks: "first-party",
                 skillsAndGimmickPresentation: "first-party-structured-raw",
                 linkLevelRate: "first-party",
                 rewardsAndCosts: "first-party-structured-raw",

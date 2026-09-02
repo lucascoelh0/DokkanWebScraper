@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import { dirname, resolve } from "path";
 import { promisify } from "util";
 import { fetchFromWeb } from "./scraper";
+import { getDokkanInfoAwakeningMedalEnrichment } from "./dokkaninfo-awakening-medal-enrichment";
 import {
     DokkanInfoItem,
     DokkanInfoItemAsset,
@@ -35,6 +36,7 @@ export interface ItemCategoryConfig {
 
 export const DEFAULT_ITEM_CATEGORIES: ItemCategoryConfig[] = [
     { slug: "actitems", itemType: "ActItem", name: "Act Items" },
+    { slug: "awakeningitems", itemType: "AwakeningItem", name: "Awakening Medals" },
     { slug: "keys", itemType: "KeyItem", name: "Keys" },
     { slug: "potentialitems", itemType: "PotentialItem", name: "Potential Items" },
     { slug: "specialitems", itemType: "SpecialItem", name: "Special Items" },
@@ -53,6 +55,9 @@ export async function getDokkanInfoItemCatalog(): Promise<DokkanInfoItemCatalogD
         requestedConcurrency(),
         async config => {
             try {
+                if (config.slug === "awakeningitems") {
+                    return buildAwakeningMedalCategory(config);
+                }
                 const html = await fetchCategoryHtml(config);
                 return parseDokkanInfoItemCategory(html, config);
             } catch (error) {
@@ -79,6 +84,43 @@ export async function getDokkanInfoItemCatalog(): Promise<DokkanInfoItemCatalogD
         itemCount: resolvedCategories.reduce((sum, category) => sum + category.count, 0),
         failedCategorySlugs: sortedFailedCategorySlugs,
         categories: resolvedCategories,
+    };
+}
+
+async function buildAwakeningMedalCategory(config: ItemCategoryConfig): Promise<DokkanInfoItemCategory> {
+    const dataset = await getDokkanInfoAwakeningMedalEnrichment();
+    const limit = requestedLimit();
+    const items = dataset.entries
+        .slice(0, limit ?? Number.MAX_SAFE_INTEGER)
+        .map(entry => ({
+            key: `${config.itemType}:${entry.id}`,
+            id: entry.id,
+            itemType: config.itemType,
+            category: config.slug,
+            name: entry.name,
+            description: entry.description,
+            sourcePath: entry.detailUrl,
+            icon: entry.thumbnailAsset,
+            background: awakeningMedalBackground(entry.rarityBucket),
+        }));
+    return {
+        slug: config.slug,
+        itemType: config.itemType,
+        name: config.name,
+        sourcePath: `${DOKKAN_INFO_BASE_URL}/items/${config.slug}`,
+        count: items.length,
+        items,
+    };
+}
+
+export function awakeningMedalBackground(rarityBucket: number): DokkanInfoItemAsset | undefined {
+    const tier = (["bronze", "silver", "gold", "rainbow"] as const)[rarityBucket];
+    if (!tier) {
+        return undefined;
+    }
+    return {
+        remoteUrl: `${DOKKAN_INFO_BASE_URL}/assets/global/en/layout/en/image/item/awaken/` +
+            `awaken_thumb_bg/thumb_awaken_${tier}.png`,
     };
 }
 
@@ -208,6 +250,7 @@ function isPrimaryItemImage(image: Element, config: ItemCategoryConfig): boolean
 
     const categoryMarkers: Record<DokkanInfoItemCategorySlug, string[]> = {
         actitems: ["/item/act/"],
+        awakeningitems: ["/item/awaken/"],
         keys: ["/item/eventkagi/"],
         potentialitems: ["/item/other/"],
         specialitems: ["/item/other/"],

@@ -19,7 +19,9 @@ interface Options {
 
 export const REQUIRED_STAGE_TABLES: Array<keyof StageFirstPartyTables> = [
     "areas",
+    "card_awakening_routes",
     "cards",
+    "card_specials",
     "card_categories",
     "chapters",
     "db_stories",
@@ -45,6 +47,9 @@ export const REQUIRED_STAGE_TABLES: Array<keyof StageFirstPartyTables> = [
     "sugoroku_map_enemy_informations",
     "sugoroku_map_puzzle_colors",
     "sugoroku_maps",
+    "special_sets",
+    "special_views",
+    "special_categories",
     "z_battle_check_points",
     "z_battle_enemies",
     "z_battle_enemy_card_escalations",

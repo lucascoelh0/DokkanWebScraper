@@ -1,5 +1,6 @@
 export type DokkanInfoItemCategorySlug =
     | "actitems"
+    | "awakeningitems"
     | "keys"
     | "potentialitems"
     | "specialitems"
@@ -11,6 +12,7 @@ export type DokkanInfoItemCategorySlug =
 
 export type DokkanInfoItemType =
     | "ActItem"
+    | "AwakeningItem"
     | "KeyItem"
     | "PotentialItem"
     | "SpecialItem"

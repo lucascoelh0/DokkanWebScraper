@@ -1,11 +1,20 @@
 import { deepEqual, equal } from "assert";
 import {
+    awakeningMedalBackground,
     buildDokkanInfoItemCatalogManifest,
     DEFAULT_ITEM_CATEGORIES,
     parseDokkanInfoItemCategory,
 } from "./dokkaninfo-item-catalog-scraper";
 
 describe("DokkanInfo item catalog parser", () => {
+    it("maps documented medal rarity buckets to their matching frame", () => {
+        equal(awakeningMedalBackground(0)?.remoteUrl.endsWith("thumb_awaken_bronze.png"), true);
+        equal(awakeningMedalBackground(1)?.remoteUrl.endsWith("thumb_awaken_silver.png"), true);
+        equal(awakeningMedalBackground(2)?.remoteUrl.endsWith("thumb_awaken_gold.png"), true);
+        equal(awakeningMedalBackground(3)?.remoteUrl.endsWith("thumb_awaken_rainbow.png"), true);
+        equal(awakeningMedalBackground(4), undefined);
+    });
+
     it("builds a versioned manifest from the exact catalog bytes", () => {
         const catalog = {
             generatedAt: "2026-07-17T12:00:00.000Z",
