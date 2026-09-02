@@ -61,6 +61,19 @@ describe("game DB lane refresh candidate", () => {
         ]), /cannot be both new and release-state targets: 1034001/);
     });
 
+    it("accepts an overlay-only refresh without explicit card additions", () => {
+        const options = parseGameDbLaneRefreshArgs([
+            "--contract-lane", "v2",
+            "--first-party-dir", "first-party",
+            "--portrait-assets-dir", "portraits",
+            "--baseline-dir", "baseline",
+            "--output-dir", "output",
+        ]);
+        deepStrictEqual(options.newCardIds, []);
+        deepStrictEqual(options.releaseStateCardIds, []);
+        deepStrictEqual(options.categoryIds, []);
+    });
+
     it("does not duplicate a related form that is also an explicit release target", () => {
         const root = { id: "1024291", source: "root" };
         const explicitlyTargetedForm = { id: "4024301", source: "explicit" };

@@ -1,13 +1,11 @@
 import type { PassiveDetails } from "../character";
 
-export function rebindTransformationPassiveDetails(
-    details: PassiveDetails | undefined,
+function rebindPassiveDetailsEvidence(
+    details: PassiveDetails,
     baseCharacterId: string,
     formId: string,
-): PassiveDetails | undefined {
-    if (!details) return undefined;
-    const rebound = JSON.parse(JSON.stringify(details)) as PassiveDetails;
-    for (const evidence of rebound.structuralSource?.evidence ?? []) {
+): void {
+    for (const evidence of details.structuralSource?.evidence ?? []) {
         const expectedStateKey = `${formId}:${formId}:${evidence.releaseState}`;
         const expectedEvidenceId = [
             expectedStateKey,
@@ -29,7 +27,7 @@ export function rebindTransformationPassiveDetails(
             evidence.anchor.sourceSpan.start,
         ].join(":");
     }
-    for (const evidence of rebound.conditionEvidence ?? []) {
+    for (const evidence of details.conditionEvidence ?? []) {
         const expectedStateKey = `${formId}:${formId}:${evidence.releaseState}`;
         if (evidence.characterId !== formId || evidence.formId !== formId
             || evidence.stateKey !== expectedStateKey) {
@@ -37,6 +35,19 @@ export function rebindTransformationPassiveDetails(
         }
         evidence.characterId = baseCharacterId;
         evidence.stateKey = `${baseCharacterId}:${evidence.formId}:${evidence.releaseState}`;
+    }
+}
+
+export function rebindTransformationPassiveDetails(
+    details: PassiveDetails | undefined,
+    baseCharacterId: string,
+    formId: string,
+): PassiveDetails | undefined {
+    if (!details) return undefined;
+    const rebound = JSON.parse(JSON.stringify(details)) as PassiveDetails;
+    rebindPassiveDetailsEvidence(rebound, baseCharacterId, formId);
+    for (const mode of rebound.modes ?? []) {
+        rebindPassiveDetailsEvidence(mode, baseCharacterId, formId);
     }
     return rebound;
 }

@@ -19,6 +19,10 @@ import {
 } from "./game-db-app-projection";
 import { materializeGameDbCharacter, MaterializedPortraitAsset } from "./game-db-character-materializer";
 import {
+    overlayGameDbCharacterPassiveModes,
+    selectDeliveredPassiveModeFormIds,
+} from "./game-db-character-passive-mode-overlay";
+import {
     assertFreshCandidateOutput,
     assertTeamAnalysisBoundToCharacterArtifact,
 } from "./game-db-character-release-candidate";
@@ -136,7 +140,7 @@ export function parseGameDbLaneRefreshArgs(args: string[]): LaneRefreshOptions {
     if (!firstPartyDir || !portraitAssetsDir || !baselineDir || !outputDir) {
         throw new Error("first-party, portrait-assets, baseline and output directories are required");
     }
-    const newCardIds = csvList(values.get("--new-card-ids"), "--new-card-ids");
+    const newCardIds = csvList(values.get("--new-card-ids"), "--new-card-ids", true);
     const releaseStateCardIds = csvList(
         values.get("--release-state-card-ids"),
         "--release-state-card-ids",
@@ -495,9 +499,21 @@ export async function buildGameDbLaneRefreshCandidate(options: LaneRefreshOption
             categories: [...character.categories].sort((left, right) => left.localeCompare(right)),
         }))
         .sort((left, right) => Number(left.id) - Number(right.id));
+    const passiveModeInputCharacters = [...categories.characters, ...addedCharacters];
+    const passiveModeFormIds = selectDeliveredPassiveModeFormIds(passiveModeInputCharacters, tables);
+    const passiveModeProjections = passiveModeFormIds.length > 0
+        ? projectGameDbCharactersToDokkanpanion(
+            buildGameDbCharacterSnapshots(passiveModeFormIds, tables),
+            { sourceVersion: metadata.dbVersion },
+        )
+        : [];
+    const passiveModes = overlayGameDbCharacterPassiveModes(
+        passiveModeInputCharacters,
+        passiveModeProjections,
+    );
     const generatedAt = new Date().toISOString();
     const laneCharacters = buildCreatedDomainEnrichedLaneCharacterArtifact(
-        [...categories.characters, ...addedCharacters],
+        passiveModes.characters,
         createdDomainProjection,
         generatedAt,
     );
@@ -574,6 +590,16 @@ export async function buildGameDbLaneRefreshCandidate(options: LaneRefreshOption
             relatedFormIds: character.transformations?.map(form => form.id) ?? [],
         })),
         releaseStatePatches: releaseOverlay.patches,
+        passiveModeCoverage: {
+            sourceColumns: [
+                "passive_skill_sets.sougou_only_itemized_description",
+                "passive_skill_sets.kobetu_only_itemized_description",
+            ],
+            selectedFormIds: passiveModeFormIds,
+            ...passiveModes.coverage,
+            patches: passiveModes.patches,
+            checks: passiveModes.checks,
+        },
         createdDomainEnrichment: {
             status: "snapshot-audited",
             sourceSnapshotId: createdDomainProjection.sourceSnapshotId,
