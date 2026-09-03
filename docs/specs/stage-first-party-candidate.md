@@ -21,6 +21,34 @@ and the Z-Battle topology, escalation and reward tables. It writes:
   percentiles; and
 - `candidate-manifest.json`, binding every output by size and SHA-256.
 
+The compact catalog carries an HTTPS `assetBaseUrl` separately from the exact
+first-party asset paths. The current base is the DokkanStats asset CDN, while
+the database remains authoritative for every image identity. This indirection
+allows a future catalog publication to move Stage assets to the project's R2
+domain without an Android release. Quest-event catalog cards use the area's
+`listbutton_image_path`; Z-Battle catalog cards use the Z-Battle
+`listbutton_image_path`, and the detail shard retains `banner_image_path` for
+the Z-Battle detail hero.
+
+Quest Mode is classified structurally as `areas.type = Area::MainArea`; normal
+event areas are not treated as Quests merely because they contain quest maps.
+Those entries retain the database `chapter_id`/Chapter join and are grouped by
+Chapter in the consumer. The Chapter table does not carry an image column, so
+the catalog derives the official client asset key from that database ID as
+`outgame/extension/adventure/chapter/{id}/{id}001.png`. The same replaceable
+`assetBaseUrl` hosts those bytes, keeping classification and image identity
+independent from the current CDN provider.
+
+The delivery catalog also carries the database's exact `areas.type` and raw
+numeric `areas.category`, plus the derived `browseCategory` used by Android.
+Keeping that presentation mapping in the remotely delivered catalog allows a
+future dataset refresh to correct an existing category without an app release.
+It never guesses from titles or banners: `Area::DbStory` maps to DB Story;
+EventArea categories `2/7` map to Story, `4/6` to Bonus,
+`1/8/9/10/11/12` to Growth, `16` to Limited and `20` to Challenge. Raw
+categories outside that presentation mapping remain available under All.
+Frontier and Z-Battles keep their independent typed datasets and routes.
+
 ## Supported joins
 
 - `areas.id -> quests.area_id -> sugoroku_maps.quest_id` reconstructs 5,391

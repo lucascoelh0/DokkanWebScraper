@@ -1,5 +1,6 @@
 import { deepEqual, equal, match, throws } from "assert";
 import { describe, it } from "mocha";
+import { gunzipSync } from "zlib";
 import { StageDetail, StageDetailsDataset } from "../stage-detail";
 import { buildStageDelivery } from "./game-db-stage-delivery";
 
@@ -22,6 +23,7 @@ describe("first-party Stage delivery", () => {
         equal(first.manifest.sha256, first.manifest.catalog.sha256);
         equal(first.manifest.sizeBytes, first.manifest.catalog.sizeBytes);
         equal(first.manifest.stageCount, first.manifest.questLevelCount);
+        equal(first.catalog.assetBaseUrl, "https://assets.dokkanstats.com/assets/global/en");
         for (const shard of first.shards) {
             equal(shard.manifest.sizeBytes, shard.gzip.byteLength);
             equal(shard.manifest.expandedSizeBytes, shard.bytes.byteLength);
@@ -30,6 +32,12 @@ describe("first-party Stage delivery", () => {
 
         const quest = first.catalog.entries.find(entry => entry.key === "quest-level:101")!;
         equal(quest.areaName, "Area 7");
+        equal(quest.areaType, "Area::MainArea");
+        equal(quest.areaCategoryRaw, 7);
+        equal(quest.browseCategory, "quests");
+        equal(quest.chapterId, "1");
+        equal(quest.chapterName, "Chapter 1");
+        equal(quest.chapterImagePath, "outgame/extension/adventure/chapter/1/1001.png");
         equal(quest.eventImagePath, "banners/en/event/eve_listbutton/myp_banner_event_7.png");
         deepEqual(quest.enemyNames, ["Goku", "Vegeta"]);
         deepEqual(quest.supportMemoryIds, ["20001"]);
@@ -38,10 +46,16 @@ describe("first-party Stage delivery", () => {
             .find(entry => entry.id === "101")!;
         equal(deliveredQuest.enemies[0].thumbnailId, "1000");
         equal(deliveredQuest.enemies[0].superAttacks?.[0].name, "Kamehameha");
+        equal(first.catalog.entries.find(entry => entry.key === "quest-level:201")?.browseCategory, "story");
         const zBattle = first.catalog.entries.find(entry => entry.key === "z-battle:9001")!;
+        equal(zBattle.browseCategory, "z-battles");
+        equal(zBattle.eventImagePath, "banners/en/event/eve_listbutton/myp_banner_event_zbattle_9001.png");
         deepEqual(zBattle.supportMemoryIds, ["20003"]);
         const zShard = first.manifest.shards.find(shard => shard.id === zBattle.detailShardId)!;
         equal(zShard.zBattleIds.includes("9001"), true);
+        const deliveredZBattle = first.shards.flatMap(shard => shard.payload.zBattles)
+            .find(entry => entry.id === "9001")!;
+        equal(deliveredZBattle.banner?.sourcePath, "banners/en/event/eve_banner/zbattle_list_banner_9001.png");
     });
 
     it("fails closed when a normal quest enemy claims unavailable stats", () => {
@@ -52,6 +66,16 @@ describe("first-party Stage delivery", () => {
             hp: 1,
         };
         throws(() => buildStageDelivery(dataset), /invents unavailable HP\/ATK\/DEF/);
+    });
+
+    it("can rotate immutable object hashes without changing expanded payloads", () => {
+        const dataset = fixtureDataset();
+        const defaultCompression = buildStageDelivery(dataset, 32 * 1024);
+        const rotatedCompression = buildStageDelivery(dataset, 32 * 1024, 8);
+
+        equal(rotatedCompression.manifest.catalog.sha256 === defaultCompression.manifest.catalog.sha256, false);
+        equal(gunzipSync(rotatedCompression.catalogGzip).equals(defaultCompression.catalogBytes), true);
+        throws(() => buildStageDelivery(dataset, 32 * 1024, 0), /compression level/);
     });
 
     it("fails closed when a Support Memory target is absent", () => {
@@ -73,6 +97,13 @@ function fixtureDataset(): StageDetailsDataset {
         quest("102", "71", "7", "Vegeta", "y".repeat(18_000)),
         quest("201", "81", "8", "Piccolo", "z".repeat(18_000)),
     ];
+    entries[0].areaType = "Area::MainArea";
+    entries[0].areaCategoryRaw = 7;
+    entries[0].chapter = { id: "1", name: "Chapter 1" };
+    entries[1].areaType = "Area::MainArea";
+    entries[1].chapter = { id: "1", name: "Chapter 1" };
+    entries[2].areaType = "Area::EventArea";
+    entries[2].areaCategoryRaw = 2;
     return {
         schemaVersion: 2,
         generatedAt: "2026-08-31T20:00:00.000Z",
@@ -90,6 +121,8 @@ function fixtureDataset(): StageDetailsDataset {
             enableBattleAuto: true,
             effectEscalationTypeId: "1",
             priority: 5,
+            banner: { sourcePath: "banners/en/event/eve_banner/zbattle_list_banner_9001.png" },
+            listButton: { sourcePath: "banners/en/event/eve_listbutton/myp_banner_event_zbattle_9001.png" },
             enemyRanges: [{
                 id: "1",
                 ordinal: 1,
@@ -175,6 +208,7 @@ function quest(
         areaId,
         areaName: `Area ${areaId}`,
         areaType: "event",
+        areaCategoryRaw: 2,
         startDate: "2026-08-01T00:00:00.000Z",
         images: {
             header: { sourcePath: `banners/en/event/eve_header/quest_top_banner_${areaId}.png` },

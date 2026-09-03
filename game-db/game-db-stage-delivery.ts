@@ -10,8 +10,18 @@ import {
 export const STAGE_DELIVERY_CONTRACT = "dokkan-stage-delivery";
 export const STAGE_DELIVERY_CONTRACT_VERSION = "1.0.0";
 export const DEFAULT_STAGE_SHARD_MAX_EXPANDED_BYTES = 2 * 1024 * 1024;
+export const DEFAULT_STAGE_ASSET_BASE_URL = "https://assets.dokkanstats.com/assets/global/en";
 
 export type StageCatalogEntryKind = "quest-level" | "z-battle";
+export type StageCatalogBrowseCategory =
+    | "quests"
+    | "db-story"
+    | "story"
+    | "bonus"
+    | "growth"
+    | "limited"
+    | "challenge"
+    | "z-battles";
 
 export interface StageDeliveryObject {
     objectKey: string,
@@ -30,6 +40,12 @@ export interface StageCatalogEntry {
     subtitle?: string,
     areaId?: string,
     areaName?: string,
+    areaType?: string,
+    areaCategoryRaw?: number,
+    browseCategory?: StageCatalogBrowseCategory,
+    chapterId?: string,
+    chapterName?: string,
+    chapterImagePath?: string,
     eventImagePath?: string,
     questId?: string,
     difficultyRaw?: number,
@@ -56,6 +72,7 @@ export interface StageCatalogPayload {
     source: "dokkan-game-db",
     sourceSnapshotVersion: string,
     sourceDatabaseSha256: string,
+    assetBaseUrl: string,
     count: number,
     questLevelCount: number,
     zBattleCount: number,
@@ -144,10 +161,14 @@ interface PendingShard {
 export function buildStageDelivery(
     dataset: StageDetailsDataset,
     shardMaxExpandedBytes = DEFAULT_STAGE_SHARD_MAX_EXPANDED_BYTES,
+    compressionLevel = 9,
 ): StageDeliveryBuild {
     validateDataset(dataset);
     if (!Number.isSafeInteger(shardMaxExpandedBytes) || shardMaxExpandedBytes < 32 * 1024) {
         throw new Error("Stage shard maximum must be an integer of at least 32768 bytes");
+    }
+    if (!Number.isSafeInteger(compressionLevel) || compressionLevel < 1 || compressionLevel > 9) {
+        throw new Error("Stage delivery compression level must be an integer from 1 to 9");
     }
 
     const datasetVersion = dataset.generatedAt;
@@ -160,7 +181,7 @@ export function buildStageDelivery(
         if (bytes.byteLength > shardMaxExpandedBytes) {
             throw new Error(`Stage shard ${shard.id} exceeds ${shardMaxExpandedBytes} expanded bytes`);
         }
-        const gzip = gzipSync(bytes, { level: 9 });
+        const gzip = gzipSync(bytes, { level: compressionLevel });
         const sha256 = sha(gzip);
         const questLevelIds = shard.items
             .filter(item => item.kind === "quest-level")
@@ -204,6 +225,7 @@ export function buildStageDelivery(
         source: "dokkan-game-db",
         sourceSnapshotVersion: dataset.sourceSnapshotVersion!,
         sourceDatabaseSha256: dataset.sourceDatabaseSha256!,
+        assetBaseUrl: DEFAULT_STAGE_ASSET_BASE_URL,
         count: items.length,
         questLevelCount: dataset.entries.length,
         zBattleCount: dataset.zBattles?.length ?? 0,
@@ -219,7 +241,7 @@ export function buildStageDelivery(
     };
     assertUniqueCatalog(catalog);
     const catalogBytes = Buffer.from(JSON.stringify(catalog), "utf8");
-    const catalogGzip = gzipSync(catalogBytes, { level: 9 });
+    const catalogGzip = gzipSync(catalogBytes, { level: compressionLevel });
     const catalogSha = sha(catalogGzip);
     const catalogObject: StageDeliveryObject = {
         objectKey: `stage-details/objects/${catalogSha}.json.gz`,
@@ -374,6 +396,7 @@ function shardPayload(datasetVersion: string, shard: PendingShard): StageDetailS
 }
 
 function questCatalogEntry(stage: StageDetail, shardId: string): StageCatalogEntry {
+    const chapterId = stage.areaType === "Area::MainArea" ? stage.chapter?.id : undefined;
     return {
         key: catalogKey("quest-level", stage.id),
         kind: "quest-level",
@@ -382,6 +405,14 @@ function questCatalogEntry(stage: StageDetail, shardId: string): StageCatalogEnt
         subtitle: stage.difficulty,
         areaId: stage.areaId,
         areaName: stage.areaName,
+        areaType: stage.areaType,
+        areaCategoryRaw: stage.areaCategoryRaw,
+        browseCategory: questBrowseCategory(stage),
+        ...(chapterId ? {
+            chapterId,
+            chapterName: stage.chapter?.name ?? `Chapter ${chapterId}`,
+            chapterImagePath: questChapterImagePath(chapterId),
+        } : {}),
         eventImagePath: stage.images.button?.sourcePath ?? stage.images.header?.sourcePath,
         questId: stage.questId,
         difficultyRaw: stage.difficultyRaw,
@@ -404,6 +435,23 @@ function questCatalogEntry(stage: StageDetail, shardId: string): StageCatalogEnt
     };
 }
 
+function questChapterImagePath(chapterId: string): string {
+    if (!/^\d+$/.test(chapterId)) throw new Error(`Quest chapter ID must be numeric: ${chapterId}`);
+    return `outgame/extension/adventure/chapter/${chapterId}/${chapterId}001.png`;
+}
+
+function questBrowseCategory(stage: StageDetail): StageCatalogBrowseCategory | undefined {
+    if (stage.areaType === "Area::MainArea" && stage.chapter?.id) return "quests";
+    if (stage.areaType === "Area::DbStory") return "db-story";
+    if (stage.areaType !== "Area::EventArea") return undefined;
+    if ([2, 7].includes(stage.areaCategoryRaw)) return "story";
+    if ([4, 6].includes(stage.areaCategoryRaw)) return "bonus";
+    if ([1, 8, 9, 10, 11, 12].includes(stage.areaCategoryRaw)) return "growth";
+    if (stage.areaCategoryRaw === 16) return "limited";
+    if (stage.areaCategoryRaw === 20) return "challenge";
+    return undefined;
+}
+
 function zBattleCatalogEntry(
     stage: StageDetailZBattle,
     relations: StageDetailSupportMemoryRelation[],
@@ -418,6 +466,8 @@ function zBattleCatalogEntry(
         id: stage.id,
         title: stage.title ?? `Z-Battle ${stage.id}`,
         subtitle: stage.subtitle,
+        browseCategory: "z-battles",
+        eventImagePath: stage.listButton?.sourcePath,
         startsAt: stage.startDate,
         enemyNames: uniqueText([stage.title ?? "", stage.subtitle ?? ""]),
         supportMemoryIds: uniqueText(memoryIds, numericCompare),

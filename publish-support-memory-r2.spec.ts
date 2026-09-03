@@ -3,6 +3,7 @@ import { resolve } from "path";
 import {
     buildSupportMemoryR2PublishPlan,
     parseSupportMemoryR2PublishArgs,
+    scopedObjectKey,
     SupportMemoryR2PublishState,
 } from "./publish-support-memory-r2";
 import { collectSupportMemoryAssetRefs } from "./support-memory-dataset-artifacts";
@@ -12,10 +13,12 @@ describe("support-memory R2 publisher", () => {
         const options = parseSupportMemoryR2PublishArgs([]);
 
         equal(options.bucket, "dokkanpanion-data");
+        equal(options.objectPrefix, "");
         equal(options.target, "remote");
         equal(options.dryRun, false);
         equal(options.maxUploadBytes, 1024 * 1024 * 1024);
         equal(options.keepStaleAssets, false);
+        equal(options.adoptUnboundState, false);
     });
 
     it("supports dry-run, local target, and explicit paths", () => {
@@ -27,21 +30,37 @@ describe("support-memory R2 publisher", () => {
             "--manifest=manifest.json",
             "--state",
             "state.json",
+            "--object-prefix=/staging/v2/",
             "--keep-stale-assets",
+            "--adopt-unbound-state",
             "--max-upload-bytes",
             "1024",
         ]);
 
         deepEqual(options, {
             bucket: "dokkanpanion-data",
+            objectPrefix: "staging/v2",
             detailsPath: resolve("details.json"),
             manifestPath: resolve("manifest.json"),
             statePath: resolve("state.json"),
             dryRun: true,
             target: "local",
             keepStaleAssets: true,
+            adoptUnboundState: true,
             maxUploadBytes: 1024,
         });
+    });
+
+    it("scopes every mutable and immutable object under the selected channel", () => {
+        equal(scopedObjectKey("staging/v2", "support-memory-manifest.json"), "staging/v2/support-memory-manifest.json");
+        equal(scopedObjectKey("", "support-memory-manifest.json"), "support-memory-manifest.json");
+        throws(
+            () => parseSupportMemoryR2PublishArgs(["--object-prefix", "../production"]),
+            /Invalid R2 object prefix/,
+        );
+        throws(() => parseSupportMemoryR2PublishArgs(["--dry-run=true"]), /does not accept a value/);
+        throws(() => parseSupportMemoryR2PublishArgs(["--unknown"]), /Unexpected support memory publisher argument/);
+        throws(() => parseSupportMemoryR2PublishArgs(["--state", "a", "--state", "b"]), /duplicate/);
     });
 
     it("collects all local support-memory asset references without duplicates", () => {
@@ -82,7 +101,7 @@ describe("support-memory R2 publisher", () => {
             datasetVersion: "2026-07-17T00:00:00.000Z",
             generatedAt: "2026-07-17T00:00:00.000Z",
             fileName: "support-memory-details.json" as const,
-            sha256: "details-hash",
+            sha256: "d".repeat(64),
             sizeBytes: 100,
             supportMemoryCount: 1,
             assetCount: 1,
@@ -99,8 +118,15 @@ describe("support-memory R2 publisher", () => {
             contentType: "image/png",
         };
         const previousState: SupportMemoryR2PublishState = {
-            schemaVersion: 1 as const,
+            schemaVersion: 2 as const,
+            destination: {
+                bucket: options.bucket,
+                objectPrefix: options.objectPrefix,
+                target: options.target,
+                manifestObjectKey: "support-memory-manifest.json",
+            },
             datasetVersion: "2026-07-16T00:00:00.000Z",
+            detailsObjectKey: `support-memory-details.${"c".repeat(64)}.json`,
             detailsSha256: "old-details-hash",
             manifestSha256: "old-manifest-hash",
             assets: {
@@ -115,11 +141,29 @@ describe("support-memory R2 publisher", () => {
             },
         };
 
-        const plan = buildSupportMemoryR2PublishPlan(options, manifest, [asset], 100, 50, previousState);
+        throws(
+            () => buildSupportMemoryR2PublishPlan(options, manifest, [asset], 100, previousState),
+            /immutable asset changed bytes/,
+        );
+
+        previousState.assets[asset.objectKey] = { sha256: asset.sha256, sizeBytes: asset.sizeBytes };
+        const plan = buildSupportMemoryR2PublishPlan(options, manifest, [asset], 100, previousState);
 
         deepEqual(plan.staleAssetKeys, ["support-memories/assets/old.png"]);
-        equal(plan.uploadAssetCount, 1);
-        equal(plan.totalDatasetBytes, 175);
+        equal(plan.uploadAssetCount, 0);
+        equal(plan.detailsObjectKey, `support-memory-details.${"d".repeat(64)}.json`);
+        equal(plan.totalDatasetBytes, 100 + 25 + plan.manifestBytes);
+
+        throws(
+            () => buildSupportMemoryR2PublishPlan(
+                { ...options, objectPrefix: "staging/v2" },
+                manifest,
+                [asset],
+                100,
+                previousState,
+            ),
+            /different destination/,
+        );
     });
 
     it("rejects a dataset above the configured storage budget", () => {
@@ -129,7 +173,7 @@ describe("support-memory R2 publisher", () => {
             datasetVersion: "2026-07-17T00:00:00.000Z",
             generatedAt: "2026-07-17T00:00:00.000Z",
             fileName: "support-memory-details.json" as const,
-            sha256: "details-hash",
+            sha256: "d".repeat(64),
             sizeBytes: 100,
             supportMemoryCount: 1,
             assetCount: 1,
@@ -146,6 +190,6 @@ describe("support-memory R2 publisher", () => {
             contentType: "image/png",
         };
 
-        throws(() => buildSupportMemoryR2PublishPlan(options, manifest, [asset], 100, 50), /above the configured limit/);
+        throws(() => buildSupportMemoryR2PublishPlan(options, manifest, [asset], 100), /above the configured limit/);
     });
 });

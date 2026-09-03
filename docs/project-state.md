@@ -3518,6 +3518,37 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   difficulty row navigates to its exact quest level. Android also consolidates
   the prior per-map group shape so compatible old caches remain readable.
 
+## Stage and Support Memory staging checkpoint (2026-09-02)
+
+- The isolated `staging/v2` R2 channel now carries the promoted Support Memory
+  candidate and canonical first-party Stage delivery. Production object roots
+  were not changed. The Support Memory manifest points to version
+  `2026-09-02T15:24:48.033Z`, payload SHA-256
+  `fe05d8066b50901295f8ce201106a00f76001bdd97c34e7a96e9fac2426994c3`,
+  76 roots, and 1,970 official assets totaling 317,375,873 bytes.
+- The Stage manifest points to version `2026-09-02T16:30:00.000Z` from Global
+  snapshot `1787900894`. It contains 5,391 quest levels, 234 Z-Battles, 481
+  Support Memory relations, one searchable catalog and 15 on-demand shards.
+  The current catalog object SHA-256 is
+  `5a378b3843734d8c07f95b5f98465b5aa7b09b3edab96801d84e44abf8741503`.
+- Both publishers accept a validated object prefix, upload immutable objects
+  before the mutable manifest, enforce byte budgets, and persist resumable
+  checkpoints. Stage gzip objects are stored over HTTP as
+  `application/gzip` without `Content-Encoding`; their manifest keeps the
+  logical JSON/gzip metadata used by Android. This preserves the compressed
+  bytes that Android validates before manually inflating them.
+- Staging Android builds route Support Memory and Stage manifests to
+  `https://assets.dkbcompanion.com/staging/v2`. A clean-device verification
+  reproduced both advertised payload hashes, loaded the Stage catalog, fetched
+  a detail shard on demand, and produced no Stage manager error. Memory 20009
+  rendered one stage-drop group with its event banner and exact Normal/Z-Hard
+  rows; the event and Stage 7 routes both opened successfully.
+- Stage image identity remains database-driven while bytes currently come from
+  the DokkanStats asset CDN through the remotely delivered `assetBaseUrl`.
+  Moving these assets to R2 later requires a dataset publication, not an app
+  release. Quest Mode classification is structural and Chapter-grouped; event
+  cards no longer display a misleading aggregate Link Skill rate.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
