@@ -47,6 +47,15 @@ describe("Stage asset mirror", () => {
                     dropTypeRaw: "boss",
                     quantityStatus: "unknown",
                     chanceStatus: "unknown",
+                }, {
+                    sourceRowId: "2",
+                    itemType: "EquipmentSkillItem",
+                    itemId: "88",
+                    dropTypeRaw: "boss",
+                    quantityStatus: "unknown",
+                    chanceStatus: "unknown",
+                    iconAssetPath: "item/equipment/equ_item_00010.png",
+                    backgroundAssetPath: "layout/en/image/item/equipment/equipment_thumb_bg/equ_base_gold.png",
                 }],
             }],
         };
@@ -75,7 +84,9 @@ describe("Stage asset mirror", () => {
         equal(paths.includes("character/thumb/card_1023770_thumb/card_1023770_thumb.png"), true);
         equal(paths.includes("origin/series_banner/origin_sr_seriesbanner_02.png"), true);
         equal(paths.includes("item/awaken/en/thumb/thumb_awaken_items_00009/thumb_awaken_items_00009.png"), true);
-        equal(paths.some(path => path.includes("awaken_thumb_bg")), false);
+        equal(paths.includes("layout/en/image/item/awaken/awaken_thumb_bg/thumb_awaken_rainbow.png"), true);
+        equal(paths.includes("item/equipment/equ_item_00010.png"), true);
+        equal(paths.includes("layout/en/image/item/equipment/equipment_thumb_bg/equ_base_gold.png"), true);
         const missingVariant = requests.find(request => request.path.includes("card_1011961_thumb"))!;
         equal(
             missingVariant.sourceUrls.includes(
@@ -95,6 +106,27 @@ describe("Stage asset mirror", () => {
             }],
         }, {});
         equal(unsafeRequests.some(request => request.path === "item/unsafe.png"), false);
+    });
+
+    it("collects an enemy portrait by card id when resource id is absent", () => {
+        const dataset: StageDetailsDataset = {
+            schemaVersion: 2,
+            generatedAt: "2026-09-03T00:00:00.000Z",
+            source: "dokkan-game-db",
+            sourceSnapshotVersion: "1788329250",
+            sourceDatabaseSha256: "b".repeat(64),
+            count: 1,
+            entries: [{
+                id: "1", difficulty: "NORMAL", stamina: 1, requiredKeys: 0, rankExp: 1, zeni: 1,
+                linkSkillLevelUpRate: 0, questId: "1", questName: "Quest", areaId: "1", areaName: "Area",
+                areaType: "Area::EventArea", images: {},
+                enemies: [{ id: "1", battle: 1, tile: 1, characterId: "1003300", cardId: "1003300",
+                    name: "Perfect Cell", rarityRaw: 3, elementRaw: 1, skills: [] }],
+            }],
+        };
+
+        const paths = collectStageAssetRequests(dataset, {}).map(request => request.path);
+        equal(paths.includes("character/thumb/card_1003300_thumb/card_1003300_thumb.png"), true);
     });
 
     it("requires an exact snapshot-bound acceptance for source gaps", () => {

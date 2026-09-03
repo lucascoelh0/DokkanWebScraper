@@ -99,6 +99,8 @@ export interface StageDetailBossDrop {
     rarityRaw?: number,
     elementRaw?: number,
     detailCharacterId?: string,
+    iconAssetPath?: string,
+    backgroundAssetPath?: string,
 }
 
 export interface StageDetailCategoryBonus {
@@ -122,6 +124,8 @@ export interface StageDetailItem {
     rarityRaw?: number,
     elementRaw?: number,
     detailCharacterId?: string,
+    iconAssetPath?: string,
+    backgroundAssetPath?: string,
 }
 
 export interface StageDetailEventMission {

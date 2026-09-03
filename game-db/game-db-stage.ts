@@ -31,6 +31,7 @@ export interface StageFirstPartyTables {
     enemy_round_skills: GameDbRow[],
     enemy_skill_cutin_extensions: GameDbRow[],
     enemy_skills: GameDbRow[],
+    equipment_skill_items: GameDbRow[],
     link_skills: GameDbRow[],
     mission_rewards: GameDbRow[],
     missions: GameDbRow[],
@@ -203,17 +204,51 @@ function rewardPresentation(
     cards: ReadonlyMap<string, GameDbRow>,
     canonicalAwakenedCards: ReadonlyMap<string, string>,
     treasureItems: ReadonlyMap<string, GameDbRow>,
-): { name?: string, thumbnailId?: string, rarityRaw?: number, elementRaw?: number, detailCharacterId?: string } {
+    equipmentSkillItems: ReadonlyMap<string, GameDbRow>,
+): {
+    name?: string,
+    thumbnailId?: string,
+    rarityRaw?: number,
+    elementRaw?: number,
+    detailCharacterId?: string,
+    iconAssetPath?: string,
+    backgroundAssetPath?: string,
+} {
     if (itemType === "Card") {
         return cardRewardPresentation(itemType, itemId, cards, canonicalAwakenedCards);
     }
-    if (itemType !== "TreasureItem") return {};
-    const item = treasureItems.get(itemId);
-    if (!item) throw new Error(`Stage reward references missing treasure item ${itemId}`);
-    return {
-        ...(text(item.name) ? { name: text(item.name) } : {}),
-        ...(optionalId(item, "image_suffix_number") ? { thumbnailId: optionalId(item, "image_suffix_number") } : {}),
-    };
+    if (itemType === "TreasureItem") {
+        const item = treasureItems.get(itemId);
+        if (!item) throw new Error(`Stage reward references missing treasure item ${itemId}`);
+        return {
+            ...(text(item.name) ? { name: text(item.name) } : {}),
+            ...(optionalId(item, "image_suffix_number") ? { thumbnailId: optionalId(item, "image_suffix_number") } : {}),
+        };
+    }
+    if (itemType === "EquipmentSkillItem") {
+        const item = equipmentSkillItems.get(itemId);
+        if (!item) throw new Error(`Stage reward references missing equipment skill item ${itemId}`);
+        const grade = text(item.grade).toLowerCase();
+        if (!["bronze", "silver", "gold"].includes(grade)) {
+            throw new Error(`Equipment skill item ${itemId} has unsupported grade ${grade}`);
+        }
+        const iconId = id(item, "icon_image_id").padStart(5, "0");
+        return {
+            ...(text(item.name) ? { name: text(item.name) } : {}),
+            iconAssetPath: `item/equipment/equ_item_${iconId}.png`,
+            backgroundAssetPath: `layout/en/image/item/equipment/equipment_thumb_bg/equ_base_${grade}.png`,
+        };
+    }
+    return {};
+}
+
+function missionDescription(value?: string | null): string | undefined {
+    const normalized = text(value)
+        .replace(/\{cards:[^{}]+\}/g, " ")
+        .replace(/[ \t]+(?=\r?\n)/g, "")
+        .replace(/[ \t]{2,}/g, " ")
+        .trim();
+    return normalized || undefined;
 }
 
 function canonicalAwakenedCardIds(
@@ -523,6 +558,7 @@ export function buildStageFirstPartyCandidate(options: {
     const stories = uniqueById(options.tables.db_stories, "DB story");
     const cards = uniqueById(options.tables.cards, "card");
     const treasureItems = uniqueById(options.tables.treasure_items, "treasure item");
+    const equipmentSkillItems = uniqueById(options.tables.equipment_skill_items, "equipment skill item");
     const canonicalAwakenedCards = canonicalAwakenedCardIds(options.tables.card_awakening_routes, cards);
     const cardSpecials = groupBy(options.tables.card_specials, "card_id");
     const specialSets = uniqueById(options.tables.special_sets, "special set");
@@ -682,7 +718,7 @@ export function buildStageFirstPartyCandidate(options: {
                 return [{
                     itemId,
                     itemType,
-                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems),
+                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, equipmentSkillItems),
                 }];
             });
             return [{ sourceRowId: id(row), difficultyValues, items }];
@@ -731,6 +767,7 @@ export function buildStageFirstPartyCandidate(options: {
                     cards,
                     canonicalAwakenedCards,
                     treasureItems,
+                    equipmentSkillItems,
                 ),
             })),
             dropPreviews,
@@ -805,6 +842,7 @@ export function buildStageFirstPartyCandidate(options: {
             cards,
             canonicalAwakenedCards,
             treasureItems,
+            equipmentSkillItems,
         ),
     });
     const zBattles: StageDetailZBattle[] = [...zStages.values()].sort((left, right) => numericCompare(id(left), id(right))).map(stage => {
@@ -938,6 +976,7 @@ export function buildStageFirstPartyCandidate(options: {
             const missionId = id(mission);
             const areaId = id(mission, "area_id");
             const resolution = resolveMissionStages(missionId);
+            const description = missionDescription(mission.description);
             const rewards = (missionRewardsByMission.get(missionId) ?? []).map(reward => {
                 const itemType = text(reward.item_type);
                 const itemId = id(reward, "item_id");
@@ -947,7 +986,7 @@ export function buildStageFirstPartyCandidate(options: {
                     itemType,
                     quantity: integer(reward, "quantity"),
                     ...(cardExpInitial !== undefined ? { cardExpInitial } : {}),
-                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems),
+                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, equipmentSkillItems),
                 };
             });
             return {
@@ -956,7 +995,7 @@ export function buildStageFirstPartyCandidate(options: {
                 categoryId: id(mission, "mission_category_id"),
                 type: text(mission.type),
                 name: text(mission.name),
-                ...(text(mission.description) ? { description: text(mission.description) } : {}),
+                ...(description ? { description } : {}),
                 priority: integer(mission, "priority"),
                 ordererId: integer(mission, "orderer_id"),
                 ...(date(mission, "start_at") ? { startsAt: date(mission, "start_at") } : {}),

@@ -31,6 +31,7 @@ export const REQUIRED_STAGE_TABLES: Array<keyof StageFirstPartyTables> = [
     "enemy_round_skills",
     "enemy_skill_cutin_extensions",
     "enemy_skills",
+    "equipment_skill_items",
     "link_skills",
     "mission_rewards",
     "missions",

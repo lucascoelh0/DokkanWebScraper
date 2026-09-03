@@ -123,8 +123,10 @@ export function collectStageAssetRequests(
         const itemType = reward.itemType;
         const itemId = reward.itemId;
         const catalogItem = itemsByKey.get(`${itemType}:${itemId}`);
+        addPath(reward.iconAssetPath);
+        addPath(reward.backgroundAssetPath);
         addRemoteUrl(catalogItem?.icon?.remoteUrl);
-        if (itemType !== "AwakeningItem") addRemoteUrl(catalogItem?.background?.remoteUrl);
+        addRemoteUrl(catalogItem?.background?.remoteUrl);
         if (itemType === "Point::Stone") {
             addPath("layout/en/image/item/login_bonus/stone.png");
         } else if (itemType === "AwakeningItem") {
@@ -142,7 +144,7 @@ export function collectStageAssetRequests(
         }
     };
     const addEnemy = (enemy: StageDetailEnemy) => {
-        addCharacterAssets(enemy.thumbnailId, enemy.rarityRaw, enemy.elementRaw);
+        addCharacterAssets(enemy.thumbnailId ?? enemy.cardId, enemy.rarityRaw, enemy.elementRaw);
     };
 
     for (const stage of dataset.entries) {

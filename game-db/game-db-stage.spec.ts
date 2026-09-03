@@ -19,6 +19,7 @@ function tables(): StageFirstPartyTables {
         enemy_round_skills: [{ id: "301", name: "Round Skill", description: "Reduces damage", exec_timing_type: "1", calc_option: "2", turn: "1", probability: "100", causality_conditions: "{}", target_type: "4", eff_value1: "55", efficacy_type: "24" }],
         enemy_skill_cutin_extensions: [{ id: "201", enemy_skill_id: "200", phrase: "You cannot win!", voice_asset_id: "900" }],
         enemy_skills: [{ id: "200", name: "Enemy Skill", description: "Seals Super Attack", exec_timing_type: "1", turn: "2", is_once: "1", probability: "100", causality_conditions: "{}", target_type: "4", efficacy_type: "10", eff_value1: "1", eff_value2: "0", eff_value3: "0", efficacy_values: "{}", calc_option: "0" }],
+        equipment_skill_items: [{ id: "88", name: "Official Skill Orb", grade: "gold", icon_image_id: "10" }],
         link_skills: [{ id: "8" }],
         mission_rewards: [
             { id: "1000", mission_id: "10", item_id: "500", item_type: "SupportMemory", quantity: "1" },
@@ -229,6 +230,32 @@ describe("Stage first-party candidate", () => {
 
         equal(candidate.dataset.entries[0].bossDrops?.[0].name, "Official Treasure");
         equal(candidate.dataset.entries[0].bossDrops?.[0].thumbnailId, "13");
+    });
+
+    it("projects exact official Skill Orb assets and removes mission card directives", () => {
+        const source = tables();
+        source.quest_drop_item_views[0] = {
+            ...source.quest_drop_item_views[0],
+            item1_id: "88",
+            item1_type: "EquipmentSkillItem",
+        };
+        source.missions[0].description = "Clear with the required characters. {cards: by_conditions}";
+
+        const candidate = buildStageFirstPartyCandidate({
+            generatedAt: "2026-09-02T00:00:00.000Z",
+            sourceSnapshotVersion: "1787900894",
+            sourceDatabaseSha256: "f".repeat(64),
+            tables: source,
+        });
+
+        deepEqual(candidate.dataset.entries[0].dropPreviews?.[0].items[0], {
+            itemId: "88",
+            itemType: "EquipmentSkillItem",
+            name: "Official Skill Orb",
+            iconAssetPath: "item/equipment/equ_item_00010.png",
+            backgroundAssetPath: "layout/en/image/item/equipment/equipment_thumb_bg/equ_base_gold.png",
+        });
+        equal(candidate.dataset.eventMissions?.[0].description, "Clear with the required characters.");
     });
 
     it("fails closed when a Stage reward references a missing official treasure", () => {
