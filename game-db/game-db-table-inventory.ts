@@ -69,6 +69,8 @@ export const STAGE_GAME_DB_TABLES = [
     "enemy_skills",
     "enemy_skill_cutin_extensions",
     "equipment_skill_items",
+    "equipment_skill_limitations",
+    "equipment_skills",
     "mission_category_rewards",
     "quest_category_bonus_rarity_tables",
     "quest_category_bonuses",

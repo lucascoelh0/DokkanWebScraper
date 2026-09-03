@@ -48,6 +48,17 @@ describe("Stage asset publisher", () => {
         validateStageAssetManifest(manifest);
         const duplicate = stageAssetManifest([asset, asset]);
         throws(() => validateStageAssetManifest(duplicate), /Duplicate Stage asset object key/);
+        validateStageAssetManifest(stageAssetManifest([{
+            ...asset,
+            path: "derived/equipment/levels/lv-7-3.png",
+            objectKey: "game-assets/derived/equipment/levels/lv-7-3.png",
+            sourceUrl: "official-cpk-derived://derived/equipment/levels/lv-7-3.png",
+            sourceFiles: ["fonts/en/black.otf", "layout/en/image/charamenu/potential/equ_Lv_two.png"],
+        }]));
+        throws(() => validateStageAssetManifest(stageAssetManifest([{
+            ...asset,
+            sourceUrl: "official-cpk-derived://banners/en/event.png",
+        }])), /Unsafe Stage asset source URL/);
         const unsafe = stageAssetManifest([{
             ...asset,
             path: "../event.png",

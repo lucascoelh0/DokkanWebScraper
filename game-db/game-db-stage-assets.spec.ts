@@ -56,6 +56,39 @@ describe("Stage asset mirror", () => {
                     chanceStatus: "unknown",
                     iconAssetPath: "item/equipment/equ_item_00010.png",
                     backgroundAssetPath: "layout/en/image/item/equipment/equipment_thumb_bg/equ_base_gold.png",
+                    equipmentSkill: {
+                        grade: "gold",
+                        isEternal: true,
+                        levelAssetPath: "derived/equipment/levels/lv-7.png",
+                        infinityAssetPath: "layout/en/image/charamenu/potential/equ_infinite_icon_gold.png",
+                        skills: [{ sourceRowId: "8800", potentialSkillId: "2", level: 7 }],
+                        restriction: {
+                            setId: "90",
+                            combination: "any",
+                            isUnrestricted: false,
+                            conditions: [{
+                                sourceRowId: "900",
+                                kind: "element",
+                                rawType: "EquipmentSkillLimitation::ElementLimitation",
+                                rawConditions: { element_bitpattern: 32768 },
+                                isUnrestricted: false,
+                                elementBitPattern: 32768,
+                                elementCodes: ["SUPER_STR"],
+                                presentation: {
+                                    badgeLabel: "SUPER_STR",
+                                    detailLabel: "SUPER STR",
+                                    badgeAssetPath: "layout/en/image/character/cha_type_icon_13.png",
+                                    badgeAssetPaths: ["layout/en/image/character/cha_type_icon_13.png"],
+                                },
+                            }],
+                            presentation: {
+                                badgeLabel: "SUPER_STR",
+                                detailLabel: "SUPER STR",
+                                badgeAssetPath: "layout/en/image/character/cha_type_icon_13.png",
+                                badgeAssetPaths: ["layout/en/image/character/cha_type_icon_13.png"],
+                            },
+                        },
+                    },
                 }],
             }],
         };
@@ -87,6 +120,9 @@ describe("Stage asset mirror", () => {
         equal(paths.includes("layout/en/image/item/awaken/awaken_thumb_bg/thumb_awaken_rainbow.png"), true);
         equal(paths.includes("item/equipment/equ_item_00010.png"), true);
         equal(paths.includes("layout/en/image/item/equipment/equipment_thumb_bg/equ_base_gold.png"), true);
+        equal(paths.includes("layout/en/image/character/cha_type_icon_13.png"), true);
+        equal(paths.includes("derived/equipment/levels/lv-7.png"), true);
+        equal(paths.includes("layout/en/image/charamenu/potential/equ_infinite_icon_gold.png"), true);
         const missingVariant = requests.find(request => request.path.includes("card_1011961_thumb"))!;
         equal(
             missingVariant.sourceUrls.includes(

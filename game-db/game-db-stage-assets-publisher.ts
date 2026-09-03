@@ -159,7 +159,7 @@ export function validateStageAssetManifest(manifest: StageAssetManifest): void {
         if (normalizeStageAssetPath(asset.path) !== asset.path || asset.objectKey !== `game-assets/${asset.path}`) {
             throw new Error(`Invalid Stage asset path: ${asset.path}`);
         }
-        validateStageAssetSourceUrl(asset.sourceUrl, asset.path);
+        validateStageAssetSourceUrl(asset.sourceUrl, asset.path, asset.sourceFiles);
     }
     for (const missing of manifest.missingAssets) {
         if (normalizeStageAssetPath(missing.path) !== missing.path || !Array.isArray(missing.sourceUrls)) {
@@ -241,7 +241,24 @@ async function uploadObject(bucket: string, key: string, path: string, contentTy
     }
 }
 
-function validateStageAssetSourceUrl(value: string, path: string): void {
+function validateStageAssetSourceUrl(value: string, path: string, sourceFiles?: string[]): void {
+    const officialScheme = value.startsWith("official-cpk-derived://")
+        ? "official-cpk-derived"
+        : value.startsWith("official-cpk-extract://")
+            ? "official-cpk-extract"
+            : undefined;
+    if (officialScheme) {
+        const expectedPath = `${officialScheme}://${path}`;
+        const validPathKind = officialScheme === "official-cpk-derived"
+            ? /^derived\/equipment\/levels\/lv-\d+(?:-\d+)?\.png$/.test(path)
+            : /^layout\/en\/image\/(?:character|charamenu\/potential)\/[A-Za-z0-9_.-]+\.png$/.test(path);
+        if (value !== expectedPath || !validPathKind || !sourceFiles?.length
+            || sourceFiles.some(source => !/^(?:fonts|layout)\/[A-Za-z0-9_./-]+$/.test(source)
+                || source.split("/").some(part => !part || part === "." || part === ".."))) {
+            throw new Error(`Unsafe Stage asset source URL for ${path}`);
+        }
+        return;
+    }
     let url: URL;
     try {
         url = new URL(value);

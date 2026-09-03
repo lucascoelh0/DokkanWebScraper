@@ -10,8 +10,10 @@ function tables(): StageFirstPartyTables {
             { id: "100", name: "Enemy", character_id: "50", resource_id: "1000", rarity: "4", element: "3" },
             { id: "101", name: "Awakened Enemy", character_id: "50", resource_id: "1001", rarity: "4", element: "3" },
         ],
+        card_unique_infos: [{ id: "50", name: "Official Hero" }],
+        card_unique_info_set_relations: [{ id: "1", card_unique_info_set_id: "60", card_unique_info_id: "50" }],
         card_specials: [{ id: "90", card_id: "100", special_set_id: "91", priority: "0", style: "Normal", eball_num_start: "12", view_id: "92" }],
-        card_categories: [{ id: "9" }],
+        card_categories: [{ id: "9", name: "Official Category" }, { id: "10", name: "Second Category" }],
         chapters: [{ id: "2", name: "Official Chapter", open_at: "2026-06-01 00:00:00" }],
         db_stories: [{ id: "3", name: "Official Story", banner_image_path: "stories/3.png", priority: "4" }],
         enemy_round_skill_set_relations: [{ id: "1", enemy_round_skill_set_id: "300", enemy_round_skill_id: "301" }],
@@ -19,7 +21,12 @@ function tables(): StageFirstPartyTables {
         enemy_round_skills: [{ id: "301", name: "Round Skill", description: "Reduces damage", exec_timing_type: "1", calc_option: "2", turn: "1", probability: "100", causality_conditions: "{}", target_type: "4", eff_value1: "55", efficacy_type: "24" }],
         enemy_skill_cutin_extensions: [{ id: "201", enemy_skill_id: "200", phrase: "You cannot win!", voice_asset_id: "900" }],
         enemy_skills: [{ id: "200", name: "Enemy Skill", description: "Seals Super Attack", exec_timing_type: "1", turn: "2", is_once: "1", probability: "100", causality_conditions: "{}", target_type: "4", efficacy_type: "10", eff_value1: "1", eff_value2: "0", eff_value3: "0", efficacy_values: "{}", calc_option: "0" }],
-        equipment_skill_items: [{ id: "88", name: "Official Skill Orb", grade: "gold", icon_image_id: "10" }],
+        equipment_skill_items: [{ id: "88", name: "Official Skill Orb", grade: "gold", icon_image_id: "10", equipment_skill_limitation_set_id: "90", is_eternal: "1" }],
+        equipment_skill_limitations: [{ id: "900", equipment_skill_limitation_set_id: "90", type: "EquipmentSkillLimitation::CardCategoryLimitation", conditions: "{\"card_category_ids\":[9,10]}" }],
+        equipment_skills: [
+            { id: "8800", equipment_skill_item_id: "88", potential_skill_id: "2", status_type: "", level: "7" },
+            { id: "8801", equipment_skill_item_id: "88", potential_skill_id: "", status_type: "attack", level: "3" },
+        ],
         link_skills: [{ id: "8" }],
         mission_rewards: [
             { id: "1000", mission_id: "10", item_id: "500", item_type: "SupportMemory", quantity: "1" },
@@ -254,8 +261,142 @@ describe("Stage first-party candidate", () => {
             name: "Official Skill Orb",
             iconAssetPath: "item/equipment/equ_item_00010.png",
             backgroundAssetPath: "layout/en/image/item/equipment/equipment_thumb_bg/equ_base_gold.png",
+            equipmentSkill: {
+                grade: "gold",
+                isEternal: true,
+                levelAssetPath: "derived/equipment/levels/lv-7-3.png",
+                infinityAssetPath: "layout/en/image/charamenu/potential/equ_infinite_icon_gold.png",
+                skills: [
+                    { sourceRowId: "8800", potentialSkillId: "2", level: 7 },
+                    { sourceRowId: "8801", statusType: "attack", level: 3 },
+                ],
+                restriction: {
+                    setId: "90",
+                    combination: "any",
+                    isUnrestricted: false,
+                    conditions: [{
+                        sourceRowId: "900",
+                        kind: "category",
+                        rawType: "EquipmentSkillLimitation::CardCategoryLimitation",
+                        rawConditions: { card_category_ids: [9, 10] },
+                        isUnrestricted: false,
+                        cardCategoryIds: ["9", "10"],
+                        presentation: {
+                            badgeLabel: "CAT",
+                            detailLabel: "Official Category / Second Category",
+                            badgeAssetPath: "layout/en/image/charamenu/potential/equ_icon_category.png",
+                            badgeAssetPaths: ["layout/en/image/charamenu/potential/equ_icon_category.png"],
+                        },
+                    }],
+                    presentation: {
+                        badgeLabel: "CAT",
+                        detailLabel: "Official Category / Second Category",
+                        badgeAssetPath: "layout/en/image/charamenu/potential/equ_icon_category.png",
+                        badgeAssetPaths: ["layout/en/image/charamenu/potential/equ_icon_category.png"],
+                    },
+                },
+            },
         });
         equal(candidate.dataset.eventMissions?.[0].description, "Clear with the required characters.");
+    });
+
+    it("projects a single level and the exact official Super type badge from an element bitmask", () => {
+        const source = tables();
+        source.equipment_skills = [{ id: "8800", equipment_skill_item_id: "88", potential_skill_id: "2", status_type: "", level: "7" }];
+        source.equipment_skill_limitations[0] = { id: "900", equipment_skill_limitation_set_id: "90", type: "EquipmentSkillLimitation::ElementLimitation", conditions: "{\"element_bitpattern\":32768}" };
+        source.quest_drop_item_views[0] = { ...source.quest_drop_item_views[0], item1_id: "88", item1_type: "EquipmentSkillItem" };
+
+        const reward = buildStageFirstPartyCandidate({
+            generatedAt: "2026-09-02T00:00:00.000Z",
+            sourceSnapshotVersion: "1787900894",
+            sourceDatabaseSha256: "a".repeat(64),
+            tables: source,
+        }).dataset.entries[0].dropPreviews?.[0].items[0];
+
+        deepEqual(reward?.equipmentSkill?.skills, [{ sourceRowId: "8800", potentialSkillId: "2", level: 7 }]);
+        equal(reward?.equipmentSkill?.restriction.presentation.badgeLabel, "SUPER_STR");
+        equal(reward?.equipmentSkill?.restriction.presentation.badgeAssetPath, "layout/en/image/character/cha_type_icon_13.png");
+    });
+
+    it("orders dual levels by the official native display priority rather than row id", () => {
+        const source = tables();
+        source.equipment_skills = [
+            { id: "32500", equipment_skill_item_id: "88", potential_skill_id: "1", status_type: "", level: "1" },
+            { id: "32501", equipment_skill_item_id: "88", potential_skill_id: "2", status_type: "", level: "5" },
+        ];
+        source.quest_drop_item_views[0] = { ...source.quest_drop_item_views[0], item1_id: "88", item1_type: "EquipmentSkillItem" };
+
+        const skills = buildStageFirstPartyCandidate({ generatedAt: "2026-09-02T00:00:00.000Z", sourceSnapshotVersion: "1787900894", sourceDatabaseSha256: "9".repeat(64), tables: source })
+            .dataset.entries[0].dropPreviews?.[0].items[0].equipmentSkill?.skills;
+
+        deepEqual(skills?.map(skill => [skill.potentialSkillId, skill.level]), [["2", 5], ["1", 1]]);
+    });
+
+    it("resolves card and unique-character restrictions only through first-party joins", () => {
+        const cardSource = tables();
+        cardSource.equipment_skill_limitations[0] = { id: "900", equipment_skill_limitation_set_id: "90", type: "EquipmentSkillLimitation::CardLimitation", conditions: "{\"card_ids\":[100,101]}" };
+        cardSource.quest_drop_item_views[0] = { ...cardSource.quest_drop_item_views[0], item1_id: "88", item1_type: "EquipmentSkillItem" };
+        const cardReward = buildStageFirstPartyCandidate({ generatedAt: "2026-09-02T00:00:00.000Z", sourceSnapshotVersion: "1787900894", sourceDatabaseSha256: "b".repeat(64), tables: cardSource })
+            .dataset.entries[0].dropPreviews?.[0].items[0];
+        deepEqual(cardReward?.equipmentSkill?.restriction.conditions[0].cardIds, ["100", "101"]);
+        equal(cardReward?.equipmentSkill?.restriction.presentation.detailLabel, "Enemy / Awakened Enemy");
+
+        const uniqueSource = tables();
+        uniqueSource.equipment_skill_limitations[0] = { id: "900", equipment_skill_limitation_set_id: "90", type: "EquipmentSkillLimitation::CardUniqueInfoSetLimitation", conditions: "{\"card_unique_info_set_ids\":[60]}" };
+        uniqueSource.quest_drop_item_views[0] = { ...uniqueSource.quest_drop_item_views[0], item1_id: "88", item1_type: "EquipmentSkillItem" };
+        const uniqueReward = buildStageFirstPartyCandidate({ generatedAt: "2026-09-02T00:00:00.000Z", sourceSnapshotVersion: "1787900894", sourceDatabaseSha256: "c".repeat(64), tables: uniqueSource })
+            .dataset.entries[0].dropPreviews?.[0].items[0];
+        equal(uniqueReward?.equipmentSkill?.restriction.conditions[0].kind, "card-unique-info-set");
+        equal(uniqueReward?.equipmentSkill?.restriction.presentation.detailLabel, "Official Hero");
+    });
+
+    it("combines multiple limitation rows as native OR alternatives", () => {
+        const source = tables();
+        source.equipment_skill_limitations.push({ id: "901", equipment_skill_limitation_set_id: "90", type: "EquipmentSkillLimitation::ElementLimitation", conditions: "{\"element_bitpattern\":1}" });
+        source.quest_drop_item_views[0] = { ...source.quest_drop_item_views[0], item1_id: "88", item1_type: "EquipmentSkillItem" };
+
+        const restriction = buildStageFirstPartyCandidate({ generatedAt: "2026-09-02T00:00:00.000Z", sourceSnapshotVersion: "1787900894", sourceDatabaseSha256: "f".repeat(64), tables: source })
+            .dataset.entries[0].dropPreviews?.[0].items[0].equipmentSkill?.restriction;
+
+        equal(restriction?.combination, "any");
+        equal(restriction?.conditions.length, 2);
+        equal(restriction?.presentation.badgeLabel, "ANY");
+        equal(restriction?.presentation.badgeAssetPath, undefined);
+        deepEqual(restriction?.presentation.badgeAssetPaths, undefined);
+    });
+
+    it("omits infinity for non-eternal items and emits no badge for unrestricted items", () => {
+        const source = tables();
+        source.equipment_skill_items[0].is_eternal = "0";
+        source.equipment_skill_limitations[0] = {
+            id: "900",
+            equipment_skill_limitation_set_id: "90",
+            type: "EquipmentSkillLimitation::ElementLimitation",
+            conditions: "{\"element_bitpattern\":31}",
+        };
+        source.quest_drop_item_views[0] = { ...source.quest_drop_item_views[0], item1_id: "88", item1_type: "EquipmentSkillItem" };
+        const equipment = buildStageFirstPartyCandidate({ generatedAt: "2026-09-02T00:00:00.000Z", sourceSnapshotVersion: "1787900894", sourceDatabaseSha256: "8".repeat(64), tables: source })
+            .dataset.entries[0].dropPreviews?.[0].items[0].equipmentSkill;
+        equal(equipment?.isEternal, false);
+        equal(equipment?.infinityAssetPath, undefined);
+        equal(equipment?.restriction.isUnrestricted, true);
+        equal(equipment?.restriction.presentation.badgeAssetPath, undefined);
+    });
+
+    it("fails closed for an invalid is_eternal value", () => {
+        const source = tables();
+        source.equipment_skill_items[0].is_eternal = "2";
+        throws(() => buildStageFirstPartyCandidate({ generatedAt: "2026-09-02T00:00:00.000Z", sourceSnapshotVersion: "1787900894", sourceDatabaseSha256: "7".repeat(64), tables: source }), /invalid boolean is_eternal/);
+    });
+
+    it("fails closed for missing equipment restriction joins", () => {
+        const missingCategory = tables();
+        missingCategory.card_categories = [{ id: "10", name: "Second Category" }];
+        throws(() => buildStageFirstPartyCandidate({ generatedAt: "2026-09-02T00:00:00.000Z", sourceSnapshotVersion: "1787900894", sourceDatabaseSha256: "d".repeat(64), tables: missingCategory }), /references missing row 9/);
+
+        const missingSet = tables();
+        missingSet.equipment_skill_limitations = [];
+        throws(() => buildStageFirstPartyCandidate({ generatedAt: "2026-09-02T00:00:00.000Z", sourceSnapshotVersion: "1787900894", sourceDatabaseSha256: "e".repeat(64), tables: missingSet }), /has no rows/);
     });
 
     it("fails closed when a Stage reward references a missing official treasure", () => {

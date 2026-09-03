@@ -40,6 +40,7 @@ export interface StageAssetInventoryEntry {
     sha256: string,
     sizeBytes: number,
     contentType: "image/png",
+    sourceFiles?: string[],
 }
 
 export interface StageAssetMissingAcceptance {
@@ -125,6 +126,10 @@ export function collectStageAssetRequests(
         const catalogItem = itemsByKey.get(`${itemType}:${itemId}`);
         addPath(reward.iconAssetPath);
         addPath(reward.backgroundAssetPath);
+        addPath(reward.equipmentSkill?.levelAssetPath);
+        addPath(reward.equipmentSkill?.infinityAssetPath);
+        for (const badgePath of reward.equipmentSkill?.restriction.presentation.badgeAssetPaths ?? []) addPath(badgePath);
+        addPath(reward.equipmentSkill?.restriction.presentation.badgeAssetPath);
         addRemoteUrl(catalogItem?.icon?.remoteUrl);
         addRemoteUrl(catalogItem?.background?.remoteUrl);
         if (itemType === "Point::Stone") {
@@ -222,6 +227,7 @@ export async function acquireStageAssets(options: {
     frontier?: unknown,
     outputDir: string,
     reuseDir?: string,
+    equipmentUiDir?: string,
     missingAcceptance?: StageAssetMissingAcceptance,
     sourceBaseUrl?: string,
     concurrency?: number,
@@ -229,17 +235,29 @@ export async function acquireStageAssets(options: {
     const outputDir = resolve(options.outputDir);
     await requireMissing(outputDir);
     const reuseDir = options.reuseDir ? resolve(options.reuseDir) : undefined;
+    const equipmentUiDir = options.equipmentUiDir ? resolve(options.equipmentUiDir) : undefined;
     const reusedSourceUrls = reuseDir ? await readReusableSourceUrls(reuseDir) : new Map<string, string>();
+    const equipmentUiAssets = equipmentUiDir ? await readEquipmentUiAssets(equipmentUiDir) : new Map<string, EquipmentUiReusableEntry>();
     const sourceBaseUrl = validateHttpsBaseUrl(options.sourceBaseUrl ?? DEFAULT_STAGE_ASSET_SOURCE_BASE_URL);
     const requests = collectStageAssetRequests(options.dataset, options.itemCatalog, options.frontier, sourceBaseUrl);
+    const requiredEquipmentUiPaths = collectEquipmentUiPaths(options.dataset);
+    if (requiredEquipmentUiPaths.size && !equipmentUiDir) throw new Error("Stage equipment UI assets require a verified official equipment UI directory");
+    for (const path of requiredEquipmentUiPaths) {
+        if (!equipmentUiAssets.has(path)) throw new Error(`Verified official equipment UI directory is missing ${path}`);
+    }
     await mkdir(dirname(outputDir), { recursive: true });
     await mkdir(outputDir, { recursive: false });
     let completed = 0;
     const acquiredResults = await mapWithConcurrency(requests, options.concurrency ?? 12, async request => {
-        const reused = reuseDir ? await readReusablePng(reuseDir, request.path) : undefined;
-        const acquired = reused
-            ? { buffer: reused, sourceUrl: reusedSourceUrls.get(request.path) ?? request.sourceUrls[0] }
-            : await fetchFirstPng(request);
+        const officialEquipmentUi = equipmentUiDir ? await readReusablePng(equipmentUiDir, request.path) : undefined;
+        const reused = officialEquipmentUi ? undefined : (reuseDir ? await readReusablePng(reuseDir, request.path) : undefined);
+        const equipmentUiEntry = officialEquipmentUi ? equipmentUiAssets.get(request.path) : undefined;
+        if (officialEquipmentUi && !equipmentUiEntry) throw new Error(`Equipment UI bytes lack provenance: ${request.path}`);
+        const acquired = officialEquipmentUi
+            ? { buffer: officialEquipmentUi, sourceUrl: equipmentUiEntry!.sourceUrl, sourceFiles: equipmentUiEntry!.sourceFiles }
+            : reused
+                ? { buffer: reused, sourceUrl: reusedSourceUrls.get(request.path) ?? request.sourceUrls[0] }
+                : await fetchFirstPng(request);
         completed += 1;
         if (completed % 250 === 0 || completed === requests.length) {
             console.log(`Checked ${completed}/${requests.length} Stage assets`);
@@ -255,6 +273,7 @@ export async function acquireStageAssets(options: {
             sha256: sha256(acquired.buffer),
             sizeBytes: acquired.buffer.byteLength,
             contentType: "image/png" as const,
+            ...("sourceFiles" in acquired ? { sourceFiles: acquired.sourceFiles } : {}),
         };
         return { request, entry };
     });
@@ -288,6 +307,28 @@ export async function acquireStageAssets(options: {
     };
     await writeFormattedJson(resolve(outputDir, "stage-assets-manifest.json"), manifest);
     return manifest;
+}
+
+function collectEquipmentUiPaths(dataset: StageDetailsDataset): Set<string> {
+    const paths = new Set<string>();
+    const addReward = (reward: StageDetailItem) => {
+        const equipment = reward.equipmentSkill;
+        if (!equipment) return;
+        paths.add(equipment.levelAssetPath);
+        if (equipment.infinityAssetPath) paths.add(equipment.infinityAssetPath);
+        for (const path of equipment.restriction.presentation.badgeAssetPaths ?? []) paths.add(path);
+        if (equipment.restriction.presentation.badgeAssetPath) paths.add(equipment.restriction.presentation.badgeAssetPath);
+    };
+    for (const stage of dataset.entries) {
+        stage.bossDrops?.forEach(addReward);
+        stage.dropPreviews?.flatMap(preview => preview.items).forEach(addReward);
+    }
+    for (const stage of dataset.zBattles ?? []) {
+        stage.checkpoints?.flatMap(checkpoint => checkpoint.repeatRewards).forEach(addReward);
+        stage.firstRewards?.flatMap(level => level.rewards).forEach(addReward);
+    }
+    dataset.eventMissions?.flatMap(mission => mission.rewards).forEach(addReward);
+    return paths;
 }
 
 export function validateStageAssetMissingAcceptance(
@@ -336,6 +377,26 @@ async function readReusableSourceUrls(reuseDir: string): Promise<Map<string, str
     const raw = await readFile(resolve(reuseDir, "stage-assets-manifest.json"), "utf8");
     const manifest = JSON.parse(raw) as Partial<StageAssetManifest>;
     return new Map((manifest.assets ?? []).map(asset => [asset.path, asset.sourceUrl]));
+}
+
+interface EquipmentUiReusableEntry { path: string, sourceUrl: string, sha256: string, sizeBytes: number, sourceFiles: string[] }
+
+async function readEquipmentUiAssets(root: string): Promise<Map<string, EquipmentUiReusableEntry>> {
+    const raw = await readFile(resolve(root, "equipment-ui-assets-manifest.json"), "utf8");
+    const manifest = JSON.parse(raw) as { schemaVersion?: number, assets?: EquipmentUiReusableEntry[] };
+    if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.assets)) throw new Error("Invalid equipment UI asset manifest");
+    const result = new Map<string, EquipmentUiReusableEntry>();
+    for (const asset of manifest.assets) {
+        if (normalizeStageAssetPath(asset.path) !== asset.path || result.has(asset.path)
+            || !asset.sourceUrl.startsWith("official-cpk-") || !Array.isArray(asset.sourceFiles) || asset.sourceFiles.length === 0
+            || !/^[a-f0-9]{64}$/.test(asset.sha256) || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes <= 0) {
+            throw new Error(`Invalid equipment UI asset provenance for ${asset.path ?? "unknown"}`);
+        }
+        const bytes = await readReusablePng(root, asset.path);
+        if (!bytes || bytes.byteLength !== asset.sizeBytes || sha256(bytes) !== asset.sha256) throw new Error(`Equipment UI asset drifted: ${asset.path}`);
+        result.set(asset.path, asset);
+    }
+    return result;
 }
 
 async function readReusablePng(reuseDir: string, path: string): Promise<Buffer | undefined> {
@@ -428,7 +489,7 @@ async function mapWithConcurrency<T, R>(values: T[], concurrency: number, task: 
 
 async function main(): Promise<void> {
     const values = new Map<string, string>();
-    const supported = new Set(["--dataset", "--item-catalog", "--frontier", "--output-dir", "--reuse-dir", "--missing-acceptance", "--source-base-url", "--concurrency"]);
+    const supported = new Set(["--dataset", "--item-catalog", "--frontier", "--output-dir", "--reuse-dir", "--equipment-ui-dir", "--missing-acceptance", "--source-base-url", "--concurrency"]);
     const args = process.argv.slice(2);
     for (let index = 0; index < args.length; index += 1) {
         const [name, inline] = args[index].split("=", 2);
@@ -454,6 +515,7 @@ async function main(): Promise<void> {
         frontier,
         outputDir: resolve(values.get("--output-dir")!),
         reuseDir: values.get("--reuse-dir") ? resolve(values.get("--reuse-dir")!) : undefined,
+        equipmentUiDir: values.get("--equipment-ui-dir") ? resolve(values.get("--equipment-ui-dir")!) : undefined,
         missingAcceptance,
         sourceBaseUrl: values.get("--source-base-url"),
         concurrency: values.get("--concurrency") ? Number(values.get("--concurrency")) : undefined,

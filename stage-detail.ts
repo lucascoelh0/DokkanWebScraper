@@ -86,6 +86,56 @@ export interface StageDetailEnemy {
     turnAttacks?: number,
 }
 
+export type StageEquipmentSkillGrade = "bronze" | "silver" | "gold"
+
+export interface StageEquipmentSkillEffect {
+    sourceRowId: string,
+    potentialSkillId?: string,
+    statusType?: "hp" | "attack" | "defense",
+    level: number,
+}
+
+export interface StageEquipmentSkillRestrictionCondition {
+    sourceRowId: string,
+    kind: "element" | "category" | "card" | "card-unique-info-set",
+    rawType: string,
+    rawConditions: unknown,
+    isUnrestricted: boolean,
+    elementBitPattern?: number,
+    elementCodes?: string[],
+    cardCategoryIds?: string[],
+    cardIds?: string[],
+    cardUniqueInfoSetIds?: string[],
+    presentation: {
+        badgeLabel: string,
+        detailLabel: string,
+        badgeAssetPath?: string,
+        badgeAssetPaths?: string[],
+    },
+}
+
+export interface StageEquipmentSkillRestriction {
+    setId: string,
+    combination: "any",
+    conditions: StageEquipmentSkillRestrictionCondition[],
+    isUnrestricted: boolean,
+    presentation: {
+        badgeLabel: string,
+        detailLabel: string,
+        badgeAssetPath?: string,
+        badgeAssetPaths?: string[],
+    },
+}
+
+export interface StageEquipmentSkillPresentation {
+    grade: StageEquipmentSkillGrade,
+    skills: StageEquipmentSkillEffect[],
+    restriction: StageEquipmentSkillRestriction,
+    isEternal: boolean,
+    levelAssetPath: string,
+    infinityAssetPath?: string,
+}
+
 export interface StageDetailBossDrop {
     sourceRowId: string,
     itemType: string,
@@ -101,6 +151,7 @@ export interface StageDetailBossDrop {
     detailCharacterId?: string,
     iconAssetPath?: string,
     backgroundAssetPath?: string,
+    equipmentSkill?: StageEquipmentSkillPresentation,
 }
 
 export interface StageDetailCategoryBonus {
@@ -126,6 +177,7 @@ export interface StageDetailItem {
     detailCharacterId?: string,
     iconAssetPath?: string,
     backgroundAssetPath?: string,
+    equipmentSkill?: StageEquipmentSkillPresentation,
 }
 
 export interface StageDetailEventMission {

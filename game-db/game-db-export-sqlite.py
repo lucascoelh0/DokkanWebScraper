@@ -2,6 +2,7 @@ import argparse
 import csv
 import os
 import sqlite3
+from pathlib import Path
 
 
 def export_table(cursor: sqlite3.Cursor, table_name: str, output_path: str) -> None:
@@ -28,7 +29,9 @@ def main() -> None:
     parser.add_argument("--table", action="append", dest="tables", required=True)
     args = parser.parse_args()
 
-    connection = sqlite3.connect(args.sqlite_path)
+    database_uri = Path(args.sqlite_path).resolve().as_uri() + "?mode=ro&immutable=1"
+    connection = sqlite3.connect(database_uri, uri=True)
+    connection.execute("PRAGMA query_only=ON")
     try:
         cursor = connection.cursor()
         for table_name in args.tables:

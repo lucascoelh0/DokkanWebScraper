@@ -10,6 +10,8 @@ import {
     StageDetailSupportMemoryRelation,
     StageDetailZBattle,
     StageDetailsDataset,
+    StageEquipmentSkillPresentation,
+    StageEquipmentSkillRestrictionCondition,
 } from "../stage-detail";
 import { AttackTypes } from "../character";
 import { createMissionStageResolver, MissionStageRelation } from "./game-db-mission-stage-relations";
@@ -22,6 +24,8 @@ export interface StageFirstPartyTables {
     areas: GameDbRow[],
     card_awakening_routes: GameDbRow[],
     cards: GameDbRow[],
+    card_unique_infos: GameDbRow[],
+    card_unique_info_set_relations: GameDbRow[],
     card_specials: GameDbRow[],
     card_categories: GameDbRow[],
     chapters: GameDbRow[],
@@ -32,6 +36,8 @@ export interface StageFirstPartyTables {
     enemy_skill_cutin_extensions: GameDbRow[],
     enemy_skills: GameDbRow[],
     equipment_skill_items: GameDbRow[],
+    equipment_skill_limitations: GameDbRow[],
+    equipment_skills: GameDbRow[],
     link_skills: GameDbRow[],
     mission_rewards: GameDbRow[],
     missions: GameDbRow[],
@@ -205,6 +211,7 @@ function rewardPresentation(
     canonicalAwakenedCards: ReadonlyMap<string, string>,
     treasureItems: ReadonlyMap<string, GameDbRow>,
     equipmentSkillItems: ReadonlyMap<string, GameDbRow>,
+    equipmentSkillPresentations: ReadonlyMap<string, StageEquipmentSkillPresentation>,
 ): {
     name?: string,
     thumbnailId?: string,
@@ -213,6 +220,7 @@ function rewardPresentation(
     detailCharacterId?: string,
     iconAssetPath?: string,
     backgroundAssetPath?: string,
+    equipmentSkill?: StageEquipmentSkillPresentation,
 } {
     if (itemType === "Card") {
         return cardRewardPresentation(itemType, itemId, cards, canonicalAwakenedCards);
@@ -233,10 +241,13 @@ function rewardPresentation(
             throw new Error(`Equipment skill item ${itemId} has unsupported grade ${grade}`);
         }
         const iconId = id(item, "icon_image_id").padStart(5, "0");
+        const equipmentSkill = equipmentSkillPresentations.get(itemId);
+        if (!equipmentSkill) throw new Error(`Stage reward references missing equipment skill presentation ${itemId}`);
         return {
             ...(text(item.name) ? { name: text(item.name) } : {}),
             iconAssetPath: `item/equipment/equ_item_${iconId}.png`,
             backgroundAssetPath: `layout/en/image/item/equipment/equipment_thumb_bg/equ_base_${grade}.png`,
+            equipmentSkill,
         };
     }
     return {};
@@ -379,6 +390,200 @@ function groupBy(rows: GameDbRow[], column: string): Map<string, GameDbRow[]> {
         const key = id(row, column);
         result.set(key, [...(result.get(key) ?? []), row]);
     }
+    return result;
+}
+
+const ELEMENT_LIMITATION_BITS = [
+    { bit: 1, code: "AGL", assetCode: "00" },
+    { bit: 2, code: "TEQ", assetCode: "01" },
+    { bit: 4, code: "INT", assetCode: "02" },
+    { bit: 8, code: "STR", assetCode: "03" },
+    { bit: 16, code: "PHY", assetCode: "04" },
+    { bit: 4096, code: "SUPER_AGL", assetCode: "10" },
+    { bit: 8192, code: "SUPER_TEQ", assetCode: "11" },
+    { bit: 16384, code: "SUPER_INT", assetCode: "12" },
+    { bit: 32768, code: "SUPER_STR", assetCode: "13" },
+    { bit: 65536, code: "SUPER_PHY", assetCode: "14" },
+    { bit: 131072, code: "EXTREME_AGL", assetCode: "20" },
+    { bit: 262144, code: "EXTREME_TEQ", assetCode: "21" },
+    { bit: 524288, code: "EXTREME_INT", assetCode: "22" },
+    { bit: 1048576, code: "EXTREME_STR", assetCode: "23" },
+    { bit: 2097152, code: "EXTREME_PHY", assetCode: "24" },
+] as const;
+
+const EQUIPMENT_UI_ASSET_ROOT = "layout/en/image/charamenu/potential";
+
+function equipmentLevelAssetPath(levels: number[]): string {
+    if (levels.length < 1 || levels.length > 2 || levels.some(level => !Number.isSafeInteger(level) || level < 1 || level > 99)) {
+        throw new Error(`Unsupported equipment level presentation ${levels.join("/")}`);
+    }
+    return `derived/equipment/levels/lv-${levels.join("-")}.png`;
+}
+
+function conciseNames(names: string[]): string {
+    const unique = [...new Set(names.map(text).filter(Boolean))];
+    if (unique.length <= 2) return unique.join(" / ");
+    return `${unique.slice(0, 2).join(" / ")} +${unique.length - 2}`;
+}
+
+function exactConditionIds(
+    conditions: Record<string, unknown>,
+    key: string,
+    context: string,
+): string[] {
+    if (Object.keys(conditions).length !== 1 || !(key in conditions)) {
+        throw new Error(`${context} has unsupported condition fields`);
+    }
+    const values = jsonIds(conditions[key], `${context} ${key}`);
+    if (values.length === 0 || new Set(values).size !== values.length) {
+        throw new Error(`${context} must contain distinct ${key}`);
+    }
+    return values;
+}
+
+function equipmentRestriction(
+    row: GameDbRow,
+    cardCategories: ReadonlyMap<string, GameDbRow>,
+    cards: ReadonlyMap<string, GameDbRow>,
+    uniqueInfoRelationsBySet: ReadonlyMap<string, GameDbRow[]>,
+    uniqueInfos: ReadonlyMap<string, GameDbRow>,
+): StageEquipmentSkillRestrictionCondition {
+    const sourceRowId = id(row);
+    const rawType = text(row.type);
+    const rawConditions = jsonObject(row.conditions, `equipment limitation ${sourceRowId}`);
+    const base = { sourceRowId, rawType, rawConditions };
+    if (rawType === "EquipmentSkillLimitation::ElementLimitation") {
+        if (Object.keys(rawConditions).length !== 1 || !("element_bitpattern" in rawConditions)) {
+            throw new Error(`Equipment limitation ${sourceRowId} has unsupported condition fields`);
+        }
+        const elementBitPattern = Number(rawConditions.element_bitpattern);
+        if (!Number.isSafeInteger(elementBitPattern) || elementBitPattern <= 0) {
+            throw new Error(`Equipment limitation ${sourceRowId} has invalid element_bitpattern`);
+        }
+        const matched = ELEMENT_LIMITATION_BITS.filter(value => (elementBitPattern & value.bit) !== 0);
+        const knownMask = matched.reduce((mask, value) => mask + value.bit, 0);
+        if (knownMask !== elementBitPattern) {
+            throw new Error(`Equipment limitation ${sourceRowId} has unsupported element_bitpattern ${elementBitPattern}`);
+        }
+        const isUnrestricted = elementBitPattern === 31;
+        const badgeLabel = isUnrestricted ? "ALL" : elementBitPattern === 126976 ? "SUPER" : elementBitPattern === 4063232 ? "EXTREME" : matched.map(value => value.code).join("/");
+        const badgeAssetPaths = isUnrestricted
+            ? []
+            : matched.map(value => `layout/en/image/character/cha_type_icon_${value.assetCode}.png`);
+        return {
+            ...base,
+            kind: "element",
+            isUnrestricted,
+            elementBitPattern,
+            elementCodes: matched.map(value => value.code),
+            presentation: {
+                badgeLabel,
+                detailLabel: isUnrestricted ? "All types" : badgeLabel.replace(/_/g, " "),
+                ...(badgeAssetPaths.length === 1 ? { badgeAssetPath: badgeAssetPaths[0] } : {}),
+                ...(badgeAssetPaths.length ? { badgeAssetPaths } : {}),
+            },
+        };
+    }
+    if (rawType === "EquipmentSkillLimitation::CardCategoryLimitation") {
+        const cardCategoryIds = exactConditionIds(rawConditions, "card_category_ids", `Equipment limitation ${sourceRowId}`);
+        const names = cardCategoryIds.map(categoryId => text(requireRow(cardCategories, categoryId, `Equipment limitation ${sourceRowId} category`).name));
+        if (names.some(name => !name)) throw new Error(`Equipment limitation ${sourceRowId} references an unnamed category`);
+        const badgeAssetPath = `${EQUIPMENT_UI_ASSET_ROOT}/equ_icon_category.png`;
+        return { ...base, kind: "category", isUnrestricted: false, cardCategoryIds, presentation: { badgeLabel: "CAT", detailLabel: conciseNames(names), badgeAssetPath, badgeAssetPaths: [badgeAssetPath] } };
+    }
+    if (rawType === "EquipmentSkillLimitation::CardLimitation") {
+        const cardIds = exactConditionIds(rawConditions, "card_ids", `Equipment limitation ${sourceRowId}`);
+        const names = cardIds.map(cardId => text(requireRow(cards, cardId, `Equipment limitation ${sourceRowId} card`).name));
+        if (names.some(name => !name)) throw new Error(`Equipment limitation ${sourceRowId} references an unnamed card`);
+        const badgeAssetPath = `${EQUIPMENT_UI_ASSET_ROOT}/equ_icon_specific_chara.png`;
+        return { ...base, kind: "card", isUnrestricted: false, cardIds, presentation: { badgeLabel: "UNIT", detailLabel: conciseNames(names), badgeAssetPath, badgeAssetPaths: [badgeAssetPath] } };
+    }
+    if (rawType === "EquipmentSkillLimitation::CardUniqueInfoSetLimitation") {
+        const cardUniqueInfoSetIds = exactConditionIds(rawConditions, "card_unique_info_set_ids", `Equipment limitation ${sourceRowId}`);
+        const names = cardUniqueInfoSetIds.flatMap(uniqueSetId => {
+            const relations = uniqueInfoRelationsBySet.get(uniqueSetId);
+            if (!relations?.length) throw new Error(`Equipment limitation ${sourceRowId} references missing card unique info set ${uniqueSetId}`);
+            return relations.map(relation => text(requireRow(uniqueInfos, id(relation, "card_unique_info_id"), `Card unique info set ${uniqueSetId}`).name));
+        });
+        if (names.some(name => !name)) throw new Error(`Equipment limitation ${sourceRowId} references an unnamed character identity`);
+        const badgeAssetPath = `${EQUIPMENT_UI_ASSET_ROOT}/equ_icon_same_chara.png`;
+        return { ...base, kind: "card-unique-info-set", isUnrestricted: false, cardUniqueInfoSetIds, presentation: { badgeLabel: "CHAR", detailLabel: conciseNames(names), badgeAssetPath, badgeAssetPaths: [badgeAssetPath] } };
+    }
+    throw new Error(`Equipment limitation ${sourceRowId} has unsupported type ${rawType}`);
+}
+
+function equipmentSkillPresentations(
+    tables: StageFirstPartyTables,
+    equipmentItems: ReadonlyMap<string, GameDbRow>,
+    cards: ReadonlyMap<string, GameDbRow>,
+    cardCategories: ReadonlyMap<string, GameDbRow>,
+): Map<string, StageEquipmentSkillPresentation> {
+    const skillsByItem = groupBy(tables.equipment_skills, "equipment_skill_item_id");
+    const limitationsBySet = groupBy(tables.equipment_skill_limitations, "equipment_skill_limitation_set_id");
+    const uniqueInfos = uniqueById(tables.card_unique_infos, "card unique info");
+    const uniqueInfoRelationsBySet = groupBy(tables.card_unique_info_set_relations, "card_unique_info_set_id");
+    // Mirrors EquipmentItem::Efficacy::getDisplayPriority in the official Global client.
+    const displayPriority = new Map<string, number>([
+        ["potential:2", 10], ["potential:1", 9], ["potential:7", 8], ["potential:4", 7],
+        ["potential:5", 6], ["potential:6", 5], ["potential:3", 4],
+        ["status:hp", 3], ["status:attack", 2], ["status:defense", 1],
+    ]);
+    const result = new Map<string, StageEquipmentSkillPresentation>();
+    for (const [itemId, item] of equipmentItems) {
+        const grade = text(item.grade).toLowerCase();
+        if (grade !== "bronze" && grade !== "silver" && grade !== "gold") throw new Error(`Equipment skill item ${itemId} has unsupported grade ${grade}`);
+        const skillRows = skillsByItem.get(itemId) ?? [];
+        if (skillRows.length === 0) throw new Error(`Equipment skill item ${itemId} has no skill rows`);
+        const skills = skillRows.map(skillRow => {
+            const potentialSkillId = optionalId(skillRow, "potential_skill_id");
+            const statusType = text(skillRow.status_type).toLowerCase();
+            if (Boolean(potentialSkillId) === Boolean(statusType)) throw new Error(`Equipment skill ${id(skillRow)} must identify exactly one effect`);
+            if (statusType && statusType !== "hp" && statusType !== "attack" && statusType !== "defense") throw new Error(`Equipment skill ${id(skillRow)} has unsupported status_type ${statusType}`);
+            const level = integer(skillRow, "level");
+            if (level <= 0) throw new Error(`Equipment skill ${id(skillRow)} has invalid level ${level}`);
+            const identity = potentialSkillId ? `potential:${potentialSkillId}` : `status:${statusType}`;
+            const priority = displayPriority.get(identity);
+            if (!priority) throw new Error(`Equipment skill ${id(skillRow)} has no proved native display priority for ${identity}`);
+            return {
+                sourceRowId: id(skillRow),
+                ...(potentialSkillId ? { potentialSkillId } : {}),
+                ...(statusType ? { statusType: statusType as "hp" | "attack" | "defense" } : {}),
+                level,
+                priority,
+            };
+        }).sort((left, right) => right.priority - left.priority).map(({ priority: _priority, ...skill }) => skill);
+        const limitationSetId = optionalId(item, "equipment_skill_limitation_set_id");
+        if (!limitationSetId) throw new Error(`Equipment skill item ${itemId} has no limitation set`);
+        const limitationRows = limitationsBySet.get(limitationSetId) ?? [];
+        if (limitationRows.length === 0) throw new Error(`Equipment skill item ${itemId} limitation set ${limitationSetId} has no rows`);
+        const conditions = limitationRows
+            .sort((left, right) => numericCompare(id(left), id(right)))
+            .map(row => equipmentRestriction(row, cardCategories, cards, uniqueInfoRelationsBySet, uniqueInfos));
+        const isUnrestricted = conditions.some(condition => condition.isUnrestricted);
+        // EquipmentItem::canEquip accepts any matched limitation entry; repeated rows are set-unioned by type.
+        const limitationKinds = [...new Set(conditions.map(condition => condition.kind))];
+        // Native getDisplayLimitationType returns no badge for more than one family.
+        // Repeated rows in one family retain that family's graphical badge.
+        const presentation = limitationKinds.length === 1 ? {
+            badgeLabel: conditions[0].presentation.badgeLabel,
+            detailLabel: conciseNames(conditions.map(condition => condition.presentation.detailLabel)),
+            ...(conditions[0].presentation.badgeAssetPath ? { badgeAssetPath: conditions[0].presentation.badgeAssetPath } : {}),
+            ...(conditions[0].presentation.badgeAssetPaths ? { badgeAssetPaths: conditions[0].presentation.badgeAssetPaths } : {}),
+        } : {
+            badgeLabel: isUnrestricted ? "ALL" : "ANY",
+            detailLabel: conciseNames(conditions.map(condition => condition.presentation.detailLabel)),
+        };
+        const isEternal = booleanValue(item, "is_eternal");
+        result.set(itemId, {
+            grade,
+            skills,
+            isEternal,
+            levelAssetPath: equipmentLevelAssetPath(skills.map(skill => skill.level)),
+            ...(isEternal ? { infinityAssetPath: `${EQUIPMENT_UI_ASSET_ROOT}/equ_infinite_icon_${grade}.png` } : {}),
+            restriction: { setId: limitationSetId, combination: "any", conditions, isUnrestricted, presentation },
+        });
+    }
+    for (const skillRow of tables.equipment_skills) if (!equipmentItems.has(id(skillRow, "equipment_skill_item_id"))) throw new Error(`Equipment skill ${id(skillRow)} references missing item`);
     return result;
 }
 
@@ -557,8 +762,10 @@ export function buildStageFirstPartyCandidate(options: {
     const chapters = uniqueById(options.tables.chapters, "chapter");
     const stories = uniqueById(options.tables.db_stories, "DB story");
     const cards = uniqueById(options.tables.cards, "card");
+    const cardCategories = uniqueById(options.tables.card_categories, "card category");
     const treasureItems = uniqueById(options.tables.treasure_items, "treasure item");
     const equipmentSkillItems = uniqueById(options.tables.equipment_skill_items, "equipment skill item");
+    const equipmentPresentations = equipmentSkillPresentations(options.tables, equipmentSkillItems, cards, cardCategories);
     const canonicalAwakenedCards = canonicalAwakenedCardIds(options.tables.card_awakening_routes, cards);
     const cardSpecials = groupBy(options.tables.card_specials, "card_id");
     const specialSets = uniqueById(options.tables.special_sets, "special set");
@@ -589,7 +796,6 @@ export function buildStageFirstPartyCandidate(options: {
         passiveSkillSets: groupBy(options.tables.related_passive_skill_sets, "enemy_skill_id"),
         cutIns: uniqueById(options.tables.enemy_skill_cutin_extensions, "enemy skill cut-in", "enemy_skill_id"),
     };
-    const cardCategories = uniqueById(options.tables.card_categories, "card category");
     const linkSkills = uniqueById(options.tables.link_skills, "link skill");
     const passiveSkillSets = uniqueById(options.tables.passive_skill_sets, "passive skill set");
     for (const rows of relations.cardCategories.values()) for (const row of rows) if (!cardCategories.has(id(row, "card_category_id"))) throw new Error(`Enemy skill relation ${id(row)} references missing card category`);
@@ -718,7 +924,7 @@ export function buildStageFirstPartyCandidate(options: {
                 return [{
                     itemId,
                     itemType,
-                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, equipmentSkillItems),
+                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, equipmentSkillItems, equipmentPresentations),
                 }];
             });
             return [{ sourceRowId: id(row), difficultyValues, items }];
@@ -768,6 +974,7 @@ export function buildStageFirstPartyCandidate(options: {
                     canonicalAwakenedCards,
                     treasureItems,
                     equipmentSkillItems,
+                    equipmentPresentations,
                 ),
             })),
             dropPreviews,
@@ -843,6 +1050,7 @@ export function buildStageFirstPartyCandidate(options: {
             canonicalAwakenedCards,
             treasureItems,
             equipmentSkillItems,
+            equipmentPresentations,
         ),
     });
     const zBattles: StageDetailZBattle[] = [...zStages.values()].sort((left, right) => numericCompare(id(left), id(right))).map(stage => {
@@ -986,7 +1194,7 @@ export function buildStageFirstPartyCandidate(options: {
                     itemType,
                     quantity: integer(reward, "quantity"),
                     ...(cardExpInitial !== undefined ? { cardExpInitial } : {}),
-                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, equipmentSkillItems),
+                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, equipmentSkillItems, equipmentPresentations),
                 };
             });
             return {
