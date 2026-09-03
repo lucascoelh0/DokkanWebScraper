@@ -14,6 +14,8 @@ const execFileAsync = promisify(execFile);
 
 export interface ItemCatalogPublishOptions {
     bucket: string,
+    channel: "production" | "staging",
+    objectPrefix: string,
     catalogPath: string,
     manifestPath: string,
     dryRun: boolean,
@@ -24,6 +26,8 @@ export interface ItemCatalogPublishOptions {
 export interface ItemCatalogPublishPlan {
     bucket: string,
     target: "remote" | "local",
+    channel: "production" | "staging",
+    objectPrefix: string,
     catalogPath: string,
     manifestPath: string,
     catalogObjectKey: string,
@@ -38,6 +42,14 @@ export interface ItemCatalogPublishPlan {
 export function parseItemCatalogPublishArgs(argv: string[]): ItemCatalogPublishOptions {
     const values = new Map<string, string>();
     const flags = new Set<string>();
+    const valueArguments = new Set([
+        "--bucket",
+        "--catalog",
+        "--manifest",
+        "--max-upload-bytes",
+        "--channel",
+    ]);
+    const flagArguments = new Set(["--dry-run", "--local", "--remote"]);
 
     for (let index = 0; index < argv.length; index += 1) {
         const token = argv[index];
@@ -46,15 +58,25 @@ export function parseItemCatalogPublishArgs(argv: string[]): ItemCatalogPublishO
         }
 
         const [name, inlineValue] = token.split("=", 2);
+        if (!valueArguments.has(name) && !flagArguments.has(name)) {
+            throw new Error(`Unknown argument: ${name}`);
+        }
         if (inlineValue !== undefined) {
+            if (!valueArguments.has(name) || inlineValue.trim() === "") {
+                throw new Error(`Invalid value for ${name}.`);
+            }
             values.set(name, inlineValue);
+            continue;
+        }
+
+        if (flagArguments.has(name)) {
+            flags.add(name);
             continue;
         }
 
         const nextToken = argv[index + 1];
         if (!nextToken || nextToken.startsWith("--")) {
-            flags.add(name);
-            continue;
+            throw new Error(`Missing value for ${name}.`);
         }
 
         values.set(name, nextToken);
@@ -62,6 +84,7 @@ export function parseItemCatalogPublishArgs(argv: string[]): ItemCatalogPublishO
     }
 
     const bucket = values.get("--bucket") ?? process.env.R2_BUCKET_NAME ?? DEFAULT_BUCKET;
+    const channel = parsePublishChannel(values.get("--channel"));
     const target = flags.has("--local") ? "local" : "remote";
     if (flags.has("--local") && flags.has("--remote")) {
         throw new Error("Choose only one of --local or --remote.");
@@ -69,6 +92,8 @@ export function parseItemCatalogPublishArgs(argv: string[]): ItemCatalogPublishO
 
     return {
         bucket,
+        channel,
+        objectPrefix: channel === "staging" ? "staging/v2" : "",
         catalogPath: resolve(values.get("--catalog") ?? DEFAULT_CATALOG_PATH),
         manifestPath: resolve(values.get("--manifest") ?? DEFAULT_MANIFEST_PATH),
         dryRun: flags.has("--dry-run"),
@@ -100,10 +125,12 @@ export function buildItemCatalogPublishPlan(
     return {
         bucket: options.bucket,
         target: options.target,
+        channel: options.channel,
+        objectPrefix: options.objectPrefix,
         catalogPath: options.catalogPath,
         manifestPath: options.manifestPath,
-        catalogObjectKey: manifest.fileName,
-        manifestObjectKey: "item-catalog-manifest.json",
+        catalogObjectKey: prefixedObjectKey(options.objectPrefix, manifest.fileName),
+        manifestObjectKey: prefixedObjectKey(options.objectPrefix, "item-catalog-manifest.json"),
         catalogBytes,
         manifestBytes,
         totalBytes,
@@ -127,7 +154,7 @@ async function main(): Promise<void> {
         plan.catalogObjectKey,
         plan.catalogPath,
         "application/json",
-        "public, max-age=31536000, immutable",
+        "no-cache",
         plan.target,
     );
     await uploadObject(
@@ -175,11 +202,24 @@ async function readPublishPlan(options: ItemCatalogPublishOptions): Promise<Item
 function printPlan(plan: ItemCatalogPublishPlan): void {
     console.log(`Target: ${plan.target}`);
     console.log(`Bucket: ${plan.bucket}`);
+    console.log(`Channel: ${plan.channel}`);
     console.log(`Catalog: ${plan.catalogBytes} bytes -> ${plan.catalogObjectKey}`);
     console.log(`Manifest: ${plan.manifestBytes} bytes -> ${plan.manifestObjectKey}`);
     console.log(`Total upload: ${plan.totalBytes} bytes`);
     console.log(`Dataset version: ${plan.datasetVersion}`);
     console.log(`SHA-256: ${plan.sha256}`);
+}
+
+function parsePublishChannel(value: string | undefined): "production" | "staging" {
+    if (value === "production" || value === "staging") return value;
+    if (!value) {
+        throw new Error("Choose an explicit item catalog publish channel with --channel production or --channel staging.");
+    }
+    throw new Error(`Invalid item catalog publish channel: ${value}`);
+}
+
+function prefixedObjectKey(prefix: string, fileName: string): string {
+    return prefix ? `${prefix}/${fileName}` : fileName;
 }
 
 async function uploadObject(

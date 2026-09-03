@@ -3625,6 +3625,26 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Public event-banner, character-thumb, medal and Frontier samples also match
   their inventory hashes. No branch was pushed.
 
+## Android Stage and item-catalog polish checkpoint (2026-09-03)
+
+- Staging Android now has an isolated item-catalog delivery base under
+  `staging/v2`, while team-analysis auxiliary data keeps its existing base.
+  The current 3,324-item catalog restores the database-provided circular
+  Awakening Medal backgrounds; the catalog has been validated locally but its
+  two staging R2 objects have not yet been published.
+- The item-catalog publisher requires an explicit `staging` or `production`
+  channel, revalidates the mutable catalog object, and keeps the manifest
+  uncached. Android rejects remote catalog manifests without the expected
+  schema, safe file name, positive byte size, and a valid SHA-256.
+- Support Memories default to the game's film-color order (red, yellow, blue,
+  orange, green), retain deterministic numeric ordering within a film color,
+  and navigate mission rows to an exact Stage when unambiguous or to the owning
+  event otherwise.
+- Z-Battle detail rows namespace Compose lazy keys by section. This prevents
+  database IDs such as `211000`, legitimately reused by enemy ranges, status
+  curves, checkpoints, and first-clear rewards, from crashing during fast
+  scrolling.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
