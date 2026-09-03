@@ -3548,6 +3548,75 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Moving these assets to R2 later requires a dataset publication, not an app
   release. Quest Mode classification is structural and Chapter-grouped; event
   cards no longer display a misleading aggregate Link Skill rate.
+- Feature-closure backlog: after Support Memories, Missions and Stages behavior,
+  navigation and dataset coverage are stable, mirror every referenced event
+  and Stage presentation asset locally, not only Z-Battle images. Coverage must include
+  Frontier, Quest Mode chapters, DB Story, Story, Bonus, Growth, Limited,
+  Challenge, Z-Battles, and the event imagery reused by Mission and Support
+  Memory acquisition surfaces. It must also include enemy thumbnail layers,
+  reward-card layers, item icons and item backgrounds so transparent assets are
+  composited from owned bytes. Validate every mirrored byte size and SHA-256,
+  publish content-stable bytes under owned R2 keys, switch the remotely
+  delivered asset roots to the owned R2 namespace, and let Android retain the
+  verified files in its on-device cache. Keep the Android last-known-good cache
+  and old-dataset compatibility. This is the final hardening step for this
+  feature, before production promotion; it must not require an app release.
+- The Event Missions tab still exposes only mission-shaped Support Memory
+  acquisition sources. The first-party snapshot already contains the complete
+  event mission rows and rewards (for example, area 335 contains 13 missions
+  and 29 rewards), but the Stage delivery contract does not project them yet.
+  Add a bounded, backward-compatible mission delivery before describing the tab
+  as complete or publishing the final production lane.
+- On 2026-09-03 the staging Stage lane was refreshed from the current Global
+  6.5.5 LDPlayer database, DB version `1788329250`, asset version `1788327754`,
+  and decrypted SQLite SHA-256
+  `7a6ca01808aea355ef28f9c0190e2c072f43a7c08be41d363f5b052824922495`.
+  The published manifest version is `2026-09-03T02:50:29.873Z`; it contains
+  5,394 quest levels, 235 Z-Battles, 481 Support Memory relations and no Stage
+  removals relative to the prior staging payload. Its catalog object is 193,368
+  bytes with SHA-256
+  `b4c92399628ee7c233df7c26db94ae49c875091551c0225b29f72ecacd2299ce`.
+  A no-cache public download reproduced the advertised size and hash. The new
+  Z-Battle is `211 / Planet Namek Saga 2`; three quest-level IDs were added.
+- Stage Treasure rewards now join `treasure_items` by structural item ID and
+  carry the official name plus `image_suffix_number`. This corrects area 335
+  Stage 4 from the stale external `TreasureItem:8 / 3rd Anniversary Coin`
+  interpretation to the first-party `Kachi Katchin` identity and suffix `13`.
+  Character boss drops in the refreshed payload also carry the exact card
+  rarity/type and canonical awakened detail ID; Zarbon `1022990` resolves to
+  detail character `1023001`. Android still needs the final owned R2 asset
+  mirror to remove external image latency and make item/card/enemy rendering
+  independent from third-party hosts.
+
+## Stage missions and owned asset mirror local checkpoint (2026-09-03)
+
+- The local Stage candidate for Global snapshot `1788329250` now projects the
+  complete first-party event-mission surface: 7,137 missions across 412 event
+  areas, including official rewards and exact Stage targets. The manifest binds
+  the mission count, Android validates it before accepting a catalog, and old
+  cached catalogs still fall back to the previous Support Memory-derived view.
+- A deterministic owned-asset mirror now covers the presentation bytes used by
+  Stage events, Quest chapters, DB Story, Z-Battles, Frontier, missions,
+  rewards, card frames and enemy portraits. The accepted candidate contains
+  6,143 verified files totaling 133,074,775 bytes with inventory SHA-256
+  `ee05a1477dd80dfc007bd89cd56cbf510d292f5a1d23da165f33ae58dd1523b1`.
+  Android rewrites both `/assets/global/en/` and `/assets/en/` source forms to
+  the remotely delivered owned asset root.
+- The mirror fails closed on source gaps. This snapshot has 66 explicit missing
+  paths: 65 retired historical banners absent from all configured source CDNs
+  and one invalid zero-byte placeholder card extracted from the official CPK.
+  Their exact sorted path set is bound to a tracked, snapshot-specific
+  acceptance record; any added, removed or changed gap invalidates generation
+  and publication.
+- Remote upload is resumable without silently trusting a partial local state:
+  immutable asset writes use create-only semantics and reconcile a pre-existing
+  object by exact size, content type, cache policy and SHA-256 metadata. Object
+  paths and provenance URLs are canonicalized and validated before upload.
+- Pipeline contract tests, Android domain/app tests, Android lint and the
+  staging debug assembly pass. The final remote dry-run projects 136,022,482
+  bytes for the asset mirror and 1,784,116 bytes for the Stage dataset. Neither
+  candidate has been published, promoted, committed or pushed at this
+  checkpoint.
 
 ## Operating Constraints
 

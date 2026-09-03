@@ -288,9 +288,11 @@ function validateManifestShape(manifest: StageDeliveryManifest): void {
         || !Number.isSafeInteger(manifest.questLevelCount)
         || !Number.isSafeInteger(manifest.zBattleCount)
         || !Number.isSafeInteger(manifest.supportMemoryRelationCount)
+        || !Number.isSafeInteger(manifest.eventMissionCount)
         || manifest.questLevelCount < 0
         || manifest.zBattleCount < 0
-        || manifest.supportMemoryRelationCount < 0) {
+        || manifest.supportMemoryRelationCount < 0
+        || manifest.eventMissionCount < 0) {
         throw new Error("Stage delivery manifest has invalid source lineage or counts");
     }
     if (manifest.fileName !== manifest.catalog.objectKey
@@ -320,9 +322,12 @@ function validateCatalogPayload(catalog: StageCatalogPayload, manifest: StageDel
         || catalog.sourceDatabaseSha256 !== manifest.sourceDatabaseSha256
         || !Array.isArray(catalog.entries)
         || !Array.isArray(catalog.supportMemoryRelations)
+        || typeof catalog.eventMissionsComplete !== "boolean"
+        || !Array.isArray(catalog.eventMissions)
         || catalog.count !== catalog.entries.length
         || catalog.questLevelCount !== manifest.questLevelCount
         || catalog.zBattleCount !== manifest.zBattleCount
+        || catalog.eventMissions.length !== manifest.eventMissionCount
         || catalog.supportMemoryRelations.length !== manifest.supportMemoryRelationCount) {
         throw new Error("Stage delivery catalog does not match its manifest");
     }

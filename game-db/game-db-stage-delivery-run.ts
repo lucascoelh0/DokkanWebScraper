@@ -8,11 +8,12 @@ interface Options {
     datasetPath: string,
     outputDir: string,
     compressionLevel: number,
+    assetBaseUrl?: string,
 }
 
 export function parseStageDeliveryRunArgs(args: string[]): Options {
     const values = new Map<string, string>();
-    const supported = new Set(["--dataset", "--output-dir", "--compression-level"]);
+    const supported = new Set(["--dataset", "--output-dir", "--compression-level", "--asset-base-url"]);
     for (let index = 0; index < args.length; index += 1) {
         const token = args[index];
         const [name, inlineValue] = token.split("=", 2);
@@ -34,6 +35,7 @@ export function parseStageDeliveryRunArgs(args: string[]): Options {
         datasetPath: resolve(values.get("--dataset")!),
         outputDir: resolve(values.get("--output-dir")!),
         compressionLevel,
+        ...(values.get("--asset-base-url") ? { assetBaseUrl: values.get("--asset-base-url") } : {}),
     };
 }
 
@@ -50,7 +52,7 @@ async function main(): Promise<void> {
     const options = parseStageDeliveryRunArgs(process.argv.slice(2));
     await requireMissing(options.outputDir);
     const dataset = JSON.parse(await readFile(options.datasetPath, "utf8")) as StageDetailsDataset;
-    const delivery = buildStageDelivery(dataset, undefined, options.compressionLevel);
+    const delivery = buildStageDelivery(dataset, undefined, options.compressionLevel, options.assetBaseUrl);
     await mkdir(options.outputDir, { recursive: false });
     await writeFormattedJson(resolve(options.outputDir, "stage-details-manifest.json"), delivery.manifest);
     await writeFormattedJson(resolve(options.outputDir, "stage-delivery-audit.json"), delivery.audit);

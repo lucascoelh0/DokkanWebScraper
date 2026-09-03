@@ -3,6 +3,7 @@ import {
     StageDetailAsset,
     StageDetailCategoryBonus,
     StageDetailEnemy,
+    StageDetailEventMission,
     StageDetailSkill,
     StageDetailSuperAttack,
     StageDetailSupportMemoryLink,
@@ -47,6 +48,7 @@ export interface StageFirstPartyTables {
     sugoroku_map_enemy_informations: GameDbRow[],
     sugoroku_map_puzzle_colors: GameDbRow[],
     sugoroku_maps: GameDbRow[],
+    treasure_items: GameDbRow[],
     special_sets: GameDbRow[],
     special_views: GameDbRow[],
     special_categories: GameDbRow[],
@@ -90,6 +92,7 @@ export interface StageFirstPartyAudit {
         zBattleCheckpoints: number,
         zBattleFirstRewardLevels: number,
         supportMemoryRelations: number,
+        eventMissions: number,
         supportMemoryQuestLevelLinks: number,
         supportMemoryAreaLinks: number,
         supportMemoryZBattleLinks: number,
@@ -107,6 +110,7 @@ export interface StageFirstPartyAudit {
         traditionalEnemyStats: "unavailable-in-game-db",
         zBattleStats: "first-party-raw-base-and-curves-formula-unproved",
         supportMemoryStageRelations: "first-party-mission-json-ids",
+        eventMissions: "first-party-missions-and-rewards",
     },
     unresolved: {
         unboundQuestLevelIds: string[],
@@ -190,6 +194,25 @@ function cardRewardPresentation(
         ...(optionalInteger(card, "rarity") !== undefined ? { rarityRaw: optionalInteger(card, "rarity") } : {}),
         ...(optionalInteger(card, "element") !== undefined ? { elementRaw: optionalInteger(card, "element") } : {}),
         ...(canonicalAwakenedCards.get(itemId) ? { detailCharacterId: canonicalAwakenedCards.get(itemId) } : {}),
+    };
+}
+
+function rewardPresentation(
+    itemType: string,
+    itemId: string,
+    cards: ReadonlyMap<string, GameDbRow>,
+    canonicalAwakenedCards: ReadonlyMap<string, string>,
+    treasureItems: ReadonlyMap<string, GameDbRow>,
+): { name?: string, thumbnailId?: string, rarityRaw?: number, elementRaw?: number, detailCharacterId?: string } {
+    if (itemType === "Card") {
+        return cardRewardPresentation(itemType, itemId, cards, canonicalAwakenedCards);
+    }
+    if (itemType !== "TreasureItem") return {};
+    const item = treasureItems.get(itemId);
+    if (!item) throw new Error(`Stage reward references missing treasure item ${itemId}`);
+    return {
+        ...(text(item.name) ? { name: text(item.name) } : {}),
+        ...(optionalId(item, "image_suffix_number") ? { thumbnailId: optionalId(item, "image_suffix_number") } : {}),
     };
 }
 
@@ -499,6 +522,7 @@ export function buildStageFirstPartyCandidate(options: {
     const chapters = uniqueById(options.tables.chapters, "chapter");
     const stories = uniqueById(options.tables.db_stories, "DB story");
     const cards = uniqueById(options.tables.cards, "card");
+    const treasureItems = uniqueById(options.tables.treasure_items, "treasure item");
     const canonicalAwakenedCards = canonicalAwakenedCardIds(options.tables.card_awakening_routes, cards);
     const cardSpecials = groupBy(options.tables.card_specials, "card_id");
     const specialSets = uniqueById(options.tables.special_sets, "special set");
@@ -655,7 +679,11 @@ export function buildStageFirstPartyCandidate(options: {
                 const itemType = text(row[`item${index}_type`]);
                 if (!itemId && !itemType) return [];
                 if (!itemId || !itemType) throw new Error(`Quest drop view ${id(row)} has an incomplete item ${index}`);
-                return [{ itemId, itemType, ...cardRewardPresentation(itemType, itemId, cards, canonicalAwakenedCards) }];
+                return [{
+                    itemId,
+                    itemType,
+                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems),
+                }];
             });
             return [{ sourceRowId: id(row), difficultyValues, items }];
         });
@@ -697,7 +725,13 @@ export function buildStageFirstPartyCandidate(options: {
                 cardExpInitial: optionalInteger(drop, "card_exp_init"),
                 quantityStatus: "unknown",
                 chanceStatus: "unknown",
-                ...cardRewardPresentation(text(drop.item_type), id(drop, "item_id"), cards, canonicalAwakenedCards),
+                ...rewardPresentation(
+                    text(drop.item_type),
+                    id(drop, "item_id"),
+                    cards,
+                    canonicalAwakenedCards,
+                    treasureItems,
+                ),
             })),
             dropPreviews,
             categoryBonuses,
@@ -765,9 +799,21 @@ export function buildStageFirstPartyCandidate(options: {
         itemType: text(row.item_type),
         quantity: integer(row, "quantity"),
         cardExpInitial: optionalInteger(row, "card_exp_init"),
+        ...rewardPresentation(
+            text(row.item_type),
+            id(row, "item_id"),
+            cards,
+            canonicalAwakenedCards,
+            treasureItems,
+        ),
     });
     const zBattles: StageDetailZBattle[] = [...zStages.values()].sort((left, right) => numericCompare(id(left), id(right))).map(stage => {
         const stageId = id(stage);
+        const relatedZBattleStageId = optionalId(stage, "related_z_battle_stage_id");
+        const relatedStage = relatedZBattleStageId ? zStages.get(relatedZBattleStageId) : undefined;
+        if (relatedZBattleStageId && !relatedStage) {
+            throw new Error(`Z-Battle stage ${stageId} references missing related stage ${relatedZBattleStageId}`);
+        }
         const view = viewsByStage.get(stageId);
         const ranges = (zRangesByStage.get(stageId) ?? []).sort((left, right) => integer(left, "ordinal_num") - integer(right, "ordinal_num"));
         const referencedStatusTypes = new Set<string>();
@@ -821,12 +867,12 @@ export function buildStageFirstPartyCandidate(options: {
             enableBattleAuto: booleanValue(stage, "enable_battle_auto"),
             effectEscalationTypeId: id(stage, "z_battle_stage_effect_escalation_type"),
             priority: integer(stage, "priority"),
-            banner: officialAsset(stage.banner_image_path),
-            listButton: officialAsset(stage.listbutton_image_path),
+            banner: officialAsset(stage.banner_image_path) ?? officialAsset(relatedStage?.banner_image_path),
+            listButton: officialAsset(stage.listbutton_image_path) ?? officialAsset(relatedStage?.listbutton_image_path),
             enemyResourceId: view ? optionalId(view, "enemy_resource_id") : undefined,
             eventKeyStartsAt: date(stage, "eventkagi_start_at"),
             eventKeyEndsAt: date(stage, "eventkagi_end_at"),
-            relatedZBattleStageId: optionalId(stage, "related_z_battle_stage_id"),
+            relatedZBattleStageId,
             ...(text(stage.unlock_conditions) ? { unlockConditions: jsonValue(stage.unlock_conditions, `Z-Battle ${stageId} unlock_conditions`) } : {}),
             enemyRanges: ranges.map(range => ({
                 id: id(range),
@@ -880,6 +926,50 @@ export function buildStageFirstPartyCandidate(options: {
         };
     });
 
+    const stageIds = new Set(entries.map(entry => entry.id));
+    const missionRewardsByMission = groupBy(options.tables.mission_rewards, "mission_id");
+    const resolveMissionStages = createMissionStageResolver(options.tables.missions);
+    const eventMissions: StageDetailEventMission[] = options.tables.missions
+        .filter(mission => {
+            const areaId = optionalId(mission, "area_id");
+            return areaId !== undefined && areas.has(areaId);
+        })
+        .map(mission => {
+            const missionId = id(mission);
+            const areaId = id(mission, "area_id");
+            const resolution = resolveMissionStages(missionId);
+            const rewards = (missionRewardsByMission.get(missionId) ?? []).map(reward => {
+                const itemType = text(reward.item_type);
+                const itemId = id(reward, "item_id");
+                const cardExpInitial = optionalInteger(reward, "card_exp_init");
+                return {
+                    itemId,
+                    itemType,
+                    quantity: integer(reward, "quantity"),
+                    ...(cardExpInitial !== undefined ? { cardExpInitial } : {}),
+                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems),
+                };
+            });
+            return {
+                id: missionId,
+                areaId,
+                categoryId: id(mission, "mission_category_id"),
+                type: text(mission.type),
+                name: text(mission.name),
+                ...(text(mission.description) ? { description: text(mission.description) } : {}),
+                priority: integer(mission, "priority"),
+                ordererId: integer(mission, "orderer_id"),
+                ...(date(mission, "start_at") ? { startsAt: date(mission, "start_at") } : {}),
+                ...(date(mission, "end_at") ? { endsAt: date(mission, "end_at") } : {}),
+                stageIds: [...resolution.stageIds.keys()].filter(stageId => stageIds.has(stageId)).sort(numericCompare),
+                rewards,
+            };
+        })
+        .sort((left, right) => numericCompare(left.areaId, right.areaId)
+            || right.priority - left.priority
+            || left.ordererId - right.ordererId
+            || numericCompare(left.id, right.id));
+
     const dataset: StageDetailsDataset = {
         schemaVersion: 2,
         generatedAt: options.generatedAt,
@@ -890,6 +980,7 @@ export function buildStageFirstPartyCandidate(options: {
         entries,
         zBattles,
         supportMemoryRelations: supportLinks.relations,
+        eventMissions,
     };
     const unresolvedMemoryIds = [...supportLinks.allMemoryIds].filter(memoryId => !supportLinks.linkedMemoryIds.has(memoryId)).sort(numericCompare);
     return {
@@ -920,6 +1011,7 @@ export function buildStageFirstPartyCandidate(options: {
                 zBattleCheckpoints: zBattles.reduce((sum, stage) => sum + (stage.checkpoints?.length ?? 0), 0),
                 zBattleFirstRewardLevels: zBattles.reduce((sum, stage) => sum + (stage.firstRewards?.length ?? 0), 0),
                 supportMemoryRelations: supportLinks.relations.length,
+                eventMissions: eventMissions.length,
                 supportMemoryQuestLevelLinks: supportLinks.relations.filter(relation => relation.targetKind === "quest-level").length,
                 supportMemoryAreaLinks: supportLinks.relations.filter(relation => relation.targetKind === "area").length,
                 supportMemoryZBattleLinks: supportLinks.relations.filter(relation => relation.targetKind === "z-battle").length,
@@ -937,6 +1029,7 @@ export function buildStageFirstPartyCandidate(options: {
                 traditionalEnemyStats: "unavailable-in-game-db",
                 zBattleStats: "first-party-raw-base-and-curves-formula-unproved",
                 supportMemoryStageRelations: "first-party-mission-json-ids",
+                eventMissions: "first-party-missions-and-rewards",
             },
             unresolved: {
                 unboundQuestLevelIds: unboundQuestLevelIds.sort(numericCompare),

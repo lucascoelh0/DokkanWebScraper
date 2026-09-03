@@ -82,6 +82,7 @@ export const STAGE_GAME_DB_TABLES = [
     "sugoroku_map_enemy_informations",
     "sugoroku_map_puzzle_colors",
     "sugoroku_maps",
+    "treasure_items",
     "z_battle_check_points",
     "z_battle_enemies",
     "z_battle_enemy_card_escalations",

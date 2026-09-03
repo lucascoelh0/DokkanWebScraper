@@ -15,6 +15,7 @@ describe("Stage candidate CLI", () => {
         equal(REQUIRED_STAGE_TABLES.includes("sugoroku_map_enemy_informations"), true);
         equal(REQUIRED_STAGE_TABLES.includes("enemy_skills"), true);
         equal(REQUIRED_STAGE_TABLES.includes("z_battle_first_rewards"), true);
+        equal(REQUIRED_STAGE_TABLES.includes("treasure_items"), true);
     });
 
     it("rejects unknown arguments", () => {

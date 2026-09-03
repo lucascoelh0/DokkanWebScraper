@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { gzipSync } from "zlib";
 import {
     StageDetail,
+    StageDetailEventMission,
     StageDetailSupportMemoryRelation,
     StageDetailZBattle,
     StageDetailsDataset,
@@ -78,6 +79,8 @@ export interface StageCatalogPayload {
     zBattleCount: number,
     entries: StageCatalogEntry[],
     supportMemoryRelations: StageDetailSupportMemoryRelation[],
+    eventMissionsComplete: boolean,
+    eventMissions: StageDetailEventMission[],
 }
 
 export interface StageDetailShardPayload {
@@ -109,6 +112,7 @@ export interface StageDeliveryManifest {
     questLevelCount: number,
     zBattleCount: number,
     supportMemoryRelationCount: number,
+    eventMissionCount: number,
     fileName: string,
     sha256: string,
     sizeBytes: number,
@@ -129,6 +133,7 @@ export interface StageDeliveryAudit {
     questLevelRoutes: number,
     zBattleRoutes: number,
     supportMemoryRelations: number,
+    eventMissions: number,
 }
 
 export interface StageDeliveryBuild {
@@ -162,6 +167,7 @@ export function buildStageDelivery(
     dataset: StageDetailsDataset,
     shardMaxExpandedBytes = DEFAULT_STAGE_SHARD_MAX_EXPANDED_BYTES,
     compressionLevel = 9,
+    assetBaseUrl = DEFAULT_STAGE_ASSET_BASE_URL,
 ): StageDeliveryBuild {
     validateDataset(dataset);
     if (!Number.isSafeInteger(shardMaxExpandedBytes) || shardMaxExpandedBytes < 32 * 1024) {
@@ -170,6 +176,7 @@ export function buildStageDelivery(
     if (!Number.isSafeInteger(compressionLevel) || compressionLevel < 1 || compressionLevel > 9) {
         throw new Error("Stage delivery compression level must be an integer from 1 to 9");
     }
+    validateAssetBaseUrl(assetBaseUrl);
 
     const datasetVersion = dataset.generatedAt;
     const items = deliveryItems(dataset);
@@ -216,6 +223,7 @@ export function buildStageDelivery(
     });
 
     const relations = [...(dataset.supportMemoryRelations ?? [])].sort(compareRelations);
+    const eventMissions = [...(dataset.eventMissions ?? [])];
     const catalog: StageCatalogPayload = {
         schemaVersion: 1,
         contract: STAGE_DELIVERY_CONTRACT,
@@ -225,7 +233,7 @@ export function buildStageDelivery(
         source: "dokkan-game-db",
         sourceSnapshotVersion: dataset.sourceSnapshotVersion!,
         sourceDatabaseSha256: dataset.sourceDatabaseSha256!,
-        assetBaseUrl: DEFAULT_STAGE_ASSET_BASE_URL,
+        assetBaseUrl: assetBaseUrl.replace(/\/$/, ""),
         count: items.length,
         questLevelCount: dataset.entries.length,
         zBattleCount: dataset.zBattles?.length ?? 0,
@@ -238,6 +246,8 @@ export function buildStageDelivery(
             )),
         ],
         supportMemoryRelations: relations,
+        eventMissionsComplete: dataset.eventMissions !== undefined,
+        eventMissions,
     };
     assertUniqueCatalog(catalog);
     const catalogBytes = Buffer.from(JSON.stringify(catalog), "utf8");
@@ -263,6 +273,7 @@ export function buildStageDelivery(
         questLevelCount: dataset.entries.length,
         zBattleCount: dataset.zBattles?.length ?? 0,
         supportMemoryRelationCount: relations.length,
+        eventMissionCount: eventMissions.length,
         fileName: catalogObject.objectKey,
         sha256: catalogObject.sha256,
         sizeBytes: catalogObject.sizeBytes,
@@ -292,8 +303,21 @@ export function buildStageDelivery(
             questLevelRoutes: catalog.entries.filter(entry => entry.kind === "quest-level").length,
             zBattleRoutes: catalog.entries.filter(entry => entry.kind === "z-battle").length,
             supportMemoryRelations: relations.length,
+            eventMissions: eventMissions.length,
         },
     };
+}
+
+function validateAssetBaseUrl(value: string): void {
+    let url: URL;
+    try {
+        url = new URL(value);
+    } catch {
+        throw new Error("Stage asset base URL must be a valid HTTPS URL");
+    }
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+        throw new Error("Stage asset base URL must be a safe HTTPS URL");
+    }
 }
 
 function validateDataset(dataset: StageDetailsDataset): void {
@@ -316,6 +340,10 @@ function validateDataset(dataset: StageDetailsDataset): void {
     const zBattleIds = (dataset.zBattles ?? []).map(entry => entry.id);
     if (new Set(questIds).size !== questIds.length || new Set(zBattleIds).size !== zBattleIds.length) {
         throw new Error("Stage delivery requires unique quest and Z-Battle IDs");
+    }
+    const missionIds = (dataset.eventMissions ?? []).map(mission => mission.id);
+    if (new Set(missionIds).size !== missionIds.length) {
+        throw new Error("Stage delivery requires unique event mission IDs");
     }
     for (const enemy of dataset.entries.flatMap(entry => entry.enemies)) {
         if (!enemy.stats || enemy.stats.status !== "unavailable-in-game-db") {
@@ -506,6 +534,14 @@ function validateRoutes(catalog: StageCatalogPayload, manifest: StageDeliveryMan
                 ? zBattleIds.has(relation.targetId)
                 : areaIds.has(relation.targetId);
         if (!resolved) throw new Error(`Support Memory relation ${relationKey(relation)} has no catalog target`);
+    }
+    for (const mission of catalog.eventMissions) {
+        if (!areaIds.has(mission.areaId)) {
+            throw new Error(`Event mission ${mission.id} has no catalog area target`);
+        }
+        if (mission.stageIds.some(stageId => !questIds.has(stageId))) {
+            throw new Error(`Event mission ${mission.id} has no catalog Stage target`);
+        }
     }
 }
 

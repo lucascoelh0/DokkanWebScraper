@@ -16,6 +16,7 @@ describe("first-party Stage delivery", () => {
         equal(first.audit.questLevelRoutes, 3);
         equal(first.audit.zBattleRoutes, 1);
         equal(first.audit.supportMemoryRelations, 3);
+        equal(first.audit.eventMissions, 1);
         equal(first.audit.maximumShardExpandedBytes <= 32 * 1024, true);
         equal(first.shards.length >= 2, true);
         equal(first.manifest.catalog.objectKey.startsWith("stage-details/objects/"), true);
@@ -24,6 +25,18 @@ describe("first-party Stage delivery", () => {
         equal(first.manifest.sizeBytes, first.manifest.catalog.sizeBytes);
         equal(first.manifest.stageCount, first.manifest.questLevelCount);
         equal(first.catalog.assetBaseUrl, "https://assets.dokkanstats.com/assets/global/en");
+        equal(first.catalog.eventMissionsComplete, true);
+        deepEqual(first.catalog.eventMissions[0], {
+            id: "7001",
+            areaId: "7",
+            categoryId: "7",
+            type: "Mission::QuestClearMission::CountMission",
+            name: "Clear Stage 1",
+            priority: 1,
+            ordererId: 1,
+            stageIds: ["101"],
+            rewards: [{ itemId: "11", itemType: "Point::Stone", quantity: 1 }],
+        });
         for (const shard of first.shards) {
             equal(shard.manifest.sizeBytes, shard.gzip.byteLength);
             equal(shard.manifest.expandedSizeBytes, shard.bytes.byteLength);
@@ -76,6 +89,21 @@ describe("first-party Stage delivery", () => {
         equal(rotatedCompression.manifest.catalog.sha256 === defaultCompression.manifest.catalog.sha256, false);
         equal(gunzipSync(rotatedCompression.catalogGzip).equals(defaultCompression.catalogBytes), true);
         throws(() => buildStageDelivery(dataset, 32 * 1024, 0), /compression level/);
+    });
+
+    it("binds the catalog to an explicit owned HTTPS asset root", () => {
+        const delivery = buildStageDelivery(
+            fixtureDataset(),
+            32 * 1024,
+            9,
+            "https://assets.dkbcompanion.com/staging/v2/game-assets/",
+        );
+
+        equal(delivery.catalog.assetBaseUrl, "https://assets.dkbcompanion.com/staging/v2/game-assets");
+        throws(
+            () => buildStageDelivery(fixtureDataset(), 32 * 1024, 9, "http://assets.example.test"),
+            /safe HTTPS URL/,
+        );
     });
 
     it("fails closed when a Support Memory target is absent", () => {
@@ -182,6 +210,17 @@ function fixtureDataset(): StageDetailsDataset {
                 targetId: "9001",
             },
         ],
+        eventMissions: [{
+            id: "7001",
+            areaId: "7",
+            categoryId: "7",
+            type: "Mission::QuestClearMission::CountMission",
+            name: "Clear Stage 1",
+            priority: 1,
+            ordererId: 1,
+            stageIds: ["101"],
+            rewards: [{ itemId: "11", itemType: "Point::Stone", quantity: 1 }],
+        }],
     };
 }
 

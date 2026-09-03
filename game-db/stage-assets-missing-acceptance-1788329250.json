@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "sourceSnapshotVersion": "1788329250",
+  "missingAssetCount": 66,
+  "missingPathsSha256": "f6e31b47e4a34ce1867faff6d61e99bdbe3f0801a34bdfda20dc870043957c5a",
+  "reason": "Accepted historical source gaps: 65 retired event banner paths are absent from every configured mirror, and card resource 1004310 is a zero-byte PNG in the installed first-party Global asset CPK."
+}

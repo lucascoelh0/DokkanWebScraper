@@ -15,6 +15,7 @@ interface Options {
     outputDir: string,
     generatedAt: string,
     previousDatasetPath?: string,
+    assetBaseUrl?: string,
 }
 
 export const REQUIRED_STAGE_TABLES: Array<keyof StageFirstPartyTables> = [
@@ -47,6 +48,7 @@ export const REQUIRED_STAGE_TABLES: Array<keyof StageFirstPartyTables> = [
     "sugoroku_map_enemy_informations",
     "sugoroku_map_puzzle_colors",
     "sugoroku_maps",
+    "treasure_items",
     "special_sets",
     "special_views",
     "special_categories",
@@ -72,6 +74,7 @@ export function parseStageCandidateArgs(args: string[]): Options {
         "--output-dir",
         "--generated-at",
         "--previous-dataset",
+        "--asset-base-url",
     ]);
     const values = new Map<string, string>();
     for (let index = 0; index < args.length; index += 1) {
@@ -95,6 +98,7 @@ export function parseStageCandidateArgs(args: string[]): Options {
         outputDir: resolve(values.get("--output-dir")!),
         generatedAt,
         ...(values.get("--previous-dataset") ? { previousDatasetPath: resolve(values.get("--previous-dataset")!) } : {}),
+        ...(values.get("--asset-base-url") ? { assetBaseUrl: values.get("--asset-base-url") } : {}),
     };
 }
 
@@ -145,7 +149,7 @@ async function main(): Promise<void> {
     await writeFormattedJson(auditPath, { ...candidate.audit, comparison });
     const compactDatasetBytes = Buffer.from(JSON.stringify(candidate.dataset), "utf8");
     await writeFile(transportPath, gzipSync(compactDatasetBytes, { level: 9 }), { flag: "wx" });
-    const delivery = buildStageDelivery(candidate.dataset);
+    const delivery = buildStageDelivery(candidate.dataset, undefined, undefined, options.assetBaseUrl);
     await writeFormattedJson(deliveryManifestPath, delivery.manifest);
     await writeFormattedJson(deliveryAuditPath, delivery.audit);
     const deliveryObjectRoot = resolve(options.outputDir, "stage-details", "objects");

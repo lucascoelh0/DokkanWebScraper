@@ -121,6 +121,22 @@ export interface StageDetailItem {
     thumbnailId?: string,
     rarityRaw?: number,
     elementRaw?: number,
+    detailCharacterId?: string,
+}
+
+export interface StageDetailEventMission {
+    id: string,
+    areaId: string,
+    categoryId: string,
+    type: string,
+    name: string,
+    description?: string,
+    priority: number,
+    ordererId: number,
+    startsAt?: string,
+    endsAt?: string,
+    stageIds: string[],
+    rewards: StageDetailItem[],
 }
 
 export interface StageDetailDropPreview {
@@ -288,4 +304,5 @@ export interface StageDetailsDataset {
     entries: StageDetail[],
     zBattles?: StageDetailZBattle[],
     supportMemoryRelations?: StageDetailSupportMemoryRelation[],
+    eventMissions?: StageDetailEventMission[],
 }

@@ -1,0 +1,473 @@
+import axios from "axios";
+import { createHash } from "crypto";
+import { mkdir, readFile, stat, writeFile } from "fs/promises";
+import { dirname, resolve, sep } from "path";
+import { writeFormattedJson } from "../format-json";
+import {
+    StageDetailEnemy,
+    StageDetailItem,
+    StageDetailsDataset,
+} from "../stage-detail";
+
+export const STAGE_ASSET_CONTRACT = "dokkan-game-asset-mirror";
+export const STAGE_ASSET_CONTRACT_VERSION = "1.0.0";
+export const DEFAULT_STAGE_ASSET_SOURCE_BASE_URL = "https://assets.dokkanstats.com/assets/global/en";
+export const STAGE_ASSET_OBJECT_PREFIX = "game-assets/";
+const STAGE_ASSET_FALLBACK_SOURCE_BASE_URLS = [
+    "https://dokkaninfo.com/assets/global/en",
+    "https://cdn.dokkan.fyi/assets/en",
+];
+
+interface ItemCatalogAsset { remoteUrl?: string }
+interface ItemCatalogItem {
+    key?: string,
+    id?: string,
+    itemType?: string,
+    icon?: ItemCatalogAsset,
+    background?: ItemCatalogAsset,
+}
+interface ItemCatalog { categories?: Array<{ items?: ItemCatalogItem[] }> }
+
+export interface StageAssetRequest {
+    path: string,
+    sourceUrls: string[],
+}
+
+export interface StageAssetInventoryEntry {
+    path: string,
+    objectKey: string,
+    sourceUrl: string,
+    sha256: string,
+    sizeBytes: number,
+    contentType: "image/png",
+}
+
+export interface StageAssetMissingAcceptance {
+    schemaVersion: 1,
+    sourceSnapshotVersion: string,
+    missingAssetCount: number,
+    missingPathsSha256: string,
+    reason: string,
+}
+
+export interface StageAssetManifest {
+    schemaVersion: 1,
+    contract: typeof STAGE_ASSET_CONTRACT,
+    contractVersion: typeof STAGE_ASSET_CONTRACT_VERSION,
+    datasetVersion: string,
+    sourceSnapshotVersion: string,
+    sourceDatabaseSha256: string,
+    sourceBaseUrl: string,
+    objectPrefix: typeof STAGE_ASSET_OBJECT_PREFIX,
+    requestedAssetCount: number,
+    assetCount: number,
+    missingAssetCount: number,
+    assetBytes: number,
+    inventorySha256: string,
+    assets: StageAssetInventoryEntry[],
+    missingAssets: Array<{ path: string, sourceUrls: string[] }>,
+    missingAcceptance?: StageAssetMissingAcceptance,
+}
+
+export function collectStageAssetRequests(
+    dataset: StageDetailsDataset,
+    itemCatalog: ItemCatalog,
+    frontier?: unknown,
+    sourceBaseUrl = DEFAULT_STAGE_ASSET_SOURCE_BASE_URL,
+): StageAssetRequest[] {
+    const normalizedBaseUrl = validateHttpsBaseUrl(sourceBaseUrl);
+    const requests = new Map<string, Set<string>>();
+    const addPath = (rawPath: string | undefined, originalUrl?: string, alternatePaths: string[] = []) => {
+        const path = normalizeStageAssetPath(rawPath);
+        if (!path) return;
+        const urls = requests.get(path) ?? new Set<string>();
+        urls.add(`${normalizedBaseUrl}/${path}`);
+        STAGE_ASSET_FALLBACK_SOURCE_BASE_URLS.forEach(baseUrl => urls.add(`${baseUrl}/${path}`));
+        if (originalUrl) urls.add(originalUrl);
+        for (const alternateRawPath of alternatePaths) {
+            const alternatePath = normalizeStageAssetPath(alternateRawPath);
+            if (!alternatePath || alternatePath === path) continue;
+            urls.add(`${normalizedBaseUrl}/${alternatePath}`);
+            STAGE_ASSET_FALLBACK_SOURCE_BASE_URLS.forEach(baseUrl => urls.add(`${baseUrl}/${alternatePath}`));
+        }
+        const fallbackPath = fallbackCharacterThumbPath(path);
+        if (fallbackPath) {
+            urls.add(`${normalizedBaseUrl}/${fallbackPath}`);
+            STAGE_ASSET_FALLBACK_SOURCE_BASE_URLS.forEach(baseUrl => urls.add(`${baseUrl}/${fallbackPath}`));
+        }
+        requests.set(path, urls);
+    };
+    const addRemoteUrl = (url: string | undefined) => {
+        const path = assetPathFromUrl(url);
+        if (path) addPath(path, url);
+    };
+    const itemsByKey = new Map<string, ItemCatalogItem>();
+    for (const item of itemCatalog.categories?.flatMap(category => category.items ?? []) ?? []) {
+        const key = item.key ?? (item.itemType && item.id ? `${item.itemType}:${item.id}` : undefined);
+        if (key) itemsByKey.set(key, item);
+    }
+    const addCharacterAssets = (thumbnailId?: string, rarityRaw?: number, elementRaw?: number) => {
+        const iconId = thumbnailId?.trim();
+        if (!iconId || !/^\d+$/.test(iconId)) return;
+        addPath(`character/thumb/card_${iconId}_thumb/card_${iconId}_thumb.png`);
+        if (rarityRaw === undefined || rarityRaw < 0 || rarityRaw > 5) return;
+        const rarity = ["n", "r", "sr", "ssr", "ur", "lr"][rarityRaw];
+        addPath(`layout/en/image/character/cha_rare_sm_${rarity}.png`);
+        if (elementRaw === undefined || elementRaw < 0 || elementRaw > 24 || elementRaw % 10 > 4) return;
+        const frameColor = elementRaw % 10;
+        const elementCode = String(elementRaw).padStart(2, "0");
+        addPath(`layout/en/image/character/character_thumb_bg/cha_base_0${frameColor}_0${rarityRaw}.png`);
+        addPath(`layout/en/image/character/cha_type_icon_${elementCode}.png`);
+    };
+    const addReward = (reward: StageDetailItem) => {
+        const itemType = reward.itemType;
+        const itemId = reward.itemId;
+        const catalogItem = itemsByKey.get(`${itemType}:${itemId}`);
+        addRemoteUrl(catalogItem?.icon?.remoteUrl);
+        if (itemType !== "AwakeningItem") addRemoteUrl(catalogItem?.background?.remoteUrl);
+        if (itemType === "Point::Stone") {
+            addPath("layout/en/image/item/login_bonus/stone.png");
+        } else if (itemType === "AwakeningItem") {
+            const padded = itemId.padStart(5, "0");
+            addPath(`item/awaken/en/thumb/thumb_awaken_items_${padded}/thumb_awaken_items_${padded}.png`);
+        } else if (itemType === "SupportMemory") {
+            addPath(`item/support_memory/thumb/support_memory_thumb_${itemId}.png`);
+        } else if (itemType === "TrainingItem") {
+            addPath(`item/training_item/thumb_training_items_${itemId.padStart(7, "0")}.png`);
+        } else if (itemType === "TreasureItem" && reward.thumbnailId) {
+            const suffix = reward.thumbnailId.padStart(5, "0");
+            addPath(`item/other/en/thumb/thumb_trade_jewel_${suffix}/thumb_trade_jewel_${suffix}.png`);
+        } else if (itemType === "Card") {
+            addCharacterAssets(reward.thumbnailId ?? itemId, reward.rarityRaw, reward.elementRaw);
+        }
+    };
+    const addEnemy = (enemy: StageDetailEnemy) => {
+        addCharacterAssets(enemy.thumbnailId, enemy.rarityRaw, enemy.elementRaw);
+    };
+
+    for (const stage of dataset.entries) {
+        addPath(
+            stage.images.button?.sourcePath ?? stage.images.header?.sourcePath,
+            undefined,
+            [stage.images.header?.sourcePath].filter((path): path is string => Boolean(path)),
+        );
+        addPath(stage.story?.banner?.sourcePath);
+        if (stage.areaType === "Area::MainArea" && stage.chapter?.id) {
+            addPath(`outgame/extension/adventure/chapter/${stage.chapter.id}/${stage.chapter.id}001.png`);
+        }
+        stage.enemies.forEach(addEnemy);
+        stage.bossDrops?.forEach(addReward);
+        stage.dropPreviews?.flatMap(preview => preview.items).forEach(addReward);
+    }
+    for (const stage of dataset.zBattles ?? []) {
+        addPath(
+            stage.listButton?.sourcePath ?? stage.banner?.sourcePath,
+            undefined,
+            [stage.banner?.sourcePath].filter((path): path is string => Boolean(path)),
+        );
+        stage.checkpoints?.flatMap(checkpoint => checkpoint.repeatRewards).forEach(addReward);
+        stage.firstRewards?.flatMap(level => level.rewards).forEach(addReward);
+        // Z-Battle escalation rows identify synthetic enemy cards (often 9xxxxxx),
+        // but the Android screen currently presents those rows as text only. Do
+        // not mirror a guessed thumb path for a visual that no consumer requests.
+    }
+    dataset.eventMissions?.flatMap(mission => mission.rewards).forEach(addReward);
+
+    walkFrontier(frontier, addRemoteUrl, addPath, addCharacterAssets);
+    return [...requests]
+        .map(([path, urls]) => ({ path, sourceUrls: [...urls] }))
+        .sort((left, right) => left.path.localeCompare(right.path, "en", { numeric: true }));
+}
+
+function walkFrontier(
+    value: unknown,
+    addRemoteUrl: (url?: string) => void,
+    addPath: (path?: string) => void,
+    addCharacterAssets: (thumbnailId?: string, rarityRaw?: number, elementRaw?: number) => void,
+): void {
+    if (typeof value === "string") {
+        if (/^https:\/\//.test(value)) addRemoteUrl(value);
+        else if (/^(origin|character|layout|item)\//.test(value)) addPath(value);
+        return;
+    }
+    if (Array.isArray(value)) {
+        value.forEach(item => walkFrontier(item, addRemoteUrl, addPath, addCharacterAssets));
+        return;
+    }
+    if (!value || typeof value !== "object") return;
+    const record = value as Record<string, unknown>;
+    const portraitSpec = record.portraitSpec;
+    if (portraitSpec && typeof portraitSpec === "object" && !Array.isArray(portraitSpec)) {
+        const spec = portraitSpec as Record<string, unknown>;
+        const rarityRaw = ["N", "R", "SR", "SSR", "UR", "LR"].indexOf(String(spec.rarity ?? ""));
+        const elementRaw = Number(spec.elementCode);
+        addCharacterAssets(
+            String(spec.iconId ?? ""),
+            rarityRaw >= 0 ? rarityRaw : undefined,
+            Number.isSafeInteger(elementRaw) ? elementRaw : undefined,
+        );
+        const step = Number(record.step);
+        if (Number.isSafeInteger(step) && step > 0) {
+            addPath(`layout/en/image/character/cha_label_efchange_${step}.png`);
+        }
+    }
+    Object.values(record).forEach(item => walkFrontier(item, addRemoteUrl, addPath, addCharacterAssets));
+}
+
+export async function acquireStageAssets(options: {
+    dataset: StageDetailsDataset,
+    itemCatalog: ItemCatalog,
+    frontier?: unknown,
+    outputDir: string,
+    reuseDir?: string,
+    missingAcceptance?: StageAssetMissingAcceptance,
+    sourceBaseUrl?: string,
+    concurrency?: number,
+}): Promise<StageAssetManifest> {
+    const outputDir = resolve(options.outputDir);
+    await requireMissing(outputDir);
+    const reuseDir = options.reuseDir ? resolve(options.reuseDir) : undefined;
+    const reusedSourceUrls = reuseDir ? await readReusableSourceUrls(reuseDir) : new Map<string, string>();
+    const sourceBaseUrl = validateHttpsBaseUrl(options.sourceBaseUrl ?? DEFAULT_STAGE_ASSET_SOURCE_BASE_URL);
+    const requests = collectStageAssetRequests(options.dataset, options.itemCatalog, options.frontier, sourceBaseUrl);
+    await mkdir(dirname(outputDir), { recursive: true });
+    await mkdir(outputDir, { recursive: false });
+    let completed = 0;
+    const acquiredResults = await mapWithConcurrency(requests, options.concurrency ?? 12, async request => {
+        const reused = reuseDir ? await readReusablePng(reuseDir, request.path) : undefined;
+        const acquired = reused
+            ? { buffer: reused, sourceUrl: reusedSourceUrls.get(request.path) ?? request.sourceUrls[0] }
+            : await fetchFirstPng(request);
+        completed += 1;
+        if (completed % 250 === 0 || completed === requests.length) {
+            console.log(`Checked ${completed}/${requests.length} Stage assets`);
+        }
+        if (!acquired) return { request };
+        const outputPath = contained(outputDir, STAGE_ASSET_OBJECT_PREFIX + request.path);
+        await mkdir(dirname(outputPath), { recursive: true });
+        await writeFile(outputPath, acquired.buffer, { flag: "wx" });
+        const entry = {
+            path: request.path,
+            objectKey: STAGE_ASSET_OBJECT_PREFIX + request.path,
+            sourceUrl: acquired.sourceUrl,
+            sha256: sha256(acquired.buffer),
+            sizeBytes: acquired.buffer.byteLength,
+            contentType: "image/png" as const,
+        };
+        return { request, entry };
+    });
+    const assets = acquiredResults.flatMap(result => result.entry ? [result.entry] : []);
+    const missingAssets = acquiredResults
+        .filter(result => !result.entry)
+        .map(result => result.request);
+    validateStageAssetMissingAcceptance(
+        options.dataset.sourceSnapshotVersion,
+        missingAssets,
+        options.missingAcceptance,
+    );
+    assets.sort((left, right) => left.path.localeCompare(right.path, "en", { numeric: true }));
+    const manifest: StageAssetManifest = {
+        schemaVersion: 1,
+        contract: STAGE_ASSET_CONTRACT,
+        contractVersion: STAGE_ASSET_CONTRACT_VERSION,
+        datasetVersion: options.dataset.generatedAt,
+        sourceSnapshotVersion: requireValue(options.dataset.sourceSnapshotVersion, "source snapshot version"),
+        sourceDatabaseSha256: requireValue(options.dataset.sourceDatabaseSha256, "source database SHA-256"),
+        sourceBaseUrl,
+        objectPrefix: STAGE_ASSET_OBJECT_PREFIX,
+        requestedAssetCount: requests.length,
+        assetCount: assets.length,
+        missingAssetCount: missingAssets.length,
+        assetBytes: assets.reduce((sum, asset) => sum + asset.sizeBytes, 0),
+        inventorySha256: sha256(Buffer.from(JSON.stringify(assets))),
+        assets,
+        missingAssets,
+        ...(options.missingAcceptance ? { missingAcceptance: options.missingAcceptance } : {}),
+    };
+    await writeFormattedJson(resolve(outputDir, "stage-assets-manifest.json"), manifest);
+    return manifest;
+}
+
+export function validateStageAssetMissingAcceptance(
+    sourceSnapshotVersion: string | undefined,
+    missingAssets: Array<{ path: string }>,
+    acceptance: StageAssetMissingAcceptance | undefined,
+): void {
+    if (missingAssets.length === 0) {
+        if (acceptance) throw new Error("Stage asset missing acceptance is unnecessary for a complete mirror");
+        return;
+    }
+    const missingPathsSha256 = sha256(Buffer.from(
+        missingAssets.map(asset => asset.path).sort((left, right) => left.localeCompare(right, "en", { numeric: true })).join("\n"),
+    ));
+    if (!acceptance
+        || acceptance.schemaVersion !== 1
+        || acceptance.sourceSnapshotVersion !== sourceSnapshotVersion
+        || acceptance.missingAssetCount !== missingAssets.length
+        || acceptance.missingPathsSha256 !== missingPathsSha256
+        || acceptance.reason.trim().length < 20) {
+        throw new Error(`Stage asset mirror has ${missingAssets.length} unaccepted missing assets (${missingPathsSha256})`);
+    }
+}
+
+async function fetchFirstPng(request: StageAssetRequest): Promise<{ buffer: Buffer, sourceUrl: string } | undefined> {
+    for (const sourceUrl of request.sourceUrls) {
+        try {
+            const response = await axios.get<ArrayBuffer>(sourceUrl, {
+                responseType: "arraybuffer",
+                timeout: 30_000,
+                maxRedirects: 0,
+                validateStatus: status => status === 200,
+                headers: { "User-Agent": "Dokkanpanion-stage-asset-mirror/1.0" },
+            });
+            const buffer = Buffer.from(response.data);
+            if (!isPng(buffer)) continue;
+            return { buffer, sourceUrl };
+        } catch {
+            continue;
+        }
+    }
+    return undefined;
+}
+
+async function readReusableSourceUrls(reuseDir: string): Promise<Map<string, string>> {
+    const raw = await readFile(resolve(reuseDir, "stage-assets-manifest.json"), "utf8");
+    const manifest = JSON.parse(raw) as Partial<StageAssetManifest>;
+    return new Map((manifest.assets ?? []).map(asset => [asset.path, asset.sourceUrl]));
+}
+
+async function readReusablePng(reuseDir: string, path: string): Promise<Buffer | undefined> {
+    try {
+        const buffer = await readFile(contained(reuseDir, STAGE_ASSET_OBJECT_PREFIX + path));
+        return isPng(buffer) ? buffer : undefined;
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+        throw error;
+    }
+}
+
+export function normalizeStageAssetPath(value?: string): string | undefined {
+    const path = value?.trim().replace(/\\/g, "/").replace(/^\/+/, "");
+    if (!path || !path.endsWith(".png") || path.split("/").some(part => !part || part === "." || part === "..")) return undefined;
+    if (!/^[A-Za-z0-9_./-]+$/.test(path)) return undefined;
+    return path;
+}
+
+function assetPathFromUrl(value?: string): string | undefined {
+    if (!value) return undefined;
+    try {
+        const url = new URL(value);
+        if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return undefined;
+        const markers = ["/assets/global/en/", "/assets/en/"];
+        const marker = markers.find(candidate => url.pathname.includes(candidate));
+        return marker ? normalizeStageAssetPath(url.pathname.split(marker)[1]) : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function fallbackCharacterThumbPath(path: string): string | undefined {
+    const match = /^character\/thumb\/card_(\d+)_thumb\/card_\1_thumb\.png$/.exec(path);
+    if (!match || match[1].endsWith("0")) return undefined;
+    const fallbackId = match[1].slice(0, -1) + "0";
+    return `character/thumb/card_${fallbackId}_thumb/card_${fallbackId}_thumb.png`;
+}
+
+function validateHttpsBaseUrl(value: string): string {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+        throw new Error("Stage asset source base must be a safe HTTPS URL");
+    }
+    return url.toString().replace(/\/$/, "");
+}
+
+function isPng(buffer: Buffer): boolean {
+    return buffer.byteLength >= 8 && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+}
+
+function sha256(buffer: Buffer): string {
+    return createHash("sha256").update(buffer).digest("hex");
+}
+
+function requireValue(value: string | undefined, label: string): string {
+    if (!value) throw new Error(`Stage asset dataset lacks ${label}`);
+    return value;
+}
+
+function contained(root: string, path: string): string {
+    const target = resolve(root, ...path.split("/"));
+    const prefix = `${resolve(root)}${sep}`.toLowerCase();
+    if (!target.toLowerCase().startsWith(prefix)) throw new Error(`Stage asset path escapes output: ${path}`);
+    return target;
+}
+
+async function requireMissing(path: string): Promise<void> {
+    try {
+        await stat(path);
+        throw new Error(`Stage asset output must not already exist: ${path}`);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+}
+
+async function mapWithConcurrency<T, R>(values: T[], concurrency: number, task: (value: T) => Promise<R>): Promise<R[]> {
+    if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 32) throw new Error("Invalid Stage asset concurrency");
+    const result = new Array<R>(values.length);
+    let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+        while (true) {
+            const index = cursor++;
+            if (index >= values.length) return;
+            result[index] = await task(values[index]);
+        }
+    }));
+    return result;
+}
+
+async function main(): Promise<void> {
+    const values = new Map<string, string>();
+    const supported = new Set(["--dataset", "--item-catalog", "--frontier", "--output-dir", "--reuse-dir", "--missing-acceptance", "--source-base-url", "--concurrency"]);
+    const args = process.argv.slice(2);
+    for (let index = 0; index < args.length; index += 1) {
+        const [name, inline] = args[index].split("=", 2);
+        if (!supported.has(name)) throw new Error(`Unexpected Stage asset argument: ${args[index]}`);
+        const value = inline ?? args[++index];
+        if (!value || values.has(name)) throw new Error(`Missing or duplicate Stage asset argument: ${name}`);
+        values.set(name, value);
+    }
+    for (const required of ["--dataset", "--item-catalog", "--output-dir"]) {
+        if (!values.has(required)) throw new Error(`Missing Stage asset argument: ${required}`);
+    }
+    const dataset = JSON.parse(await readFile(resolve(values.get("--dataset")!), "utf8")) as StageDetailsDataset;
+    const itemCatalog = JSON.parse(await readFile(resolve(values.get("--item-catalog")!), "utf8")) as ItemCatalog;
+    const frontier = values.get("--frontier")
+        ? JSON.parse(await readFile(resolve(values.get("--frontier")!), "utf8"))
+        : undefined;
+    const missingAcceptance = values.get("--missing-acceptance")
+        ? JSON.parse(await readFile(resolve(values.get("--missing-acceptance")!), "utf8")) as StageAssetMissingAcceptance
+        : undefined;
+    const manifest = await acquireStageAssets({
+        dataset,
+        itemCatalog,
+        frontier,
+        outputDir: resolve(values.get("--output-dir")!),
+        reuseDir: values.get("--reuse-dir") ? resolve(values.get("--reuse-dir")!) : undefined,
+        missingAcceptance,
+        sourceBaseUrl: values.get("--source-base-url"),
+        concurrency: values.get("--concurrency") ? Number(values.get("--concurrency")) : undefined,
+    });
+    console.log(JSON.stringify({
+        outputDir: resolve(values.get("--output-dir")!),
+        assetCount: manifest.assetCount,
+        missingAssetCount: manifest.missingAssetCount,
+        assetBytes: manifest.assetBytes,
+        inventorySha256: manifest.inventorySha256,
+    }, null, 2));
+}
+
+if (require.main === module) {
+    main().catch(error => {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 1;
+    });
+}
