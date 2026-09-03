@@ -27,6 +27,7 @@ export const PINNED_STAGE_SOURCE_PROFILE = {
     equipmentItemMaxId: 9069,
     equipmentSkillCount: 14021,
     equipmentLimitationCount: 310,
+    linkSkillLvUpItemCount: 3,
 } as const;
 
 export function validatePinnedStageSourceProfile(
@@ -43,6 +44,7 @@ export function validatePinnedStageSourceProfile(
         equipmentItemMaxId: Math.max(...tables.equipment_skill_items.map(row => Number(row.id))),
         equipmentSkillCount: tables.equipment_skills.length,
         equipmentLimitationCount: tables.equipment_skill_limitations.length,
+        linkSkillLvUpItemCount: tables.link_skill_lv_up_items.length,
     };
     for (const [key, expected] of Object.entries(PINNED_STAGE_SOURCE_PROFILE)) {
         if (key === "sourceSnapshotVersion") continue;
@@ -70,6 +72,7 @@ export const REQUIRED_STAGE_TABLES: Array<keyof StageFirstPartyTables> = [
     "equipment_skill_items",
     "equipment_skill_limitations",
     "equipment_skills",
+    "link_skill_lv_up_items",
     "link_skills",
     "mission_rewards",
     "missions",

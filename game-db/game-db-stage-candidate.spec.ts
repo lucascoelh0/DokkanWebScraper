@@ -11,6 +11,7 @@ describe("Stage candidate pinned source profile", () => {
             equipment_skill_items: Array.from({ length: PINNED_STAGE_SOURCE_PROFILE.equipmentItemCount }, (_, index) => ({ id: String(index === 0 ? PINNED_STAGE_SOURCE_PROFILE.equipmentItemMaxId : index + 1) })),
             equipment_skills: Array.from({ length: PINNED_STAGE_SOURCE_PROFILE.equipmentSkillCount }, (_, index) => ({ id: String(index + 1) })),
             equipment_skill_limitations: Array.from({ length: PINNED_STAGE_SOURCE_PROFILE.equipmentLimitationCount }, (_, index) => ({ id: String(index + 1) })),
+            link_skill_lv_up_items: Array.from({ length: PINNED_STAGE_SOURCE_PROFILE.linkSkillLvUpItemCount }, (_, index) => ({ id: String(index + 1) })),
         } as unknown as StageFirstPartyTables;
     }
 

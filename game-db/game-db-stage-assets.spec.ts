@@ -89,6 +89,13 @@ describe("Stage asset mirror", () => {
                             },
                         },
                     },
+                }, {
+                    sourceRowId: "3",
+                    itemType: "LinkSkillLvUpItem",
+                    itemId: "1",
+                    dropTypeRaw: "boss",
+                    quantityStatus: "unknown",
+                    chanceStatus: "unknown",
                 }],
             }],
         };
@@ -123,6 +130,7 @@ describe("Stage asset mirror", () => {
         equal(paths.includes("layout/en/image/character/cha_type_icon_13.png"), true);
         equal(paths.includes("derived/equipment/levels/lv-7.png"), true);
         equal(paths.includes("layout/en/image/charamenu/potential/equ_infinite_icon_gold.png"), true);
+        equal(paths.includes("item/other/en/thumb/thumb_linkskill_orb_00001/thumb_linkskill_orb_00001.png"), true);
         const missingVariant = requests.find(request => request.path.includes("card_1011961_thumb"))!;
         equal(
             missingVariant.sourceUrls.includes(

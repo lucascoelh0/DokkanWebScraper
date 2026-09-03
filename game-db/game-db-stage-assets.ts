@@ -141,6 +141,9 @@ export function collectStageAssetRequests(
             addPath(`item/support_memory/thumb/support_memory_thumb_${itemId}.png`);
         } else if (itemType === "TrainingItem") {
             addPath(`item/training_item/thumb_training_items_${itemId.padStart(7, "0")}.png`);
+        } else if (itemType === "LinkSkillLvUpItem") {
+            const padded = itemId.padStart(5, "0");
+            addPath(`item/other/en/thumb/thumb_linkskill_orb_${padded}/thumb_linkskill_orb_${padded}.png`);
         } else if (itemType === "TreasureItem" && reward.thumbnailId) {
             const suffix = reward.thumbnailId.padStart(5, "0");
             addPath(`item/other/en/thumb/thumb_trade_jewel_${suffix}/thumb_trade_jewel_${suffix}.png`);

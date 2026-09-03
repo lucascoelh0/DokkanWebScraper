@@ -38,6 +38,7 @@ export interface StageFirstPartyTables {
     equipment_skill_items: GameDbRow[],
     equipment_skill_limitations: GameDbRow[],
     equipment_skills: GameDbRow[],
+    link_skill_lv_up_items: GameDbRow[],
     link_skills: GameDbRow[],
     mission_rewards: GameDbRow[],
     missions: GameDbRow[],
@@ -210,10 +211,12 @@ function rewardPresentation(
     cards: ReadonlyMap<string, GameDbRow>,
     canonicalAwakenedCards: ReadonlyMap<string, string>,
     treasureItems: ReadonlyMap<string, GameDbRow>,
+    linkSkillLvUpItems: ReadonlyMap<string, GameDbRow>,
     equipmentSkillItems: ReadonlyMap<string, GameDbRow>,
     equipmentSkillPresentations: ReadonlyMap<string, StageEquipmentSkillPresentation>,
 ): {
     name?: string,
+    description?: string,
     thumbnailId?: string,
     rarityRaw?: number,
     elementRaw?: number,
@@ -231,6 +234,26 @@ function rewardPresentation(
         return {
             ...(text(item.name) ? { name: text(item.name) } : {}),
             ...(optionalId(item, "image_suffix_number") ? { thumbnailId: optionalId(item, "image_suffix_number") } : {}),
+        };
+    }
+    if (itemType === "LinkSkillLvUpItem") {
+        const item = linkSkillLvUpItems.get(itemId);
+        if (!item) throw new Error(`Stage reward references missing Link Skill level-up item ${itemId}`);
+        const rarity = integer(item, "rarity");
+        if (rarity < 0 || rarity > 2) {
+            throw new Error(`Link Skill level-up item ${itemId} has unsupported rarity ${rarity}`);
+        }
+        const name = text(item.name);
+        const description = text(item.description);
+        if (!name || !description) {
+            throw new Error(`Link Skill level-up item ${itemId} is missing official presentation text`);
+        }
+        const paddedId = itemId.padStart(5, "0");
+        return {
+            name,
+            description,
+            rarityRaw: rarity,
+            iconAssetPath: `item/other/en/thumb/thumb_linkskill_orb_${paddedId}/thumb_linkskill_orb_${paddedId}.png`,
         };
     }
     if (itemType === "EquipmentSkillItem") {
@@ -764,6 +787,7 @@ export function buildStageFirstPartyCandidate(options: {
     const cards = uniqueById(options.tables.cards, "card");
     const cardCategories = uniqueById(options.tables.card_categories, "card category");
     const treasureItems = uniqueById(options.tables.treasure_items, "treasure item");
+    const linkSkillLvUpItems = uniqueById(options.tables.link_skill_lv_up_items, "Link Skill level-up item");
     const equipmentSkillItems = uniqueById(options.tables.equipment_skill_items, "equipment skill item");
     const equipmentPresentations = equipmentSkillPresentations(options.tables, equipmentSkillItems, cards, cardCategories);
     const canonicalAwakenedCards = canonicalAwakenedCardIds(options.tables.card_awakening_routes, cards);
@@ -924,7 +948,7 @@ export function buildStageFirstPartyCandidate(options: {
                 return [{
                     itemId,
                     itemType,
-                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, equipmentSkillItems, equipmentPresentations),
+                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, linkSkillLvUpItems, equipmentSkillItems, equipmentPresentations),
                 }];
             });
             return [{ sourceRowId: id(row), difficultyValues, items }];
@@ -973,6 +997,7 @@ export function buildStageFirstPartyCandidate(options: {
                     cards,
                     canonicalAwakenedCards,
                     treasureItems,
+                    linkSkillLvUpItems,
                     equipmentSkillItems,
                     equipmentPresentations,
                 ),
@@ -1049,6 +1074,7 @@ export function buildStageFirstPartyCandidate(options: {
             cards,
             canonicalAwakenedCards,
             treasureItems,
+            linkSkillLvUpItems,
             equipmentSkillItems,
             equipmentPresentations,
         ),
@@ -1194,7 +1220,7 @@ export function buildStageFirstPartyCandidate(options: {
                     itemType,
                     quantity: integer(reward, "quantity"),
                     ...(cardExpInitial !== undefined ? { cardExpInitial } : {}),
-                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, equipmentSkillItems, equipmentPresentations),
+                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, linkSkillLvUpItems, equipmentSkillItems, equipmentPresentations),
                 };
             });
             return {

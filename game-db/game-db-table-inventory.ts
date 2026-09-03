@@ -71,6 +71,7 @@ export const STAGE_GAME_DB_TABLES = [
     "equipment_skill_items",
     "equipment_skill_limitations",
     "equipment_skills",
+    "link_skill_lv_up_items",
     "mission_category_rewards",
     "quest_category_bonus_rarity_tables",
     "quest_category_bonuses",
