@@ -3588,7 +3588,7 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   mirror to remove external image latency and make item/card/enemy rendering
   independent from third-party hosts.
 
-## Stage missions and owned asset mirror local checkpoint (2026-09-03)
+## Stage missions and owned asset mirror staging checkpoint (2026-09-03)
 
 - The local Stage candidate for Global snapshot `1788329250` now projects the
   complete first-party event-mission surface: 7,137 missions across 412 event
@@ -3614,9 +3614,16 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   paths and provenance URLs are canonicalized and validated before upload.
 - Pipeline contract tests, Android domain/app tests, Android lint and the
   staging debug assembly pass. The final remote dry-run projects 136,022,482
-  bytes for the asset mirror and 1,784,116 bytes for the Stage dataset. Neither
-  candidate has been published, promoted, committed or pushed at this
-  checkpoint.
+  bytes for the asset mirror and 1,784,116 bytes for the Stage dataset. Both
+  candidates are published under `staging/v2`; the public asset manifest
+  SHA-256 is
+  `314115b6e05555823147e7a34bcb679a98cdf478fe5b46ad9848190f272b5ffb`,
+  the Stage manifest SHA-256 is
+  `31b89d4f1b52129b97d2d7827b644b774065428bb18b4e56c3979d441760f9e5`,
+  and the public catalog reproduces its advertised 413,651 bytes and SHA-256
+  `e342158f361efb5d4c2628a3dbc8da6b1e18687e22608334e15a2fa0b0ca93f5`.
+  Public event-banner, character-thumb, medal and Frontier samples also match
+  their inventory hashes. No branch was pushed.
 
 ## Operating Constraints
 
