@@ -200,6 +200,28 @@ describe("game DB character passive-mode overlay", () => {
         equal(baseline[0].transformations?.[0].ezaPassive, undefined);
     });
 
+    it("treats a source snapshot version refresh as non-semantic when mode evidence is otherwise identical", () => {
+        const baselineMode = mode("standard", "Same passive", "10");
+        const projectedMode = JSON.parse(JSON.stringify(baselineMode)) as PassiveModeDetails;
+        projectedMode.structuralSource!.evidence[0].provenance.sourceVersion = "2";
+        projectedMode.conditionEvidence![0].provenance.sourceVersion = "2";
+        const baseline = [{
+            id: "10",
+            passiveDetails: { text: "Same passive", modes: [baselineMode] },
+        }] as Character[];
+
+        const result = overlayGameDbCharacterPassiveModes(baseline, [projection("10", {
+            passiveDetails: { text: "Same passive", modes: [projectedMode] },
+        })]);
+
+        equal(result.coverage.alreadyPresentStateCount, 1);
+        equal(result.coverage.patchedStateCount, 0);
+        equal(
+            result.characters[0].passiveDetails?.modes?.[0].structuralSource?.evidence[0].provenance.sourceVersion,
+            "1",
+        );
+    });
+
     it("fails closed when a mode state cannot bind safely", () => {
         const projected = projection("10", {
             passiveDetails: { text: "Projected", modes: [mode("survival", "Survival")] },

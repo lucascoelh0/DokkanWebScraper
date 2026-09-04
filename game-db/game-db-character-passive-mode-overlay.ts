@@ -279,7 +279,11 @@ export function overlayGameDbCharacterPassiveModes(
                 continue;
             }
             if (baselineDetails.modes) {
-                if (JSON.stringify(baselineDetails.modes) !== JSON.stringify(modes)) {
+                const comparableModes = (value: PassiveModeDetails[]) => JSON.stringify(
+                    value,
+                    (key, nestedValue) => key === "sourceVersion" ? "<snapshot-version>" : nestedValue,
+                );
+                if (comparableModes(baselineDetails.modes) !== comparableModes(modes)) {
                     throw new Error(`passive-mode state ${projection.id}:${releaseState} conflicts with the baseline`);
                 }
                 alreadyPresentStateCount += 1;
