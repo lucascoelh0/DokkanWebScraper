@@ -2,19 +2,93 @@
 
 ## Status and execution boundary
 
-This document records a deferred performance change for the Character R2
-publisher. The production dataset refresh that was active on 2026-09-04
-completed successfully with the unchanged publisher and passed independent
-verification. OPT-R2-01 is now eligible for a separate implementation slice;
-it must not be applied retroactively to that completed publication or mixed
-with its dataset checkpoint.
+OPT-R2-01 was implemented, reviewed, committed and pushed on 2026-09-04. Its
+staging and production rollout gates have also completed successfully. The
+optimization remained separate from the production dataset refresh and its
+dataset/passive-mode checkpoint.
 
-Recording this plan authorizes no implementation, remote read, R2 write,
-publication, commit or push. Publication remains a separate user-authorized
-operation and must retain the existing dry-run, byte-budget and baseline-pin
-gates.
+The publisher continues to require separate authorization for each real R2
+publication. The completed rollout does not authorize future remote reads,
+writes, publications, commits or pushes; dry-run, byte-budget and baseline-pin
+gates remain mandatory.
 
 Tracking name: **OPT-R2-01 — verified portrait inventory fast path**.
+
+Implementation commit: `56caae86953587cc25aa2400043acc2d9fbe8f1a`
+(`feat(r2): add verified inventory fast path`). The commit contains only the
+12 publisher source, test and corresponding tracked `lib/` files. It was
+pushed to `origin/main` at the same hash.
+
+## Implementation and rollout result
+
+### Local implementation gates
+
+- TypeScript build passed.
+- Focused publisher tests passed: 64.
+- Broad publisher suite passed: 181 passing and one pre-existing Windows
+  symlink-dependent pending test.
+- `git diff --check` passed.
+- Final review returned GO with no unresolved P0-P3 material finding.
+- The 3,303-portrait fixture uses four complete LIST pages, zero portrait body
+  GETs, zero local body reads and zero PUTs on the trusted-receipt fast path.
+
+The implementation uses one S3 client per operation, bounded concurrency and
+retries, per-attempt timeouts, paginated inventory reads, opaque ETag/version
+witnesses, schema-2 receipts, create-only immutable writes, exact readback,
+three baseline checks around writes, and manifest-last promotion. Receipt
+bootstrap is an explicit read-only operation requiring a full audit and a
+pinned baseline.
+
+### Staging/v2 rollout
+
+The schema-2 bootstrap audited all 3,303 staging portrait bodies once and
+performed zero PUTs. The first trusted-receipt dry-run then completed in about
+nine seconds with four LIST pages, two fixed GETs, zero portrait body GETs and
+zero planned writes.
+
+A separately authorized live validation promoted the already validated
+2026-09-04 production Character data to the isolated `staging/v2` lane. It
+wrote only:
+
+- immutable payload
+  `staging/v2/releases/2026-09-04T02-57-39.813Z/8c48e2e87f7dbc6dda040ba2838aef2aa4b31ed446c28c62d20a02e081d5276d/characters.json.gz`,
+  2,602,106 bytes, SHA-256
+  `8c48e2e87f7dbc6dda040ba2838aef2aa4b31ed446c28c62d20a02e081d5276d`;
+  and
+- mutable `staging/v2/characters-manifest.json`, written last, 456 bytes,
+  SHA-256
+  `d182e35023956568a8004f93ffecdc39f31d501449129507eb8c01e4500c8892`.
+
+Live telemetry was four LISTs, seven GETs and two PUTs with zero retries. All
+3,303 portraits were reused; no portrait was uploaded, overwritten or deleted.
+Independent public HTTP reads returned status 200 and reproduced both hashes.
+The post-publication dry-run was idempotent: four LISTs, two GETs, zero PUTs and
+zero portrait body GETs.
+
+### Production/v2 rollout
+
+The production bootstrap was strictly read-only against pinned Character
+baseline
+`f3d9a59708be5ad906bee4abe5486084706bf6f94b6ebfc831d0eb156b22311b`.
+It performed four LISTs and 3,306 GETs, verified 69,937,681 bytes, reused all
+3,303 portraits, found no conflict and performed zero PUTs or deletes. Only
+after the final baseline reread did it atomically create the local schema-2
+receipt. Its deterministic portrait inventory SHA-256 is
+`0c2c18426e8243280fa2ee2f56fbebb306928037fde6b447951ce277ab65d58e`.
+
+The following normal production dry-run completed in about nine seconds with
+four LISTs, two fixed GETs, zero portrait body GETs, zero PUTs and all 3,303
+receipts reused. A separate public HTTP audit confirmed that production was
+unchanged:
+
+- `v2/characters-manifest.json`: 448 bytes, SHA-256
+  `41a5586a57103d5efb6d6c3dddd2a603e7bff050a5cfac5b421d5ba394b0f142`;
+  and
+- immutable payload: 2,598,421 bytes, SHA-256
+  `f3d9a59708be5ad906bee4abe5486084706bf6f94b6ebfc831d0eb156b22311b`.
+
+No production object was written during bootstrap or fast-path validation.
+No cleanup or historical-object deletion was performed in either channel.
 
 ## Problem statement
 
