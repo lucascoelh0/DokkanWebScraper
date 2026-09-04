@@ -1,6 +1,6 @@
 # Dokkanpanion Project State
 
-**Last updated**: 2026-08-27
+**Last updated**: 2026-09-04
 
 This is the concise operational checkpoint for future sessions. Durable
 decisions live in [`adr/`](adr/), and current workflow instructions live in
@@ -25,6 +25,53 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Leader shadow consumer is integrated or authorized.
 - The project uses Codex exclusively. Provider-neutral workflow, verification,
   repository and publication rules are defined in `AGENTS.md`.
+
+## Production v2 Global 6.5.5 refresh checkpoint (2026-09-04)
+
+- The production-only refresh consumed the newly extracted Global `6.5.5` /
+  version-code `348` source, database version `1788329250`, asset version
+  `1788327754`, and decrypted SQLite SHA-256
+  `7a6ca01808aea355ef28f9c0190e2c072f43a7c08be41d363f5b052824922495`.
+  The SQLite passed `quick_check` and retained the frozen 232-table contract.
+- Characters remains at 1,442 entries. The refresh adds the four first-party
+  EZAs for Goku (Kaioken), Frieza (Final Form), Piccolo and Frieza (3rd Form),
+  with no SEZA. Team Analysis increases from 2,301 to 2,306 states. State
+  `4025781` materializes its EZA passive with Standard and Survival modes.
+  Commit `37012e3` makes only provenance `sourceVersion` nonsemantic during an
+  otherwise exact comparison; text, hashes, structure, values and ordering
+  remain fail-closed.
+- Production `v2` Characters version `2026-09-04T02:57:39.813Z` is 2,598,421
+  bytes with SHA-256
+  `f3d9a59708be5ad906bee4abe5486084706bf6f94b6ebfc831d0eb156b22311b`.
+  Its 448-byte manifest has SHA-256
+  `41a5586a57103d5efb6d6c3dddd2a603e7bff050a5cfac5b421d5ba394b0f142`.
+- The paired parser-`1.10.0` Team Analysis payload is 3,227,451 bytes with
+  SHA-256
+  `5bd04690a585cd1ea5cf6871a517c423f42f2621d930bd597166325efbd7dcce`.
+  Its 706-byte manifest has SHA-256
+  `d640959df19489ed0224b6d5f1f3463a9d103ec0cafe1ea5806a658cd0130f26`
+  and binds the exact Character version and SHA above.
+- The authorized publication wrote exactly those four production-v2 objects,
+  totaling 5,827,026 bytes. The two immutable payloads were added and the two
+  mutable manifest keys were replaced; no portrait, historical object or
+  staging key was changed and no delete or cleanup ran. Independent public
+  reads reproduced all four sizes and SHA-256 values.
+- The final paginated S3 inventory contains 21,140 objects and exactly
+  1,097,587,273 bytes against the 10,000,000,000-byte project ceiling. The
+  final total is 1,154 bytes below the conservative projection because the two
+  manifests replaced existing bytes instead of adding their full sizes.
+- Post-publication dry-runs are idempotent: Characters requires no payload,
+  portrait upload or delete, and Team requires no payload, manifest update,
+  cleanup or new bytes. A transient HTTP 401 on the first Character portrait
+  read caused no write; the complete retry passed.
+- Character preflight still launches one Wrangler process and downloads every
+  referenced portrait even when all 3,303 objects are unchanged. The deferred,
+  separately authorized solution is
+  [`docs/specs/r2-publisher-preflight-optimization-plan.md`](specs/r2-publisher-preflight-optimization-plan.md):
+  a schema-2 cryptographic receipt plus paginated S3 inventory fast path, with
+  exact body verification on every new, drifted or untrusted object. It must
+  not weaken baseline pins, manifest-last promotion, SHA-256 authority or
+  fail-closed behavior.
 
 ## Database-first Foundation
 
