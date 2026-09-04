@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { execFile } from "child_process";
-import { existsSync, statSync } from "fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { createReadStream, existsSync, statSync } from "fs";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { dirname, isAbsolute, relative, resolve, sep } from "path";
 import { gunzipSync } from "zlib";
@@ -18,6 +18,19 @@ import {
 import { DatasetManifest } from "./dataset-artifacts";
 import { assertAndroidV1PublicationProof } from "./android-v1-publication-proof";
 import { assertCharactersProjectedForAndroidV1 } from "./android-v1-contract-projector";
+import {
+    CharacterObjectStore,
+    canonicalCharacterDatasetObjectKey,
+    createRemoteCharacterObjectStore,
+    DatasetPublishState,
+    DatasetPublishStateV2,
+    executeVerifiedCharacterPublication,
+    PublisherTelemetry,
+    VerifiedPortraitEntry,
+    VerifiedPublicationPlan,
+} from "./publish-r2-verified-inventory";
+
+export { DatasetPublishState, DatasetPublishStateV2 } from "./publish-r2-verified-inventory";
 
 const DEFAULT_DATA_ROOT = "data";
 const DEFAULT_IMAGES_ROOT = "data/images";
@@ -26,29 +39,17 @@ const DEFAULT_MANIFEST_PATH = "data/latest/characters-manifest.json";
 const DEFAULT_STATE_PATH = "data/latest/r2-publish-state.json";
 const DEFAULT_CONCURRENCY = 6;
 const DEFAULT_MAX_TOTAL_BYTES = 10_000_000_000;
-const UPLOAD_VERIFICATION_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000] as const;
 const PACKAGE_ROOT = existsSync(resolve(__dirname, "package.json"))
     ? __dirname
     : resolve(__dirname, "..");
 const WRANGLER_ENTRYPOINT = resolve(PACKAGE_ROOT, "node_modules", "wrangler", "bin", "wrangler.js");
 
-export interface DatasetPublishState {
-    schemaVersion: 1,
-    bucket: string,
-    target: "remote" | "local",
-    channel?: DatasetPublicationChannel,
-    contractLane?: DatasetContractLane,
-    datasetVersion: string,
-    datasetObjectKey: string,
-    manifestSha256: string,
-    publishedAt: string,
-    portraits: Record<string, string>,
-}
-
 export interface PortraitPublishEntry {
     objectKey: string,
     filePath: string,
     sha256: string,
+    sizeBytes?: number,
+    loadBytes?: () => Promise<Buffer>,
 }
 
 export interface PortraitPublishPlan {
@@ -77,6 +78,8 @@ interface PublishCliOptions {
     v1ProjectionReportPath?: string,
     manifestObjectKey: string,
     promoteProduction: boolean,
+    fullAudit: boolean,
+    verificationOnly: boolean,
 }
 
 interface PublishSummary {
@@ -85,6 +88,7 @@ interface PublishSummary {
     portraitDeleteCount: number,
     skippedBecauseRemoteMatches: boolean,
     projectedTotalBytes: number,
+    telemetry: PublisherTelemetry,
 }
 
 export interface BucketSizeReport {
@@ -92,23 +96,12 @@ export interface BucketSizeReport {
     conservativeUpperBoundBytes: number,
 }
 
-function datasetVersionSlug(datasetVersion: string): string {
-    return datasetVersion
-        .trim()
-        .replace(/[:]/g, "-")
-        .replace(/[^\w./-]/g, "_");
-}
-
 function canonicalRemoteDatasetObjectKey(
     manifest: Pick<DatasetManifest, "datasetVersion" | "sha256">,
     channel: DatasetPublicationChannel,
     contractLane: DatasetContractLane,
 ): string {
-    return contractLaneObjectKey(
-        channel,
-        contractLane,
-        `releases/${datasetVersionSlug(manifest.datasetVersion)}/${manifest.sha256.toLowerCase()}/characters.json.gz`,
-    );
+    return canonicalCharacterDatasetObjectKey(manifest, channel, contractLane);
 }
 
 export function buildRemoteDatasetObjectKey(
@@ -200,6 +193,20 @@ export function parseWranglerBucketSize(reported: string): BucketSizeReport {
     }
 
     return { reported, conservativeUpperBoundBytes: upperBound };
+}
+
+export function assertBucketSizeCanContainVerifiedObjects(
+    report: BucketSizeReport,
+    projectedManagedBytes: number,
+    prospectiveUploadBytes: number,
+): void {
+    const verifiedExistingLowerBoundBytes = Math.max(0, projectedManagedBytes - prospectiveUploadBytes);
+    if (report.conservativeUpperBoundBytes < verifiedExistingLowerBoundBytes) {
+        throw new Error(
+            `Wrangler bucket size ${report.reported} is inconsistent with at least `
+            + `${verifiedExistingLowerBoundBytes} verified existing bytes; refusing to trust the bucket budget.`,
+        );
+    }
 }
 
 function normalizeObjectKey(value: string): string {
@@ -296,7 +303,11 @@ export function buildPortraitPublishPlan(
 
     const toUpload = forcePortraits
         ? [...currentPortraits]
-        : currentPortraits.filter(entry => previousPortraits[entry.objectKey] !== entry.sha256);
+        : currentPortraits.filter(entry => {
+            const previous = previousPortraits[entry.objectKey];
+            const previousSha256 = typeof previous === "string" ? previous : previous?.sha256;
+            return previousSha256 !== entry.sha256;
+        });
 
     return {
         toUpload: toUpload.sort((left, right) => left.objectKey.localeCompare(right.objectKey)),
@@ -332,6 +343,10 @@ function parseContentAddressedPortraitKey(
     if (!isScopedPortrait) {
         if (reference.layerKind || channel === "staging") {
             throw new Error(`Portrait object key is not channel/lane scoped: ${reference.objectKey}`);
+        }
+        if (channel === "production" && contractLane === "v1") {
+            const contentAddressedV3 = reference.objectKey.match(/^images\/v3\/portrait_[0-9]+\.([a-f0-9]{64})\.png$/);
+            if (contentAddressedV3) return contentAddressedV3[1];
         }
         return undefined;
     }
@@ -395,17 +410,35 @@ export async function buildPortraitEntries(
             throw new Error(`Missing portrait file for ${objectKey}: ${filePath}`);
         }
 
-        const fileBuffer = await readFile(filePath);
-        const actualSha256 = sha256(fileBuffer);
-        if (expectedSha256 && actualSha256 !== expectedSha256) {
-            throw new Error(
-                `Portrait SHA-256 mismatch for ${objectKey}: expected ${expectedSha256}, found ${actualSha256}.`,
-            );
+        const sizeBytes = statSync(filePath).size;
+        let actualSha256 = expectedSha256;
+        if (!actualSha256) {
+            const digest = createHash("sha256");
+            await new Promise<void>((resolveStream, rejectStream) => {
+                const stream = createReadStream(filePath);
+                stream.on("data", chunk => digest.update(Buffer.from(chunk)));
+                stream.once("error", rejectStream);
+                stream.once("end", resolveStream);
+            });
+            actualSha256 = digest.digest("hex");
         }
+        const loadBytes = async () => {
+            const bytes = await readFile(filePath);
+            const observedSha256 = sha256(bytes);
+            if (bytes.byteLength !== sizeBytes || observedSha256 !== actualSha256) {
+                throw new Error(
+                    `Portrait changed after descriptor creation for ${objectKey}: `
+                    + `expected ${sizeBytes}/${actualSha256}, found ${bytes.byteLength}/${observedSha256}.`,
+                );
+            }
+            return bytes;
+        };
         entries.push({
             objectKey,
             filePath,
             sha256: actualSha256,
+            sizeBytes,
+            loadBytes,
         });
     }
 
@@ -493,44 +526,31 @@ async function readManifest(manifestPath: string): Promise<DatasetManifest> {
     return JSON.parse(await readFile(manifestPath, "utf8")) as DatasetManifest;
 }
 
-async function readPublishState(
-    statePath: string,
-    bucket: string,
-    target: "remote" | "local",
-    channel: DatasetPublicationChannel,
-    contractLane: DatasetContractLane,
-): Promise<DatasetPublishState | undefined> {
+async function readPublishState(statePath: string): Promise<unknown> {
     if (!existsSync(statePath)) {
         return undefined;
     }
-
-    const state = JSON.parse(await readFile(statePath, "utf8")) as DatasetPublishState;
-    if (state.bucket !== bucket || state.target !== target) {
-        throw new Error(
-            `Character publish state belongs to ${state.bucket}/${state.target}, not requested ${bucket}/${target}.`,
-        );
+    try {
+        return JSON.parse(await readFile(statePath, "utf8")) as unknown;
+    } catch {
+        // A malformed receipt is never authority. The planner will perform exact
+        // body verification and replace it only after a completely successful run.
+        return {};
     }
-    const stateChannel = state.channel ?? "production";
-    if (stateChannel !== channel) {
-        throw new Error(
-            `Character publish state belongs to ${stateChannel}, not requested channel ${channel}.`,
-        );
-    }
-    const stateContractLane = state.contractLane ?? "v1";
-    if (stateContractLane !== contractLane) {
-        throw new Error(
-            `Character publish state belongs to ${stateContractLane}, not requested contract lane ${contractLane}.`,
-        );
-    }
-    return state;
 }
 
 async function writePublishState(
     statePath: string,
-    state: DatasetPublishState,
+    state: DatasetPublishStateV2,
 ): Promise<void> {
     await mkdir(dirname(statePath), { recursive: true });
-    await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    const temporaryPath = `${statePath}.${process.pid}.${Date.now()}.tmp`;
+    try {
+        await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+        await rename(temporaryPath, statePath);
+    } finally {
+        await rm(temporaryPath, { force: true });
+    }
 }
 
 async function execFileAsync(command: string, args: string[]): Promise<{ stdout: string, stderr: string }> {
@@ -588,30 +608,6 @@ async function readRemoteBucketSizeReport(bucket: string): Promise<BucketSizeRep
     }
 }
 
-async function tryReadRemoteManifest(
-    bucket: string,
-    target: "remote" | "local",
-    manifestObjectKey: string,
-): Promise<DatasetManifest | undefined> {
-    const bytes = await tryReadRemoteObject(
-        bucket,
-        target,
-        manifestObjectKey,
-        "Character remote manifest",
-    );
-    if (!bytes) return undefined;
-    try {
-        const value = JSON.parse(bytes.toString("utf8")) as unknown;
-        if (!value || typeof value !== "object" || Array.isArray(value)) {
-            throw new Error("expected a JSON object");
-        }
-        return value as DatasetManifest;
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`Character remote manifest ${manifestObjectKey} is not valid JSON: ${message}`);
-    }
-}
-
 async function tryReadRemoteObject(
     bucket: string,
     target: "remote" | "local",
@@ -661,90 +657,7 @@ export function remoteObjectBytesMatch(
     );
 }
 
-async function remoteObjectMatches(
-    bucket: string,
-    target: "remote" | "local",
-    objectKey: string,
-    expectedSha256: string,
-    expectedSizeBytes: number,
-    label: string,
-): Promise<boolean> {
-    const bytes = await tryReadRemoteObject(bucket, target, objectKey, label);
-    return remoteObjectBytesMatch(bytes, expectedSha256, expectedSizeBytes);
-}
-
-async function assertRemoteObjectMatches(
-    bucket: string,
-    target: "remote" | "local",
-    objectKey: string,
-    expectedSha256: string,
-    expectedSizeBytes: number,
-    label: string,
-): Promise<void> {
-    if (await remoteObjectMatches(
-        bucket,
-        target,
-        objectKey,
-        expectedSha256,
-        expectedSizeBytes,
-        label,
-    )) return;
-    for (const delayMilliseconds of UPLOAD_VERIFICATION_RETRY_DELAYS_MS) {
-        await new Promise(resolveDelay => setTimeout(resolveDelay, delayMilliseconds));
-        if (await remoteObjectMatches(
-            bucket,
-            target,
-            objectKey,
-            expectedSha256,
-            expectedSizeBytes,
-            label,
-        )) return;
-    }
-    throw new Error(`${label} failed size/SHA-256 verification: ${objectKey}`);
-}
-
 type ReadPublishedPortrait = (entry: PortraitPublishEntry, index: number) => Promise<Buffer | undefined>;
-
-async function readPublishedPortrait(
-    bucket: string,
-    target: "remote" | "local",
-    temporaryDirectory: string,
-    entry: PortraitPublishEntry,
-    index: number,
-    retryMissing = false,
-): Promise<Buffer | undefined> {
-    const temporaryPath = resolve(temporaryDirectory, `${index}.png`);
-    const retryDelaysMilliseconds = [250, 500, 1_000, 2_000];
-    for (let attempt = 0; ; attempt += 1) {
-        try {
-            await runWranglerCommand([
-                "r2",
-                "object",
-                "get",
-                `${bucket}/${entry.objectKey}`,
-                "--file",
-                temporaryPath,
-                target === "remote" ? "--remote" : "--local",
-            ]);
-            break;
-        } catch (error) {
-            if (isMissingR2ObjectError(error)) {
-                if (retryMissing && attempt < retryDelaysMilliseconds.length) {
-                    await new Promise(resolveDelay => setTimeout(resolveDelay, retryDelaysMilliseconds[attempt]));
-                    continue;
-                }
-                return undefined;
-            }
-            if (isRetryableR2ReadError(error) && attempt < retryDelaysMilliseconds.length) {
-                await new Promise(resolveDelay => setTimeout(resolveDelay, retryDelaysMilliseconds[attempt]));
-                continue;
-            }
-            const message = error instanceof Error ? error.message : String(error);
-            throw new Error(`Cannot verify published portrait ${entry.objectKey}: ${message}`);
-        }
-    }
-    return readFile(temporaryPath);
-}
 
 export async function verifyReusablePortraitEntries(
     currentPortraits: PortraitPublishEntry[],
@@ -753,7 +666,10 @@ export async function verifyReusablePortraitEntries(
     concurrency: number,
 ): Promise<Record<string, string>> {
     const previousPortraits = previousState?.portraits ?? {};
-    const candidates = currentPortraits.filter(entry => previousPortraits[entry.objectKey] === entry.sha256);
+    const candidates = currentPortraits.filter(entry => {
+        const previous = previousPortraits[entry.objectKey];
+        return (typeof previous === "string" ? previous : previous?.sha256) === entry.sha256;
+    });
     const reusable: Record<string, string> = {};
     await runWithConcurrency(candidates, concurrency, async (entry, index) => {
         const remoteBytes = await readRemote(entry, index);
@@ -865,7 +781,7 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
 
     const concurrencyRaw = values.get("--concurrency");
     const concurrency = concurrencyRaw ? Number.parseInt(concurrencyRaw, 10) : DEFAULT_CONCURRENCY;
-    if (!Number.isFinite(concurrency) || concurrency < 1) {
+    if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 64) {
         throw new Error(`Invalid --concurrency value: ${concurrencyRaw}`);
     }
 
@@ -899,6 +815,22 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
     }
     const channel = parseDatasetPublicationChannel(values.get("--channel"));
     const contractLane = parseDatasetContractLane(values.get("--contract-lane"));
+    const verificationOnly = flags.has("--bootstrap-receipt");
+    const fullAudit = flags.has("--full-audit") || flags.has("--force-portraits");
+    const dryRun = flags.has("--dry-run");
+    const promoteProduction = flags.has("--promote-production");
+    const target = localFlag ? "local" : "remote";
+    if (verificationOnly && (!fullAudit
+        || target !== "remote"
+        || dryRun
+        || flags.has("--skip-remote-manifest-check")
+        || promoteProduction
+        || Boolean(expectedRemoteBaselineSha256) === expectRemoteManifestAbsent)) {
+        throw new Error(
+            "--bootstrap-receipt requires remote --full-audit and exactly one baseline pin; "
+            + "it cannot use --dry-run, --skip-remote-manifest-check, or --promote-production.",
+        );
+    }
     const v1ProjectionReportPath = values.get("--v1-projection-report");
     if (contractLane === "v1" && !v1ProjectionReportPath) {
         throw new Error("The v1 contract lane requires --v1-projection-report.");
@@ -915,41 +847,92 @@ export function parsePublishArgs(argv: string[]): PublishCliOptions {
         statePath: values.has("--state")
             ? resolve(values.get("--state")!)
             : defaultContractLaneStatePath(DEFAULT_STATE_PATH, channel, contractLane),
-        dryRun: flags.has("--dry-run"),
+        dryRun,
         forcePortraits: flags.has("--force-portraits"),
         skipPortraits: flags.has("--skip-portraits"),
         skipRemoteManifestCheck: flags.has("--skip-remote-manifest-check"),
         expectedRemoteBaselineSha256,
         expectRemoteManifestAbsent,
-        target: localFlag ? "local" : "remote",
+        target,
         concurrency,
         maxTotalBytes,
         channel,
         contractLane,
         v1ProjectionReportPath: v1ProjectionReportPath ? resolve(v1ProjectionReportPath) : undefined,
         manifestObjectKey: buildCharacterManifestObjectKey(channel, contractLane),
-        promoteProduction: flags.has("--promote-production"),
+        promoteProduction,
+        // --force-portraits is retained as a safe compatibility alias. Immutable
+        // portrait keys are never overwritten; forcing now means prove every body.
+        fullAudit,
+        verificationOnly,
     };
 }
 
-function manifestsMatch(left: DatasetManifest, right?: DatasetManifest): boolean {
-    if (!right) {
-        return false;
-    }
-    return canonicalJson(left) === canonicalJson(right);
+function createLocalCharacterObjectStore(bucket: string): CharacterObjectStore {
+    const witnesses = new Map<string, { fingerprint: string, etag: string, lastModified: string }>();
+    let witnessCounter = 0;
+    const read = async (key: string) => {
+        const bytes = await tryReadRemoteObject(bucket, "local", key, "local Character object");
+        if (!bytes) return undefined;
+        const fingerprint = sha256(bytes);
+        let witness = witnesses.get(key);
+        if (!witness || witness.fingerprint !== fingerprint) {
+            witnessCounter += 1;
+            witness = {
+                fingerprint,
+                etag: `local-object-witness-${witnessCounter}`,
+                lastModified: new Date(witnessCounter * 1_000).toISOString(),
+            };
+            witnesses.set(key, witness);
+        }
+        const isManifest = key.endsWith("characters-manifest.json");
+        const isDataset = key.endsWith("characters.json.gz");
+        return {
+            bytes,
+            sizeBytes: bytes.byteLength,
+            etag: witness.etag,
+            lastModified: witness.lastModified,
+            contentType: isManifest ? "application/json" : isDataset ? "application/gzip" : "image/png",
+            cacheControl: isManifest ? "no-store" : "public, max-age=31536000, immutable",
+        };
+    };
+    return {
+        supportsInventory: false,
+        async listPage() {
+            throw new Error("Local Wrangler mode does not provide a trusted paginated inventory.");
+        },
+        get: read,
+        async put(key, bytes, contentType, cacheControl, condition) {
+            const current = await read(key);
+            if ("ifNoneMatch" in condition) {
+                if (current) return "precondition-failed";
+            } else if (!current || current.etag !== condition.ifMatch) {
+                return "precondition-failed";
+            }
+            const temporaryDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-r2-local-put-"));
+            const temporaryPath = resolve(temporaryDirectory, "object.bin");
+            try {
+                await writeFile(temporaryPath, bytes);
+                await uploadObject(bucket, key, temporaryPath, contentType, cacheControl, "local");
+                witnesses.delete(key);
+                return "written";
+            } finally {
+                await rm(temporaryDirectory, { recursive: true, force: true });
+            }
+        },
+    };
 }
 
-function canonicalJson(value: unknown): string {
-    if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-    if (value && typeof value === "object") {
-        const record = value as Record<string, unknown>;
-        return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
-    }
-    return JSON.stringify(value);
+function formatTelemetry(telemetry: PublisherTelemetry): string {
+    return `LIST=${telemetry.list} HEAD=${telemetry.head} GET=${telemetry.get} PUT=${telemetry.put} `
+        + `retries=${telemetry.retries} bytesRead=${telemetry.bytesRead} bytesPutAttempted=${telemetry.bytesPutAttempted}`;
 }
 
 async function publishDataset(options: PublishCliOptions): Promise<PublishSummary> {
-    assertDatasetPublicationWriteAuthorized(options);
+    assertDatasetPublicationWriteAuthorized({
+        ...options,
+        dryRun: options.dryRun || options.verificationOnly,
+    });
     if (options.target === "remote" && !options.dryRun && options.skipRemoteManifestCheck) {
         throw new Error(
             "Remote Character publication requires the baseline manifest check; "
@@ -1000,71 +983,15 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
     assertPortraitPublicationMode(characters, options.skipPortraits);
     const portraitReferences = collectReferencedPortraitReferences(characters);
     const portraitKeys = portraitReferences.map(reference => reference.objectKey);
-    const previousState = await readPublishState(
-        options.statePath,
-        options.bucket,
-        options.target,
-        options.channel,
-        options.contractLane,
-    );
-    const publishedRemoteManifest = options.skipRemoteManifestCheck
-        ? undefined
-        : await tryReadRemoteManifest(options.bucket, options.target, options.manifestObjectKey);
-    assertExpectedRemoteManifestBaseline(
-        options.expectedRemoteBaselineSha256,
-        options.expectRemoteManifestAbsent,
-        publishedRemoteManifest,
-    );
-    const publishedDatasetMatches = manifestsMatch(remoteManifest, publishedRemoteManifest)
-        && await remoteObjectMatches(
-            options.bucket,
-            options.target,
-            remoteDatasetObjectKey,
-            remoteManifest.sha256,
-            remoteManifest.sizeBytes,
-            "Character remote payload",
-        );
-    const datasetNeedsUpload = !publishedDatasetMatches;
-    const skippedBecauseRemoteMatches = !datasetNeedsUpload && !options.forcePortraits && !options.skipPortraits;
-
     const portraitEntries = options.skipPortraits
         ? []
         : await buildPortraitEntries(portraitReferences, options.dataRoot, {
             channel: options.channel,
             contractLane: options.contractLane,
         });
-    let verifiedPortraitState = previousState;
-    if (!options.skipPortraits && !options.forcePortraits && previousState) {
-        const temporaryDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-r2-portrait-verify-"));
-        try {
-            const reusablePortraits = await verifyReusablePortraitEntries(
-                portraitEntries,
-                previousState,
-                (entry, index) => readPublishedPortrait(
-                    options.bucket,
-                    options.target,
-                    temporaryDirectory,
-                    entry,
-                    index,
-                ),
-                options.concurrency,
-            );
-            verifiedPortraitState = { ...previousState, portraits: reusablePortraits };
-        } finally {
-            await rm(temporaryDirectory, {
-                recursive: true,
-                force: true,
-                maxRetries: 10,
-                retryDelay: 100,
-            });
-        }
-    }
-    const portraitPlan = options.skipPortraits
-        ? { toUpload: [], toDelete: [] }
-        : buildPortraitPublishPlan(portraitEntries, verifiedPortraitState, { forcePortraits: options.forcePortraits });
     const projectedTotalBytes = statSync(localDatasetPath).size
         + manifestByteSize(remoteManifest)
-        + portraitEntries.reduce((total, entry) => total + statSync(entry.filePath).size, 0);
+        + portraitEntries.reduce((total, entry) => total + (entry.sizeBytes ?? statSync(entry.filePath).size), 0);
 
     if (projectedTotalBytes > options.maxTotalBytes) {
         throw new Error(
@@ -1073,169 +1000,108 @@ async function publishDataset(options: PublishCliOptions): Promise<PublishSummar
         );
     }
 
-    const prospectiveUploadBytes = (datasetNeedsUpload
-        ? localGzipBuffer.byteLength + manifestByteSize(remoteManifest)
-        : 0)
-        + portraitPlan.toUpload.reduce((total, entry) => total + statSync(entry.filePath).size, 0);
-    const bucketSizeReport = options.target === "remote"
-        ? await readRemoteBucketSizeReport(options.bucket)
-        : undefined;
-    const projectedBucketUpperBoundBytes = bucketSizeReport
-        ? bucketSizeReport.conservativeUpperBoundBytes + prospectiveUploadBytes
-        : undefined;
-    if (projectedBucketUpperBoundBytes !== undefined && projectedBucketUpperBoundBytes >= options.maxTotalBytes) {
-        throw new Error(
-            `Projected conservative bucket upper bound ${projectedBucketUpperBoundBytes} bytes reaches or exceeds `
-            + `the configured limit of ${options.maxTotalBytes} bytes.`,
-        );
-    }
-
-    console.log(`Channel: ${options.channel}`);
-    console.log(`Contract lane: ${options.contractLane}`);
-    console.log(`Manifest object key: ${options.manifestObjectKey}`);
-    console.log(`Dataset version: ${remoteManifest.datasetVersion}`);
-    console.log(`Dataset object key: ${remoteDatasetObjectKey}`);
-    console.log(`Dataset upload needed: ${datasetNeedsUpload ? "yes" : "no"}`);
-    if (options.expectRemoteManifestAbsent) {
-        console.log("Expected remote baseline: manifest absent");
-    } else if (options.expectedRemoteBaselineSha256) {
-        console.log(`Expected remote baseline SHA-256: ${options.expectedRemoteBaselineSha256}`);
-    }
-    console.log(`Portraits referenced: ${portraitKeys.length}`);
-    console.log(`Portraits to upload: ${portraitPlan.toUpload.length}`);
-    console.log(`Portraits to delete: ${portraitPlan.toDelete.length}`);
-    console.log(`Projected managed size: ${projectedTotalBytes}/${options.maxTotalBytes} bytes`);
-    if (bucketSizeReport && projectedBucketUpperBoundBytes !== undefined) {
-        console.log(
-            `Wrangler bucket size: ${bucketSizeReport.reported}; conservative projected upper bound: `
-            + `${projectedBucketUpperBoundBytes}/${options.maxTotalBytes} bytes`,
-        );
-    }
-
-    if (options.dryRun) {
+    const verifiedPortraitEntries: VerifiedPortraitEntry[] = portraitEntries.map(entry => {
+        if (entry.sizeBytes === undefined || !entry.loadBytes) {
+            throw new Error(`Portrait descriptor is incomplete: ${entry.objectKey}`);
+        }
         return {
-            datasetNeedsUpload,
-            portraitUploadCount: portraitPlan.toUpload.length,
-            portraitDeleteCount: portraitPlan.toDelete.length,
-            skippedBecauseRemoteMatches,
-            projectedTotalBytes,
+            objectKey: entry.objectKey,
+            filePath: entry.filePath,
+            sha256: entry.sha256,
+            sizeBytes: entry.sizeBytes,
+            loadBytes: entry.loadBytes,
         };
-    }
-
-    if (datasetNeedsUpload) {
-        console.log("Uploading dataset bundle...");
-        await uploadObject(
-            options.bucket,
-            remoteDatasetObjectKey,
-            localDatasetPath,
-            "application/gzip",
-            "public, max-age=31536000, immutable",
-            options.target,
-        );
-    }
-
-    if (portraitPlan.toUpload.length > 0) {
-        console.log("Uploading and verifying portraits...");
-        const temporaryDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-r2-portrait-upload-verify-"));
-        try {
-            await runWithConcurrency(portraitPlan.toUpload, options.concurrency, async (entry, index) => {
-                await uploadObject(
-                    options.bucket,
-                    entry.objectKey,
-                    entry.filePath,
-                    "image/png",
-                    "public, max-age=31536000, immutable",
-                    options.target,
-                );
-                const remoteBytes = await readPublishedPortrait(
-                    options.bucket,
-                    options.target,
-                    temporaryDirectory,
-                    entry,
-                    index,
-                    true,
-                );
-                if (!remoteObjectBytesMatch(remoteBytes, entry.sha256, statSync(entry.filePath).size)) {
-                    throw new Error(`Uploaded portrait failed size/SHA-256 verification: ${entry.objectKey}`);
-                }
-
-                if ((index + 1) % 25 === 0 || index + 1 === portraitPlan.toUpload.length) {
-                    console.log(`Uploaded and verified ${index + 1}/${portraitPlan.toUpload.length} portrait(s)`);
-                }
-            });
-        } finally {
-            await rm(temporaryDirectory, {
-                recursive: true,
-                force: true,
-                maxRetries: 10,
-                retryDelay: 100,
-            });
-        }
-    }
-
-    if (datasetNeedsUpload) {
-        console.log("Uploading manifest...");
-        await assertRemoteObjectMatches(
-            options.bucket,
-            options.target,
-            remoteDatasetObjectKey,
-            remoteManifest.sha256,
-            remoteManifest.sizeBytes,
-            "Uploaded Character payload",
-        );
-        const manifestTempDirectory = await mkdtemp(resolve(tmpdir(), "dokkan-r2-publish-manifest-"));
-        const manifestTempPath = resolve(manifestTempDirectory, "characters-manifest.json");
-        const manifestBuffer = Buffer.from(`${JSON.stringify(remoteManifest, null, 2)}\n`, "utf8");
-        try {
-            await writeFile(manifestTempPath, manifestBuffer);
-            await uploadObject(
-                options.bucket,
-                options.manifestObjectKey,
-                manifestTempPath,
-                "application/json",
-                "no-store",
-                options.target,
-            );
-            await assertRemoteObjectMatches(
-                options.bucket,
-                options.target,
-                options.manifestObjectKey,
-                sha256(manifestBuffer),
-                manifestBuffer.byteLength,
-                "Uploaded Character manifest",
-            );
-        } finally {
-            await rm(manifestTempDirectory, { recursive: true, force: true });
-        }
-    }
-
-    // Character bundles are immutable and intentionally retained. Keeping the
-    // prior content-addressed object and its portraits preserves rollback and
-    // old-client reads. Every remote run measures the whole bucket and adds
-    // prospective uploads conservatively; cleanup still needs a separate,
-    // release-aware GC policy.
-
-    const nextState: DatasetPublishState = {
-        schemaVersion: 1,
+    });
+    const previousState = await readPublishState(options.statePath);
+    const manifestBuffer = Buffer.from(`${JSON.stringify(remoteManifest, null, 2)}\n`, "utf8");
+    const store = options.target === "remote"
+        ? createRemoteCharacterObjectStore(options.bucket)
+        : createLocalCharacterObjectStore(options.bucket);
+    let bucketSizeReport: BucketSizeReport | undefined;
+    let projectedBucketUpperBoundBytes: number | undefined;
+    let planned: VerifiedPublicationPlan | undefined;
+    const result = await executeVerifiedCharacterPublication({
         bucket: options.bucket,
         target: options.target,
         channel: options.channel,
         contractLane: options.contractLane,
-        datasetVersion: remoteManifest.datasetVersion,
+        manifestObjectKey: options.manifestObjectKey,
+        candidateManifest: remoteManifest,
+        candidateManifestBytes: manifestBuffer,
         datasetObjectKey: remoteDatasetObjectKey,
-        manifestSha256: remoteManifest.sha256,
-        publishedAt: new Date().toISOString(),
-        portraits: Object.fromEntries(portraitEntries.map(entry => [entry.objectKey, entry.sha256])),
-    };
-
-    await writePublishState(options.statePath, nextState);
-
+        datasetBytes: localGzipBuffer,
+        portraits: verifiedPortraitEntries,
+        previousState,
+        expectedRemoteBaselineSha256: options.expectedRemoteBaselineSha256,
+        expectRemoteManifestAbsent: options.expectRemoteManifestAbsent,
+        skipRemoteManifestCheck: options.skipRemoteManifestCheck,
+        skipPortraits: options.skipPortraits,
+        fullAudit: options.fullAudit,
+        dryRun: options.dryRun,
+        verificationOnly: options.verificationOnly,
+        promoteProduction: options.promoteProduction,
+        concurrency: options.concurrency,
+        writeState: state => writePublishState(options.statePath, state),
+        validatePlan: async plan => {
+            planned = plan;
+            bucketSizeReport = options.target === "remote"
+                ? await readRemoteBucketSizeReport(options.bucket)
+                : undefined;
+            if (bucketSizeReport) {
+                assertBucketSizeCanContainVerifiedObjects(
+                    bucketSizeReport,
+                    projectedTotalBytes,
+                    plan.prospectiveUploadBytes,
+                );
+            }
+            projectedBucketUpperBoundBytes = bucketSizeReport
+                ? bucketSizeReport.conservativeUpperBoundBytes + plan.prospectiveUploadBytes
+                : undefined;
+            if (projectedBucketUpperBoundBytes !== undefined && projectedBucketUpperBoundBytes >= options.maxTotalBytes) {
+                throw new Error(
+                    `Projected conservative bucket upper bound ${projectedBucketUpperBoundBytes} bytes reaches or exceeds `
+                    + `the configured limit of ${options.maxTotalBytes} bytes.`,
+                );
+            }
+            console.log(`Channel: ${options.channel}`);
+            console.log(`Contract lane: ${options.contractLane}`);
+            console.log(`Manifest object key: ${options.manifestObjectKey}`);
+            console.log(`Dataset version: ${remoteManifest.datasetVersion}`);
+            console.log(`Dataset object key: ${remoteDatasetObjectKey}`);
+            console.log(`Receipt trust: ${plan.stateTrust} (${plan.stateReason})`);
+            console.log(`Full audit: ${options.fullAudit ? "yes" : "no"}`);
+            console.log(`Receipt bootstrap: ${options.verificationOnly ? "yes" : "no"}`);
+            console.log(`Dataset upload needed: ${plan.datasetUploadCount ? "yes" : "no"}`);
+            console.log(`Manifest upload needed: ${plan.manifestUploadCount ? "yes" : "no"}`);
+            console.log(`Portraits referenced: ${plan.portraitReferencedCount}`);
+            console.log(`Portraits reused: ${plan.portraitReuseCount}`);
+            console.log(`Portrait body GETs: ${plan.portraitFullGetCount}`);
+            console.log(`Portraits to upload: ${plan.portraitUploadCount}`);
+            console.log(`Portrait conflicts: ${plan.portraitConflictCount}`);
+            console.log("Portraits to delete: 0");
+            console.log(`Projected managed size: ${projectedTotalBytes}/${options.maxTotalBytes} bytes`);
+            if (bucketSizeReport && projectedBucketUpperBoundBytes !== undefined) {
+                console.log(
+                    `Wrangler bucket size: ${bucketSizeReport.reported}; conservative projected upper bound: `
+                    + `${projectedBucketUpperBoundBytes}/${options.maxTotalBytes} bytes`,
+                );
+            }
+            console.log(`Preflight operations: ${formatTelemetry(plan.telemetry)}`);
+        },
+    }, store);
+    const finalPlan = result.plan ?? planned!;
+    console.log(`Final operations: ${formatTelemetry(finalPlan.telemetry)}`);
+    for (const [reason, count] of Object.entries(finalPlan.telemetry.reasons).sort(([left], [right]) => left.localeCompare(right))) {
+        console.log(`Operation reason ${reason}: ${count}`);
+    }
+    const datasetNeedsUpload = finalPlan.datasetUploadCount > 0;
     return {
         datasetNeedsUpload,
-        portraitUploadCount: portraitPlan.toUpload.length,
-        portraitDeleteCount: portraitPlan.toDelete.length,
-        skippedBecauseRemoteMatches,
+        portraitUploadCount: finalPlan.portraitUploadCount,
+        portraitDeleteCount: 0,
+        skippedBecauseRemoteMatches: !datasetNeedsUpload && finalPlan.portraitUploadCount === 0,
         projectedTotalBytes,
+        telemetry: finalPlan.telemetry,
     };
 }
 

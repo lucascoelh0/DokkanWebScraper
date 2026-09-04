@@ -11,6 +11,7 @@ import {
   buildPortraitPublishPlan,
   buildCharacterManifestObjectKey,
   buildRemoteDatasetObjectKey,
+  assertBucketSizeCanContainVerifiedObjects,
   assertExpectedRemoteBaselineSha256,
   assertExpectedRemoteManifestBaseline,
   collectReferencedPortraitReferences,
@@ -40,6 +41,15 @@ describe("parseWranglerBucketSize", function () {
       conservativeUpperBoundBytes: 11,
     });
     throws(() => parseWranglerBucketSize("unknown"), /Unsupported Wrangler bucket size/);
+  });
+
+  it("rejects a transiently empty bucket report when verified remote objects already exist", () => {
+    throws(
+      () => assertBucketSizeCanContainVerifiedObjects(parseWranglerBucketSize("0 B"), 69_920_337, 0),
+      /inconsistent with at least 69920337 verified existing bytes/,
+    );
+    assertBucketSizeCanContainVerifiedObjects(parseWranglerBucketSize("1.1 GB"), 69_920_337, 0);
+    assertBucketSizeCanContainVerifiedObjects(parseWranglerBucketSize("0 B"), 69_920_337, 69_920_337);
   });
 });
 
@@ -261,6 +271,44 @@ describe("parsePublishArgs", function () {
       /only be used with --contract-lane v1/,
     );
   });
+
+  it("parses explicit full audit without making layered portrait skipping valid", () => {
+    const options = parsePublishArgs(["--bucket", "test", "--contract-lane", "v2", "--full-audit"]);
+    equal(options.fullAudit, true);
+    throws(
+      () => assertPortraitPublicationMode([{
+        portraitLayers: { backgroundURL: "a", thumbURL: "b", overlayURL: "c" },
+      }] as any, true),
+      /cannot be used.*portraitLayers/,
+    );
+  });
+
+  it("parses receipt bootstrap only as a pinned remote full audit", () => {
+    const baseline = [
+      "--bucket", "test",
+      "--contract-lane", "v2",
+      "--full-audit",
+      "--bootstrap-receipt",
+      "--expected-remote-baseline-sha256", "a".repeat(64),
+    ];
+    const options = parsePublishArgs(baseline);
+    equal(options.verificationOnly, true);
+    equal(options.fullAudit, true);
+    equal(options.dryRun, false);
+    equal(options.target, "remote");
+    equal(options.promoteProduction, false);
+
+    for (const invalid of [
+      baseline.filter(value => value !== "--full-audit"),
+      [...baseline, "--dry-run"],
+      [...baseline, "--local"],
+      [...baseline, "--skip-remote-manifest-check"],
+      [...baseline, "--promote-production"],
+      baseline.slice(0, 6),
+    ]) {
+      throws(() => parsePublishArgs(invalid));
+    }
+  });
 });
 
 describe("validateLocalCharacterBundle", function () {
@@ -450,6 +498,8 @@ describe("buildPortraitEntries", function () {
       ], root, { channel: "staging", contractLane: "v2" });
       deepEqual(entries.map(entry => entry.objectKey), [staticKey, layerKey]);
       deepEqual(entries.map(entry => entry.sha256), [staticHash, layerHash]);
+      deepEqual(entries.map(entry => entry.sizeBytes), [staticBytes.byteLength, layerBytes.byteLength]);
+      equal((await entries[0].loadBytes?.())?.equals(staticBytes), true);
     });
   });
 
@@ -481,13 +531,13 @@ describe("buildPortraitEntries", function () {
         }),
         /Malformed thumb portrait layer key/,
       );
-      await rejects(
-        buildPortraitEntries([{ objectKey: wrongHash, layerKind: "thumb" }], root, {
+      const [wrongHashDescriptor] = await buildPortraitEntries(
+        [{ objectKey: wrongHash, layerKind: "thumb" }], root, {
           channel: "staging",
           contractLane: "v2",
-        }),
-        /SHA-256 mismatch/,
+        },
       );
+      await rejects(wrongHashDescriptor.loadBytes!(), /changed after descriptor creation/);
       await rejects(
         buildPortraitEntries([{
           objectKey: `staging/v2/images/v5/layers/thumb.${hash}.png`,
@@ -606,7 +656,7 @@ describe("buildPortraitPublishPlan", function () {
         manifestSha256: exactHash,
         publishedAt: "2026-08-26T00:00:00.000Z",
         portraits: { exact: exactHash, missing: exactHash, corrupt: exactHash },
-      } as DatasetPublishState;
+      } as Extract<DatasetPublishState, { schemaVersion: 1 }>;
       const reusable = await verifyReusablePortraitEntries(entries, state, async entry => {
         if (entry.objectKey === "missing") return undefined;
         if (entry.objectKey === "corrupt") return corruptBytes;
