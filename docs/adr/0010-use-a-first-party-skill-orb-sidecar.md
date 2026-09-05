@@ -55,6 +55,71 @@ continues to render when catalog resolution is unavailable.
 - A future R2 publication must run a dry-run, verify projected bytes, upload
   immutable assets and payload first, and promote the mutable manifest last.
 
+## SKO-02 publication protocol
+
+The dedicated publisher is `game-db/game-db-skill-orb-publisher.ts`. It accepts
+only one explicit mode and one explicit candidate root. There is no production
+mode in this slice.
+
+Local source-bound validation performs no remote operation:
+
+```text
+npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko01-1788329250-v5 --local-validate
+```
+
+The required staging preflight performs paginated LIST plus bounded HEAD/GET
+verification, but no PUT, DELETE, cleanup or state write:
+
+```text
+npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko01-1788329250-v5 --dry-run-staging-v2
+```
+
+An independently authorized staging publication must use the live-only mode
+and confirm the exact dataset version. Merely running the package script or a
+dry-run cannot enter the write path:
+
+```text
+npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko01-1788329250-v5 --publish-staging-v2 --confirm-dataset-version 1788329250-1.0.0-95d9a82403610974
+```
+
+The live protocol reruns source validation and the complete remote plan. It
+pins the mutable-manifest baseline immediately before the first write, creates
+missing assets and payload with `If-None-Match: *`, reads every written object
+back in full, revalidates every immutable object and the local source, then
+rereads the manifest baseline and complete bucket inventory. The final
+inventory plus the remaining manifest byte delta must still be strictly below
+the 10 GB ceiling. The manifest is the final conditional write:
+create-only when absent, or strong-ETag `If-Match` when replacing different
+bytes. Existing immutable byte or metadata drift is a fatal conflict. ETag is
+only a compare-and-swap witness; size plus GET/SHA-256 remains byte authority.
+Both manifest baseline gates also bind content type, content encoding, cache
+control and SHA-256 metadata, so metadata-only races fail closed.
+
+The productive executor is sealed around the fixed staging bucket and internal
+S3 adapter. Its runtime mode dispatch uses an exact three-value whitelist and
+an exhaustive fail-closed branch; an unknown JavaScript value cannot fall into
+publication. Dependency injection exists only in an explicitly marked,
+non-authoritative test harness. Local files are opened without following the
+final link, sized before allocation, read to the exact witnessed length through
+the same file handle, and rechecked by file identity and real directory chain.
+
+There is deliberately no delete, cleanup, rollback or persisted publisher
+state. If an operation stops after creating immutable objects but before the
+manifest, rerun the dry-run first. Exact partial objects are safely reused;
+conflicting bytes fail closed. Never repair a collision by overwriting or
+deleting it. A failed or raced manifest remains unchanged, so recovery is a
+fresh baseline-pinned invocation after the competing writer or transport issue
+has been understood.
+
+Remote credentials are read only by the ephemeral S3 client boundary from
+`CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`. They are
+never CLI arguments or report fields. The publisher uses one client per
+operation, bounded concurrency/timeouts/retries, a complete continuation-token
+validated inventory, and a strict projected bucket ceiling below
+10,000,000,000 bytes. Operational failures return a sanitized `NO-GO` envelope
+with phase, reason code and accumulated telemetry, including partial immutable
+writes; raw exceptions, CLI tokens and credential values are not serialized.
+
 ## Rejected alternatives
 
 - Embedding every orb in Characters: excessive hot-path size and update

@@ -139,6 +139,7 @@
     "run:game-db-stage-event-image-coverage": "node --max-old-space-size=768 lib/game-db/game-db-stage-event-image-coverage.js",
     "run:game-db-equipment-ui-assets": "node --max-old-space-size=1024 lib/game-db/game-db-equipment-ui-assets.js",
     "run:game-db-skill-orb-candidate": "node --max-old-space-size=1024 lib/game-db/game-db-skill-orb-candidate.js",
+    "publish:game-db-skill-orbs-r2": "node --max-old-space-size=1024 lib/game-db/game-db-skill-orb-publisher.js",
     "publish:game-db-stage-assets-r2": "node --max-old-space-size=1024 lib/game-db/game-db-stage-assets-publisher.js",
     "run:fyi-support-memories": "npx ts-node fyi-support-memories-run.ts",
     "run:fyi-event-missions": "npx ts-node fyi-event-missions-run.ts",
