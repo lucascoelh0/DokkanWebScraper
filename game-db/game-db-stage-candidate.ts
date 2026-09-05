@@ -6,7 +6,12 @@ import { writeFormattedJson } from "../format-json";
 import { StageDetailsDataset } from "../stage-detail";
 import { buildStageFirstPartyCandidate, StageFirstPartyTables } from "./game-db-stage";
 import { buildStageDelivery } from "./game-db-stage-delivery";
-import { GameDbSourceConfig, readGameDbTable } from "./game-db-source";
+import { GameDbRow, GameDbSourceConfig, normalizeDbId, readGameDbTable } from "./game-db-source";
+import {
+    validatePinnedWallpaperToolchain,
+    validateWallpaperAssetManifest,
+    WallpaperAssetManifest,
+} from "./game-db-wallpaper-assets";
 
 interface Options {
     sourceDataDir: string,
@@ -16,6 +21,7 @@ interface Options {
     generatedAt: string,
     previousDatasetPath?: string,
     assetBaseUrl?: string,
+    wallpaperAssetsManifestPath?: string,
 }
 
 export const PINNED_STAGE_SOURCE_PROFILE = {
@@ -28,6 +34,7 @@ export const PINNED_STAGE_SOURCE_PROFILE = {
     equipmentSkillCount: 14021,
     equipmentLimitationCount: 310,
     linkSkillLvUpItemCount: 3,
+    wallpaperItemCount: 88,
 } as const;
 
 export function validatePinnedStageSourceProfile(
@@ -45,6 +52,7 @@ export function validatePinnedStageSourceProfile(
         equipmentSkillCount: tables.equipment_skills.length,
         equipmentLimitationCount: tables.equipment_skill_limitations.length,
         linkSkillLvUpItemCount: tables.link_skill_lv_up_items.length,
+        wallpaperItemCount: tables.wallpaper_items?.length ?? 0,
     };
     for (const [key, expected] of Object.entries(PINNED_STAGE_SOURCE_PROFILE)) {
         if (key === "sourceSnapshotVersion") continue;
@@ -73,6 +81,7 @@ export const REQUIRED_STAGE_TABLES: Array<keyof StageFirstPartyTables> = [
     "equipment_skill_limitations",
     "equipment_skills",
     "link_skill_lv_up_items",
+    "wallpaper_items",
     "link_skills",
     "mission_rewards",
     "missions",
@@ -117,6 +126,7 @@ export function parseStageCandidateArgs(args: string[]): Options {
         "--generated-at",
         "--previous-dataset",
         "--asset-base-url",
+        "--wallpaper-assets-manifest",
     ]);
     const values = new Map<string, string>();
     for (let index = 0; index < args.length; index += 1) {
@@ -141,6 +151,7 @@ export function parseStageCandidateArgs(args: string[]): Options {
         generatedAt,
         ...(values.get("--previous-dataset") ? { previousDatasetPath: resolve(values.get("--previous-dataset")!) } : {}),
         ...(values.get("--asset-base-url") ? { assetBaseUrl: values.get("--asset-base-url") } : {}),
+        ...(values.get("--wallpaper-assets-manifest") ? { wallpaperAssetsManifestPath: resolve(values.get("--wallpaper-assets-manifest")!) } : {}),
     };
 }
 
@@ -159,16 +170,60 @@ async function requireMissing(path: string): Promise<void> {
     }
 }
 
+export function validateStageWallpaperManifest(
+    value: unknown,
+    sourceSnapshotVersion: string,
+    sourceDatabaseSha256: string,
+): WallpaperAssetManifest {
+    const manifest = validateWallpaperAssetManifest(value);
+    validatePinnedWallpaperToolchain(manifest);
+    if (manifest.source.databaseSnapshotVersion !== sourceSnapshotVersion
+        || manifest.source.databaseSha256 !== sourceDatabaseSha256) {
+        throw new Error("Wallpaper asset manifest does not match the Stage source snapshot");
+    }
+    return manifest;
+}
+
+export function validateStageWallpaperCatalogCoverage(manifest: WallpaperAssetManifest, wallpaperItems: GameDbRow[]): void {
+    const catalog = new Map<string, { name: string, description: string }>();
+    for (const row of wallpaperItems) {
+        const itemId = normalizeDbId(row.id);
+        const name = row.name?.trim();
+        const description = row.description?.trim();
+        if (!itemId || !name || !description) throw new Error("wallpaper_items contains an invalid ID or official text");
+        if (catalog.has(itemId)) throw new Error(`Duplicate wallpaper_items row ${itemId}`);
+        catalog.set(itemId, { name, description });
+    }
+    if (catalog.size !== manifest.presentations.length) {
+        throw new Error(`Wallpaper manifest/catalog cardinality mismatch: ${manifest.presentations.length}/${catalog.size}`);
+    }
+    for (const presentation of manifest.presentations) {
+        const item = catalog.get(presentation.itemId);
+        if (!item || item.name !== presentation.name || item.description !== presentation.description) {
+            throw new Error(`Wallpaper manifest does not exactly match wallpaper_items row ${presentation.itemId}`);
+        }
+    }
+}
+
 async function main(): Promise<void> {
     const options = parseStageCandidateArgs(process.argv.slice(2));
     await requireMissing(options.outputDir);
     const tables = await loadTables(options.sourceDataDir);
     validatePinnedStageSourceProfile(options.sourceSnapshotVersion, options.sourceDatabaseSha256, tables);
+    const wallpaperManifest = options.wallpaperAssetsManifestPath
+        ? validateStageWallpaperManifest(
+            JSON.parse(await readFile(options.wallpaperAssetsManifestPath, "utf8")),
+            options.sourceSnapshotVersion,
+            options.sourceDatabaseSha256,
+        )
+        : undefined;
+    if (wallpaperManifest) validateStageWallpaperCatalogCoverage(wallpaperManifest, tables.wallpaper_items ?? []);
     const candidate = buildStageFirstPartyCandidate({
         generatedAt: options.generatedAt,
         sourceSnapshotVersion: options.sourceSnapshotVersion,
         sourceDatabaseSha256: options.sourceDatabaseSha256,
         tables,
+        wallpaperPresentations: new Map(wallpaperManifest?.presentations.map(item => [item.itemId, item]) ?? []),
     });
     const previous = options.previousDatasetPath
         ? JSON.parse(await readFile(options.previousDatasetPath, "utf8")) as StageDetailsDataset

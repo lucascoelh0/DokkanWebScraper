@@ -249,11 +249,19 @@ function validateStageAssetSourceUrl(value: string, path: string, sourceFiles?: 
             : undefined;
     if (officialScheme) {
         const expectedPath = `${officialScheme}://${path}`;
+        const wallpaperPath = /^item\/wallpaper\/(\d{4})\/(icon|thumb|full)_\1\.png$/.exec(path);
+        const wallpaperSource = /^official-cpk-extract:\/\/item\/wallpaper\/(\d{4})\.cpk#([A-Za-z0-9_-]+\.png)$/.exec(value);
         const validPathKind = officialScheme === "official-cpk-derived"
             ? /^derived\/equipment\/levels\/lv-\d+(?:-\d+)?\.png$/.test(path)
-            : /^layout\/en\/image\/(?:character|charamenu\/potential)\/[A-Za-z0-9_.-]+\.png$/.test(path);
-        if (value !== expectedPath || !validPathKind || !sourceFiles?.length
-            || sourceFiles.some(source => !/^(?:fonts|layout)\/[A-Za-z0-9_./-]+$/.test(source)
+            : /^layout\/en\/image\/(?:character|charamenu\/potential)\/[A-Za-z0-9_.-]+\.png$/.test(path) || Boolean(wallpaperPath);
+        const expectedWallpaperMember = wallpaperPath
+            ? wallpaperPath[2] === "full" ? `Images_${wallpaperPath[1]}.png` : `${wallpaperPath[2]}_${wallpaperPath[1]}.png`
+            : undefined;
+        const validSourceUrl = wallpaperPath
+            ? wallpaperSource?.[1] === wallpaperPath[1] && wallpaperSource[2] === expectedWallpaperMember
+            : value === expectedPath;
+        if (!validSourceUrl || !validPathKind || !sourceFiles?.length
+            || sourceFiles.some(source => !/^(?:fonts|layout|archives|extracted)\/[A-Za-z0-9_./-]+$/.test(source)
                 || source.split("/").some(part => !part || part === "." || part === ".."))) {
             throw new Error(`Unsafe Stage asset source URL for ${path}`);
         }

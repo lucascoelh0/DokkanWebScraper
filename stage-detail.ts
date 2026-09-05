@@ -136,6 +136,12 @@ export interface StageEquipmentSkillPresentation {
     infinityAssetPath?: string,
 }
 
+export interface StageWallpaperPresentation {
+    rewardThumbnailAssetPath: string,
+    thumbnailAssetPath: string,
+    fullImageAssetPath?: string,
+}
+
 export interface StageDetailBossDrop {
     sourceRowId: string,
     itemType: string,
@@ -153,6 +159,7 @@ export interface StageDetailBossDrop {
     iconAssetPath?: string,
     backgroundAssetPath?: string,
     equipmentSkill?: StageEquipmentSkillPresentation,
+    wallpaper?: StageWallpaperPresentation,
 }
 
 export interface StageDetailCategoryBonus {
@@ -180,6 +187,7 @@ export interface StageDetailItem {
     iconAssetPath?: string,
     backgroundAssetPath?: string,
     equipmentSkill?: StageEquipmentSkillPresentation,
+    wallpaper?: StageWallpaperPresentation,
 }
 
 export interface StageDetailEventMission {

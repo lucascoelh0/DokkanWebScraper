@@ -96,6 +96,18 @@ describe("Stage asset mirror", () => {
                     dropTypeRaw: "boss",
                     quantityStatus: "unknown",
                     chanceStatus: "unknown",
+                }, {
+                    sourceRowId: "4",
+                    itemType: "WallpaperItem",
+                    itemId: "76",
+                    dropTypeRaw: "boss",
+                    quantityStatus: "unknown",
+                    chanceStatus: "unknown",
+                    wallpaper: {
+                        rewardThumbnailAssetPath: "item/wallpaper/0076/icon_0076.png",
+                        thumbnailAssetPath: "item/wallpaper/0076/thumb_0076.png",
+                        fullImageAssetPath: "item/wallpaper/0076/full_0076.png",
+                    },
                 }],
             }],
         };
@@ -131,6 +143,9 @@ describe("Stage asset mirror", () => {
         equal(paths.includes("derived/equipment/levels/lv-7.png"), true);
         equal(paths.includes("layout/en/image/charamenu/potential/equ_infinite_icon_gold.png"), true);
         equal(paths.includes("item/other/en/thumb/thumb_linkskill_orb_00001/thumb_linkskill_orb_00001.png"), true);
+        equal(paths.includes("item/wallpaper/0076/icon_0076.png"), true);
+        equal(paths.includes("item/wallpaper/0076/thumb_0076.png"), true);
+        equal(paths.includes("item/wallpaper/0076/full_0076.png"), true);
         const missingVariant = requests.find(request => request.path.includes("card_1011961_thumb"))!;
         equal(
             missingVariant.sourceUrls.includes(

@@ -8,6 +8,7 @@ import {
     StageDetailItem,
     StageDetailsDataset,
 } from "../stage-detail";
+import { validatePinnedWallpaperToolchain, validateWallpaperAssetManifest } from "./game-db-wallpaper-assets";
 
 export const STAGE_ASSET_CONTRACT = "dokkan-game-asset-mirror";
 export const STAGE_ASSET_CONTRACT_VERSION = "1.0.0";
@@ -128,6 +129,9 @@ export function collectStageAssetRequests(
         addPath(reward.backgroundAssetPath);
         addPath(reward.equipmentSkill?.levelAssetPath);
         addPath(reward.equipmentSkill?.infinityAssetPath);
+        addPath(reward.wallpaper?.rewardThumbnailAssetPath);
+        addPath(reward.wallpaper?.thumbnailAssetPath);
+        addPath(reward.wallpaper?.fullImageAssetPath);
         for (const badgePath of reward.equipmentSkill?.restriction.presentation.badgeAssetPaths ?? []) addPath(badgePath);
         addPath(reward.equipmentSkill?.restriction.presentation.badgeAssetPath);
         addRemoteUrl(catalogItem?.icon?.remoteUrl);
@@ -231,6 +235,7 @@ export async function acquireStageAssets(options: {
     outputDir: string,
     reuseDir?: string,
     equipmentUiDir?: string,
+    wallpaperAssetsDir?: string,
     missingAcceptance?: StageAssetMissingAcceptance,
     sourceBaseUrl?: string,
     concurrency?: number,
@@ -239,8 +244,12 @@ export async function acquireStageAssets(options: {
     await requireMissing(outputDir);
     const reuseDir = options.reuseDir ? resolve(options.reuseDir) : undefined;
     const equipmentUiDir = options.equipmentUiDir ? resolve(options.equipmentUiDir) : undefined;
+    const wallpaperAssetsDir = options.wallpaperAssetsDir ? resolve(options.wallpaperAssetsDir) : undefined;
     const reusedSourceUrls = reuseDir ? await readReusableSourceUrls(reuseDir) : new Map<string, string>();
     const equipmentUiAssets = equipmentUiDir ? await readEquipmentUiAssets(equipmentUiDir) : new Map<string, EquipmentUiReusableEntry>();
+    const wallpaperAssets = wallpaperAssetsDir
+        ? await readWallpaperAssets(wallpaperAssetsDir, options.dataset.sourceSnapshotVersion, options.dataset.sourceDatabaseSha256)
+        : new Map<string, WallpaperReusableEntry>();
     const sourceBaseUrl = validateHttpsBaseUrl(options.sourceBaseUrl ?? DEFAULT_STAGE_ASSET_SOURCE_BASE_URL);
     const requests = collectStageAssetRequests(options.dataset, options.itemCatalog, options.frontier, sourceBaseUrl);
     const requiredEquipmentUiPaths = collectEquipmentUiPaths(options.dataset);
@@ -248,17 +257,27 @@ export async function acquireStageAssets(options: {
     for (const path of requiredEquipmentUiPaths) {
         if (!equipmentUiAssets.has(path)) throw new Error(`Verified official equipment UI directory is missing ${path}`);
     }
+    const requiredWallpaperPaths = collectWallpaperPaths(options.dataset);
+    if (requiredWallpaperPaths.size && !wallpaperAssetsDir) throw new Error("Stage wallpaper assets require a verified official wallpaper directory");
+    for (const path of requiredWallpaperPaths) {
+        if (!wallpaperAssets.has(path)) throw new Error(`Verified official wallpaper directory is missing ${path}`);
+    }
     await mkdir(dirname(outputDir), { recursive: true });
     await mkdir(outputDir, { recursive: false });
     let completed = 0;
     const acquiredResults = await mapWithConcurrency(requests, options.concurrency ?? 12, async request => {
         const officialEquipmentUi = equipmentUiDir ? await readReusablePng(equipmentUiDir, request.path) : undefined;
-        const reused = officialEquipmentUi ? undefined : (reuseDir ? await readReusablePng(reuseDir, request.path) : undefined);
+        const officialWallpaper = wallpaperAssetsDir ? await readReusablePng(wallpaperAssetsDir, request.path) : undefined;
+        const reused = officialEquipmentUi || officialWallpaper ? undefined : (reuseDir ? await readReusablePng(reuseDir, request.path) : undefined);
         const equipmentUiEntry = officialEquipmentUi ? equipmentUiAssets.get(request.path) : undefined;
+        const wallpaperEntry = officialWallpaper ? wallpaperAssets.get(request.path) : undefined;
         if (officialEquipmentUi && !equipmentUiEntry) throw new Error(`Equipment UI bytes lack provenance: ${request.path}`);
+        if (officialWallpaper && !wallpaperEntry) throw new Error(`Wallpaper bytes lack provenance: ${request.path}`);
         const acquired = officialEquipmentUi
             ? { buffer: officialEquipmentUi, sourceUrl: equipmentUiEntry!.sourceUrl, sourceFiles: equipmentUiEntry!.sourceFiles }
-            : reused
+            : officialWallpaper
+                ? { buffer: officialWallpaper, sourceUrl: wallpaperEntry!.sourceUrl, sourceFiles: wallpaperEntry!.sourceFiles }
+                : reused
                 ? { buffer: reused, sourceUrl: reusedSourceUrls.get(request.path) ?? request.sourceUrls[0] }
                 : await fetchFirstPng(request);
         completed += 1;
@@ -334,6 +353,27 @@ function collectEquipmentUiPaths(dataset: StageDetailsDataset): Set<string> {
     return paths;
 }
 
+function collectWallpaperPaths(dataset: StageDetailsDataset): Set<string> {
+    const paths = new Set<string>();
+    const addReward = (reward: StageDetailItem) => {
+        const wallpaper = reward.wallpaper;
+        if (!wallpaper) return;
+        paths.add(wallpaper.rewardThumbnailAssetPath);
+        paths.add(wallpaper.thumbnailAssetPath);
+        if (wallpaper.fullImageAssetPath) paths.add(wallpaper.fullImageAssetPath);
+    };
+    for (const stage of dataset.entries) {
+        stage.bossDrops?.forEach(addReward);
+        stage.dropPreviews?.flatMap(preview => preview.items).forEach(addReward);
+    }
+    for (const stage of dataset.zBattles ?? []) {
+        stage.checkpoints?.flatMap(checkpoint => checkpoint.repeatRewards).forEach(addReward);
+        stage.firstRewards?.flatMap(level => level.rewards).forEach(addReward);
+    }
+    dataset.eventMissions?.flatMap(mission => mission.rewards).forEach(addReward);
+    return paths;
+}
+
 export function validateStageAssetMissingAcceptance(
     sourceSnapshotVersion: string | undefined,
     missingAssets: Array<{ path: string }>,
@@ -383,6 +423,7 @@ async function readReusableSourceUrls(reuseDir: string): Promise<Map<string, str
 }
 
 interface EquipmentUiReusableEntry { path: string, sourceUrl: string, sha256: string, sizeBytes: number, sourceFiles: string[] }
+interface WallpaperReusableEntry { path: string, sourceUrl: string, sha256: string, sizeBytes: number, sourceFiles: string[] }
 
 async function readEquipmentUiAssets(root: string): Promise<Map<string, EquipmentUiReusableEntry>> {
     const raw = await readFile(resolve(root, "equipment-ui-assets-manifest.json"), "utf8");
@@ -397,6 +438,28 @@ async function readEquipmentUiAssets(root: string): Promise<Map<string, Equipmen
         }
         const bytes = await readReusablePng(root, asset.path);
         if (!bytes || bytes.byteLength !== asset.sizeBytes || sha256(bytes) !== asset.sha256) throw new Error(`Equipment UI asset drifted: ${asset.path}`);
+        result.set(asset.path, asset);
+    }
+    return result;
+}
+
+async function readWallpaperAssets(root: string, sourceSnapshotVersion: string, sourceDatabaseSha256: string): Promise<Map<string, WallpaperReusableEntry>> {
+    const raw = await readFile(resolve(root, "wallpaper-assets-manifest.json"), "utf8");
+    const manifest = validateWallpaperAssetManifest(JSON.parse(raw));
+    validatePinnedWallpaperToolchain(manifest);
+    if (manifest.source.databaseSnapshotVersion !== sourceSnapshotVersion
+        || manifest.source.databaseSha256 !== sourceDatabaseSha256) {
+        throw new Error("Wallpaper asset manifest does not match the Stage dataset source");
+    }
+    const result = new Map<string, WallpaperReusableEntry>();
+    for (const asset of manifest.assets) {
+        if (normalizeStageAssetPath(asset.path) !== asset.path || result.has(asset.path)
+            || !asset.sourceUrl.startsWith("official-cpk-extract://") || !Array.isArray(asset.sourceFiles) || asset.sourceFiles.length < 3
+            || !/^[a-f0-9]{64}$/.test(asset.sha256) || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes <= 0) {
+            throw new Error(`Invalid wallpaper asset provenance for ${asset.path ?? "unknown"}`);
+        }
+        const bytes = await readReusablePng(root, asset.path);
+        if (!bytes || bytes.byteLength !== asset.sizeBytes || sha256(bytes) !== asset.sha256) throw new Error(`Wallpaper asset drifted: ${asset.path}`);
         result.set(asset.path, asset);
     }
     return result;
@@ -492,7 +555,7 @@ async function mapWithConcurrency<T, R>(values: T[], concurrency: number, task: 
 
 async function main(): Promise<void> {
     const values = new Map<string, string>();
-    const supported = new Set(["--dataset", "--item-catalog", "--frontier", "--output-dir", "--reuse-dir", "--equipment-ui-dir", "--missing-acceptance", "--source-base-url", "--concurrency"]);
+    const supported = new Set(["--dataset", "--item-catalog", "--frontier", "--output-dir", "--reuse-dir", "--equipment-ui-dir", "--wallpaper-assets-dir", "--missing-acceptance", "--source-base-url", "--concurrency"]);
     const args = process.argv.slice(2);
     for (let index = 0; index < args.length; index += 1) {
         const [name, inline] = args[index].split("=", 2);
@@ -519,6 +582,7 @@ async function main(): Promise<void> {
         outputDir: resolve(values.get("--output-dir")!),
         reuseDir: values.get("--reuse-dir") ? resolve(values.get("--reuse-dir")!) : undefined,
         equipmentUiDir: values.get("--equipment-ui-dir") ? resolve(values.get("--equipment-ui-dir")!) : undefined,
+        wallpaperAssetsDir: values.get("--wallpaper-assets-dir") ? resolve(values.get("--wallpaper-assets-dir")!) : undefined,
         missingAcceptance,
         sourceBaseUrl: values.get("--source-base-url"),
         concurrency: values.get("--concurrency") ? Number(values.get("--concurrency")) : undefined,

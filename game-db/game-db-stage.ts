@@ -12,10 +12,13 @@ import {
     StageDetailsDataset,
     StageEquipmentSkillPresentation,
     StageEquipmentSkillRestrictionCondition,
+    StageWallpaperPresentation,
 } from "../stage-detail";
 import { AttackTypes } from "../character";
 import { createMissionStageResolver, MissionStageRelation } from "./game-db-mission-stage-relations";
 import { GameDbRow, normalizeDbId, parseDbDate } from "./game-db-source";
+import { stageDropPreviewDifficultiesForMap } from "./game-db-stage-drop-preview";
+import { WallpaperAssetPresentation } from "./game-db-wallpaper-assets";
 
 export const STAGE_FIRST_PARTY_CONTRACT = "dokkan-stage-first-party-candidate";
 export const STAGE_FIRST_PARTY_CONTRACT_VERSION = "1.0.0";
@@ -39,6 +42,7 @@ export interface StageFirstPartyTables {
     equipment_skill_limitations: GameDbRow[],
     equipment_skills: GameDbRow[],
     link_skill_lv_up_items: GameDbRow[],
+    wallpaper_items?: GameDbRow[],
     link_skills: GameDbRow[],
     mission_rewards: GameDbRow[],
     missions: GameDbRow[],
@@ -214,6 +218,8 @@ function rewardPresentation(
     linkSkillLvUpItems: ReadonlyMap<string, GameDbRow>,
     equipmentSkillItems: ReadonlyMap<string, GameDbRow>,
     equipmentSkillPresentations: ReadonlyMap<string, StageEquipmentSkillPresentation>,
+    wallpaperItems: ReadonlyMap<string, GameDbRow>,
+    wallpaperPresentations: ReadonlyMap<string, WallpaperAssetPresentation>,
 ): {
     name?: string,
     description?: string,
@@ -224,6 +230,7 @@ function rewardPresentation(
     iconAssetPath?: string,
     backgroundAssetPath?: string,
     equipmentSkill?: StageEquipmentSkillPresentation,
+    wallpaper?: StageWallpaperPresentation,
 } {
     if (itemType === "Card") {
         return cardRewardPresentation(itemType, itemId, cards, canonicalAwakenedCards);
@@ -272,6 +279,26 @@ function rewardPresentation(
             backgroundAssetPath: `layout/en/image/item/equipment/equipment_thumb_bg/equ_base_${grade}.png`,
             equipmentSkill,
         };
+    }
+    if (itemType === "WallpaperItem") {
+        const item = wallpaperItems.get(itemId);
+        if (!item) throw new Error(`Stage reward references missing wallpaper item ${itemId}`);
+        const name = text(item.name);
+        const description = text(item.description);
+        if (!name || !description) {
+            throw new Error(`Wallpaper item ${itemId} is missing official presentation text`);
+        }
+        const presentation = wallpaperPresentations.get(itemId);
+        if (!presentation) throw new Error(`Stage reward wallpaper ${itemId} lacks verified official assets`);
+        if (presentation.name !== name || presentation.description !== description) {
+            throw new Error(`Wallpaper item ${itemId} asset manifest text does not match wallpaper_items`);
+        }
+        const wallpaper: StageWallpaperPresentation = {
+            rewardThumbnailAssetPath: presentation.rewardThumbnailAssetPath,
+            thumbnailAssetPath: presentation.thumbnailAssetPath,
+            ...(presentation.fullImageAssetPath ? { fullImageAssetPath: presentation.fullImageAssetPath } : {}),
+        };
+        return { name, description, iconAssetPath: wallpaper.rewardThumbnailAssetPath, wallpaper };
     }
     return {};
 }
@@ -776,6 +803,7 @@ export function buildStageFirstPartyCandidate(options: {
     sourceSnapshotVersion: string,
     sourceDatabaseSha256: string,
     tables: StageFirstPartyTables,
+    wallpaperPresentations?: ReadonlyMap<string, WallpaperAssetPresentation>,
 }): StageFirstPartyCandidate {
     if (!/^\d+$/.test(options.sourceSnapshotVersion)) throw new Error("Stage source snapshot version must be numeric");
     if (!/^[a-f0-9]{64}$/.test(options.sourceDatabaseSha256)) throw new Error("Stage source database SHA-256 is invalid");
@@ -789,6 +817,8 @@ export function buildStageFirstPartyCandidate(options: {
     const treasureItems = uniqueById(options.tables.treasure_items, "treasure item");
     const linkSkillLvUpItems = uniqueById(options.tables.link_skill_lv_up_items, "Link Skill level-up item");
     const equipmentSkillItems = uniqueById(options.tables.equipment_skill_items, "equipment skill item");
+    const wallpaperItems = uniqueById(options.tables.wallpaper_items ?? [], "wallpaper item");
+    const wallpaperPresentations = options.wallpaperPresentations ?? new Map<string, WallpaperAssetPresentation>();
     const equipmentPresentations = equipmentSkillPresentations(options.tables, equipmentSkillItems, cards, cardCategories);
     const canonicalAwakenedCards = canonicalAwakenedCardIds(options.tables.card_awakening_routes, cards);
     const cardSpecials = groupBy(options.tables.card_specials, "card_id");
@@ -938,8 +968,8 @@ export function buildStageFirstPartyCandidate(options: {
             };
         });
         const dropPreviews = (dropViewsByQuest.get(questId) ?? []).flatMap(row => {
-            const difficultyValues = jsonIds(jsonValue(row.difficulties, `drop view ${id(row)} difficulties`), `drop view ${id(row)} difficulties`).map(Number);
-            if (!difficultyValues.includes(difficultyRaw)) return [];
+            const difficultyValues = stageDropPreviewDifficultiesForMap(row, mapRow);
+            if (!difficultyValues) return [];
             const items = Array.from({ length: 6 }, (_, index) => index + 1).flatMap(index => {
                 const itemId = optionalId(row, `item${index}_id`);
                 const itemType = text(row[`item${index}_type`]);
@@ -948,7 +978,7 @@ export function buildStageFirstPartyCandidate(options: {
                 return [{
                     itemId,
                     itemType,
-                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, linkSkillLvUpItems, equipmentSkillItems, equipmentPresentations),
+                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, linkSkillLvUpItems, equipmentSkillItems, equipmentPresentations, wallpaperItems, wallpaperPresentations),
                 }];
             });
             return [{ sourceRowId: id(row), difficultyValues, items }];
@@ -1000,6 +1030,8 @@ export function buildStageFirstPartyCandidate(options: {
                     linkSkillLvUpItems,
                     equipmentSkillItems,
                     equipmentPresentations,
+                    wallpaperItems,
+                    wallpaperPresentations,
                 ),
             })),
             dropPreviews,
@@ -1077,6 +1109,8 @@ export function buildStageFirstPartyCandidate(options: {
             linkSkillLvUpItems,
             equipmentSkillItems,
             equipmentPresentations,
+            wallpaperItems,
+            wallpaperPresentations,
         ),
     });
     const zBattles: StageDetailZBattle[] = [...zStages.values()].sort((left, right) => numericCompare(id(left), id(right))).map(stage => {
@@ -1220,7 +1254,7 @@ export function buildStageFirstPartyCandidate(options: {
                     itemType,
                     quantity: integer(reward, "quantity"),
                     ...(cardExpInitial !== undefined ? { cardExpInitial } : {}),
-                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, linkSkillLvUpItems, equipmentSkillItems, equipmentPresentations),
+                    ...rewardPresentation(itemType, itemId, cards, canonicalAwakenedCards, treasureItems, linkSkillLvUpItems, equipmentSkillItems, equipmentPresentations, wallpaperItems, wallpaperPresentations),
                 };
             });
             return {

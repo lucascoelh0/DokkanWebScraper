@@ -55,6 +55,13 @@ describe("Stage asset publisher", () => {
             sourceUrl: "official-cpk-derived://derived/equipment/levels/lv-7-3.png",
             sourceFiles: ["fonts/en/black.otf", "layout/en/image/charamenu/potential/equ_Lv_two.png"],
         }]));
+        validateStageAssetManifest(stageAssetManifest([{
+            ...asset,
+            path: "item/wallpaper/0076/full_0076.png",
+            objectKey: "game-assets/item/wallpaper/0076/full_0076.png",
+            sourceUrl: "official-cpk-extract://item/wallpaper/0076.cpk#Images_0076.png",
+            sourceFiles: ["archives/0076.cpk", "extracted/0076/0076.lwf", "extracted/0076/Images_0076.png"],
+        }]));
         throws(() => validateStageAssetManifest(stageAssetManifest([{
             ...asset,
             sourceUrl: "official-cpk-derived://banners/en/event.png",

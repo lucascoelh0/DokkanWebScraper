@@ -72,6 +72,7 @@ export const STAGE_GAME_DB_TABLES = [
     "equipment_skill_limitations",
     "equipment_skills",
     "link_skill_lv_up_items",
+    "wallpaper_items",
     "mission_category_rewards",
     "quest_category_bonus_rarity_tables",
     "quest_category_bonuses",
@@ -101,6 +102,26 @@ export const STAGE_GAME_DB_TABLES = [
     "z_battle_stages",
 ] as const;
 
+export const REWARD_ITEM_AUDIT_GAME_DB_TABLES = [
+    "budokai_box_ranking_rewards",
+    "budokai_mission_rewards",
+    "budokai_ranking_gifts",
+    "dot_character_lv_rewards",
+    "rmbattle_mission_rewards",
+    "achievements",
+    "act_items",
+    "awakening_items",
+    "card_skin_items",
+    "card_sticker_items",
+    "eventkagi_items",
+    "potential_items",
+    "sd_packs",
+    "special_items",
+    "support_items",
+    "training_fields",
+    "training_items",
+] as const;
+
 export const FIRST_PARTY_EXPORT_GAME_DB_TABLES = [
     ...CORE_GAME_DB_TABLES,
     ...SUPER_ATTACK_EFFECT_GAME_DB_TABLES,
@@ -108,4 +129,5 @@ export const FIRST_PARTY_EXPORT_GAME_DB_TABLES = [
     ...DOKKAN_FIELD_SIDECAR_TABLES,
     ...SUPPORT_MEMORY_GAME_DB_TABLES,
     ...STAGE_GAME_DB_TABLES,
+    ...REWARD_ITEM_AUDIT_GAME_DB_TABLES,
 ] as const;
