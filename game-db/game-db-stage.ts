@@ -12,6 +12,7 @@ import {
     StageDetailsDataset,
     StageEquipmentSkillPresentation,
     StageEquipmentSkillRestrictionCondition,
+    StageTreasurePresentation,
     StageWallpaperPresentation,
 } from "../stage-detail";
 import { AttackTypes } from "../character";
@@ -231,6 +232,7 @@ function rewardPresentation(
     backgroundAssetPath?: string,
     equipmentSkill?: StageEquipmentSkillPresentation,
     wallpaper?: StageWallpaperPresentation,
+    treasure?: StageTreasurePresentation,
 } {
     if (itemType === "Card") {
         return cardRewardPresentation(itemType, itemId, cards, canonicalAwakenedCards);
@@ -238,9 +240,31 @@ function rewardPresentation(
     if (itemType === "TreasureItem") {
         const item = treasureItems.get(itemId);
         if (!item) throw new Error(`Stage reward references missing treasure item ${itemId}`);
+        const name = text(item.name);
+        const description = text(item.description);
+        const imageSuffixNumber = optionalId(item, "image_suffix_number");
+        const rarityRaw = integer(item, "rarity");
+        const sellingExchangePointRaw = integer(item, "selling_exchange_point");
+        if (!name || !description || !imageSuffixNumber) {
+            throw new Error(`Treasure item ${itemId} is missing official presentation data`);
+        }
+        if (rarityRaw < 0 || rarityRaw > 3) {
+            throw new Error(`Treasure item ${itemId} has unsupported rarity ${rarityRaw}`);
+        }
+        if (sellingExchangePointRaw !== 0 && sellingExchangePointRaw !== 1) {
+            throw new Error(`Treasure item ${itemId} has invalid selling_exchange_point ${sellingExchangePointRaw}`);
+        }
+        const paddedSuffix = imageSuffixNumber.padStart(5, "0");
         return {
-            ...(text(item.name) ? { name: text(item.name) } : {}),
-            ...(optionalId(item, "image_suffix_number") ? { thumbnailId: optionalId(item, "image_suffix_number") } : {}),
+            name,
+            description,
+            thumbnailId: imageSuffixNumber,
+            rarityRaw,
+            iconAssetPath: `item/other/en/thumb/thumb_trade_jewel_${paddedSuffix}/thumb_trade_jewel_${paddedSuffix}.png`,
+            treasure: {
+                sellingExchangePointRaw,
+                willExpire: booleanValue(item, "will_expire"),
+            },
         };
     }
     if (itemType === "LinkSkillLvUpItem") {

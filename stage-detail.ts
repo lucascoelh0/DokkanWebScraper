@@ -142,6 +142,11 @@ export interface StageWallpaperPresentation {
     fullImageAssetPath?: string,
 }
 
+export interface StageTreasurePresentation {
+    sellingExchangePointRaw: number,
+    willExpire: boolean,
+}
+
 export interface StageDetailBossDrop {
     sourceRowId: string,
     itemType: string,
@@ -160,6 +165,7 @@ export interface StageDetailBossDrop {
     backgroundAssetPath?: string,
     equipmentSkill?: StageEquipmentSkillPresentation,
     wallpaper?: StageWallpaperPresentation,
+    treasure?: StageTreasurePresentation,
 }
 
 export interface StageDetailCategoryBonus {
@@ -188,6 +194,7 @@ export interface StageDetailItem {
     backgroundAssetPath?: string,
     equipmentSkill?: StageEquipmentSkillPresentation,
     wallpaper?: StageWallpaperPresentation,
+    treasure?: StageTreasurePresentation,
 }
 
 export interface StageDetailEventMission {

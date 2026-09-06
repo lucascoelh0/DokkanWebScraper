@@ -90,6 +90,43 @@ function previewDataset(mapIds: string[]): StageDetailsDataset {
 }
 
 describe("reward item audit", function () {
+    it("classifies enriched Treasure rewards as complete inside the bounded Stage contract", function () {
+        const tables = emptyTables();
+        tables.areas = [{ id: "1" }];
+        tables.missions = [{ id: "10", area_id: "1" }];
+        tables.mission_rewards = [{
+            id: "1", mission_id: "10", item_type: "TreasureItem", item_id: "8", quantity: "25",
+        }];
+        tables.treasure_items = [{
+            id: "8", name: "Kachi Katchin", description: "Official description", rarity: "2",
+            selling_exchange_point: "1", image_suffix_number: "13", will_expire: "0",
+        }];
+        const audit = buildRewardItemAudit({
+            generatedAt: "2026-09-05T12:00:00.000Z",
+            sourceSnapshotVersion: SNAPSHOT,
+            sourceDatabaseSha256: DATABASE_SHA256,
+            tables,
+            stageDataset: dataset([{
+                itemId: "8",
+                itemType: "TreasureItem",
+                quantity: 25,
+                name: "Kachi Katchin",
+                description: "Official description",
+                thumbnailId: "13",
+                rarityRaw: 2,
+                iconAssetPath: "item/other/en/thumb/thumb_trade_jewel_00013/thumb_trade_jewel_00013.png",
+                treasure: { sellingExchangePointRaw: 1, willExpire: false },
+            }]),
+            wallpaperAssetPresentationIds: [],
+        });
+
+        const treasure = audit.matrix.find(item => item.itemType === "TreasureItem")!;
+        equal(treasure.classification, "partial");
+        equal(treasure.dimensions.stageProjection.status, "complete");
+        equal(treasure.dimensions.renderer.status, "complete");
+        equal(treasure.dimensions.detailNavigation.status, "complete");
+    });
+
     it("separates global, Stage-deliverable, delivered, and out-of-contract wallpaper coverage", function () {
         const tables = emptyTables();
         tables.areas = [{ id: "1" }];
