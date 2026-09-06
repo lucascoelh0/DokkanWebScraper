@@ -18,6 +18,7 @@ import {
 
 export const REQUIRED_SKILL_ORB_TABLES: Array<keyof SkillOrbSourceTables> = [
     "cards", "card_card_categories", "card_categories", "card_unique_infos", "card_unique_info_set_relations",
+    "card_awakening_routes",
     "equipment_skill_items", "equipment_skill_limitations", "equipment_skills",
 ];
 
@@ -73,6 +74,8 @@ export interface SkillOrbCandidateManifest {
         familyEligibleCardIndexKeys: number,
         categoryEligibleCardIndexKeys: number,
         categoryEligibleCardReferences: number,
+        exclusiveOwnerCardIndexKeys: number,
+        exclusiveOwnerCardReferences: number,
         foregroundIcons: number,
         levelCombinations: number,
         assets: number,
@@ -287,6 +290,8 @@ export async function buildSkillOrbCandidate(options: CandidateOptions): Promise
             familyEligibleCardIndexKeys: Object.keys(catalog.indexes.familyEligibleCardId).length,
             categoryEligibleCardIndexKeys: Object.keys(catalog.indexes.categoryEligibleCardId ?? {}).length,
             categoryEligibleCardReferences: Object.values(catalog.indexes.categoryEligibleCardId ?? {}).reduce((sum, ids) => sum + ids.length, 0),
+            exclusiveOwnerCardIndexKeys: Object.keys(catalog.indexes.exclusiveOwnerCardId ?? {}).length,
+            exclusiveOwnerCardReferences: Object.values(catalog.indexes.exclusiveOwnerCardId ?? {}).reduce((sum, ids) => sum + ids.length, 0),
             foregroundIcons: new Set(catalog.items.map(item => item.iconImageId)).size,
             levelCombinations: new Set(catalog.items.map(item => item.levelAssetPath)).size,
             assets: assetInventory.assets.length,

@@ -1,8 +1,8 @@
 import { createHash } from "crypto";
 import { GameDbRow, normalizeDbId } from "./game-db-source";
 
-export const SKILL_ORB_CONTRACT_VERSION = "1.1.0";
-export type SkillOrbContractVersion = "1.0.0" | typeof SKILL_ORB_CONTRACT_VERSION;
+export const SKILL_ORB_CONTRACT_VERSION = "1.2.0";
+export type SkillOrbContractVersion = "1.0.0" | "1.1.0" | typeof SKILL_ORB_CONTRACT_VERSION;
 
 export const PINNED_SKILL_ORB_PROFILE = {
     snapshotVersion: "1788329250",
@@ -70,6 +70,8 @@ export interface SkillOrbLimitationCondition {
     cardCategoryIds?: string[],
     resolvedCategories?: ResolvedSkillOrbTarget[],
     cardIds?: string[],
+    /** Final awakening owner for each aligned cardIds entry. Added in contract 1.2. */
+    canonicalOwnerCardIds?: string[],
     resolvedCards?: ResolvedSkillOrbTarget[],
     cardUniqueInfoSetIds?: string[],
     resolvedCardUniqueInfoSets?: ResolvedCardUniqueInfoSet[],
@@ -142,6 +144,8 @@ export interface SkillOrbCatalog {
         familyEligibleCardId: Record<string, string[]>,
         /** First-party category membership keyed by structural category ID. Added in contract 1.1. */
         categoryEligibleCardId?: Record<string, string[]>,
+        /** Orbs whose sole CardLimitation owner is this final awakened card. Added in contract 1.2. */
+        exclusiveOwnerCardId?: Record<string, string[]>,
     },
     assetInventory: SkillOrbAssetInventory,
 }
@@ -152,6 +156,7 @@ export interface SkillOrbSourceTables {
     card_categories: GameDbRow[],
     card_unique_infos: GameDbRow[],
     card_unique_info_set_relations: GameDbRow[],
+    card_awakening_routes: GameDbRow[],
     equipment_skill_items: GameDbRow[],
     equipment_skill_limitations: GameDbRow[],
     equipment_skills: GameDbRow[],
@@ -235,6 +240,55 @@ function uniqueRows(rows: GameDbRow[], context: string, field = "id"): Map<strin
     return result;
 }
 
+function canonicalAwakeningOwners(
+    routes: GameDbRow[],
+    cards: ReadonlyMap<string, GameDbRow>,
+): Map<string, string> {
+    const visibleCardId = (cardId: string): string => {
+        const numeric = Number(cardId);
+        if (!Number.isSafeInteger(numeric) || numeric <= 0) throw new Error(`Invalid card ID ${cardId}`);
+        const releaseState = numeric % 10;
+        if (releaseState !== 0 && releaseState !== 1) throw new Error(`Unsupported card release-state variant ${cardId}`);
+        // Awakening routes and portrait assets use the x0 identity; Characters exposes the available x1 row when present.
+        return String(Math.floor(numeric / 10) * 10);
+    };
+    uniqueRows(routes, "card_awakening_routes");
+    const representativeByVisibleId = new Map<string, string>();
+    for (const cardId of cards.keys()) {
+        const visibleId = visibleCardId(cardId);
+        const previous = representativeByVisibleId.get(visibleId);
+        if (!previous || numericCompare(previous, cardId) < 0) representativeByVisibleId.set(visibleId, cardId);
+    }
+    const outgoing = new Map<string, string>();
+    for (const row of routes) {
+        const routeId = requiredId(row);
+        const rawSourceId = requiredId(row, "card_id", `Card awakening route ${routeId}`);
+        const rawTargetId = requiredId(row, "awaked_card_id", `Card awakening route ${routeId}`);
+        if (!cards.has(rawSourceId) || !cards.has(rawTargetId)) {
+            throw new Error(`Invalid card awakening route ${rawSourceId} -> ${rawTargetId}`);
+        }
+        const sourceId = visibleCardId(rawSourceId);
+        const targetId = visibleCardId(rawTargetId);
+        if (sourceId === targetId) continue;
+        const previous = outgoing.get(sourceId);
+        if (previous && previous !== targetId) throw new Error(`Ambiguous card awakening route for ${sourceId}`);
+        outgoing.set(sourceId, targetId);
+    }
+    const owners = new Map<string, string>();
+    for (const cardId of cards.keys()) {
+        const visited = new Set<string>();
+        let current = visibleCardId(cardId);
+        while (outgoing.has(current)) {
+            if (!visited.add(current)) throw new Error(`Cyclic card awakening route at ${current}`);
+            current = outgoing.get(current)!;
+        }
+        const representative = representativeByVisibleId.get(current);
+        if (!representative) throw new Error(`Missing canonical card representative for ${current}`);
+        owners.set(cardId, representative);
+    }
+    return owners;
+}
+
 function groupRows(rows: GameDbRow[], field: string, context: string): Map<string, GameDbRow[]> {
     const result = new Map<string, GameDbRow[]>();
     for (const row of rows) {
@@ -291,6 +345,7 @@ function buildCondition(
     uniqueInfoRelationsBySet: ReadonlyMap<string, GameDbRow[]>,
     cardsByUniqueInfo: ReadonlyMap<string, GameDbRow[]>,
     categoryRelationsByCategory: ReadonlyMap<string, GameDbRow[]>,
+    canonicalOwnerByCardId: ReadonlyMap<string, string>,
 ): SkillOrbLimitationCondition {
     const sourceRowId = requiredId(row);
     const rawType = text(row.type);
@@ -330,6 +385,11 @@ function buildCondition(
     }
     if (rawType === "EquipmentSkillLimitation::CardLimitation") {
         const cardIds = exactConditionIds(rawConditions, "card_ids", `Equipment limitation ${sourceRowId}`);
+        const canonicalOwnerCardIds = cardIds.map(id => {
+            const ownerId = canonicalOwnerByCardId.get(id);
+            if (!ownerId) throw new Error(`Equipment limitation ${sourceRowId} lacks an awakening owner for card ${id}`);
+            return ownerId;
+        });
         const resolvedCards = cardIds.map(id => {
             const row = cards.get(id);
             const name = text(row?.name);
@@ -337,7 +397,7 @@ function buildCondition(
             return { id, name };
         });
         const badgeAssetPath = `${UI_ROOT}/equ_icon_specific_chara.png`;
-        return { ...base, kind: "card", isUnrestricted: false, cardIds, resolvedCards, presentation: { badgeLabel: "UNIT", detailLabel: conciseNames(resolvedCards.map(value => value.name)), badgeAssetPath, badgeAssetPaths: [badgeAssetPath] } };
+        return { ...base, kind: "card", isUnrestricted: false, cardIds, canonicalOwnerCardIds, resolvedCards, presentation: { badgeLabel: "UNIT", detailLabel: conciseNames(resolvedCards.map(value => value.name)), badgeAssetPath, badgeAssetPaths: [badgeAssetPath] } };
     }
     if (rawType === "EquipmentSkillLimitation::CardUniqueInfoSetLimitation") {
         const cardUniqueInfoSetIds = exactConditionIds(rawConditions, "card_unique_info_set_ids", `Equipment limitation ${sourceRowId}`);
@@ -449,6 +509,7 @@ export function buildSkillOrbCatalog(options: {
         "card_category_id",
         "card_card_categories",
     );
+    const canonicalOwnerByCardId = canonicalAwakeningOwners(options.tables.card_awakening_routes, cards);
 
     for (const row of options.tables.equipment_skills) if (!itemsById.has(requiredId(row, "equipment_skill_item_id"))) throw new Error(`Equipment skill ${requiredId(row)} references a missing item`);
     for (const row of options.tables.card_unique_info_set_relations) if (!uniqueInfos.has(requiredId(row, "card_unique_info_id"))) throw new Error(`Unique-info relation ${requiredId(row)} references a missing identity`);
@@ -460,7 +521,16 @@ export function buildSkillOrbCatalog(options: {
 
     const limitationSets = [...limitationsBySet.entries()].sort(([left], [right]) => numericCompare(left, right)).map(([setId, rows]): SkillOrbLimitationSet => {
         const conditions = [...rows].sort((left, right) => numericCompare(requiredId(left), requiredId(right)))
-            .map(row => buildCondition(row, cards, categories, uniqueInfos, uniqueInfoRelationsBySet, cardsByUniqueInfo, categoryRelationsByCategory));
+            .map(row => buildCondition(
+                row,
+                cards,
+                categories,
+                uniqueInfos,
+                uniqueInfoRelationsBySet,
+                cardsByUniqueInfo,
+                categoryRelationsByCategory,
+                canonicalOwnerByCardId,
+            ));
         const isUnrestricted = conditions.some(condition => condition.isUnrestricted);
         const kinds = [...new Set(conditions.map(condition => condition.kind))];
         const presentation = kinds.length === 1 ? {
@@ -530,12 +600,20 @@ export function buildSkillOrbCatalog(options: {
 
     const exact = new Map<string, Set<string>>();
     const family = new Map<string, Set<string>>();
+    const exclusive = new Map<string, Set<string>>();
     for (const item of items) {
         const limitation = limitationSetById.get(item.limitationSetId)!;
         for (const condition of limitation.conditions) {
             if (condition.kind === "card") for (const cardId of condition.cardIds ?? []) addReverse(exact, cardId, item.id);
             if (condition.kind === "card-unique-info-set") {
                 for (const cardId of condition.resolvedCardUniqueInfoSets?.flatMap(value => value.eligibleCardIds) ?? []) addReverse(family, cardId, item.id);
+            }
+        }
+        if (!limitation.isUnrestricted && limitation.conditions.length === 1) {
+            const condition = limitation.conditions[0];
+            if (condition.kind === "card") {
+                const owners = [...new Set(condition.canonicalOwnerCardIds ?? [])];
+                if (owners.length === 1) addReverse(exclusive, owners[0], item.id);
             }
         }
     }
@@ -551,7 +629,12 @@ export function buildSkillOrbCatalog(options: {
         provenance: { snapshotVersion: options.snapshotVersion, sourceDatabaseSha256: options.sourceDatabaseSha256.toLowerCase() },
         items,
         limitationSets,
-        indexes: { exactCardId: materializeIndex(exact), familyEligibleCardId: materializeIndex(family), categoryEligibleCardId },
+        indexes: {
+            exactCardId: materializeIndex(exact),
+            familyEligibleCardId: materializeIndex(family),
+            categoryEligibleCardId,
+            exclusiveOwnerCardId: materializeIndex(exclusive),
+        },
         assetInventory: options.assetInventory,
     };
     validateSkillOrbCatalog(catalog);
@@ -569,7 +652,7 @@ function equalCounts(actual: Record<string, number>, expected: Record<string, nu
 }
 
 export function validateSkillOrbCatalog(catalog: SkillOrbCatalog): void {
-    if (catalog.schemaVersion !== 1 || !["1.0.0", SKILL_ORB_CONTRACT_VERSION].includes(catalog.parserVersion)) throw new Error("Unsupported Skill Orb contract");
+    if (catalog.schemaVersion !== 1 || !["1.0.0", "1.1.0", SKILL_ORB_CONTRACT_VERSION].includes(catalog.parserVersion)) throw new Error("Unsupported Skill Orb contract");
     if (catalog.provenance.snapshotVersion !== PINNED_SKILL_ORB_PROFILE.snapshotVersion || catalog.provenance.sourceDatabaseSha256 !== PINNED_SKILL_ORB_PROFILE.sourceDatabaseSha256) throw new Error("Skill Orb provenance mismatch");
     if (catalog.items.length !== PINNED_SKILL_ORB_PROFILE.itemCount) throw new Error(`Expected ${PINNED_SKILL_ORB_PROFILE.itemCount} Skill Orbs`);
     if (Math.max(...catalog.items.map(item => Number(item.id))) !== PINNED_SKILL_ORB_PROFILE.maxItemId) throw new Error("Unexpected maximum Skill Orb ID");
@@ -602,6 +685,8 @@ export function validateSkillOrbCatalog(catalog: SkillOrbCatalog): void {
         requireSortedIds(row.cardUniqueInfoSetIds, "cardUniqueInfoSetIds");
         for (const resolved of row.resolvedCardUniqueInfoSets ?? []) requireSortedIds(resolved.eligibleCardIds, `eligibleCardIds for set ${resolved.id}`);
         if (row.resolvedCards && row.resolvedCards.map(value => value.id).join(",") !== (row.cardIds ?? []).join(",")) throw new Error("Resolved exact-card targets are not aligned");
+        if (catalog.parserVersion === SKILL_ORB_CONTRACT_VERSION && row.kind === "card"
+            && row.canonicalOwnerCardIds?.length !== row.cardIds?.length) throw new Error("Canonical exact-card owners are not aligned");
         if (row.resolvedCategories && row.resolvedCategories.map(value => value.id).join(",") !== (row.cardCategoryIds ?? []).join(",")) throw new Error("Resolved category targets are not aligned");
         if (row.resolvedCardUniqueInfoSets && row.resolvedCardUniqueInfoSets.map(value => value.id).join(",") !== (row.cardUniqueInfoSetIds ?? []).join(",")) throw new Error("Resolved family targets are not aligned");
     }
@@ -633,6 +718,17 @@ export function validateSkillOrbCatalog(catalog: SkillOrbCatalog): void {
             if (!cardIds.length || new Set(cardIds).size !== cardIds.length || [...cardIds].sort(numericCompare).join(",") !== cardIds.join(",")) {
                 throw new Error(`Invalid category eligibility index entry ${categoryId}`);
             }
+        }
+        const expectedExclusive = new Map<string, Set<string>>();
+        for (const item of catalog.items) {
+            const set = setById.get(item.limitationSetId)!;
+            if (set.isUnrestricted || set.conditions.length !== 1 || set.conditions[0].kind !== "card") continue;
+            const owners = [...new Set(set.conditions[0].canonicalOwnerCardIds ?? [])];
+            if (owners.length === 1) addReverse(expectedExclusive, owners[0], item.id);
+        }
+        const exclusiveIndex = catalog.indexes.exclusiveOwnerCardId;
+        if (!exclusiveIndex || JSON.stringify(exclusiveIndex) !== JSON.stringify(materializeIndex(expectedExclusive))) {
+            throw new Error("Exclusive owner index mismatch");
         }
     }
     const assets = catalog.assetInventory.assets;

@@ -15,6 +15,7 @@ import {
 const SOURCE_DATA_DIR = resolve(process.cwd(), "game-db", "data", "first-party-complete-source", "1788329250-wp01", "data");
 const TABLE_NAMES: Array<keyof SkillOrbSourceTables> = [
     "cards", "card_card_categories", "card_categories", "card_unique_infos", "card_unique_info_set_relations",
+    "card_awakening_routes",
     "equipment_skill_items", "equipment_skill_limitations", "equipment_skills",
 ];
 
@@ -95,7 +96,7 @@ describe("first-party Skill Orb catalog", () => {
             if (condition.resolvedCategories) deepStrictEqual(condition.resolvedCategories.map(value => value.id), condition.cardCategoryIds);
             for (const resolved of condition.resolvedCardUniqueInfoSets ?? []) deepStrictEqual(resolved.eligibleCardIds, [...resolved.eligibleCardIds].sort(numeric));
         }
-        for (const index of [catalog.indexes.exactCardId, catalog.indexes.familyEligibleCardId, catalog.indexes.categoryEligibleCardId!]) {
+        for (const index of [catalog.indexes.exactCardId, catalog.indexes.familyEligibleCardId, catalog.indexes.categoryEligibleCardId!, catalog.indexes.exclusiveOwnerCardId!]) {
             deepStrictEqual(Object.keys(index), [...Object.keys(index)].sort(numeric));
             for (const values of Object.values(index)) deepStrictEqual(values, [...values].sort(numeric));
         }
@@ -114,6 +115,19 @@ describe("first-party Skill Orb catalog", () => {
             .filter(row => row.card_category_id === categoryId)
             .map(row => row.card_id))].sort((left, right) => Number(left) - Number(right));
         deepStrictEqual(catalog.indexes.categoryEligibleCardId![categoryId], expected);
+    });
+
+    it("derives exclusive owners from first-party awakening routes and excludes shared sets", () => {
+        const borgos = catalog.limitationSets.find(set => set.id === "23")!;
+        deepStrictEqual(borgos.conditions[0].cardIds, ["1019161", "1019170", "1019171"]);
+        deepStrictEqual(borgos.conditions[0].canonicalOwnerCardIds, ["1019171", "1019171", "1019171"]);
+        const borgosOrbIds = catalog.items.filter(item => item.limitationSetId === "23").map(item => item.id);
+        deepStrictEqual(catalog.indexes.exclusiveOwnerCardId!["1019171"], borgosOrbIds);
+
+        const shared = catalog.limitationSets.find(set => set.id === "64")!;
+        ok(new Set(shared.conditions[0].canonicalOwnerCardIds).size > 1);
+        const sharedOrbIds = new Set(catalog.items.filter(item => item.limitationSetId === "64").map(item => item.id));
+        ok(Object.values(catalog.indexes.exclusiveOwnerCardId!).every(ids => ids.every(id => !sharedOrbIds.has(id))));
     });
 
     it("matches exact-card exclusivity by card ID even when official text contains names and titles", () => {
@@ -153,6 +167,10 @@ describe("first-party Skill Orb catalog", () => {
         throws(() => build({ ...source, equipment_skill_limitations: source.equipment_skill_limitations.map(row => row.id === elementRow.id ? { ...row, conditions: "{\"element_bitpattern\":32}" } : row) }), /unknown element bitpattern/);
         const effectRow = source.equipment_skills[0];
         throws(() => build({ ...source, equipment_skills: source.equipment_skills.map(row => row.id === effectRow.id ? { ...row, potential_skill_id: "999", status_type: "" } : row) }), /unknown effect/);
+        throws(
+            () => build({ ...source, cards: [...source.cards, { ...source.cards[0], id: "9999992" }] }),
+            /unsupported card release-state variant/i,
+        );
         const inventory = fakeAssetInventory(source);
         inventory.assets[0] = { ...inventory.assets[0], sizeBytes: 2 };
         throws(() => buildSkillOrbCatalog({ snapshotVersion: PINNED_SKILL_ORB_PROFILE.snapshotVersion, sourceDatabaseSha256: PINNED_SKILL_ORB_PROFILE.sourceDatabaseSha256, tables: source, assetInventory: inventory }), /inventory digest mismatch/);

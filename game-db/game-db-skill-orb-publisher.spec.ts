@@ -19,7 +19,7 @@ import {
     validateSkillOrbCandidate,
 } from "./game-db-skill-orb-publisher";
 
-const CANDIDATE = resolve("data/skill-orbs/candidate-sko11-1788329250-local");
+const CANDIDATE = resolve("data/skill-orbs/candidate-sko12-1788329250-v2");
 const realCandidateIt = existsSync(CANDIDATE) ? it : it.skip;
 let activeTestCandidate: ValidatedSkillOrbCandidate | undefined;
 const syntheticRoots = new Set<string>();

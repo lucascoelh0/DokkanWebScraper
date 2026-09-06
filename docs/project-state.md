@@ -1,6 +1,6 @@
 # Dokkanpanion Project State
 
-**Last updated**: 2026-09-04
+**Last updated**: 2026-09-06
 
 This is the concise operational checkpoint for future sessions. Durable
 decisions live in [`adr/`](adr/), and current workflow instructions live in
@@ -25,6 +25,55 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   Leader shadow consumer is integrated or authorized.
 - The project uses Codex exclusively. Provider-neutral workflow, verification,
   repository and publication rules are defined in `AGENTS.md`.
+
+## Staging v2 Equipment Skill Orb 1.2 publication (2026-09-06)
+
+- The authorized staging-only publication promoted dataset
+  `1788329250-1.2.0-2b45636e0eee239c`. Its 673,076-byte gzip payload has
+  SHA-256 `2b45636e0eee239ced39d813e7e66403a0551d9524899e132a37f55c9c7c79b6`;
+  the 1,922-byte mutable manifest has SHA-256
+  `41548427e44fcb2732fbd89cd0c624f31636e8ff494980b02cd8c4335a8c1576`.
+- Contract 1.2 adds a fail-closed exclusive-owner index derived through the
+  official awakening graph. It contains 180 exclusive limitation sets, 1,704
+  Skill Orbs and 168 final character owners; three shared sets are excluded,
+  and every owner ID exists in the delivered Characters catalog. Android 1.0
+  and 1.1 caches do not infer exclusivity and therefore hide the section.
+- The required remote dry-run returned `GO`: 196 assets reused, one immutable
+  payload created, one manifest replacement planned, zero conflicts, 674,998
+  write bytes and 673,158 net new bytes. Projected bucket usage was
+  1,118,411,713 bytes, below the 10 GB ceiling.
+- Publication performed exactly two conditional PUTs, verified complete bytes
+  and metadata, and promoted the manifest last. No retry, delete, cleanup,
+  publisher-state write or production key was involved.
+- The post-publication dry-run is idempotent: 198 objects reused, zero new or
+  replaced objects, zero conflicts and zero future bytes. A clean staging APK
+  downloaded and cached the remote 1.2 manifest and payload on the LDPlayer;
+  Super Janemba rendered the compact Exclusive Skill Orbs section, `View all`
+  and working orb-detail navigation without the retired character-family
+  section.
+
+## Staging v2 Equipment Skill Orb 1.1 publication (2026-09-05)
+
+- The authorized staging-only publication promoted dataset
+  `1788329250-1.1.0-a4b60888bc6130b3`. Its 666,081-byte gzip payload has
+  SHA-256 `a4b60888bc6130b3d8e3c3ef1e2ba9a3e7e92bf19fb33dcbfb67024da4b4f1ff`;
+  the 1,840-byte mutable manifest has SHA-256
+  `1d7319436a0a0054a061f872134e81503b06ef0b026a31006102268e76d003ae`.
+- Contract 1.1 keeps the 8,751 first-party items and 196 existing official
+  assets, adds explicit status-effect values plus a structural
+  category-to-card reverse index, and remains compatible with Android caches
+  that contain the optional 1.0 enrichment shape.
+- The required remote dry-run returned `GO`: 196 objects reused, one immutable
+  payload created, one manifest replacement planned, zero conflicts, 667,921
+  write bytes and 666,169 net new bytes. Projected bucket usage was
+  1,117,738,555 bytes, below the 10 GB ceiling.
+- Publication performed exactly two conditional PUTs, verified their complete
+  bytes and metadata, and promoted the manifest last. No delete, cleanup,
+  publisher-state write, production key, commit or push occurred.
+- The post-publication dry-run is idempotent: 198 objects reused, zero new or
+  replaced objects, zero conflicts and zero future bytes. A clean staging APK
+  loaded the remote catalog, status values and category eligibility on the
+  LDPlayer without a Skill Orb rejection or app crash.
 
 ## Production v2 Global 6.5.5 refresh checkpoint (2026-09-04)
 

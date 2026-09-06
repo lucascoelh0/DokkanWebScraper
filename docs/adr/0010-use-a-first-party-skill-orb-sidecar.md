@@ -25,6 +25,16 @@ SHA-256. The payload binds the database snapshot, SQLite SHA-256 and parser
 version; normalizes limitation sets once; and keeps deterministic reverse
 indexes for exact-card and structurally expanded character-family eligibility.
 
+Contract `1.2.0` also publishes a fail-closed exclusive-owner index. It is
+derived only for a limitation set containing exactly one `CardLimitation` row.
+Every raw card ID in that row is resolved through the official awakening-route
+graph and the game's visible card-state identity; the set is exclusive only
+when all references converge on one final visible card. Category, element,
+character-family and unrestricted limitations never populate this index.
+Older contracts do not infer exclusivity on-device, because a partial
+Characters cache could otherwise turn a shared restriction into a false
+exclusive.
+
 All identity joins use source IDs. `CardLimitation` alone populates the exact
 card index. `CardUniqueInfoSetLimitation` alone populates the family index by
 joining `card_unique_info_set_relations` to `card_unique_infos` and `cards`.
@@ -50,6 +60,8 @@ continues to render when catalog resolution is unavailable.
   dataset authoritative for the catalog.
 - Exact exclusivity and character-family eligibility cannot drift into
   text-based matching.
+- Character Details can show true single-owner Skill Orbs without depending on
+  the completeness of the local Characters cache.
 - The app needs a separate manager, loading/error/offline states and cache
   migration behavior.
 - A future R2 publication must run a dry-run, verify projected bytes, upload
@@ -64,14 +76,14 @@ mode in this slice.
 Local source-bound validation performs no remote operation:
 
 ```text
-npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko11-1788329250-local --local-validate
+npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko12-1788329250-v2 --local-validate
 ```
 
 The required staging preflight performs paginated LIST plus bounded HEAD/GET
 verification, but no PUT, DELETE, cleanup or state write:
 
 ```text
-npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko11-1788329250-local --dry-run-staging-v2
+npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko12-1788329250-v2 --dry-run-staging-v2
 ```
 
 An independently authorized staging publication must use the live-only mode
@@ -79,7 +91,7 @@ and confirm the exact dataset version. Merely running the package script or a
 dry-run cannot enter the write path:
 
 ```text
-npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko11-1788329250-local --publish-staging-v2 --confirm-dataset-version 1788329250-1.1.0-a4b60888bc6130b3
+npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko12-1788329250-v2 --publish-staging-v2 --confirm-dataset-version 1788329250-1.2.0-2b45636e0eee239c
 ```
 
 The live protocol reruns source validation and the complete remote plan. It
