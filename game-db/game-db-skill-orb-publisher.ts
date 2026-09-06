@@ -30,16 +30,17 @@ const BUCKET_CEILING_BYTES = 10_000_000_000;
 
 export const SKO02_PIN = {
     snapshotVersion: "1788329250",
-    datasetVersion: "1788329250-1.0.0-95d9a82403610974",
+    datasetVersion: "1788329250-1.1.0-a4b60888bc6130b3",
+    parserVersion: "1.1.0",
     sourceDatabaseSha256: "7a6ca01808aea355ef28f9c0190e2c072f43a7c08be41d363f5b052824922495",
-    manifestSizeBytes: 1752,
-    manifestSha256: "1c546db3a6b2027be3e3aa4206ac33506ec6000e17d2274f5f3a76a2678dd652",
+    manifestSizeBytes: 1840,
+    manifestSha256: "1d7319436a0a0054a061f872134e81503b06ef0b026a31006102268e76d003ae",
     assetManifestSizeBytes: 67804,
     assetManifestSha256: "878583e46f0fe1291e7445f0dfe8f0a8d3dc709d22affa2e12c05dde4186a3e0",
-    payloadSizeBytes: 299679,
-    payloadSha256: "95d9a8240361097425f1961c49a2d95fd1c506b9cee1fec5875b8ce5ba3fa197",
-    expandedSizeBytes: 8704546,
-    expandedSha256: "ddf9ea368e2dd8998bfce1bf223bca64286f7c401c138e515f1b7c3a69596117",
+    payloadSizeBytes: 666081,
+    payloadSha256: "a4b60888bc6130b3d8e3c3ef1e2ba9a3e7e92bf19fb33dcbfb67024da4b4f1ff",
+    expandedSizeBytes: 10309467,
+    expandedSha256: "71c4918bfa31b9284943d84e7d66909fe15ef5d46cbdbb845aed6d4fdf7069a9",
     assetCount: 196,
     assetBytes: 2153473,
     assetInventorySha256: "138f90f5203d19cff95eab005ff5d0863e838477234f250a0f6bf4d90d365cbf",
@@ -356,7 +357,7 @@ function validateManifest(manifest: SkillOrbCandidateManifest): void {
     if (manifest.schemaVersion !== 1
         || manifest.snapshotVersion !== SKO02_PIN.snapshotVersion
         || manifest.datasetVersion !== SKO02_PIN.datasetVersion
-        || manifest.parserVersion !== "1.0.0"
+        || manifest.parserVersion !== SKO02_PIN.parserVersion
         || manifest.sourceDatabaseSha256 !== SKO02_PIN.sourceDatabaseSha256
         || manifest.assetBaseUrl !== "https://assets.dkbcompanion.com/staging/v2/game-assets"
         || manifest.payload.objectKey !== payloadKey
@@ -370,7 +371,7 @@ function validateManifest(manifest: SkillOrbCandidateManifest): void {
         || manifest.assets.sizeBytes !== SKO02_PIN.assetBytes
         || manifest.assets.inventorySha256 !== SKO02_PIN.assetInventorySha256
         || manifest.counts.items !== SKO02_PIN.itemCount) {
-        throw new Error("Skill Orb candidate manifest does not match the pinned SKO-01 release");
+        throw new Error("Skill Orb candidate manifest does not match the pinned release");
     }
 }
 
@@ -387,7 +388,7 @@ function validateAssetManifest(manifest: SkillOrbAssetManifest): SkillOrbAssetEn
         || manifest.inventory.totalBytes > LIMITS.totalAssetBytes
         || manifest.inventory.inventorySha256 !== SKO02_PIN.assetInventorySha256
         || computeAssetInventorySha256(assets) !== SKO02_PIN.assetInventorySha256) {
-        throw new Error("Skill Orb asset inventory does not match the pinned SKO-01 release");
+        throw new Error("Skill Orb asset inventory does not match the pinned release");
     }
     const paths = new Set<string>();
     for (const asset of assets) {
@@ -411,18 +412,18 @@ export async function validateSkillOrbCandidate(candidateDir: string): Promise<V
     const assetManifest = parseJson<SkillOrbAssetManifest>(assetManifestBytes, ASSET_MANIFEST_NAME);
     const assets = validateAssetManifest(assetManifest);
     if (manifestBytes.byteLength !== SKO02_PIN.manifestSizeBytes || sha256(manifestBytes) !== SKO02_PIN.manifestSha256) {
-        throw new Error("Skill Orb candidate manifest bytes drifted from SKO-01");
+        throw new Error("Skill Orb candidate manifest bytes drifted from the pinned release");
     }
     if (assetManifestBytes.byteLength !== SKO02_PIN.assetManifestSizeBytes || sha256(assetManifestBytes) !== SKO02_PIN.assetManifestSha256) {
-        throw new Error("Skill Orb asset manifest bytes drifted from SKO-01");
+        throw new Error("Skill Orb asset manifest bytes drifted from the pinned release");
     }
     const payloadBytes = await readStrictFile(root, manifest.payload.objectKey, LIMITS.compressedPayloadBytes);
     if (payloadBytes.byteLength !== SKO02_PIN.payloadSizeBytes || sha256(payloadBytes) !== SKO02_PIN.payloadSha256) {
-        throw new Error("Compressed Skill Orb payload drifted from SKO-01");
+        throw new Error("Compressed Skill Orb payload drifted from the pinned release");
     }
     const expanded = await hashExpandedGzip(payloadBytes);
     if (expanded.sizeBytes !== SKO02_PIN.expandedSizeBytes || expanded.sha256 !== SKO02_PIN.expandedSha256) {
-        throw new Error("Expanded Skill Orb payload drifted from SKO-01");
+        throw new Error("Expanded Skill Orb payload drifted from the pinned release");
     }
     const rawBytes = await readStrictFile(root, RAW_PAYLOAD_NAME, LIMITS.expandedPayloadBytes);
     if (rawBytes.byteLength !== SKO02_PIN.expandedSizeBytes || sha256(rawBytes) !== SKO02_PIN.expandedSha256) {

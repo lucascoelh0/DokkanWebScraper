@@ -64,14 +64,14 @@ mode in this slice.
 Local source-bound validation performs no remote operation:
 
 ```text
-npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko01-1788329250-v5 --local-validate
+npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko11-1788329250-local --local-validate
 ```
 
 The required staging preflight performs paginated LIST plus bounded HEAD/GET
 verification, but no PUT, DELETE, cleanup or state write:
 
 ```text
-npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko01-1788329250-v5 --dry-run-staging-v2
+npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko11-1788329250-local --dry-run-staging-v2
 ```
 
 An independently authorized staging publication must use the live-only mode
@@ -79,7 +79,7 @@ and confirm the exact dataset version. Merely running the package script or a
 dry-run cannot enter the write path:
 
 ```text
-npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko01-1788329250-v5 --publish-staging-v2 --confirm-dataset-version 1788329250-1.0.0-95d9a82403610974
+npm run publish:game-db-skill-orbs-r2 -- --candidate data/skill-orbs/candidate-sko11-1788329250-local --publish-staging-v2 --confirm-dataset-version 1788329250-1.1.0-a4b60888bc6130b3
 ```
 
 The live protocol reruns source validation and the complete remote plan. It

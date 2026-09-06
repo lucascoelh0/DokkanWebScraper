@@ -1,7 +1,8 @@
 import { createHash } from "crypto";
 import { GameDbRow, normalizeDbId } from "./game-db-source";
 
-export const SKILL_ORB_CONTRACT_VERSION = "1.0.0";
+export const SKILL_ORB_CONTRACT_VERSION = "1.1.0";
+export type SkillOrbContractVersion = "1.0.0" | typeof SKILL_ORB_CONTRACT_VERSION;
 
 export const PINNED_SKILL_ORB_PROFILE = {
     snapshotVersion: "1788329250",
@@ -41,6 +42,8 @@ export interface SkillOrbEffect {
     potentialSkillId?: string,
     statusType?: "hp" | "attack" | "defense",
     level: number,
+    /** First-party flat stat value. Present only for hp/attack/defense effects in contract 1.1+. */
+    value?: number,
     label?: string,
 }
 
@@ -127,7 +130,7 @@ export interface SkillOrbAssetInventory {
 
 export interface SkillOrbCatalog {
     schemaVersion: 1,
-    parserVersion: typeof SKILL_ORB_CONTRACT_VERSION,
+    parserVersion: SkillOrbContractVersion,
     provenance: {
         snapshotVersion: string,
         sourceDatabaseSha256: string,
@@ -137,6 +140,8 @@ export interface SkillOrbCatalog {
     indexes: {
         exactCardId: Record<string, string[]>,
         familyEligibleCardId: Record<string, string[]>,
+        /** First-party category membership keyed by structural category ID. Added in contract 1.1. */
+        categoryEligibleCardId?: Record<string, string[]>,
     },
     assetInventory: SkillOrbAssetInventory,
 }
@@ -207,6 +212,12 @@ function optionalId(row: GameDbRow, field: string): string | undefined {
 function positiveInteger(value: unknown, context: string): number {
     const parsed = Number(value);
     if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`${context} must be a positive integer`);
+    return parsed;
+}
+
+function nonNegativeInteger(value: unknown, context: string): number {
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`${context} must be a non-negative integer`);
     return parsed;
 }
 
@@ -484,11 +495,14 @@ export function buildSkillOrbCatalog(options: {
             const priority = EFFECT_PRIORITY.get(identity);
             const label = EFFECT_LABEL.get(identity);
             if (!priority || !label) throw new Error(`Equipment skill ${sourceRowId} has unknown effect ${identity}`);
+            const value = statusType ? nonNegativeInteger(row[statusType], `Equipment Skill Orb ${itemId}.${statusType}`) : undefined;
+            if (statusType && !value) throw new Error(`Equipment skill ${sourceRowId} has no positive ${statusType} value`);
             const effect: SkillOrbEffect = {
                 sourceRowId,
                 ...(potentialSkillId ? { potentialSkillId } : {}),
                 ...(statusType ? { statusType: statusType as "hp" | "attack" | "defense" } : {}),
                 level: positiveInteger(effectRow.level, `Equipment skill ${sourceRowId}.level`),
+                ...(value ? { value } : {}),
                 label,
             };
             return { effect, priority };
@@ -525,13 +539,19 @@ export function buildSkillOrbCatalog(options: {
             }
         }
     }
+    const restrictedCategoryIds = new Set(limitationSets.flatMap(set => set.conditions.flatMap(condition => condition.cardCategoryIds ?? [])));
+    const categoryEligibleCardId = Object.fromEntries([...restrictedCategoryIds].sort(numericCompare).map(categoryId => {
+        const cardIds = [...new Set((categoryRelationsByCategory.get(categoryId) ?? []).map(row => requiredId(row, "card_id")))].sort(numericCompare);
+        if (!cardIds.length) throw new Error(`Restricted category ${categoryId} has no eligible cards`);
+        return [categoryId, cardIds];
+    }));
     const catalog: SkillOrbCatalog = {
         schemaVersion: 1,
         parserVersion: SKILL_ORB_CONTRACT_VERSION,
         provenance: { snapshotVersion: options.snapshotVersion, sourceDatabaseSha256: options.sourceDatabaseSha256.toLowerCase() },
         items,
         limitationSets,
-        indexes: { exactCardId: materializeIndex(exact), familyEligibleCardId: materializeIndex(family) },
+        indexes: { exactCardId: materializeIndex(exact), familyEligibleCardId: materializeIndex(family), categoryEligibleCardId },
         assetInventory: options.assetInventory,
     };
     validateSkillOrbCatalog(catalog);
@@ -549,11 +569,20 @@ function equalCounts(actual: Record<string, number>, expected: Record<string, nu
 }
 
 export function validateSkillOrbCatalog(catalog: SkillOrbCatalog): void {
-    if (catalog.schemaVersion !== 1 || catalog.parserVersion !== SKILL_ORB_CONTRACT_VERSION) throw new Error("Unsupported Skill Orb contract");
+    if (catalog.schemaVersion !== 1 || !["1.0.0", SKILL_ORB_CONTRACT_VERSION].includes(catalog.parserVersion)) throw new Error("Unsupported Skill Orb contract");
     if (catalog.provenance.snapshotVersion !== PINNED_SKILL_ORB_PROFILE.snapshotVersion || catalog.provenance.sourceDatabaseSha256 !== PINNED_SKILL_ORB_PROFILE.sourceDatabaseSha256) throw new Error("Skill Orb provenance mismatch");
     if (catalog.items.length !== PINNED_SKILL_ORB_PROFILE.itemCount) throw new Error(`Expected ${PINNED_SKILL_ORB_PROFILE.itemCount} Skill Orbs`);
     if (Math.max(...catalog.items.map(item => Number(item.id))) !== PINNED_SKILL_ORB_PROFILE.maxItemId) throw new Error("Unexpected maximum Skill Orb ID");
     if (catalog.items.some(item => !item.name.trim() || !item.description.trim())) throw new Error("Skill Orb official text must not be empty");
+    for (const item of catalog.items) {
+        for (const effect of item.effects) {
+            const isStatus = Boolean(effect.statusType);
+            if (catalog.parserVersion === SKILL_ORB_CONTRACT_VERSION && isStatus !== Boolean(effect.value && effect.value > 0)) {
+                throw new Error(`Skill Orb ${item.id} effect value mismatch`);
+            }
+            if (!isStatus && effect.value !== undefined) throw new Error(`Potential effect ${effect.sourceRowId} cannot have a flat value`);
+        }
+    }
     const effectCount = catalog.items.reduce((sum, item) => sum + item.effects.length, 0);
     if (effectCount !== PINNED_SKILL_ORB_PROFILE.effectRowCount) throw new Error(`Unexpected effect count ${effectCount}`);
     const single = catalog.items.filter(item => item.effects.length === 1).length;
@@ -595,6 +624,17 @@ export function validateSkillOrbCatalog(catalog: SkillOrbCatalog): void {
     };
     validateIndex(catalog.indexes.exactCardId, "card");
     validateIndex(catalog.indexes.familyEligibleCardId, "card-unique-info-set");
+    if (catalog.parserVersion === SKILL_ORB_CONTRACT_VERSION) {
+        const categoryIndex = catalog.indexes.categoryEligibleCardId;
+        if (!categoryIndex) throw new Error("Missing category eligibility index");
+        const expectedCategoryIds = [...new Set(limitationRows.flatMap(row => row.cardCategoryIds ?? []))].sort(numericCompare);
+        if (Object.keys(categoryIndex).join(",") !== expectedCategoryIds.join(",")) throw new Error("Category eligibility index keys mismatch");
+        for (const [categoryId, cardIds] of Object.entries(categoryIndex)) {
+            if (!cardIds.length || new Set(cardIds).size !== cardIds.length || [...cardIds].sort(numericCompare).join(",") !== cardIds.join(",")) {
+                throw new Error(`Invalid category eligibility index entry ${categoryId}`);
+            }
+        }
+    }
     const assets = catalog.assetInventory.assets;
     if ([...assets].sort((a, b) => a.path.localeCompare(b.path, "en", { numeric: true })).map(a => a.path).join("\n") !== assets.map(a => a.path).join("\n")) throw new Error("Skill Orb assets are not deterministically ordered");
     if (new Set(assets.map(asset => asset.path)).size !== assets.length || assets.some(asset => !/^[a-f0-9]{64}$/.test(asset.sha256) || asset.sizeBytes <= 0)) throw new Error("Invalid Skill Orb asset inventory");

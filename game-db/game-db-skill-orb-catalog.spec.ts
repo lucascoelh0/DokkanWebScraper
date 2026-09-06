@@ -75,6 +75,9 @@ describe("first-party Skill Orb catalog", () => {
         for (const item of catalog.items) {
             const priorities = item.effects.map(effect => order.get(effect.potentialSkillId ? `potential:${effect.potentialSkillId}` : `status:${effect.statusType}`)!);
             deepStrictEqual(priorities, [...priorities].sort((left, right) => right - left));
+            for (const effect of item.effects) {
+                equal(effect.statusType ? Number(effect.value) > 0 : effect.value === undefined, true);
+            }
         }
     });
 
@@ -92,10 +95,25 @@ describe("first-party Skill Orb catalog", () => {
             if (condition.resolvedCategories) deepStrictEqual(condition.resolvedCategories.map(value => value.id), condition.cardCategoryIds);
             for (const resolved of condition.resolvedCardUniqueInfoSets ?? []) deepStrictEqual(resolved.eligibleCardIds, [...resolved.eligibleCardIds].sort(numeric));
         }
-        for (const index of [catalog.indexes.exactCardId, catalog.indexes.familyEligibleCardId]) {
+        for (const index of [catalog.indexes.exactCardId, catalog.indexes.familyEligibleCardId, catalog.indexes.categoryEligibleCardId!]) {
             deepStrictEqual(Object.keys(index), [...Object.keys(index)].sort(numeric));
             for (const values of Object.values(index)) deepStrictEqual(values, [...values].sort(numeric));
         }
+    });
+
+    it("projects flat stat values and structural category eligibility", () => {
+        const attackItem = catalog.items.find(item => item.effects.some(effect => effect.statusType === "attack"))!;
+        const attackEffect = attackItem.effects.find(effect => effect.statusType === "attack")!;
+        const sourceItem = source.equipment_skill_items.find(item => item.id === attackItem.id)!;
+        equal(attackEffect.value, Number(sourceItem.attack));
+
+        const categoryCondition = catalog.limitationSets.flatMap(set => set.conditions)
+            .find(condition => condition.kind === "category")!;
+        const categoryId = categoryCondition.cardCategoryIds![0];
+        const expected = [...new Set(source.card_card_categories
+            .filter(row => row.card_category_id === categoryId)
+            .map(row => row.card_id))].sort((left, right) => Number(left) - Number(right));
+        deepStrictEqual(catalog.indexes.categoryEligibleCardId![categoryId], expected);
     });
 
     it("matches exact-card exclusivity by card ID even when official text contains names and titles", () => {

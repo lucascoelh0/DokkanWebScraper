@@ -19,7 +19,7 @@ import {
     validateSkillOrbCandidate,
 } from "./game-db-skill-orb-publisher";
 
-const CANDIDATE = resolve("data/skill-orbs/candidate-sko01-1788329250-v5");
+const CANDIDATE = resolve("data/skill-orbs/candidate-sko11-1788329250-local");
 const realCandidateIt = existsSync(CANDIDATE) ? it : it.skip;
 let activeTestCandidate: ValidatedSkillOrbCandidate | undefined;
 const syntheticRoots = new Set<string>();
@@ -122,12 +122,12 @@ async function readExpected(candidate: Awaited<ReturnType<typeof validateSkillOr
     return readFile(join(candidate.root, ...object.relativePath.split("/")));
 }
 
-async function realStoreWithExpected(mode: "sko01-preflight" | "all" = "sko01-preflight"): Promise<{ store: FakeStore, candidate: Awaited<ReturnType<typeof validateSkillOrbCandidate>> }> {
+async function realStoreWithExpected(mode: "bounded-preflight" | "all" = "bounded-preflight"): Promise<{ store: FakeStore, candidate: Awaited<ReturnType<typeof validateSkillOrbCandidate>> }> {
     const candidate = await validateSkillOrbCandidate(CANDIDATE);
     activeTestCandidate = candidate;
     const store = new FakeStore();
     for (const object of candidate.objects) {
-        const absent = mode === "sko01-preflight" && (
+        const absent = mode === "bounded-preflight" && (
             object.kind === "manifest" || object.kind === "payload"
             || object.key.endsWith("/lv-5-6.png") || object.key.endsWith("/lv-7-6.png")
         );
@@ -142,7 +142,7 @@ async function realStoreWithExpected(mode: "sko01-preflight" | "all" = "sko01-pr
     return { store, candidate };
 }
 
-async function storeWithExpected(mode: "sko01-preflight" | "all" = "sko01-preflight"): Promise<{ store: FakeStore, candidate: ValidatedSkillOrbCandidate }> {
+async function storeWithExpected(mode: "bounded-preflight" | "all" = "bounded-preflight"): Promise<{ store: FakeStore, candidate: ValidatedSkillOrbCandidate }> {
     const root = await mkdtemp(join(tmpdir(), "sko02-core-"));
     syntheticRoots.add(root);
     const definitions = [
@@ -181,7 +181,7 @@ async function storeWithExpected(mode: "sko01-preflight" | "all" = "sko01-prefli
     activeTestCandidate = candidate;
     const store = new FakeStore();
     for (const object of candidate.objects) {
-        const absent = mode === "sko01-preflight";
+        const absent = mode === "bounded-preflight";
         if (absent) continue;
         const bytes = await readExpected(candidate, object);
         store.objects.set(object.key, {
@@ -214,7 +214,7 @@ describe("SKO-02 Skill Orb publisher", function () {
         await Promise.all([...syntheticRoots].map(root => rm(root, { recursive: true, force: true })));
     });
 
-    realCandidateIt("source-binds the exact SKO-01 candidate and all bounded files", async () => {
+    realCandidateIt("source-binds the exact pinned candidate and all bounded files", async () => {
         const candidate = await validateSkillOrbCandidate(CANDIDATE);
         equal(candidate.manifest.datasetVersion, SKO02_PIN.datasetVersion);
         equal(candidate.manifest.payload.sha256, SKO02_PIN.payloadSha256);
@@ -234,7 +234,7 @@ describe("SKO-02 Skill Orb publisher", function () {
             const root = await copyCandidate();
             try {
                 await mutateJson(root, "equipment-skill-orbs-manifest.json", mutate);
-                await rejects(validateSkillOrbCandidate(root), /pinned SKO-01 release/);
+                await rejects(validateSkillOrbCandidate(root), /pinned release/);
             } finally { await rm(resolve(root, ".."), { recursive: true, force: true }); }
         }
     });
@@ -299,7 +299,7 @@ describe("SKO-02 Skill Orb publisher", function () {
             await mutateJson(root, "equipment-skill-orbs-manifest.json", value => {
                 value.payload.objectKey = "production/equipment-skill-orbs.json.gz";
             });
-            await rejects(validateSkillOrbCandidate(root), /pinned SKO-01 release/);
+            await rejects(validateSkillOrbCandidate(root), /pinned release/);
         } finally { await rm(resolve(root, ".."), { recursive: true, force: true }); }
         try {
             parseSkillOrbPublisherArgs(["--candidate", CANDIDATE, "--production", "--dry-run-staging-v2"]);
@@ -325,15 +325,18 @@ describe("SKO-02 Skill Orb publisher", function () {
         equal(factoryCalls, 0);
     });
 
-    realCandidateIt("reproduces the 194 reused plus four new read-only plan with no writes", async () => {
-        const { store } = await realStoreWithExpected();
+    realCandidateIt("reproduces the bounded read-only plan with no writes", async () => {
+        const { store, candidate } = await realStoreWithExpected();
         const report = await executeSkillOrbPublisher(options(), { createRemoteStore: () => store, delay: async () => undefined });
+        const missingBytes = candidate.objects
+            .filter(value => !store.objects.has(value.key))
+            .reduce((sum, value) => sum + value.sizeBytes, 0);
         equal(report.decision, "GO");
         equal(report.remote!.reusedObjects, 194);
         equal(report.remote!.newObjects, 4);
         equal(report.remote!.conflictingObjects, 0);
-        equal(report.remote!.newNetBytes, 306_602);
-        equal(report.remote!.futureWriteBytes, 306_602);
+        equal(report.remote!.newNetBytes, missingBytes);
+        equal(report.remote!.futureWriteBytes, missingBytes);
         equal(store.putCalls, 0);
         equal(report.telemetry.put, 0);
         equal(report.telemetry.delete, 0);
