@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import { dirname, resolve, sep } from "path";
 import { writeFormattedJson } from "../format-json";
+import { gunzipSync } from "zlib";
 import {
     StageDetailEnemy,
     StageDetailItem,
@@ -28,6 +29,13 @@ interface ItemCatalogItem {
     background?: ItemCatalogAsset,
 }
 interface ItemCatalog { categories?: Array<{ items?: ItemCatalogItem[] }> }
+interface AwakeningMedalAssetCatalog {
+    items?: Array<{
+        id?: string,
+        rarity?: string,
+        iconAssetPath?: string,
+    }>,
+}
 
 export interface StageAssetRequest {
     path: string,
@@ -76,6 +84,7 @@ export function collectStageAssetRequests(
     itemCatalog: ItemCatalog,
     frontier?: unknown,
     sourceBaseUrl = DEFAULT_STAGE_ASSET_SOURCE_BASE_URL,
+    awakeningMedals?: AwakeningMedalAssetCatalog,
 ): StageAssetRequest[] {
     const normalizedBaseUrl = validateHttpsBaseUrl(sourceBaseUrl);
     const requests = new Map<string, Set<string>>();
@@ -187,6 +196,13 @@ export function collectStageAssetRequests(
     }
     dataset.eventMissions?.flatMap(mission => mission.rewards).forEach(addReward);
 
+    for (const medal of awakeningMedals?.items ?? []) {
+        addPath(medal.iconAssetPath);
+        if (/^(?:bronze|silver|gold|rainbow|super)$/.test(medal.rarity ?? "")) {
+            addPath(`layout/en/image/item/awaken/awaken_thumb_bg/thumb_awaken_${medal.rarity}.png`);
+        }
+    }
+
     walkFrontier(frontier, addRemoteUrl, addPath, addCharacterAssets);
     return [...requests]
         .map(([path, urls]) => ({ path, sourceUrls: [...urls] }))
@@ -232,6 +248,7 @@ export async function acquireStageAssets(options: {
     dataset: StageDetailsDataset,
     itemCatalog: ItemCatalog,
     frontier?: unknown,
+    awakeningMedals?: AwakeningMedalAssetCatalog,
     outputDir: string,
     reuseDir?: string,
     equipmentUiDir?: string,
@@ -251,7 +268,13 @@ export async function acquireStageAssets(options: {
         ? await readWallpaperAssets(wallpaperAssetsDir, options.dataset.sourceSnapshotVersion, options.dataset.sourceDatabaseSha256)
         : new Map<string, WallpaperReusableEntry>();
     const sourceBaseUrl = validateHttpsBaseUrl(options.sourceBaseUrl ?? DEFAULT_STAGE_ASSET_SOURCE_BASE_URL);
-    const requests = collectStageAssetRequests(options.dataset, options.itemCatalog, options.frontier, sourceBaseUrl);
+    const requests = collectStageAssetRequests(
+        options.dataset,
+        options.itemCatalog,
+        options.frontier,
+        sourceBaseUrl,
+        options.awakeningMedals,
+    );
     const requiredEquipmentUiPaths = collectEquipmentUiPaths(options.dataset);
     if (requiredEquipmentUiPaths.size && !equipmentUiDir) throw new Error("Stage equipment UI assets require a verified official equipment UI directory");
     for (const path of requiredEquipmentUiPaths) {
@@ -555,7 +578,7 @@ async function mapWithConcurrency<T, R>(values: T[], concurrency: number, task: 
 
 async function main(): Promise<void> {
     const values = new Map<string, string>();
-    const supported = new Set(["--dataset", "--item-catalog", "--frontier", "--output-dir", "--reuse-dir", "--equipment-ui-dir", "--wallpaper-assets-dir", "--missing-acceptance", "--source-base-url", "--concurrency"]);
+    const supported = new Set(["--dataset", "--item-catalog", "--frontier", "--awakening-medals", "--output-dir", "--reuse-dir", "--equipment-ui-dir", "--wallpaper-assets-dir", "--missing-acceptance", "--source-base-url", "--concurrency"]);
     const args = process.argv.slice(2);
     for (let index = 0; index < args.length; index += 1) {
         const [name, inline] = args[index].split("=", 2);
@@ -572,6 +595,12 @@ async function main(): Promise<void> {
     const frontier = values.get("--frontier")
         ? JSON.parse(await readFile(resolve(values.get("--frontier")!), "utf8"))
         : undefined;
+    const awakeningMedalsPath = values.get("--awakening-medals");
+    const awakeningMedals = awakeningMedalsPath
+        ? JSON.parse((awakeningMedalsPath.endsWith(".gz")
+            ? gunzipSync(await readFile(resolve(awakeningMedalsPath)))
+            : await readFile(resolve(awakeningMedalsPath))).toString("utf8")) as AwakeningMedalAssetCatalog
+        : undefined;
     const missingAcceptance = values.get("--missing-acceptance")
         ? JSON.parse(await readFile(resolve(values.get("--missing-acceptance")!), "utf8")) as StageAssetMissingAcceptance
         : undefined;
@@ -579,6 +608,7 @@ async function main(): Promise<void> {
         dataset,
         itemCatalog,
         frontier,
+        awakeningMedals,
         outputDir: resolve(values.get("--output-dir")!),
         reuseDir: values.get("--reuse-dir") ? resolve(values.get("--reuse-dir")!) : undefined,
         equipmentUiDir: values.get("--equipment-ui-dir") ? resolve(values.get("--equipment-ui-dir")!) : undefined,

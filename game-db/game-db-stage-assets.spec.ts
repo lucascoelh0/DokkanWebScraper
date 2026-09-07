@@ -127,8 +127,15 @@ describe("Stage asset mirror", () => {
                 step: 1,
             }],
         };
+        const awakeningMedals = {
+            items: [{
+                id: "33704",
+                rarity: "rainbow",
+                iconAssetPath: "item/awaken/en/thumb/thumb_awaken_items_33704/thumb_awaken_items_33704.png",
+            }],
+        };
 
-        const requests = collectStageAssetRequests(dataset, itemCatalog, frontier);
+        const requests = collectStageAssetRequests(dataset, itemCatalog, frontier, undefined, awakeningMedals);
         const paths = requests.map(request => request.path);
         equal(paths.includes("banners/en/event/eve_listbutton/event.png"), true);
         equal(paths.includes("outgame/extension/adventure/chapter/1/1001.png"), true);
@@ -136,6 +143,7 @@ describe("Stage asset mirror", () => {
         equal(paths.includes("character/thumb/card_1023770_thumb/card_1023770_thumb.png"), true);
         equal(paths.includes("origin/series_banner/origin_sr_seriesbanner_02.png"), true);
         equal(paths.includes("item/awaken/en/thumb/thumb_awaken_items_00009/thumb_awaken_items_00009.png"), true);
+        equal(paths.includes("item/awaken/en/thumb/thumb_awaken_items_33704/thumb_awaken_items_33704.png"), true);
         equal(paths.includes("layout/en/image/item/awaken/awaken_thumb_bg/thumb_awaken_rainbow.png"), true);
         equal(paths.includes("item/equipment/equ_item_00010.png"), true);
         equal(paths.includes("layout/en/image/item/equipment/equipment_thumb_bg/equ_base_gold.png"), true);

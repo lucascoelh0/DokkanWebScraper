@@ -62,6 +62,20 @@ describe("Stage asset publisher", () => {
             sourceUrl: "official-cpk-extract://item/wallpaper/0076.cpk#Images_0076.png",
             sourceFiles: ["archives/0076.cpk", "extracted/0076/0076.lwf", "extracted/0076/Images_0076.png"],
         }]));
+        validateStageAssetManifest(stageAssetManifest([{
+            ...asset,
+            path: "character/thumb/card_1033950_thumb/card_1033950_thumb.png",
+            objectKey: "game-assets/character/thumb/card_1033950_thumb/card_1033950_thumb.png",
+            sourceUrl: "official-cpk-extract://character/thumb/card_1033950_thumb/card_1033950_thumb.png",
+            sourceFiles: ["historical/thumbs/card_1033950_thumb.cpk", "historical/thumb/card_1033950_thumb.png"],
+        }]));
+        validateStageAssetManifest(stageAssetManifest([{
+            ...asset,
+            path: "item/awaken/en/thumb/thumb_awaken_items_33704/thumb_awaken_items_33704.png",
+            objectKey: "game-assets/item/awaken/en/thumb/thumb_awaken_items_33704/thumb_awaken_items_33704.png",
+            sourceUrl: "official-cpk-extract://item/awaken/en/thumb/thumb_awaken_items_33704.cpk#thumb_awaken_items_33704.png",
+            sourceFiles: ["archives/thumb_awaken_items_33704.cpk", "extracted/thumb_awaken_items_33704.png"],
+        }]));
         throws(() => validateStageAssetManifest(stageAssetManifest([{
             ...asset,
             sourceUrl: "official-cpk-derived://banners/en/event.png",

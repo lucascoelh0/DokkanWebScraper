@@ -251,17 +251,24 @@ function validateStageAssetSourceUrl(value: string, path: string, sourceFiles?: 
         const expectedPath = `${officialScheme}://${path}`;
         const wallpaperPath = /^item\/wallpaper\/(\d{4})\/(icon|thumb|full)_\1\.png$/.exec(path);
         const wallpaperSource = /^official-cpk-extract:\/\/item\/wallpaper\/(\d{4})\.cpk#([A-Za-z0-9_-]+\.png)$/.exec(value);
+        const awakeningMedalPath = /^item\/awaken\/en\/thumb\/thumb_awaken_items_(\d+)\/thumb_awaken_items_\1\.png$/.exec(path);
+        const awakeningMedalSource = /^official-cpk-extract:\/\/item\/awaken\/en\/thumb\/thumb_awaken_items_(\d+)\.cpk#thumb_awaken_items_\1\.png$/.exec(value);
         const validPathKind = officialScheme === "official-cpk-derived"
             ? /^derived\/equipment\/levels\/lv-\d+(?:-\d+)?\.png$/.test(path)
-            : /^layout\/en\/image\/(?:character|charamenu\/potential)\/[A-Za-z0-9_.-]+\.png$/.test(path) || Boolean(wallpaperPath);
+            : /^layout\/en\/image\/(?:character|charamenu\/potential)\/[A-Za-z0-9_.-]+\.png$/.test(path)
+                || /^character\/thumb\/card_\d+_thumb\/card_\d+_thumb\.png$/.test(path)
+                || Boolean(awakeningMedalPath)
+                || Boolean(wallpaperPath);
         const expectedWallpaperMember = wallpaperPath
             ? wallpaperPath[2] === "full" ? `Images_${wallpaperPath[1]}.png` : `${wallpaperPath[2]}_${wallpaperPath[1]}.png`
             : undefined;
         const validSourceUrl = wallpaperPath
             ? wallpaperSource?.[1] === wallpaperPath[1] && wallpaperSource[2] === expectedWallpaperMember
-            : value === expectedPath;
+            : awakeningMedalPath
+                ? awakeningMedalSource?.[1] === awakeningMedalPath[1]
+                : value === expectedPath;
         if (!validSourceUrl || !validPathKind || !sourceFiles?.length
-            || sourceFiles.some(source => !/^(?:fonts|layout|archives|extracted)\/[A-Za-z0-9_./-]+$/.test(source)
+            || sourceFiles.some(source => !/^(?:fonts|layout|archives|extracted|historical)\/[A-Za-z0-9_./-]+$/.test(source)
                 || source.split("/").some(part => !part || part === "." || part === ".."))) {
             throw new Error(`Unsafe Stage asset source URL for ${path}`);
         }
