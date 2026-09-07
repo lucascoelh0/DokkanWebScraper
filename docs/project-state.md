@@ -3741,6 +3741,36 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
   curves, checkpoints, and first-clear rewards, from crashing during fast
   scrolling.
 
+## Staging v2 Character regression repair (2026-09-07)
+
+- The Character candidate reparses all 1,442 delivered leader skills with the
+  current generic grammar. Twenty characters receive corrected structured
+  clauses while raw skill text and every non-leader field remain unchanged.
+  This restores Mamba's shared Category/Type boost and preserves Panzy's
+  170% base plus qualifying 50% additional path.
+- Android now materializes structured Super Attack details for Base, EZA and
+  SEZA states directly from Characters and preserves typed first-party
+  enemy-status evidence in the offline passive fallback. Kyawei consequently
+  renders the two intended status groups without the broken
+  `following status:; or` residue even when Team Analysis is unavailable.
+- Commits `0b68646` in the data pipeline and `eb649937` in Android were pushed
+  before publication. Focused TypeScript validation passed 41 cases; the
+  focused Android app/domain unit tests and staging build also passed.
+- The authorized staging-only publication promoted Characters version
+  `2026-09-07T05:07:31.020Z`, 2,602,097 bytes, SHA-256
+  `57d02c518634574311b471fb77e0c084996f1a32cb3d341d9a25a262da02c9c3`.
+  All 3,303 portraits were reused with zero conflicts or image writes.
+- The paired parser-`1.10.0` Team Analysis payload contains 2,306 states in
+  3,227,447 bytes with SHA-256
+  `70ad0d0209ea9c19df73d0214c05fbbdcb1dd5e9705b6cbac783b44054ec280a`.
+  Its manifest binds the exact Character version and payload SHA. The normal
+  retention policy kept the current and immediately previous Team payload and
+  removed four older superseded staging payloads after manifest promotion.
+- Independent public downloads reproduced both advertised payload sizes and
+  SHA-256 values. Post-publication dry-runs are idempotent: neither Characters
+  nor Team Analysis requires another payload, manifest, portrait or cleanup
+  operation. Production keys were not changed.
+
 ## Operating Constraints
 
 - Read this checkpoint before reconstructing broader project context.
