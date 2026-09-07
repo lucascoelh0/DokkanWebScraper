@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import { dirname, resolve } from "path";
 import {
+    AwakeningMedalSourceTables,
     buildAwakeningMedalCatalog,
     buildAwakeningMedalDelivery,
 } from "./game-db-awakening-medal-catalog";
@@ -26,13 +27,29 @@ interface FirstPartyExportMetadata {
 
 export interface AwakeningMedalPinnedSourceProfile {
     databaseSha256: string,
-    awakeningItemsSha256: string,
+    tableSha256: Record<keyof AwakeningMedalSourceTables, string>,
 }
+
+const REQUIRED_TABLES: Array<keyof AwakeningMedalSourceTables> = [
+    "awakening_items",
+    "cards",
+    "card_awakening_routes",
+    "card_awakening_sets",
+    "card_awakenings",
+    "optimal_awakening_growths",
+];
 
 const PINNED_FIRST_PARTY_SOURCES: Record<string, AwakeningMedalPinnedSourceProfile> = {
     "1788329250": {
         databaseSha256: "7a6ca01808aea355ef28f9c0190e2c072f43a7c08be41d363f5b052824922495",
-        awakeningItemsSha256: "f03b0b442b259d0d7b6d6b0c9b286477d2ebf586f9c9273e3ba282443abfe486",
+        tableSha256: {
+            awakening_items: "f03b0b442b259d0d7b6d6b0c9b286477d2ebf586f9c9273e3ba282443abfe486",
+            cards: "cd296c63bfa4732030ec8e4394379920bdb39ca9aa7df3537c3ee7c3657cb21a",
+            card_awakening_routes: "5ea594f60e03215175c9c2c42ff00e46598cfc7e657e7ebf121bdc2f3d040797",
+            card_awakening_sets: "a6847f3a46b8809eeb9a39797fe8b4cb356faee99b6664a12a5edd185caeb979",
+            card_awakenings: "9552f62a0e3d570dcdc88d8d24bb00a8743f1a44241a7df24f9d6d3d4de9a099",
+            optimal_awakening_growths: "5ef37a91c34811a87b310b3c83521e12dfb5199d291b56b26bc0a51215a20e5f",
+        },
     },
 };
 
@@ -78,8 +95,12 @@ async function requireMissing(path: string): Promise<void> {
 export async function buildAwakeningMedalCandidate(options: AwakeningMedalCandidateOptions): Promise<void> {
     await requireMissing(options.outputDir);
     await validateAwakeningMedalFirstPartySource(options);
-    const rows = await readGameDbTable({ sourceRoot: options.sourceDataDir, dataDir: options.sourceDataDir }, "awakening_items");
-    const catalog = buildAwakeningMedalCatalog({ ...options, rows });
+    const sourceConfig = { sourceRoot: options.sourceDataDir, dataDir: options.sourceDataDir };
+    const tables = Object.fromEntries(await Promise.all(REQUIRED_TABLES.map(async table => [
+        table,
+        await readGameDbTable(sourceConfig, table),
+    ]))) as unknown as AwakeningMedalSourceTables;
+    const catalog = buildAwakeningMedalCatalog({ ...options, tables });
     const delivery = buildAwakeningMedalDelivery(catalog);
     await mkdir(options.outputDir, { recursive: true });
     await writeFile(resolve(options.outputDir, "awakening-medals.json"), delivery.bytes, { flag: "wx" });
@@ -90,6 +111,8 @@ export async function buildAwakeningMedalCandidate(options: AwakeningMedalCandid
         datasetVersion: catalog.datasetVersion,
         count: catalog.count,
         countsByRarity: catalog.countsByRarity,
+        routeCardCount: catalog.routeGraph.cards.length,
+        routeCount: catalog.routeGraph.routes.length,
         payload: delivery.manifest.payload,
     }, null, 2));
 }
@@ -109,10 +132,12 @@ export async function validateAwakeningMedalFirstPartySource(
         || !metadata.exportedAt || Number.isNaN(Date.parse(metadata.exportedAt))) {
         throw new Error("Awakening Medal source metadata is not a matching official Global export");
     }
-    const tableBytes = await readFile(resolve(options.sourceDataDir, "awakening_items.csv"));
-    const tableSha = createHash("sha256").update(tableBytes).digest("hex");
-    if (tableSha !== profile.awakeningItemsSha256) {
-        throw new Error("Awakening Medal table fingerprint does not match the pinned first-party profile");
+    for (const table of REQUIRED_TABLES) {
+        const tableBytes = await readFile(resolve(options.sourceDataDir, `${table}.csv`));
+        const tableSha = createHash("sha256").update(tableBytes).digest("hex");
+        if (tableSha !== profile.tableSha256[table]) {
+            throw new Error(`Awakening Medal ${table} fingerprint does not match the pinned first-party profile`);
+        }
     }
 }
 
