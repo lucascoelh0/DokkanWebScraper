@@ -1334,6 +1334,7 @@ interface RawLeaderSkillClause {
     rawText: string;
     stackGroup: LeaderSkillClause['stackGroup'];
     targetMode: LeaderSkillClause['targetMode'];
+    sharedBoostSuffix?: string;
 }
 
 function splitLeaderSkillClauses(leaderSkill: string): RawLeaderSkillClause[] {
@@ -1362,12 +1363,45 @@ function splitAlternativeClauses(
         .split(/\s*;\s*or\s+|\s*;\s*(?=(?:"|Super|Extreme|AGL|TEQ|INT|STR|PHY|Type|All Type|All Types))|\s+or\s+(?=(?:Super|Extreme|AGL|TEQ|INT|STR|PHY|Type|All Type|All Types))/i)
         .map(part => cleanInlineText(part))
         .filter(Boolean);
+    const hasOnlyPlainOrSeparators = parts.length > 1 && !text.includes(';');
+    const hasSharedTargetList = hasOnlyPlainOrSeparators && parts.every(hasLeaderSkillTarget);
+    const sharedBoostSuffix = hasSharedTargetList
+        ? extractSharedLeaderSkillBoostSuffix(parts[parts.length - 1])
+        : undefined;
 
     return parts.map((rawText, index) => ({
         rawText,
         stackGroup: index === 0 ? initialStackGroup : 'secondary',
         targetMode,
+        sharedBoostSuffix: index < parts.length - 1 && !hasLocalLeaderSkillBoost(rawText)
+            ? sharedBoostSuffix
+            : undefined,
     }));
+}
+
+function hasLeaderSkillTarget(segment: string): boolean {
+    return Boolean(
+        extractLeaderSkillCategories(segment)?.length ||
+        extractLeaderSkillTypes(segment)?.length ||
+        extractLeaderSkillClasses(segment)?.length
+    );
+}
+
+function hasLocalLeaderSkillBoost(segment: string): boolean {
+    if (extractLeaderSkillKi(segment) !== undefined) {
+        return true;
+    }
+    const boost = parseLeaderSkillBoostValues(segment);
+    return [boost.hp, boost.atk, boost.def].some(value => value !== 0);
+}
+
+function extractSharedLeaderSkillBoostSuffix(segment: string): string | undefined {
+    const boostStart = segment.search(/\b(?:Ki\s*\+\s*\d+|(?:HP|ATK|DEF)\b(?=\s*(?:,|&|and|\+)))/i);
+    if (boostStart < 0) {
+        return undefined;
+    }
+
+    return segment.slice(boostStart).trim() || undefined;
 }
 
 function parseLeaderSkillClause(clause: RawLeaderSkillClause): LeaderSkillClause | undefined {
@@ -1377,7 +1411,13 @@ function parseLeaderSkillClause(clause: RawLeaderSkillClause): LeaderSkillClause
 
     const teamConditions = extractLeaderSkillTeamConditions(clause.rawText);
     const targetSegment = stripLeaderSkillTeamConditions(clause.rawText);
-    const boost = parseLeaderSkillBoostValues(clause.rawText);
+    const localBoost = parseLeaderSkillBoostValues(clause.rawText);
+    const inheritedBoost = clause.sharedBoostSuffix
+        ? parseLeaderSkillBoostValues(clause.sharedBoostSuffix)
+        : undefined;
+    const boost = [localBoost.hp, localBoost.atk, localBoost.def].some(value => value !== 0)
+        ? localBoost
+        : inheritedBoost ?? localBoost;
     const excludedCategories = extractExcludedLeaderSkillCategories(targetSegment);
     const excludedCategoryKeys = new Set(
         (excludedCategories ?? []).map(category => category.toLowerCase()),
@@ -1386,7 +1426,8 @@ function parseLeaderSkillClause(clause: RawLeaderSkillClause): LeaderSkillClause
         ?.filter(category => !excludedCategoryKeys.has(category.toLowerCase()));
     const types = extractLeaderSkillTypes(targetSegment);
     const classes = extractLeaderSkillClasses(targetSegment);
-    const ki = extractLeaderSkillKi(targetSegment);
+    const ki = extractLeaderSkillKi(clause.rawText)
+        ?? extractLeaderSkillKi(clause.sharedBoostSuffix ?? '');
 
     return cleanObject({
         rawText: clause.rawText,

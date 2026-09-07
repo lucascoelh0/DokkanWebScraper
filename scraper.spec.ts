@@ -5,6 +5,72 @@ import { buildCharacterDatasetArtifact } from "./dataset-artifacts";
 import { cleanMultilineText, extractCharacterData, filterBaseAwakeningDuplicates, filterZAwakeningStagesFromTransformations, hasBattleTransformationCondition, isSellingOnlyLeaderSkill, parseLeaderSkillDetails, splitPassiveSections } from "./scraper";
 
 describe("parseLeaderSkillDetails", function () {
+  it("shares Mamba's trailing Ki and stat boost across category and type alternatives", () => {
+    const details = parseLeaderSkillDetails(`"Peppy Gals" Category or Extreme AGL Type Ki +3 and HP, ATK & DEF +140%`);
+
+    equal(details?.displayBoost, 140);
+    deepEqual(details?.clauses, [
+      {
+        rawText: `"Peppy Gals" Category`,
+        stackGroup: "primary",
+        targetMode: "base",
+        categories: ["Peppy Gals"],
+        ki: 3,
+        hp: 140,
+        atk: 140,
+        def: 140,
+        boostForm: "percentage",
+      },
+      {
+        rawText: `Extreme AGL Type Ki +3 and HP, ATK & DEF +140%`,
+        stackGroup: "secondary",
+        targetMode: "base",
+        types: ["AGL"],
+        classes: ["Extreme"],
+        ki: 3,
+        hp: 140,
+        atk: 140,
+        def: 140,
+        boostForm: "percentage",
+      },
+    ]);
+  });
+
+  it("does not share a suffix across a semicolon-or alternative", () => {
+    const details = parseLeaderSkillDetails(
+      `"A" Category Ki +3; or "B" Category Ki +2 and HP, ATK & DEF +170%`,
+    );
+
+    deepEqual(details?.clauses.map(clause => ({
+      categories: clause.categories,
+      ki: clause.ki,
+      hp: clause.hp,
+      atk: clause.atk,
+      def: clause.def,
+    })), [
+      { categories: ["A"], ki: 3, hp: 0, atk: 0, def: 0 },
+      { categories: ["B"], ki: 2, hp: 170, atk: 170, def: 170 },
+    ]);
+  });
+
+  it("does not replace a partial local boost with a plain-or suffix", () => {
+    const details = parseLeaderSkillDetails(
+      `"A" Category ATK +100% or Extreme AGL Type Ki +3 and HP, ATK & DEF +140%`,
+    );
+
+    deepEqual(details?.clauses.map(clause => ({
+      categories: clause.categories,
+      types: clause.types,
+      ki: clause.ki,
+      hp: clause.hp,
+      atk: clause.atk,
+      def: clause.def,
+    })), [
+      { categories: ["A"], types: undefined, ki: undefined, hp: 0, atk: 100, def: 0 },
+      { categories: undefined, types: ["AGL"], ki: 3, hp: 140, atk: 140, def: 140 },
+    ]);
+  });
+
   it("parses category leaders with additional category boosts", () => {
     const details = parseLeaderSkillDetails(`"Power Beyond Super Saiyan" or "Movie Heroes" Category Ki +3 and HP, ATK & DEF +170%, plus an additional HP, ATK & DEF +30% for characters who also belong to the "Kamehameha" Category`);
 
@@ -33,7 +99,7 @@ describe("parseLeaderSkillDetails", function () {
     });
   });
 
-  it("adds a 50 percent additional clause to a 170 percent base path", () => {
+  it("keeps Panzy's 170 percent base plus 50 percent additional path", () => {
     const details = parseLeaderSkillDetails(`"Demonic Power" or "DAIMA" Category Ki +3 and HP, ATK & DEF +170%, plus an additional HP, ATK & DEF +50% for characters who also belong to the "Battle of Wits", "Realm of Gods" or "Pure Saiyans" Category`);
 
     equal(details?.displayBoost, 220);

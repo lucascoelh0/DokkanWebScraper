@@ -6,9 +6,13 @@ import type { Character } from "../character";
 import { buildCharacterDatasetArtifact, DatasetManifest, writeCharacterDatasetBundle } from "../dataset-artifacts";
 import { writeFormattedJson } from "../format-json";
 import { runFyiTeamAnalysis } from "../fyi-team-analysis-run";
+import { parseLeaderSkillDetails } from "../scraper";
 import type { TeamAnalysisManifest } from "../team-analysis-artifacts";
 import { projectGameDbCharactersToDokkanpanion } from "./game-db-app-projection";
-import { overlayGameDbCharacterReleaseStates } from "./game-db-character-release-overlay";
+import {
+    GameDbCharacterReleaseOverlayResult,
+    overlayGameDbCharacterReleaseStates,
+} from "./game-db-character-release-overlay";
 import { buildGameDbCharacterSnapshots, loadRequiredGameDbTables } from "./game-db-experiment";
 import {
     buildGameDbCardIdentityContract,
@@ -36,6 +40,7 @@ function defaultOutputDir(): string {
 interface CandidateOptions {
     firstPartyDir: string,
     cardIds: string[],
+    reparseLeaderSkills: boolean,
     baselineDir: string,
     outputDir: string,
     catalogPath: string,
@@ -43,8 +48,14 @@ interface CandidateOptions {
 
 export function parseGameDbCharacterReleaseCandidateArgs(args: string[]): CandidateOptions {
     const values = new Map<string, string>();
+    let reparseLeaderSkills = false;
     for (let index = 0; index < args.length; index += 1) {
         const token = args[index];
+        if (token === "--reparse-leader-skills") {
+            if (reparseLeaderSkills) throw new Error(`duplicate release candidate argument ${token}`);
+            reparseLeaderSkills = true;
+            continue;
+        }
         if (!["--first-party-dir", "--card-ids", "--baseline-dir", "--output-dir", "--catalog"].includes(token)) {
             throw new Error(`unsupported release candidate argument ${token}`);
         }
@@ -57,13 +68,20 @@ export function parseGameDbCharacterReleaseCandidateArgs(args: string[]): Candid
     const firstPartyDir = values.get("--first-party-dir");
     const cardIds = values.get("--card-ids")?.split(",").map(value => value.trim()).filter(Boolean) ?? [];
     if (!firstPartyDir) throw new Error("missing --first-party-dir");
-    if (cardIds.length === 0 || new Set(cardIds).size !== cardIds.length || cardIds.some(id => !/^\d+$/.test(id))) {
+    if (values.has("--card-ids")
+        && (cardIds.length === 0
+            || new Set(cardIds).size !== cardIds.length
+            || cardIds.some(id => !/^\d+$/.test(id)))) {
         throw new Error("--card-ids must contain unique numeric IDs");
+    }
+    if (cardIds.length === 0 && !reparseLeaderSkills) {
+        throw new Error("release candidate requires --card-ids or --reparse-leader-skills");
     }
 
     return {
         firstPartyDir: resolve(firstPartyDir),
         cardIds,
+        reparseLeaderSkills,
         baselineDir: resolve(values.get("--baseline-dir") ?? DEFAULT_BASELINE_DIR),
         outputDir: resolve(values.get("--output-dir") ?? defaultOutputDir()),
         catalogPath: resolve(values.get("--catalog") ?? DEFAULT_CATALOG_PATH),
@@ -96,6 +114,108 @@ export async function assertFreshCandidateOutput(outputDir: string, baselineDir:
     if (await lstat(resolvedOutput).catch(() => undefined)) {
         throw new Error("release candidate output must be a fresh directory");
     }
+}
+
+export interface LeaderSkillReparseReport {
+    examinedCharacterCount: number,
+    changedCharacterCount: number,
+    changedCharacterIds: string[],
+    leaderSkillDetailsChangedCount: number,
+    leaderSkillDetailsChangedCharacterIds: string[],
+    ezaLeaderSkillDetailsChangedCount: number,
+    ezaLeaderSkillDetailsChangedCharacterIds: string[],
+    onlyLeaderSkillDetailFieldsChanged: true,
+}
+
+export function reparseCharacterLeaderSkillDetails(characters: Character[]): {
+    characters: Character[],
+    report: LeaderSkillReparseReport,
+} {
+    const seenIds = new Set<string>();
+    const changedCharacterIds: string[] = [];
+    const leaderSkillDetailsChangedCharacterIds: string[] = [];
+    const ezaLeaderSkillDetailsChangedCharacterIds: string[] = [];
+    const reparsed = characters.map(character => {
+        if (seenIds.has(character.id)) throw new Error(`duplicate baseline character ${character.id}`);
+        seenIds.add(character.id);
+        const beforeWithoutDetails = characterWithoutLeaderSkillDetails(character);
+        let candidate = character;
+
+        if (typeof character.leaderSkill === "string" && character.leaderSkill.trim()) {
+            const details = parseLeaderSkillDetails(character.leaderSkill);
+            if (details && JSON.stringify(details) !== JSON.stringify(character.leaderSkillDetails)) {
+                candidate = { ...candidate, leaderSkillDetails: details };
+                leaderSkillDetailsChangedCharacterIds.push(character.id);
+            }
+        }
+        if (typeof character.ezaLeaderSkill === "string" && character.ezaLeaderSkill.trim()) {
+            const details = parseLeaderSkillDetails(character.ezaLeaderSkill);
+            if (details && JSON.stringify(details) !== JSON.stringify(character.ezaLeaderSkillDetails)) {
+                candidate = { ...candidate, ezaLeaderSkillDetails: details };
+                ezaLeaderSkillDetailsChangedCharacterIds.push(character.id);
+            }
+        }
+
+        if (JSON.stringify(beforeWithoutDetails) !== JSON.stringify(characterWithoutLeaderSkillDetails(candidate))) {
+            throw new Error(`leader skill reparse changed fields outside its contract for ${character.id}`);
+        }
+        if (candidate !== character) changedCharacterIds.push(character.id);
+        return candidate;
+    });
+
+    return {
+        characters: reparsed,
+        report: {
+            examinedCharacterCount: characters.length,
+            changedCharacterCount: changedCharacterIds.length,
+            changedCharacterIds,
+            leaderSkillDetailsChangedCount: leaderSkillDetailsChangedCharacterIds.length,
+            leaderSkillDetailsChangedCharacterIds,
+            ezaLeaderSkillDetailsChangedCount: ezaLeaderSkillDetailsChangedCharacterIds.length,
+            ezaLeaderSkillDetailsChangedCharacterIds,
+            onlyLeaderSkillDetailFieldsChanged: true,
+        },
+    };
+}
+
+function characterWithoutLeaderSkillDetails(character: Character): Record<string, unknown> {
+    return Object.fromEntries(
+        Object.entries(character).filter(([key]) =>
+            key !== "leaderSkillDetails" && key !== "ezaLeaderSkillDetails"),
+    );
+}
+
+function disabledLeaderSkillReparse(characters: Character[]): {
+    characters: Character[],
+    report: LeaderSkillReparseReport,
+} {
+    return {
+        characters,
+        report: {
+            examinedCharacterCount: 0,
+            changedCharacterCount: 0,
+            changedCharacterIds: [],
+            leaderSkillDetailsChangedCount: 0,
+            leaderSkillDetailsChangedCharacterIds: [],
+            ezaLeaderSkillDetailsChangedCount: 0,
+            ezaLeaderSkillDetailsChangedCharacterIds: [],
+            onlyLeaderSkillDetailFieldsChanged: true,
+        },
+    };
+}
+
+function noReleaseStateOverlay(characters: Character[]): GameDbCharacterReleaseOverlayResult {
+    return {
+        characters,
+        patches: [],
+        checks: {
+            characterCountPreserved: true,
+            characterOrderPreserved: true,
+            untargetedCharactersUnchanged: true,
+            everyTargetFoundInBaseline: true,
+            everyTargetFoundInGameDb: true,
+        },
+    };
 }
 
 function sha256(bytes: Buffer): string {
@@ -153,13 +273,21 @@ export async function buildGameDbCharacterReleaseCandidate(options: CandidateOpt
     const cardIdentityContract = buildGameDbCardIdentityContract(tables);
     const activeSkillActivationContract = buildGameDbActiveSkillActivationContract(tables);
     const transformationActivationContract = buildGameDbTransformationActivationContract(tables);
-    const snapshots = buildGameDbCharacterSnapshots(options.cardIds, tables);
-    const projections = projectGameDbCharactersToDokkanpanion(snapshots, {
-        sourceVersion: metadata.dbVersion,
-    });
-    const overlay = overlayGameDbCharacterReleaseStates(baseline.characters, projections, options.cardIds);
+    const overlay = options.cardIds.length > 0
+        ? overlayGameDbCharacterReleaseStates(
+            baseline.characters,
+            projectGameDbCharactersToDokkanpanion(
+                buildGameDbCharacterSnapshots(options.cardIds, tables),
+                { sourceVersion: metadata.dbVersion },
+            ),
+            options.cardIds,
+        )
+        : noReleaseStateOverlay(baseline.characters);
+    const leaderSkillReparse = options.reparseLeaderSkills
+        ? reparseCharacterLeaderSkillDetails(overlay.characters)
+        : disabledLeaderSkillReparse(overlay.characters);
     const generatedAt = new Date().toISOString();
-    const artifact = buildCharacterDatasetArtifact(overlay.characters, {
+    const artifact = buildCharacterDatasetArtifact(leaderSkillReparse.characters, {
         datasetVersion: generatedAt,
         generatedAt,
         fileName: "characters.json.gz",
@@ -184,7 +312,7 @@ export async function buildGameDbCharacterReleaseCandidate(options: CandidateOpt
     await writeFormattedJson(reportPath, {
         schemaVersion: 1,
         contract: "dokkan-game-db-character-release-overlay-candidate",
-        contractVersion: "1.0.0",
+        contractVersion: "1.1.0",
         generatedAt,
         source: {
             kind: "first-party-game-db-over-current-character-catalog",
@@ -202,7 +330,15 @@ export async function buildGameDbCharacterReleaseCandidate(options: CandidateOpt
                 characterCount: baseline.manifest.characterCount,
             },
         },
+        operations: {
+            releaseStateOverlay: options.cardIds.length > 0,
+            reparseLeaderSkills: options.reparseLeaderSkills,
+        },
         targetCardIds: options.cardIds,
+        leaderSkillReparse: {
+            enabled: options.reparseLeaderSkills,
+            ...leaderSkillReparse.report,
+        },
         patches: overlay.patches,
         checks: overlay.checks,
         output: artifact.manifest,
