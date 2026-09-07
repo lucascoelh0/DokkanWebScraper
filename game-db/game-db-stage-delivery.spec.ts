@@ -2,7 +2,7 @@ import { deepEqual, equal, match, throws } from "assert";
 import { describe, it } from "mocha";
 import { gunzipSync } from "zlib";
 import { StageDetail, StageDetailsDataset } from "../stage-detail";
-import { buildStageDelivery } from "./game-db-stage-delivery";
+import { buildStageDelivery, validateStageDeliveryRoutes } from "./game-db-stage-delivery";
 
 describe("first-party Stage delivery", () => {
     it("builds deterministic bounded shards and resolvable typed routes", () => {
@@ -17,6 +17,7 @@ describe("first-party Stage delivery", () => {
         equal(first.audit.zBattleRoutes, 1);
         equal(first.audit.supportMemoryRelations, 3);
         equal(first.audit.eventMissions, 1);
+        equal(first.audit.awakeningMedalSources, 3);
         equal(first.audit.maximumShardExpandedBytes <= 32 * 1024, true);
         equal(first.shards.length >= 2, true);
         equal(first.manifest.catalog.objectKey.startsWith("stage-details/objects/"), true);
@@ -35,8 +36,36 @@ describe("first-party Stage delivery", () => {
             priority: 1,
             ordererId: 1,
             stageIds: ["101"],
-            rewards: [{ itemId: "11", itemType: "Point::Stone", quantity: 1 }],
+            rewards: [
+                { itemId: "11", itemType: "Point::Stone", quantity: 1 },
+                { itemId: "700", itemType: "AwakeningItem", quantity: 7 },
+            ],
         });
+        deepEqual(first.catalog.awakeningMedalSources, [
+            {
+                kind: "stage-drop",
+                medalId: "700",
+                targetKind: "quest-level",
+                targetId: "101",
+                areaId: "7",
+                questId: "71",
+                stageIds: ["101", "102"],
+            },
+            {
+                kind: "z-battle-clear-reward",
+                medalId: "700",
+                targetKind: "z-battle",
+                targetId: "9001",
+                rewardEntries: [{ quantity: 1, levels: [10] }],
+            },
+            {
+                kind: "z-battle-first-reward",
+                medalId: "700",
+                targetKind: "z-battle",
+                targetId: "9001",
+                rewardEntries: [{ quantity: 3, levels: [1, 2] }],
+            },
+        ]);
         for (const shard of first.shards) {
             equal(shard.manifest.sizeBytes, shard.gzip.byteLength);
             equal(shard.manifest.expandedSizeBytes, shard.bytes.byteLength);
@@ -106,6 +135,22 @@ describe("first-party Stage delivery", () => {
         );
     });
 
+    it("rejects a Stage-drop source that crosses its exact area and quest", () => {
+        const build = buildStageDelivery(fixtureDataset(), 32 * 1024);
+        const stageDropIndex = build.catalog.awakeningMedalSources.findIndex(source => source.kind === "stage-drop");
+        const malformedCatalog = {
+            ...build.catalog,
+            awakeningMedalSources: build.catalog.awakeningMedalSources.map((source, index) => index === stageDropIndex
+                ? { ...source, stageIds: [source.targetId, "201"] }
+                : source),
+        };
+
+        throws(
+            () => validateStageDeliveryRoutes(malformedCatalog, build.manifest),
+            /invalid exact target/,
+        );
+    });
+
     it("fails closed when a Support Memory target is absent", () => {
         const dataset = fixtureDataset();
         dataset.supportMemoryRelations!.push({
@@ -128,7 +173,21 @@ function fixtureDataset(): StageDetailsDataset {
     entries[0].areaType = "Area::MainArea";
     entries[0].areaCategoryRaw = 7;
     entries[0].chapter = { id: "1", name: "Chapter 1" };
+    entries[0].bossDrops = [{
+        sourceRowId: "5001",
+        itemType: "AwakeningItem",
+        itemId: "700",
+        dropTypeRaw: "boss",
+        quantityStatus: "unknown",
+        chanceStatus: "unknown",
+    }];
+    entries[0].dropPreviews = [{
+        sourceRowId: "5002",
+        difficultyValues: [3, 4],
+        items: [{ itemId: "700", itemType: "AwakeningItem" }],
+    }];
     entries[1].areaType = "Area::MainArea";
+    entries[1].difficultyRaw = 4;
     entries[1].chapter = { id: "1", name: "Chapter 1" };
     entries[2].areaType = "Area::EventArea";
     entries[2].areaCategoryRaw = 2;
@@ -183,9 +242,22 @@ function fixtureDataset(): StageDetailsDataset {
                 stamina: 0,
                 requiredKeys: 0,
                 normalRewardTableGroupId: "1",
-                repeatRewards: [{ itemId: "1", itemType: "AwakeningItem", quantity: 1 }],
+                repeatRewards: [{ itemId: "700", itemType: "AwakeningItem", quantity: 1 }],
             }],
-            firstRewards: [],
+            firstRewards: [
+                {
+                    id: "2",
+                    level: 2,
+                    rewardSetId: "2",
+                    rewards: [{ itemId: "700", itemType: "AwakeningItem", quantity: 3 }],
+                },
+                {
+                    id: "1",
+                    level: 1,
+                    rewardSetId: "1",
+                    rewards: [{ itemId: "700", itemType: "AwakeningItem", quantity: 3 }],
+                },
+            ],
         }],
         supportMemoryRelations: [
             {
@@ -219,7 +291,10 @@ function fixtureDataset(): StageDetailsDataset {
             priority: 1,
             ordererId: 1,
             stageIds: ["101"],
-            rewards: [{ itemId: "11", itemType: "Point::Stone", quantity: 1 }],
+            rewards: [
+                { itemId: "11", itemType: "Point::Stone", quantity: 1 },
+                { itemId: "700", itemType: "AwakeningItem", quantity: 7 },
+            ],
         }],
     };
 }

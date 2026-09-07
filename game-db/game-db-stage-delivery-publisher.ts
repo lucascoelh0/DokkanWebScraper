@@ -264,7 +264,7 @@ async function validateObjectFile(
         throw new Error(`Stage delivery object contract does not match the manifest: ${object.objectKey}`);
     }
     if (object.objectKey === manifest.catalog.objectKey) {
-        validateCatalogPayload(payload as StageCatalogPayload, manifest);
+        validateStageDeliveryCatalogPayload(payload as StageCatalogPayload, manifest);
     } else {
         const shard = manifest.shards.find(candidate => candidate.objectKey === object.objectKey);
         if (!shard) throw new Error(`Stage delivery shard is absent from the manifest: ${object.objectKey}`);
@@ -289,10 +289,12 @@ function validateManifestShape(manifest: StageDeliveryManifest): void {
         || !Number.isSafeInteger(manifest.zBattleCount)
         || !Number.isSafeInteger(manifest.supportMemoryRelationCount)
         || !Number.isSafeInteger(manifest.eventMissionCount)
+        || !Number.isSafeInteger(manifest.awakeningMedalSourceCount)
         || manifest.questLevelCount < 0
         || manifest.zBattleCount < 0
         || manifest.supportMemoryRelationCount < 0
-        || manifest.eventMissionCount < 0) {
+        || manifest.eventMissionCount < 0
+        || manifest.awakeningMedalSourceCount < 0) {
         throw new Error("Stage delivery manifest has invalid source lineage or counts");
     }
     if (manifest.fileName !== manifest.catalog.objectKey
@@ -311,7 +313,10 @@ function validateManifestShape(manifest: StageDeliveryManifest): void {
     }
 }
 
-function validateCatalogPayload(catalog: StageCatalogPayload, manifest: StageDeliveryManifest): void {
+export function validateStageDeliveryCatalogPayload(
+    catalog: StageCatalogPayload,
+    manifest: StageDeliveryManifest,
+): void {
     if (catalog.schemaVersion !== 1
         || catalog.contract !== STAGE_DELIVERY_CONTRACT
         || catalog.contractVersion !== STAGE_DELIVERY_CONTRACT_VERSION
@@ -324,10 +329,12 @@ function validateCatalogPayload(catalog: StageCatalogPayload, manifest: StageDel
         || !Array.isArray(catalog.supportMemoryRelations)
         || typeof catalog.eventMissionsComplete !== "boolean"
         || !Array.isArray(catalog.eventMissions)
+        || !Array.isArray(catalog.awakeningMedalSources)
         || catalog.count !== catalog.entries.length
         || catalog.questLevelCount !== manifest.questLevelCount
         || catalog.zBattleCount !== manifest.zBattleCount
         || catalog.eventMissions.length !== manifest.eventMissionCount
+        || catalog.awakeningMedalSources.length !== manifest.awakeningMedalSourceCount
         || catalog.supportMemoryRelations.length !== manifest.supportMemoryRelationCount) {
         throw new Error("Stage delivery catalog does not match its manifest");
     }
@@ -346,6 +353,84 @@ function validateCatalogPayload(catalog: StageCatalogPayload, manifest: StageDel
         || catalog.entries.filter(entry => entry.kind === "z-battle").length !== manifest.zBattleCount) {
         throw new Error("Stage delivery catalog routes do not match its manifest");
     }
+    const questIds = new Set(catalog.entries.filter(entry => entry.kind === "quest-level").map(entry => entry.id));
+    const zBattleIds = new Set(catalog.entries.filter(entry => entry.kind === "z-battle").map(entry => entry.id));
+    const questEntriesById = new Map(
+        catalog.entries.filter(entry => entry.kind === "quest-level").map(entry => [entry.id, entry]),
+    );
+    const sourceKeys = new Set<string>();
+    for (const source of catalog.awakeningMedalSources) {
+        if (!/^[1-9]\d*$/.test(source.medalId)) {
+            throw new Error("Stage delivery catalog has an invalid Awakening Medal source");
+        }
+        if (source.kind === "stage-drop") {
+            if (source.targetKind !== "quest-level"
+                || !questIds.has(source.targetId)
+                || !source.areaId
+                || !source.questId
+                || !Array.isArray(source.stageIds)
+                || source.stageIds.length === 0
+                || source.stageIds[0] !== source.targetId
+                || source.stageIds.some(id => !questIds.has(id))
+                || new Set(source.stageIds).size !== source.stageIds.length
+                || source.stageIds.some((id, index) => (index > 0 && numericTextCompare(source.stageIds![index - 1], id) >= 0)
+                    || questEntriesById.get(id)?.areaId !== source.areaId
+                    || questEntriesById.get(id)?.questId !== source.questId)
+                || source.rewardEntries !== undefined) {
+                throw new Error("Stage delivery catalog has a malformed Awakening Medal Stage-drop source");
+            }
+        } else if ((source.kind !== "z-battle-first-reward" && source.kind !== "z-battle-clear-reward")
+            || source.targetKind !== "z-battle"
+            || !zBattleIds.has(source.targetId)
+            || source.areaId !== undefined
+            || source.questId !== undefined
+            || source.stageIds !== undefined
+            || !Array.isArray(source.rewardEntries)
+            || source.rewardEntries.length === 0
+            || source.rewardEntries.some(entry => !Number.isSafeInteger(entry.quantity)
+                || entry.quantity <= 0
+                || !Array.isArray(entry.levels)
+                || entry.levels.length === 0
+                || entry.levels.some(level => !Number.isSafeInteger(level) || level <= 0)
+                || new Set(entry.levels).size !== entry.levels.length
+                || entry.levels.some((level, index) => index > 0 && level <= entry.levels[index - 1]))
+            || new Set(source.rewardEntries.map(rewardEntryKey)).size !== source.rewardEntries.length
+            || source.rewardEntries.some((entry, index) => index > 0
+                && compareRewardEntries(source.rewardEntries![index - 1], entry) >= 0)) {
+            throw new Error("Stage delivery catalog has a malformed Awakening Medal Z-Battle source");
+        }
+        const sourceKey = [
+            source.medalId,
+            source.kind,
+            source.targetKind,
+            source.targetId,
+            source.areaId ?? "",
+            source.questId ?? "",
+        ].join(":");
+        if (sourceKeys.has(sourceKey)) {
+            throw new Error("Stage delivery catalog has duplicate Awakening Medal sources");
+        }
+        sourceKeys.add(sourceKey);
+    }
+}
+
+function rewardEntryKey(entry: { quantity: number, levels: number[] }): string {
+    return `${entry.quantity}@${entry.levels.join(",")}`;
+}
+
+function compareRewardEntries(
+    left: { quantity: number, levels: number[] },
+    right: { quantity: number, levels: number[] },
+): number {
+    return (left.levels[0] ?? 0) - (right.levels[0] ?? 0)
+        || left.quantity - right.quantity
+        || rewardEntryKey(left).localeCompare(rewardEntryKey(right));
+}
+
+function numericTextCompare(left: string, right: string): number {
+    const normalizedLeft = left.replace(/^0+/, "") || "0";
+    const normalizedRight = right.replace(/^0+/, "") || "0";
+    return normalizedLeft.length - normalizedRight.length || normalizedLeft.localeCompare(normalizedRight);
 }
 
 function validateShardPayload(

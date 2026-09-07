@@ -9,7 +9,7 @@ import {
 } from "../stage-detail";
 
 export const STAGE_DELIVERY_CONTRACT = "dokkan-stage-delivery";
-export const STAGE_DELIVERY_CONTRACT_VERSION = "1.0.0";
+export const STAGE_DELIVERY_CONTRACT_VERSION = "1.1.0";
 export const DEFAULT_STAGE_SHARD_MAX_EXPANDED_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_STAGE_ASSET_BASE_URL = "https://assets.dokkanstats.com/assets/global/en";
 
@@ -64,6 +64,25 @@ export interface StageCatalogEntry {
     detailShardId: string,
 }
 
+export type AwakeningMedalAcquisitionKind =
+    | "stage-drop"
+    | "z-battle-first-reward"
+    | "z-battle-clear-reward";
+
+export interface AwakeningMedalAcquisitionSource {
+    kind: AwakeningMedalAcquisitionKind,
+    medalId: string,
+    targetKind: StageCatalogEntryKind,
+    targetId: string,
+    rewardEntries?: Array<{
+        quantity: number,
+        levels: number[],
+    }>,
+    areaId?: string,
+    questId?: string,
+    stageIds?: string[],
+}
+
 export interface StageCatalogPayload {
     schemaVersion: 1,
     contract: typeof STAGE_DELIVERY_CONTRACT,
@@ -81,6 +100,7 @@ export interface StageCatalogPayload {
     supportMemoryRelations: StageDetailSupportMemoryRelation[],
     eventMissionsComplete: boolean,
     eventMissions: StageDetailEventMission[],
+    awakeningMedalSources: AwakeningMedalAcquisitionSource[],
 }
 
 export interface StageDetailShardPayload {
@@ -113,6 +133,7 @@ export interface StageDeliveryManifest {
     zBattleCount: number,
     supportMemoryRelationCount: number,
     eventMissionCount: number,
+    awakeningMedalSourceCount: number,
     fileName: string,
     sha256: string,
     sizeBytes: number,
@@ -134,6 +155,7 @@ export interface StageDeliveryAudit {
     zBattleRoutes: number,
     supportMemoryRelations: number,
     eventMissions: number,
+    awakeningMedalSources: number,
 }
 
 export interface StageDeliveryBuild {
@@ -224,6 +246,7 @@ export function buildStageDelivery(
 
     const relations = [...(dataset.supportMemoryRelations ?? [])].sort(compareRelations);
     const eventMissions = [...(dataset.eventMissions ?? [])];
+    const awakeningMedalSources = buildAwakeningMedalAcquisitionSources(dataset);
     const catalog: StageCatalogPayload = {
         schemaVersion: 1,
         contract: STAGE_DELIVERY_CONTRACT,
@@ -248,6 +271,7 @@ export function buildStageDelivery(
         supportMemoryRelations: relations,
         eventMissionsComplete: dataset.eventMissions !== undefined,
         eventMissions,
+        awakeningMedalSources,
     };
     assertUniqueCatalog(catalog);
     const catalogBytes = Buffer.from(JSON.stringify(catalog), "utf8");
@@ -274,6 +298,7 @@ export function buildStageDelivery(
         zBattleCount: dataset.zBattles?.length ?? 0,
         supportMemoryRelationCount: relations.length,
         eventMissionCount: eventMissions.length,
+        awakeningMedalSourceCount: awakeningMedalSources.length,
         fileName: catalogObject.objectKey,
         sha256: catalogObject.sha256,
         sizeBytes: catalogObject.sizeBytes,
@@ -281,7 +306,7 @@ export function buildStageDelivery(
         catalog: catalogObject,
         shards: shards.map(shard => shard.manifest),
     };
-    validateRoutes(catalog, manifest);
+    validateStageDeliveryRoutes(catalog, manifest);
     const expandedSizes = shards.map(shard => shard.bytes.byteLength).sort((left, right) => left - right);
     const totalCompressedBytes = catalogGzip.byteLength + shards.reduce((sum, shard) => sum + shard.gzip.byteLength, 0);
     const totalExpandedBytes = catalogBytes.byteLength + shards.reduce((sum, shard) => sum + shard.bytes.byteLength, 0);
@@ -304,8 +329,124 @@ export function buildStageDelivery(
             zBattleRoutes: catalog.entries.filter(entry => entry.kind === "z-battle").length,
             supportMemoryRelations: relations.length,
             eventMissions: eventMissions.length,
+            awakeningMedalSources: awakeningMedalSources.length,
         },
     };
+}
+
+function buildAwakeningMedalAcquisitionSources(
+    dataset: StageDetailsDataset,
+): AwakeningMedalAcquisitionSource[] {
+    const questEntriesByIdentity = new Map<string, StageDetail[]>();
+    for (const stage of dataset.entries) {
+        const key = `${stage.areaId}:${stage.questId}`;
+        questEntriesByIdentity.set(key, [...(questEntriesByIdentity.get(key) ?? []), stage]);
+    }
+
+    const stageDropTargets = new Map<string, Set<string>>();
+    const addStageDrop = (medalId: string, stage: StageDetail, stageIds: string[]) => {
+        const key = [medalId, stage.areaId, stage.questId].join(":");
+        const targets = stageDropTargets.get(key) ?? new Set<string>();
+        stageIds.forEach(stageId => targets.add(stageId));
+        stageDropTargets.set(key, targets);
+    };
+    for (const stage of dataset.entries) {
+        for (const drop of stage.bossDrops ?? []) {
+            if (drop.itemType === "AwakeningItem") addStageDrop(drop.itemId, stage, [stage.id]);
+        }
+        for (const preview of stage.dropPreviews ?? []) {
+            for (const item of preview.items) {
+                if (item.itemType !== "AwakeningItem") continue;
+                const stageIds = (questEntriesByIdentity.get(`${stage.areaId}:${stage.questId}`) ?? [])
+                    .filter(candidate => candidate.difficultyRaw != null
+                        && preview.difficultyValues.includes(candidate.difficultyRaw))
+                    .map(candidate => candidate.id);
+                if (stageIds.length === 0) {
+                    throw new Error(`Awakening Medal drop preview ${preview.sourceRowId} has no exact Stage target`);
+                }
+                addStageDrop(item.itemId, stage, stageIds);
+            }
+        }
+    }
+    const stageDrops = [...stageDropTargets.entries()].map(([key, stageIds]) => {
+        const [medalId, areaId, questId] = key.split(":");
+        const targets = [...stageIds].sort(numericCompare);
+        return {
+            kind: "stage-drop" as const,
+            medalId,
+            targetKind: "quest-level" as const,
+            targetId: targets[0],
+            areaId,
+            questId,
+            stageIds: targets,
+        };
+    });
+
+    const zBattleRows: Array<{
+        kind: "z-battle-first-reward" | "z-battle-clear-reward",
+        medalId: string,
+        targetId: string,
+        level: number,
+        quantity: number,
+    }> = [];
+    for (const zBattle of dataset.zBattles ?? []) {
+        for (const rewardLevel of zBattle.firstRewards ?? []) {
+            for (const reward of rewardLevel.rewards) {
+                if (reward.itemType !== "AwakeningItem") continue;
+                if (!Number.isSafeInteger(reward.quantity) || reward.quantity! <= 0) {
+                    throw new Error(`Z-Battle ${zBattle.id} first reward has invalid Awakening Medal quantity`);
+                }
+                zBattleRows.push({
+                    kind: "z-battle-first-reward",
+                    medalId: reward.itemId,
+                    targetId: zBattle.id,
+                    level: rewardLevel.level,
+                    quantity: reward.quantity!,
+                });
+            }
+        }
+        for (const checkpoint of zBattle.checkpoints ?? []) {
+            for (const reward of checkpoint.repeatRewards) {
+                if (reward.itemType !== "AwakeningItem") continue;
+                if (!Number.isSafeInteger(reward.quantity) || reward.quantity! <= 0) {
+                    throw new Error(`Z-Battle ${zBattle.id} clear reward has invalid Awakening Medal quantity`);
+                }
+                zBattleRows.push({
+                    kind: "z-battle-clear-reward",
+                    medalId: reward.itemId,
+                    targetId: zBattle.id,
+                    level: checkpoint.level,
+                    quantity: reward.quantity!,
+                });
+            }
+        }
+    }
+    const groupedZBattleRows = new Map<string, Map<number, number[]>>();
+    for (const row of zBattleRows) {
+        const key = [row.kind, row.medalId, row.targetId].join(":");
+        const levelsByQuantity = groupedZBattleRows.get(key) ?? new Map<number, number[]>();
+        levelsByQuantity.set(row.quantity, [...(levelsByQuantity.get(row.quantity) ?? []), row.level]);
+        groupedZBattleRows.set(key, levelsByQuantity);
+    }
+    const zBattleSources = [...groupedZBattleRows.entries()].map(([key, levelsByQuantity]) => {
+        const [kind, medalId, targetId] = key.split(":") as [
+            "z-battle-first-reward" | "z-battle-clear-reward", string, string,
+        ];
+        return {
+            kind,
+            medalId,
+            targetKind: "z-battle" as const,
+            targetId,
+            rewardEntries: [...levelsByQuantity.entries()]
+                .map(([quantity, rawLevels]) => ({
+                    quantity,
+                    levels: [...new Set(rawLevels)].sort((left, right) => left - right),
+                }))
+                .sort(compareAwakeningMedalRewardEntries),
+        };
+    });
+
+    return [...stageDrops, ...zBattleSources].sort(compareAwakeningMedalSources);
 }
 
 function validateAssetBaseUrl(value: string): void {
@@ -512,7 +653,7 @@ function assertUniqueCatalog(catalog: StageCatalogPayload): void {
     }
 }
 
-function validateRoutes(catalog: StageCatalogPayload, manifest: StageDeliveryManifest): void {
+export function validateStageDeliveryRoutes(catalog: StageCatalogPayload, manifest: StageDeliveryManifest): void {
     const shards = new Map(manifest.shards.map(shard => [shard.id, shard]));
     for (const entry of catalog.entries) {
         const shard = shards.get(entry.detailShardId);
@@ -526,6 +667,9 @@ function validateRoutes(catalog: StageCatalogPayload, manifest: StageDeliveryMan
     }
     const questIds = new Set(catalog.entries.filter(entry => entry.kind === "quest-level").map(entry => entry.id));
     const zBattleIds = new Set(catalog.entries.filter(entry => entry.kind === "z-battle").map(entry => entry.id));
+    const questEntriesById = new Map(
+        catalog.entries.filter(entry => entry.kind === "quest-level").map(entry => [entry.id, entry]),
+    );
     const areaIds = new Set(catalog.entries.flatMap(entry => entry.areaId ? [entry.areaId] : []));
     for (const relation of catalog.supportMemoryRelations) {
         const resolved = relation.targetKind === "quest-level"
@@ -542,6 +686,49 @@ function validateRoutes(catalog: StageCatalogPayload, manifest: StageDeliveryMan
         if (mission.stageIds.some(stageId => !questIds.has(stageId))) {
             throw new Error(`Event mission ${mission.id} has no catalog Stage target`);
         }
+    }
+    if (catalog.awakeningMedalSources.length !== manifest.awakeningMedalSourceCount) {
+        throw new Error("Awakening Medal acquisition source count mismatch");
+    }
+    const sourceKeys = new Set<string>();
+    for (const source of catalog.awakeningMedalSources) {
+        if (!/^[1-9]\d*$/.test(source.medalId)) {
+            throw new Error(`Awakening Medal acquisition source has invalid medal ${source.medalId}`);
+        }
+        const targetExists = source.targetKind === "quest-level"
+            ? questIds.has(source.targetId)
+            : zBattleIds.has(source.targetId);
+        if (!targetExists) {
+            throw new Error(`Awakening Medal acquisition source has no catalog target ${source.targetKind}:${source.targetId}`);
+        }
+        if (source.kind === "stage-drop") {
+            if (source.targetKind !== "quest-level" || !source.areaId || !source.questId
+                || !source.stageIds?.length || source.rewardEntries != null) {
+                throw new Error("Awakening Medal Stage drop source is malformed");
+            }
+            if (source.targetId !== source.stageIds[0]
+                || new Set(source.stageIds).size !== source.stageIds.length
+                || source.stageIds.some((stageId, index) => !questIds.has(stageId)
+                    || (index > 0 && numericCompare(source.stageIds![index - 1], stageId) >= 0)
+                    || questEntriesById.get(stageId)?.areaId !== source.areaId
+                    || questEntriesById.get(stageId)?.questId !== source.questId)) {
+                throw new Error("Awakening Medal Stage drop source has an invalid exact target");
+            }
+        } else if (source.targetKind !== "z-battle" || !source.rewardEntries?.length
+            || source.rewardEntries.some(entry => !Number.isSafeInteger(entry.quantity) || entry.quantity <= 0
+                || !entry.levels.length || entry.levels.some(level => !Number.isSafeInteger(level) || level <= 0)
+                || new Set(entry.levels).size !== entry.levels.length
+                || entry.levels.some((level, index) => index > 0 && level <= entry.levels[index - 1]))
+            || new Set(source.rewardEntries.map(awakeningMedalRewardEntryKey)).size !== source.rewardEntries.length
+            || source.rewardEntries.some((entry, index) => index > 0
+                && compareAwakeningMedalRewardEntries(source.rewardEntries![index - 1], entry) >= 0)
+            || source.areaId != null || source.questId != null
+            || source.stageIds != null) {
+            throw new Error("Awakening Medal Z-Battle reward source is malformed");
+        }
+        const key = awakeningMedalSourceKey(source);
+        if (sourceKeys.has(key)) throw new Error(`Duplicate Awakening Medal acquisition source ${key}`);
+        sourceKeys.add(key);
     }
 }
 
@@ -566,6 +753,43 @@ function compareRelations(left: StageDetailSupportMemoryRelation, right: StageDe
         || numericCompare(left.targetId, right.targetId)
         || left.relation.localeCompare(right.relation)
         || left.missionIds.join(",").localeCompare(right.missionIds.join(","));
+}
+
+function awakeningMedalSourceKey(source: AwakeningMedalAcquisitionSource): string {
+    return [
+        source.medalId,
+        source.kind,
+        source.targetKind,
+        source.targetId,
+        source.areaId ?? "",
+        source.questId ?? "",
+        source.stageIds?.join(",") ?? "",
+        source.rewardEntries?.map(entry => `${entry.quantity}@${entry.levels.join(",")}`).join(";") ?? "",
+    ].join(":");
+}
+
+function compareAwakeningMedalSources(
+    left: AwakeningMedalAcquisitionSource,
+    right: AwakeningMedalAcquisitionSource,
+): number {
+    return numericCompare(left.medalId, right.medalId)
+        || left.kind.localeCompare(right.kind)
+        || numericCompare(left.targetId, right.targetId)
+        || (left.rewardEntries?.[0]?.levels[0] ?? 0) - (right.rewardEntries?.[0]?.levels[0] ?? 0)
+        || awakeningMedalSourceKey(left).localeCompare(awakeningMedalSourceKey(right));
+}
+
+function awakeningMedalRewardEntryKey(entry: { quantity: number, levels: number[] }): string {
+    return `${entry.quantity}@${entry.levels.join(",")}`;
+}
+
+function compareAwakeningMedalRewardEntries(
+    left: { quantity: number, levels: number[] },
+    right: { quantity: number, levels: number[] },
+): number {
+    return (left.levels[0] ?? 0) - (right.levels[0] ?? 0)
+        || left.quantity - right.quantity
+        || awakeningMedalRewardEntryKey(left).localeCompare(awakeningMedalRewardEntryKey(right));
 }
 
 function uniqueText(values: string[], comparator: (left: string, right: string) => number = (left, right) => left.localeCompare(right)): string[] {

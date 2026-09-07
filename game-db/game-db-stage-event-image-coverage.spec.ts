@@ -11,7 +11,7 @@ import {
 const CATALOG: StageCatalogPayload = {
     schemaVersion: 1,
     contract: "dokkan-stage-delivery",
-    contractVersion: "1.0.0",
+    contractVersion: "1.1.0",
     datasetVersion: "2026-09-03T20:08:38.190Z",
     generatedAt: "2026-09-03T20:08:38.190Z",
     source: "dokkan-game-db",
@@ -35,6 +35,7 @@ const CATALOG: StageCatalogPayload = {
     supportMemoryRelations: [],
     eventMissionsComplete: true,
     eventMissions: [],
+    awakeningMedalSources: [],
 };
 
 const missingPaths = [
