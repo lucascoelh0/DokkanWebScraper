@@ -20,6 +20,42 @@ export interface MaterializedPortraitAsset {
     portraitLayers?: PortraitLayers,
 }
 
+/**
+ * Additive exact-card detail shape used outside the primary roster.
+ *
+ * The regular Character materializer intentionally requires a playable
+ * Super/Extreme class and fills legacy-required fields. Earlier awakening
+ * cards can legitimately have no battle class yet, and the detail enrichment
+ * must not turn unknown values into empty strings or zeroes. Keeping this as a
+ * partial Character-shaped contract lets Android reuse its existing detail
+ * semantics without making the record eligible for roster/search/team flows.
+ */
+export type MaterializedGameDbCharacterDetail = Partial<Omit<Character, "transformations">> & Pick<
+    Character,
+    | "id"
+    | "name"
+    | "rarity"
+    | "type"
+    | "cost"
+    | "maxLevel"
+    | "maxSALevel"
+    | "links"
+    | "categories"
+    | "baseHP"
+    | "maxLevelHP"
+    | "baseAttack"
+    | "maxLevelAttack"
+    | "baseDefence"
+    | "maxDefence"
+> & {
+    transformations?: MaterializedGameDbTransformationDetail[],
+};
+
+export type MaterializedGameDbTransformationDetail = Partial<Transformation> & Pick<
+    Transformation,
+    "id" | "baseCharacterId" | "name" | "type" | "links"
+>;
+
 interface AttackFields {
     superAttack: string,
     superAttackDetails?: ReturnType<typeof toSuperAttackDetails>,
@@ -98,6 +134,196 @@ function mapEzaAttackFields(attacks: GameDbProjectionSuperAttackDetails[] | unde
             ezaExSuperAttackDetails: mapped.exSuperAttackDetails,
         } : {}),
         ...(mapped.unitSuperAttacks ? { ezaUnitSuperAttacks: mapped.unitSuperAttacks } : {}),
+    };
+}
+
+function compactAttackFields(attacks: GameDbProjectionSuperAttackDetails[] | undefined): Partial<AttackFields> {
+    const mapped = mapAttackFields(attacks);
+    return {
+        ...(mapped.superAttackDetails ? {
+            superAttack: mapped.superAttack,
+            superAttackDetails: mapped.superAttackDetails,
+        } : {}),
+        ...(mapped.ultraSuperAttackDetails ? {
+            ultraSuperAttack: mapped.ultraSuperAttack,
+            ultraSuperAttackDetails: mapped.ultraSuperAttackDetails,
+        } : {}),
+        ...(mapped.exSuperAttackDetails ? {
+            exSuperAttack: mapped.exSuperAttack,
+            exSuperAttackDetails: mapped.exSuperAttackDetails,
+        } : {}),
+        ...(mapped.unitSuperAttacks ? { unitSuperAttacks: mapped.unitSuperAttacks } : {}),
+    };
+}
+
+function nonBlank(value: string | undefined): string | undefined {
+    return value?.trim() ? value : undefined;
+}
+
+function knownCharacterClass(
+    value: GameDbDokkanpanionProjection["characterClass"],
+): Character["characterClass"] | undefined {
+    return value === "Super" || value === "Extreme" ? value : undefined;
+}
+
+function materializeGameDbTransformationDetail(
+    baseCharacterId: string,
+    relation: GameDbProjectionTransformation,
+    projection: GameDbDokkanpanionProjection,
+): MaterializedGameDbTransformationDetail {
+    const attacks = compactAttackFields(projection.superAttackDetails);
+    const ezaAttacks = mapEzaAttackFields(projection.ezaSuperAttackDetails);
+    const characterClass = knownCharacterClass(projection.characterClass);
+    const obtainability = projection.obtainability.type === "unknown" ? undefined : projection.obtainability;
+    const activeSkill = nonBlank(projection.activeSkill);
+    const activeSkillCondition = nonBlank(projection.activeSkillCondition);
+    const domain = nonBlank(projection.domain);
+    const standbySkill = nonBlank(projection.standbySkill);
+    const passive = nonBlank(projection.passive);
+    const finishingMove = projection.finishSkills.map(skill => skill.legacyText ?? skill.description);
+
+    return {
+        id: projection.id,
+        baseCharacterId,
+        name: projection.name,
+        type: projection.type,
+        links: projection.links,
+        portraitSpec: projection.portraitSpec,
+        ...(projection.releaseDate ? { releaseDate: projection.releaseDate } : {}),
+        ...(projection.ezaReleaseDate ? { ezaReleaseDate: projection.ezaReleaseDate } : {}),
+        ...(projection.sezaReleaseDate ? { sezaReleaseDate: projection.sezaReleaseDate } : {}),
+        ...(characterClass ? { characterClass } : {}),
+        ...(obtainability ? {
+            obtainability,
+            isFreeToPlay: projection.isFreeToPlay,
+        } : {}),
+        ...attacks,
+        ...ezaAttacks,
+        ...(passive ? { passive } : {}),
+        ...(projection.passiveDetails ? {
+            passiveDetails: rebindTransformationPassiveDetails(
+                projection.passiveDetails,
+                baseCharacterId,
+                projection.id,
+            ),
+        } : {}),
+        ...(projection.ezaPassive ? { ezaPassive: projection.ezaPassive } : {}),
+        ...(projection.ezaPassiveDetails ? {
+            ezaPassiveDetails: rebindTransformationPassiveDetails(
+                projection.ezaPassiveDetails,
+                baseCharacterId,
+                projection.id,
+            ),
+        } : {}),
+        ...(projection.sezaPassive ? { sezaPassive: projection.sezaPassive } : {}),
+        ...(projection.sezaPassiveDetails ? {
+            sezaPassiveDetails: rebindTransformationPassiveDetails(
+                projection.sezaPassiveDetails,
+                baseCharacterId,
+                projection.id,
+            ),
+        } : {}),
+        ...(activeSkill ? { activeSkill } : {}),
+        ...(activeSkillCondition ? { activeSkillCondition } : {}),
+        ...(projection.activeSkillDetails?.length ? { activeSkillDetails: projection.activeSkillDetails } : {}),
+        ...(domain ? { domain } : {}),
+        ...(projection.createdDomain ? { createdDomain: projection.createdDomain } : {}),
+        ...(standbySkill ? { standbySkill } : {}),
+        ...(projection.standby ? { standby: projection.standby } : {}),
+        ...(projection.finishSkills.length ? {
+            finishSkills: projection.finishSkills,
+            finishingMove,
+        } : {}),
+        ...(projection.reversibleExchange ? { reversibleExchange: projection.reversibleExchange } : {}),
+        transformationCondition: relation.condition,
+        transformationSource: relation.source,
+        ...(relation.sourceLabel ? { transformationSourceLabel: relation.sourceLabel } : {}),
+    };
+}
+
+/**
+ * Materializes an exact first-party card for optional detail consumption.
+ * Awakening edges are navigation, not in-battle transformations, so relations
+ * that the semantic projection deliberately labels `unknown` stay out of the
+ * Character transformation list and remain owned by the awakening graph.
+ */
+export function materializeGameDbCharacterDetail(
+    projection: GameDbDokkanpanionProjection,
+    projectionById: ReadonlyMap<string, GameDbDokkanpanionProjection>,
+): MaterializedGameDbCharacterDetail {
+    const attacks = compactAttackFields(projection.superAttackDetails);
+    const ezaAttacks = mapEzaAttackFields(projection.ezaSuperAttackDetails);
+    const characterClass = knownCharacterClass(projection.characterClass);
+    const obtainability = projection.obtainability.type === "unknown" ? undefined : projection.obtainability;
+    const title = nonBlank(projection.title);
+    const leaderSkill = nonBlank(projection.leaderSkill);
+    const ezaLeaderSkill = nonBlank(projection.ezaLeaderSkill);
+    const passive = nonBlank(projection.passive);
+    const activeSkill = nonBlank(projection.activeSkill);
+    const activeSkillCondition = nonBlank(projection.activeSkillCondition);
+    const domain = nonBlank(projection.domain);
+    const standbySkill = nonBlank(projection.standbySkill);
+    const transformationRelations = projection.transformations.filter(relation => relation.source !== "unknown");
+    const transformations = transformationRelations.map(relation => {
+        const relatedProjection = projectionById.get(relation.id);
+        if (!relatedProjection) {
+            throw new Error(`missing game DB projection for related detail form ${relation.id}`);
+        }
+        return materializeGameDbTransformationDetail(projection.id, relation, relatedProjection);
+    });
+
+    return {
+        id: projection.id,
+        name: projection.name,
+        rarity: projection.rarity,
+        type: projection.type,
+        cost: projection.cost,
+        maxLevel: projection.maxLevel,
+        maxSALevel: projection.maxSALevel,
+        links: projection.links,
+        categories: projection.categories,
+        baseHP: projection.baseHP,
+        maxLevelHP: projection.maxLevelHP,
+        baseAttack: projection.baseAttack,
+        maxLevelAttack: projection.maxLevelAttack,
+        baseDefence: projection.baseDefence,
+        maxDefence: projection.maxDefence,
+        portraitSpec: projection.portraitSpec,
+        ...(title ? { title } : {}),
+        ...(projection.releaseDate ? { releaseDate: projection.releaseDate } : {}),
+        ...(projection.ezaReleaseDate ? { ezaReleaseDate: projection.ezaReleaseDate } : {}),
+        ...(projection.sezaReleaseDate ? { sezaReleaseDate: projection.sezaReleaseDate } : {}),
+        ...(characterClass ? { characterClass } : {}),
+        ...(obtainability ? {
+            obtainability,
+            isFreeToPlay: projection.isFreeToPlay,
+        } : {}),
+        ...(leaderSkill ? { leaderSkill } : {}),
+        ...(ezaLeaderSkill ? { ezaLeaderSkill } : {}),
+        ...(projection.leaderSkillBoost !== undefined ? { leaderSkillBoost: projection.leaderSkillBoost } : {}),
+        ...(projection.leaderSkillDetails ? { leaderSkillDetails: projection.leaderSkillDetails } : {}),
+        ...(projection.ezaLeaderSkillDetails ? { ezaLeaderSkillDetails: projection.ezaLeaderSkillDetails } : {}),
+        ...attacks,
+        ...ezaAttacks,
+        ...(passive ? { passive } : {}),
+        ...(projection.passiveDetails ? { passiveDetails: projection.passiveDetails } : {}),
+        ...(projection.ezaPassive ? { ezaPassive: projection.ezaPassive } : {}),
+        ...(projection.ezaPassiveDetails ? { ezaPassiveDetails: projection.ezaPassiveDetails } : {}),
+        ...(projection.sezaPassive ? { sezaPassive: projection.sezaPassive } : {}),
+        ...(projection.sezaPassiveDetails ? { sezaPassiveDetails: projection.sezaPassiveDetails } : {}),
+        ...(activeSkill ? { activeSkill } : {}),
+        ...(activeSkillCondition ? { activeSkillCondition } : {}),
+        ...(projection.activeSkillDetails?.length ? { activeSkillDetails: projection.activeSkillDetails } : {}),
+        ...(projection.createdDomain ? { createdDomain: projection.createdDomain } : {}),
+        ...(domain ? { domain } : {}),
+        ...(standbySkill ? { standbySkill } : {}),
+        ...(projection.standby ? { standby: projection.standby } : {}),
+        ...(projection.finishSkills.length ? {
+            finishSkills: projection.finishSkills,
+            finishingMove: projection.finishSkills.map(skill => skill.legacyText ?? skill.description),
+        } : {}),
+        ...(projection.reversibleExchange ? { reversibleExchange: projection.reversibleExchange } : {}),
+        ...(transformations.length ? { transformations } : {}),
     };
 }
 

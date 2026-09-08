@@ -2,7 +2,10 @@ import { deepStrictEqual, throws } from "assert";
 import { describe, it } from "mocha";
 import { AttackTypes, Classes, Rarities, Types } from "../character";
 import type { GameDbDokkanpanionProjection } from "./game-db-app-projection";
-import { materializeGameDbCharacter } from "./game-db-character-materializer";
+import {
+    materializeGameDbCharacter,
+    materializeGameDbCharacterDetail,
+} from "./game-db-character-materializer";
 
 function projection(id: string): GameDbDokkanpanionProjection {
     return {
@@ -86,6 +89,91 @@ describe("game DB Character materializer", () => {
             new Map([[source.id, source]]),
             new Map([[source.id, { portraitURL: "portrait", portraitFilename: "portrait.png" }]]),
         ), /Super Attack sa-1 has no first-party attack type/);
+    });
+
+    it("materializes an exact pre-Z-Awakening detail without inventing a playable class or legacy fallbacks", () => {
+        const source = projection("1022990");
+        source.characterClass = "None";
+        source.name = "Zarbon";
+        source.rarity = Rarities.SSR;
+        source.superAttackDetails = [{
+            id: "8672",
+            name: "Elegant Blaster",
+            description: "Causes supreme damage to enemy",
+            variant: "super",
+            requiredKi: 12,
+            type: AttackTypes.KiBlast,
+        }];
+
+        const result = materializeGameDbCharacterDetail(source, new Map([[source.id, source]]));
+
+        deepStrictEqual({
+            id: result.id,
+            name: result.name,
+            rarity: result.rarity,
+            characterClass: result.characterClass,
+            superAttackName: result.superAttackDetails?.name,
+            superAttackType: result.superAttackDetails?.type,
+            superAttackEffect: result.superAttackDetails?.effect,
+            hasPortraitUrl: Object.prototype.hasOwnProperty.call(result, "portraitURL"),
+            hasArtUrl: Object.prototype.hasOwnProperty.call(result, "artURL"),
+            hasFreeDupeStats: Object.prototype.hasOwnProperty.call(result, "freeDupeHP"),
+            hasKiMeter: Object.prototype.hasOwnProperty.call(result, "kiMeter"),
+            transformations: result.transformations,
+        }, {
+            id: "1022990",
+            name: "Zarbon",
+            rarity: Rarities.SSR,
+            characterClass: undefined,
+            superAttackName: "Elegant Blaster",
+            superAttackType: AttackTypes.KiBlast,
+            superAttackEffect: "Causes supreme damage to enemy",
+            hasPortraitUrl: false,
+            hasArtUrl: false,
+            hasFreeDupeStats: false,
+            hasKiMeter: false,
+            transformations: undefined,
+        });
+        throws(() => materializeGameDbCharacter(
+            source,
+            new Map([[source.id, source]]),
+            new Map([[source.id, { portraitURL: "portrait", portraitFilename: "portrait" }]]),
+        ), /has no playable class/);
+    });
+
+    it("keeps awakening navigation out of transformation details while retaining proven in-battle forms", () => {
+        const source = projection("1013230");
+        const giant = projection("4013230");
+        source.transformations = [
+            {
+                id: "1013231",
+                name: "Awakened card",
+                source: "unknown",
+                condition: "None",
+                sourceLabel: "CardAwakeningRoute::Zet",
+            },
+            {
+                id: giant.id,
+                name: "Bardock (Giant Ape)",
+                source: "passive-skill",
+                condition: "Chance of turning into Giant Ape",
+            },
+        ];
+
+        const result = materializeGameDbCharacterDetail(
+            source,
+            new Map([[source.id, source], [giant.id, giant]]),
+        );
+
+        deepStrictEqual(result.transformations?.map(form => ({
+            id: form.id,
+            baseCharacterId: form.baseCharacterId,
+            source: form.transformationSource,
+        })), [{
+            id: "4013230",
+            baseCharacterId: "1013230",
+            source: "passive-skill",
+        }]);
     });
 
     it("requires exact projections and portraits for related forms", () => {
