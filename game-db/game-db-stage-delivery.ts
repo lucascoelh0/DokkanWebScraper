@@ -3,6 +3,7 @@ import { gzipSync } from "zlib";
 import {
     StageDetail,
     StageDetailEventMission,
+    StageDetailItem,
     StageDetailSupportMemoryRelation,
     StageDetailZBattle,
     StageDetailsDataset,
@@ -101,6 +102,10 @@ export interface StageCatalogPayload {
     eventMissionsComplete: boolean,
     eventMissions: StageDetailEventMission[],
     awakeningMedalSources: AwakeningMedalAcquisitionSource[],
+    characterDrops?: Array<{
+        stageId: string,
+        reward: StageDetailItem,
+    }>,
 }
 
 export interface StageDetailShardPayload {
@@ -134,6 +139,7 @@ export interface StageDeliveryManifest {
     supportMemoryRelationCount: number,
     eventMissionCount: number,
     awakeningMedalSourceCount: number,
+    characterDropCount?: number,
     fileName: string,
     sha256: string,
     sizeBytes: number,
@@ -247,6 +253,7 @@ export function buildStageDelivery(
     const relations = [...(dataset.supportMemoryRelations ?? [])].sort(compareRelations);
     const eventMissions = [...(dataset.eventMissions ?? [])];
     const awakeningMedalSources = buildAwakeningMedalAcquisitionSources(dataset);
+    const characterDrops = buildCharacterDrops(dataset);
     const catalog: StageCatalogPayload = {
         schemaVersion: 1,
         contract: STAGE_DELIVERY_CONTRACT,
@@ -272,6 +279,7 @@ export function buildStageDelivery(
         eventMissionsComplete: dataset.eventMissions !== undefined,
         eventMissions,
         awakeningMedalSources,
+        characterDrops,
     };
     assertUniqueCatalog(catalog);
     const catalogBytes = Buffer.from(JSON.stringify(catalog), "utf8");
@@ -299,6 +307,7 @@ export function buildStageDelivery(
         supportMemoryRelationCount: relations.length,
         eventMissionCount: eventMissions.length,
         awakeningMedalSourceCount: awakeningMedalSources.length,
+        characterDropCount: characterDrops.length,
         fileName: catalogObject.objectKey,
         sha256: catalogObject.sha256,
         sizeBytes: catalogObject.sizeBytes,
@@ -331,6 +340,60 @@ export function buildStageDelivery(
             eventMissions: eventMissions.length,
             awakeningMedalSources: awakeningMedalSources.length,
         },
+    };
+}
+
+function buildCharacterDrops(
+    dataset: StageDetailsDataset,
+): NonNullable<StageCatalogPayload["characterDrops"]> {
+    const questEntriesByIdentity = new Map<string, StageDetail[]>();
+    for (const stage of dataset.entries) {
+        const key = `${stage.areaId}:${stage.questId}`;
+        questEntriesByIdentity.set(key, [...(questEntriesByIdentity.get(key) ?? []), stage]);
+    }
+
+    const drops = new Map<string, NonNullable<StageCatalogPayload["characterDrops"]>[number]>();
+    const add = (stageId: string, rawReward: StageDetailItem) => {
+        if (rawReward.itemType !== "Card") return;
+        const reward = characterReward(rawReward);
+        const value = { stageId, reward };
+        drops.set(characterDropKey(value), value);
+    };
+    for (const stage of dataset.entries) {
+        for (const drop of stage.bossDrops ?? []) add(stage.id, drop);
+        for (const preview of stage.dropPreviews ?? []) {
+            const stageIds = (questEntriesByIdentity.get(`${stage.areaId}:${stage.questId}`) ?? [])
+                .filter(candidate => candidate.difficultyRaw != null
+                    && preview.difficultyValues.includes(candidate.difficultyRaw))
+                .map(candidate => candidate.id);
+            if (stageIds.length === 0 && preview.items.some(item => item.itemType === "Card")) {
+                throw new Error(`Character drop preview ${preview.sourceRowId} has no exact Stage target`);
+            }
+            for (const reward of preview.items) {
+                stageIds.forEach(stageId => add(stageId, reward));
+            }
+        }
+    }
+    return [...drops.values()].sort(compareCharacterDrops);
+}
+
+function characterReward(reward: StageDetailItem): StageDetailItem {
+    return {
+        itemId: reward.itemId,
+        itemType: reward.itemType,
+        ...(reward.quantity !== undefined ? { quantity: reward.quantity } : {}),
+        ...(reward.cardExpInitial !== undefined ? { cardExpInitial: reward.cardExpInitial } : {}),
+        ...(reward.name !== undefined ? { name: reward.name } : {}),
+        ...(reward.description !== undefined ? { description: reward.description } : {}),
+        ...(reward.thumbnailId !== undefined ? { thumbnailId: reward.thumbnailId } : {}),
+        ...(reward.rarityRaw !== undefined ? { rarityRaw: reward.rarityRaw } : {}),
+        ...(reward.elementRaw !== undefined ? { elementRaw: reward.elementRaw } : {}),
+        ...(reward.detailCharacterId !== undefined ? { detailCharacterId: reward.detailCharacterId } : {}),
+        ...(reward.iconAssetPath !== undefined ? { iconAssetPath: reward.iconAssetPath } : {}),
+        ...(reward.backgroundAssetPath !== undefined ? { backgroundAssetPath: reward.backgroundAssetPath } : {}),
+        ...(reward.equipmentSkill !== undefined ? { equipmentSkill: reward.equipmentSkill } : {}),
+        ...(reward.wallpaper !== undefined ? { wallpaper: reward.wallpaper } : {}),
+        ...(reward.treasure !== undefined ? { treasure: reward.treasure } : {}),
     };
 }
 
@@ -687,6 +750,31 @@ export function validateStageDeliveryRoutes(catalog: StageCatalogPayload, manife
             throw new Error(`Event mission ${mission.id} has no catalog Stage target`);
         }
     }
+    const characterDrops = catalog.characterDrops ?? [];
+    if ((catalog.characterDrops === undefined) !== (manifest.characterDropCount === undefined)
+        || (manifest.characterDropCount !== undefined
+            && (!Number.isSafeInteger(manifest.characterDropCount) || manifest.characterDropCount < 0))) {
+        throw new Error("Character drop index and count must be present together");
+    }
+    if (characterDrops.length !== (manifest.characterDropCount ?? 0)) {
+        throw new Error("Character drop count mismatch");
+    }
+    const characterDropKeys = new Set<string>();
+    for (const drop of characterDrops) {
+        if (!questIds.has(drop.stageId)) {
+            throw new Error(`Character drop has no catalog Stage target ${drop.stageId}`);
+        }
+        if (drop.reward.itemType !== "Card" || !/^[1-9]\d*$/.test(drop.reward.itemId)) {
+            throw new Error(`Character drop has invalid Card ID ${drop.reward.itemId}`);
+        }
+        if (drop.reward.quantity !== undefined
+            && (!Number.isSafeInteger(drop.reward.quantity) || drop.reward.quantity <= 0)) {
+            throw new Error(`Character drop ${drop.reward.itemId} has invalid quantity`);
+        }
+        const key = characterDropKey(drop);
+        if (characterDropKeys.has(key)) throw new Error(`Duplicate Character drop ${key}`);
+        characterDropKeys.add(key);
+    }
     if (catalog.awakeningMedalSources.length !== manifest.awakeningMedalSourceCount) {
         throw new Error("Awakening Medal acquisition source count mismatch");
     }
@@ -745,6 +833,19 @@ function catalogKey(kind: StageCatalogEntryKind, id: string): string {
 
 function relationKey(relation: StageDetailSupportMemoryRelation): string {
     return [relation.memoryId, relation.targetKind, relation.targetId, relation.relation, ...relation.missionIds].join(":");
+}
+
+function characterDropKey(drop: NonNullable<StageCatalogPayload["characterDrops"]>[number]): string {
+    return `${drop.stageId}:${JSON.stringify(characterReward(drop.reward))}`;
+}
+
+function compareCharacterDrops(
+    left: NonNullable<StageCatalogPayload["characterDrops"]>[number],
+    right: NonNullable<StageCatalogPayload["characterDrops"]>[number],
+): number {
+    return numericCompare(left.stageId, right.stageId)
+        || numericCompare(left.reward.itemId, right.reward.itemId)
+        || characterDropKey(left).localeCompare(characterDropKey(right));
 }
 
 function compareRelations(left: StageDetailSupportMemoryRelation, right: StageDetailSupportMemoryRelation): number {

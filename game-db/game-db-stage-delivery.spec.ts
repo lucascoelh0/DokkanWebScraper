@@ -25,6 +25,7 @@ describe("first-party Stage delivery", () => {
         equal(first.manifest.sha256, first.manifest.catalog.sha256);
         equal(first.manifest.sizeBytes, first.manifest.catalog.sizeBytes);
         equal(first.manifest.stageCount, first.manifest.questLevelCount);
+        equal(first.manifest.characterDropCount, first.catalog.characterDrops?.length);
         equal(first.catalog.assetBaseUrl, "https://assets.dokkanstats.com/assets/global/en");
         equal(first.catalog.eventMissionsComplete, true);
         deepEqual(first.catalog.eventMissions[0], {
@@ -162,7 +163,107 @@ describe("first-party Stage delivery", () => {
         });
         throws(() => buildStageDelivery(dataset), /has no catalog target/);
     });
+
+    it("indexes exact first-party character drops by Stage and reward presentation", () => {
+        const dataset = characterDropFixtureDataset();
+        const build = buildStageDelivery(dataset, 32 * 1024);
+
+        equal(build.manifest.characterDropCount, 6);
+        deepEqual(build.catalog.characterDrops, [
+            { stageId: "101", reward: cardReward() },
+            { stageId: "101", reward: { ...cardReward(), quantity: 2 } },
+            { stageId: "101", reward: { ...cardReward(), quantity: 3 } },
+            { stageId: "102", reward: cardReward() },
+            { stageId: "102", reward: { ...cardReward(), quantity: 2 } },
+            { stageId: "102", reward: { ...cardReward(), quantity: 3 } },
+        ]);
+        equal(Object.prototype.hasOwnProperty.call(build.catalog.characterDrops![0].reward, "quantity"), false);
+        equal(Object.prototype.hasOwnProperty.call(build.catalog.characterDrops![0].reward, "sourceRowId"), false);
+        equal(Object.prototype.hasOwnProperty.call(build.catalog.characterDrops![0].reward, "dropTypeRaw"), false);
+        equal(build.catalog.characterDrops?.some(drop => drop.reward.itemType !== "Card"), false);
+    });
+
+    it("rejects malformed character drop indexes", () => {
+        const build = buildStageDelivery(characterDropFixtureDataset(), 32 * 1024);
+        const firstDrop = build.catalog.characterDrops![0];
+
+        throws(
+            () => validateStageDeliveryRoutes(build.catalog, { ...build.manifest, characterDropCount: 0 }),
+            /Character drop count mismatch/,
+        );
+        throws(
+            () => validateStageDeliveryRoutes(
+                { ...build.catalog, characterDrops: [{ ...firstDrop, stageId: "999" }] },
+                { ...build.manifest, characterDropCount: 1 },
+            ),
+            /no catalog Stage target/,
+        );
+        throws(
+            () => validateStageDeliveryRoutes(
+                { ...build.catalog, characterDrops: [{ ...firstDrop, reward: { ...firstDrop.reward, itemId: "bad" } }] },
+                { ...build.manifest, characterDropCount: 1 },
+            ),
+            /invalid Card ID/,
+        );
+        throws(
+            () => validateStageDeliveryRoutes(
+                { ...build.catalog, characterDrops: [{
+                    ...firstDrop,
+                    reward: { ...firstDrop.reward, itemType: "AwakeningItem" },
+                }] },
+                { ...build.manifest, characterDropCount: 1 },
+            ),
+            /invalid Card ID/,
+        );
+        throws(
+            () => validateStageDeliveryRoutes(
+                { ...build.catalog, characterDrops: [firstDrop, firstDrop] },
+                { ...build.manifest, characterDropCount: 2 },
+            ),
+            /Duplicate Character drop/,
+        );
+    });
 });
+
+function characterDropFixtureDataset(): StageDetailsDataset {
+    const dataset = fixtureDataset();
+    dataset.entries[0].bossDrops!.push(
+        {
+            sourceRowId: "6001",
+            ...cardReward(),
+            dropTypeRaw: "boss",
+            quantityStatus: "unknown",
+            chanceStatus: "unknown",
+        },
+        {
+            sourceRowId: "6002",
+            ...cardReward(),
+            dropTypeRaw: "boss",
+            quantityStatus: "unknown",
+            chanceStatus: "unknown",
+        },
+    );
+    dataset.entries[0].dropPreviews![0].items.push(
+        cardReward(),
+        cardReward(),
+        { ...cardReward(), quantity: 2 },
+        { ...cardReward(), quantity: 3 },
+        { itemId: "11", itemType: "Point::Stone", quantity: 1 },
+    );
+    return dataset;
+}
+
+function cardReward() {
+    return {
+        itemId: "1001",
+        itemType: "Card",
+        name: "Goku",
+        thumbnailId: "1000",
+        rarityRaw: 3,
+        elementRaw: 0,
+        detailCharacterId: "1001",
+    };
+}
 
 function fixtureDataset(): StageDetailsDataset {
     const entries = [

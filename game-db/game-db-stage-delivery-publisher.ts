@@ -13,6 +13,7 @@ import {
     StageDetailShardPayload,
     StageDeliveryManifest,
     StageDeliveryObject,
+    validateStageDeliveryRoutes,
 } from "./game-db-stage-delivery";
 
 const DEFAULT_BUCKET = "dokkanpanion-data";
@@ -412,6 +413,7 @@ export function validateStageDeliveryCatalogPayload(
         }
         sourceKeys.add(sourceKey);
     }
+    validateStageDeliveryRoutes(catalog, manifest);
 }
 
 function rewardEntryKey(entry: { quantity: number, levels: number[] }): string {
