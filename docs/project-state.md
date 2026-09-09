@@ -3787,3 +3787,20 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 Update this file after a major integration, publish, cutover or user-visible
 milestone. Keep low-level evidence in the relevant report/specification and
 create or supersede an ADR when a durable decision changes.
+
+## SA Farming accepted locally — 2026-09-08
+
+Lucas approved the staging Android flow on his physical phone and authorized
+commit/push of the producer and consumer. No R2 or production release authorized.
+The optional reference-5.31-v1 index remains candidate-local-v2: 331 ordinary
+source cards, 925 prepared forms and 4,191 supported targets, with strict source
+hash/version pins. Source details: [SA index](sa-training-index.md).
+Android uses English-only percentage groups with clickable portraits; acquisition
+is on the material card's How to Get. The section is hidden without matching
+supported material rows. Production 2.0.12 remains unchanged; SA is staging-only.
+Local validation includes producer/core golden cases, transport tests, LDPlayer
+navigation/cache checks and ten passing final presentation/ViewModel tests.
+Consumer report: docs/features/super-attack-farming-execution.md in the Android
+worktree C:/Users/Lucas/.codex/worktrees/94f3/Dokkanpanion.
+Treasure Exchange materials were requested for the future and recorded in the
+Android character-progression backlog; they are not implemented in this slice.

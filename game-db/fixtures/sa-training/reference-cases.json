@@ -1,0 +1,27 @@
+{
+  "rulesVersion": "reference-5.31-v1",
+  "sourceSnapshotVersion": "1788329250",
+  "cases": [
+    { "target": "1007471", "material": "1005360", "kind": "same-path", "chancePercent": 100, "gain": "transfer" },
+    { "target": "1018251", "material": "1018230", "kind": "same-path", "chancePercent": 100, "gain": "transfer" },
+    { "target": "1018251", "material": "2000670", "kind": "compatible", "chancePercent": 1, "gain": "one-level" },
+    { "target": "1018251", "material": "2000671", "kind": "compatible", "chancePercent": 5, "gain": "one-level" },
+    { "target": "1018251", "material": "1012171", "kind": "compatible", "chancePercent": 50, "gain": "one-level" },
+    { "target": "1032611", "material": "2000670", "kind": "compatible", "chancePercent": 0, "gain": "one-level" },
+    { "target": "1032611", "material": "2000671", "kind": "compatible", "chancePercent": 1, "gain": "one-level" },
+    { "target": "1032611", "material": "1012171", "kind": "compatible", "chancePercent": 5, "gain": "one-level" },
+    { "target": "1031821", "material": "1031821", "kind": "same-path", "chancePercent": 100, "gain": "transfer" },
+    { "target": "1031821", "material": "1006360", "kind": "compatible", "chancePercent": 1, "gain": "one-level" },
+    { "target": "1031821", "material": "1006361", "kind": "compatible", "chancePercent": 2, "gain": "one-level" },
+    { "target": "2000670", "material": "1012170", "kind": "compatible", "chancePercent": 50, "gain": "one-level" },
+    { "target": "2000670", "material": "1012171", "kind": "compatible", "chancePercent": 100, "gain": "one-level" },
+    { "target": "2000670", "material": "1005070", "kind": "same-path", "chancePercent": 100, "gain": "transfer" },
+    { "target": "1012170", "material": "2000670", "kind": "compatible", "chancePercent": 5, "gain": "one-level" },
+    { "target": "1012171", "material": "2000670", "kind": "compatible", "chancePercent": 5, "gain": "one-level" },
+    { "target": "1012171", "material": "2000671", "kind": "compatible", "chancePercent": 30, "gain": "one-level" },
+    { "target": "3001110", "material": "3001111", "kind": "same-path", "chancePercent": 100, "gain": "transfer" },
+    { "target": "3001110", "material": "1000800", "kind": "compatible", "chancePercent": 30, "gain": "one-level" },
+    { "target": "1030611", "material": "1030600", "kind": "same-path", "chancePercent": 100, "gain": "transfer" },
+    { "target": "1030611", "material": "1002060", "kind": "incompatible" }
+  ]
+}
