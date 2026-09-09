@@ -1,4 +1,5 @@
 import { mkdir, readFile } from "fs/promises";
+import { kiMultipliersFromCard } from "./game-db-ki-multipliers";
 import { resolve } from "path";
 import { Classes, Rarities, Types } from "../character";
 import {
@@ -992,6 +993,7 @@ export function buildGameDbCharacterSnapshots(cardIds: string[], tables: Record<
             type: mapType(card.element),
             characterClass: mapCharacterClass(card.element),
             cost: parseDbInt(card.cost) ?? 0,
+            kiMultipliers: kiMultipliersFromCard(card),
             releaseDate: initialReleaseDate,
             baseMaxLevel,
             baseMaxSaLevel,

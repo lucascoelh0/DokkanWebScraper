@@ -184,6 +184,7 @@ function materializeGameDbTransformationDetail(
 
     return {
         id: projection.id,
+        kiMultipliers: projection.kiMultipliers,
         baseCharacterId,
         name: projection.name,
         type: projection.type,
@@ -274,6 +275,7 @@ export function materializeGameDbCharacterDetail(
 
     return {
         id: projection.id,
+        kiMultipliers: projection.kiMultipliers,
         name: projection.name,
         rarity: projection.rarity,
         type: projection.type,
@@ -346,6 +348,7 @@ function materializeTransformation(
     const ezaAttacks = mapEzaAttackFields(projection.ezaSuperAttackDetails);
     return {
         id: projection.id,
+        kiMultipliers: projection.kiMultipliers,
         baseCharacterId,
         name: projection.name,
         releaseDate: projection.releaseDate,
@@ -418,6 +421,7 @@ export function materializeGameDbCharacter(
         type: projection.type,
         cost: projection.cost,
         id: projection.id,
+        kiMultipliers: projection.kiMultipliers,
         portraitURL: portrait.portraitURL,
         portraitFilename: portrait.portraitFilename,
         portraitLayers: portrait.portraitLayers,

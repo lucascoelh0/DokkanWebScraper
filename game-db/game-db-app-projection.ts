@@ -57,6 +57,7 @@ export interface GameDbProjectionSuperAttackDetails {
 }
 
 export interface GameDbDokkanpanionProjection {
+    kiMultipliers?: import("./game-db-ki-multipliers").KiMultipliers,
     id: string,
     source: "game-db-projection",
     name: string,
@@ -889,6 +890,7 @@ export function projectGameDbCharacterToDokkanpanion(
         type: character.type,
         characterClass: character.characterClass,
         cost: character.cost,
+        kiMultipliers: character.kiMultipliers,
         portraitURL: portraitOutputUrl(portraitFilename),
         portraitFilename,
         portraitSpec,

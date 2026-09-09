@@ -1,4 +1,5 @@
 export interface Character {
+    kiMultipliers?: import("./game-db/game-db-ki-multipliers").KiMultipliers,
     name: string,
     title: string,
     maxLevel: number,
@@ -783,6 +784,7 @@ export enum AttackTypes {
 }
 
 export interface Transformation {
+    kiMultipliers?: import("./game-db/game-db-ki-multipliers").KiMultipliers,
     id: string,
     baseCharacterId: string,
     legacyId?: string,

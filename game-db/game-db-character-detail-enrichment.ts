@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { validateKiMultipliers } from "./game-db-ki-multipliers";
 import { gzipSync } from "zlib";
 import type { Character, PortraitSpec } from "../character";
 import type { DatasetManifest } from "../dataset-artifacts";
@@ -739,6 +740,10 @@ export function validateCharacterDetailDelivery(
                     ...record.form.nextCardIds,
                 ]);
                 const transformationIds = (record.detail.transformations ?? []).map(transformation => transformation.id);
+                if (record.detail.kiMultipliers !== undefined) validateKiMultipliers(record.detail.kiMultipliers);
+                for (const transformation of record.detail.transformations ?? []) {
+                    if (transformation.kiMultipliers !== undefined) validateKiMultipliers(transformation.kiMultipliers);
+                }
                 if (record.identity.cardId !== record.detail.id
                     || record.canonicalNavigation.cardId !== record.identity.cardId
                     || !catalogEntry

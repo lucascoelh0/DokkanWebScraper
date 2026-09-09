@@ -3804,3 +3804,17 @@ Consumer report: docs/features/super-attack-farming-execution.md in the Android
 worktree C:/Users/Lucas/.codex/worktrees/94f3/Dokkanpanion.
 Treasure Exchange materials were requested for the future and recorded in the
 Android character-progression backlog; they are not implemented in this slice.
+
+## Ki Multipliers activated locally — 2026-09-09
+
+- Primary, enrichment, SA, HIPO and Team Analysis are coherently generated for
+  the Ki primary SHA `db6ee0013743dd1886d7743b92e4e5ce153168af7e0bdf7165c5490e089ecdfc`
+  and the current staging Stage catalog. See `docs/ki-multipliers.md` for roots.
+- Local HTTP port 8771 serves `.agent-logs/ki-staging-current`, mapped through
+  ADB reverse to LDPlayer `emulator-5554`. Staging APK installed, no data clear.
+- Real navigation exposed and fixed the Android primary seed DTO's missing Ki
+  mapping; materialization version 11 reprocesses cached bytes. 26 gateway and
+  13 HIPO runner tests passed. Normal and graph-only details now display Ki.
+- HIPO's existing missing-enrichment first-load issue remains documented in
+  the Android feature report; caches on this emulator are now populated.
+- No production/R2 changes, commit or push. Promotion waits for a prod build.

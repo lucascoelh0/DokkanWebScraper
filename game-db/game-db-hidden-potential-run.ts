@@ -11,6 +11,12 @@ export const HIPO_ROOT = resolve(REPO, "game-db/data/hidden-potential");
 export const DB_SHA = "7a6ca01808aea355ef28f9c0190e2c072f43a7c08be41d363f5b052824922495";
 export const RUNTIME_SHA = "a1592e635bad24ef270fa3a28383a3032effd5f4709c17dd2acde1f7fd7e38f7";
 export const PRIMARY_SHA = "57d02c518634574311b471fb77e0c084996f1a32cb3d341d9a25a262da02c9c3";
+// Audited additive Ki export of the same pinned roster; see docs/ki-multipliers.md.
+export const KI_PRIMARY_SHA = "db6ee0013743dd1886d7743b92e4e5ce153168af7e0bdf7165c5490e089ecdfc";
+export function assertSupportedRoster(roster: { primaryCount: number; enrichmentCount: number; primarySha256: string }) {
+    check(roster.primaryCount === 1442 && roster.enrichmentCount === 2768
+        && [PRIMARY_SHA, KI_PRIMARY_SHA].includes(roster.primarySha256), "Unknown scoped roster snapshot");
+}
 const MAX_MANIFEST = 2 * 1024 * 1024;
 export const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 export interface Options {
@@ -139,7 +145,7 @@ export async function run(o: Options) {
         check(typeof o[key] === "string" && isAbsolute(o[key]) && !/^[\\/]{2}/.test(o[key]), "Expected absolute local input/output paths");
     }
     const roster = await readRoster(o);
-    check(roster.primaryCount === 1442 && roster.enrichmentCount === 2768 && roster.primarySha256 === PRIMARY_SHA, "Unknown scoped roster snapshot");
+    assertSupportedRoster(roster);
     const python = await realpath(o.python); check((await lstat(python)).isFile(), "Invalid Python executable");
     const bridge = resolve(REPO, "game-db/game-db-hidden-potential-sqlite.py");
     const child = spawnSync(python, [bridge, "--db", o.db, "--elf", o.elf, "--layout20", o.layout20, "--layout201", o.layout201],

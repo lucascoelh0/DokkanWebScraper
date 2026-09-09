@@ -56,6 +56,27 @@ function projection(id: string): GameDbDokkanpanionProjection {
 }
 
 describe("game DB Character materializer", () => {
+    it("keeps exact Ki anchors on primary, graph-only and transformed detail paths", () => {
+        const source = projection("1013230");
+        const form = projection("4013230");
+        source.kiMultipliers = { schemaVersion: 1, points: [
+            { ki: 0, percent: 40 }, { ki: 3, percent: 100 }, { ki: 12, percent: 150 },
+        ] };
+        form.kiMultipliers = { schemaVersion: 1, points: [
+            { ki: 0, percent: 50 }, { ki: 4, percent: 100 }, { ki: 12, percent: 140 },
+        ] };
+        source.transformations = [{ id: form.id, source: "passive-skill", condition: "Giant form" }];
+        const projections = new Map([[source.id, source], [form.id, form]]);
+        const details = materializeGameDbCharacterDetail(source, projections);
+        const primary = materializeGameDbCharacter(source, projections, new Map([
+            [source.id, { portraitURL: "base", portraitFilename: "base.png" }],
+            [form.id, { portraitURL: "form", portraitFilename: "form.png" }],
+        ]));
+        deepStrictEqual(details.kiMultipliers, source.kiMultipliers);
+        deepStrictEqual(primary.kiMultipliers, source.kiMultipliers);
+        deepStrictEqual(details.transformations?.[0].kiMultipliers, form.kiMultipliers);
+        deepStrictEqual(primary.transformations?.[0].kiMultipliers, form.kiMultipliers);
+    });
     it("materializes a complete consumer Character with safe stat fallbacks", () => {
         const source = projection("1034001");
         const result = materializeGameDbCharacter(

@@ -252,6 +252,7 @@ export interface GameDbCharacterReleaseStates {
 }
 
 export interface GameDbCharacterSnapshot {
+    kiMultipliers?: import("./game-db-ki-multipliers").KiMultipliers,
     id: string,
     source: "game-db",
     characterId: string,

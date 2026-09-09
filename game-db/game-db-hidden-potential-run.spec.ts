@@ -3,7 +3,17 @@ import { mkdtemp, mkdir, writeFile, readFile, lstat, rm, symlink } from "fs/prom
 import { resolve, relative, sep } from "path";
 import { gzipSync } from "zlib";
 import { it as test } from "mocha";
-import { DB_SHA, HIPO_ROOT, parseArgs, readPayload, readRoster, sha256, writeCandidate } from "./game-db-hidden-potential-run";
+import { assertSupportedRoster, DB_SHA, HIPO_ROOT, KI_PRIMARY_SHA, PRIMARY_SHA, parseArgs, readPayload, readRoster, sha256, writeCandidate } from "./game-db-hidden-potential-run";
+
+test("only audited primary payloads and the exact scoped counts are accepted", () => {
+    for (const primarySha256 of [PRIMARY_SHA, KI_PRIMARY_SHA]) {
+        const roster = { primaryCount: 1442, enrichmentCount: 2768, primarySha256 };
+        assert.doesNotThrow(() => assertSupportedRoster(roster));
+        assert.throws(() => assertSupportedRoster({ ...roster, primaryCount: 1441 }));
+        assert.throws(() => assertSupportedRoster({ ...roster, enrichmentCount: 2767 }));
+    }
+    assert.throws(() => assertSupportedRoster({ primaryCount: 1442, enrichmentCount: 2768, primarySha256: "0".repeat(64) }));
+});
 
 const LOGS = resolve(".agent-logs");
 async function sourceFixture() {
