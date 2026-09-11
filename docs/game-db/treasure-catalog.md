@@ -2,7 +2,7 @@
 
 `game-db/game-db-treasure-catalog.ts` projects official treasure descriptions and
 exact-ID acquisition references. This is an optional catalog, not an extension of
-the card-only exchange payload. Contract: `dokkan-treasure-catalog` version `1.0.0`.
+the card-only exchange payload. Contract: `dokkan-treasure-catalog` version `1.1.0`.
 
 ## Reproduce a local candidate
 
@@ -27,8 +27,8 @@ No R2 object, endpoint, refresh manager or production asset is added by this sli
 
 ## Coverage and semantics
 
-Snapshot 1788329250 produces 331 descriptions, 3,080 deduplicated sources covering
-80 treasures, 77,539 compressed bytes and 1,228,062 expanded bytes.
+Snapshot 1788329250 produces 331 descriptions, 3,804 sources covering
+82 treasures, 84,804 compressed bytes and 1,484,101 expanded bytes.
 
 - Normal mission rewards include general missions without area ownership.
 - Boss definitions and displayed quest drops merge by exact treasure/map ID.
@@ -40,8 +40,26 @@ Snapshot 1788329250 produces 331 descriptions, 3,080 deduplicated sources coveri
 - Navigation requires a matching stage snapshot and a real destination; general
   missions have no fabricated event link.
 
-World Tournament, Ultimate Clash, treasure-for-treasure exchange, login, gifts
-and paid packs are outside this slice. Descriptions may mention those modes but
-are not converted into synthetic source records. See the coverage audit for evidence.
+## Special modes (1.1.0)
+
+The dedicated `game-db-treasure-mode-sources.ts` adapter adds 143 World Tournament
+mission rewards, 180 local-ranking rewards, 78 overall-ranking rewards and 323
+Ultimate Clash mission rewards. Mode records keep exact reward, mission and edition
+identities, quantity and requirement text. Local ranges are validated; overall
+ranking uses the official range label. No mode record is a quest navigation target.
+
+World Tournament dates come from the joined `budokais` edition, not row timestamps
+or reward collection deadlines. Mission 99035 joins edition ID 99 which is absent;
+its edition name and interval remain unknown. Ranking records require complete
+edition/range joins. Clash mission rows resolve, but the snapshot contains no
+`rmbattles` calendar; no dates or display edition numbers are inferred from IDs.
+
+Android accepts both 1.0.0 and 1.1.0, requires matching manifest/payload versions,
+and validates mode/type-specific fields. Clash repeats with identical requirement
+and quantity share a visual row; distinct quantities remain separate, never summed.
+
+Treasure-for-treasure exchange, login, gifts and paid packs remain outside this
+slice. See the coverage audit for evidence and remaining limitations.
 
 Focused producer tests: `node node_modules/mocha/bin/mocha --no-config lib/game-db/game-db-treasure-catalog.spec.js`.
+Mode tests: `node node_modules/mocha/bin/mocha --no-config lib/game-db/game-db-treasure-mode-sources.spec.js`.

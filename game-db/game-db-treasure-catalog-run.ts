@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { createReadStream, mkdirSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { buildTreasureCatalog, TreasureSourceTables } from "./game-db-treasure-catalog";
+import { TREASURE_MODE_TABLES } from "./game-db-treasure-mode-sources";
 
 /** Node 24+, offline and read-only. Explicit provenance prevents accidental snapshot mixing. */
 async function run() {
@@ -17,7 +18,7 @@ async function run() {
     const tables = {} as TreasureSourceTables;
     try {
         for (const table of ["treasure_items", "missions", "mission_rewards", "areas", "quests",
-            "sugoroku_maps", "sugoroku_map_boss_drop_items", "quest_drop_item_views"] as const) {
+            "sugoroku_maps", "sugoroku_map_boss_drop_items", "quest_drop_item_views", ...TREASURE_MODE_TABLES] as const) {
             tables[table] = db.prepare(`SELECT * FROM ${table}`).all().map(row =>
                 Object.fromEntries(Object.entries(row).map(([key, value]) => [key, value == null ? "" : String(value)])));
         }

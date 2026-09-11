@@ -1,17 +1,21 @@
 import { createHash } from "crypto";
 import { gzipSync } from "zlib";
 import { GameDbRow } from "./game-db-source";
+import { buildTreasureModeSources, TreasureModeTables } from "./game-db-treasure-mode-sources";
 
-export interface TreasureSourceTables {
+export interface TreasureSourceTables extends Partial<TreasureModeTables> {
     treasure_items: GameDbRow[]; missions: GameDbRow[]; mission_rewards: GameDbRow[];
     areas: GameDbRow[]; quests: GameDbRow[]; sugoroku_maps: GameDbRow[];
     sugoroku_map_boss_drop_items: GameDbRow[]; quest_drop_item_views: GameDbRow[];
 }
 export interface TreasureSourceEntry {
-    id: string; treasureId: string; kind: "mission" | "stage-drop"; title: string;
+    id: string; treasureId: string; kind: "mission" | "stage-drop" | "mode-reward"; title: string;
     description: string | null; quantity: number | null; stageId: string | null;
     areaId: string | null; missionId: string | null; difficulty: number | null;
     startsAt: string | null; endsAt: string | null;
+    mode?: "world-tournament" | "ultimate-clash";
+    editionId?: string; editionName?: string | null;
+    rewardType?: "mission" | "local-ranking" | "ranking";
 }
 const digest = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 const id = (v: string) => { if (!/^[1-9]\d*$/.test(v)) throw Error("Invalid ID"); return v; };
@@ -76,8 +80,9 @@ export function buildTreasureCatalog(t: TreasureSourceTables, snapshot: string, 
             matching.forEach(m => addDrop(r[`item${n}_id`], m.id, r.quest_id));
         }
     }
+    if (t.budokais) buildTreasureModeSources(t as TreasureModeTables).forEach(add);
     const content = {
-        schemaVersion: 1, contract: "dokkan-treasure-catalog", contractVersion: "1.0.0",
+        schemaVersion: 1, contract: "dokkan-treasure-catalog", contractVersion: "1.1.0",
         sourceSnapshotVersion: snapshot, sourceDatabaseSha256: databaseSha256,
         treasures: [...treasures.values()].map(r => {
             const suffix = id(r.image_suffix_number).padStart(5, "0");
