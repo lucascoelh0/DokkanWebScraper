@@ -32,6 +32,7 @@ interface Options {
     statePath: string,
     target: "remote" | "local",
     dryRun: boolean,
+    assetsOnly: boolean,
     maxUploadBytes: number,
 }
 
@@ -50,7 +51,7 @@ export function parseStageAssetPublishArgs(argv: string[]): Options {
     const values = new Map<string, string>();
     const flags = new Set<string>();
     const valueOptions = new Set(["--bucket", "--object-prefix", "--release-dir", "--manifest", "--state", "--max-upload-bytes"]);
-    const flagOptions = new Set(["--dry-run", "--local", "--remote"]);
+    const flagOptions = new Set(["--dry-run", "--local", "--remote", "--assets-only"]);
     for (let index = 0; index < argv.length; index += 1) {
         const [name, inline] = argv[index].split("=", 2);
         if (flagOptions.has(name)) {
@@ -73,6 +74,7 @@ export function parseStageAssetPublishArgs(argv: string[]): Options {
         statePath: resolve(values.get("--state") ?? DEFAULT_STATE_PATH),
         target: flags.has("--local") ? "local" : "remote",
         dryRun: flags.has("--dry-run"),
+        assetsOnly: flags.has("--assets-only"),
         maxUploadBytes: positiveNumber(values.get("--max-upload-bytes"), MAX_UPLOAD_BYTES),
     };
 }
@@ -95,14 +97,14 @@ async function main(): Promise<void> {
     if (conflict) throw new Error(`Immutable Stage asset changed bytes: ${conflict.entry.objectKey}`);
     const changed = files.filter(file => !previous?.assets[file.entry.objectKey]);
     const manifestSha256 = sha256(manifestBytes);
-    const uploadManifest = previous?.manifestSha256 !== manifestSha256;
+    const uploadManifest = !options.assetsOnly && previous?.manifestSha256 !== manifestSha256;
     const uploadBytes = changed.reduce((sum, file) => sum + file.entry.sizeBytes, 0)
         + (uploadManifest ? manifestBytes.byteLength : 0);
     console.log(`Target: ${options.target}`);
     console.log(`Bucket: ${options.bucket}`);
     console.log(`Object prefix: ${options.objectPrefix || "(root)"}`);
     console.log(`Assets: ${files.length} files / ${totalBytes} bytes (${changed.length} changed)`);
-    console.log(`Manifest: ${manifestBytes.byteLength} bytes -> ${scopedKey(options.objectPrefix, MANIFEST_FILE_NAME)}${uploadManifest ? " [upload]" : " [unchanged]"}`);
+    console.log(`Manifest: ${manifestBytes.byteLength} bytes -> ${scopedKey(options.objectPrefix, MANIFEST_FILE_NAME)}${options.assetsOnly ? " [not published: assets-only]" : uploadManifest ? " [upload]" : " [unchanged]"}`);
     console.log(`This run uploads: ${uploadBytes} bytes`);
     console.log(`Inventory SHA-256: ${manifest.inventorySha256}`);
     if (options.dryRun) {
@@ -253,11 +255,14 @@ function validateStageAssetSourceUrl(value: string, path: string, sourceFiles?: 
         const wallpaperSource = /^official-cpk-extract:\/\/item\/wallpaper\/(\d{4})\.cpk#([A-Za-z0-9_-]+\.png)$/.exec(value);
         const awakeningMedalPath = /^item\/awaken\/en\/thumb\/thumb_awaken_items_(\d+)\/thumb_awaken_items_\1\.png$/.exec(path);
         const awakeningMedalSource = /^official-cpk-extract:\/\/item\/awaken\/en\/thumb\/thumb_awaken_items_(\d+)\.cpk#thumb_awaken_items_\1\.png$/.exec(value);
+        const treasurePath = /^item\/other\/en\/thumb\/thumb_trade_jewel_(\d{5})\/thumb_trade_jewel_\1\.png$/.exec(path);
+        const treasureSource = /^official-cpk-extract:\/\/item\/other\/en\/thumb\/thumb_trade_jewel_(\d{5})\.cpk#thumb_trade_jewel_\1\.png$/.exec(value);
         const validPathKind = officialScheme === "official-cpk-derived"
             ? /^derived\/equipment\/levels\/lv-\d+(?:-\d+)?\.png$/.test(path)
             : /^layout\/en\/image\/(?:character|charamenu\/potential)\/[A-Za-z0-9_.-]+\.png$/.test(path)
                 || /^character\/thumb\/card_\d+_thumb\/card_\d+_thumb\.png$/.test(path)
                 || Boolean(awakeningMedalPath)
+                || Boolean(treasurePath)
                 || Boolean(wallpaperPath);
         const expectedWallpaperMember = wallpaperPath
             ? wallpaperPath[2] === "full" ? `Images_${wallpaperPath[1]}.png` : `${wallpaperPath[2]}_${wallpaperPath[1]}.png`
@@ -266,6 +271,8 @@ function validateStageAssetSourceUrl(value: string, path: string, sourceFiles?: 
             ? wallpaperSource?.[1] === wallpaperPath[1] && wallpaperSource[2] === expectedWallpaperMember
             : awakeningMedalPath
                 ? awakeningMedalSource?.[1] === awakeningMedalPath[1]
+                : treasurePath
+                    ? treasureSource?.[1] === treasurePath[1]
                 : value === expectedPath;
         if (!validSourceUrl || !validPathKind || !sourceFiles?.length
             || sourceFiles.some(source => !/^(?:fonts|layout|archives|extracted|historical)\/[A-Za-z0-9_./-]+$/.test(source)

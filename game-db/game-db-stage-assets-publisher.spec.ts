@@ -26,6 +26,7 @@ describe("Stage asset publisher", () => {
                 statePath: resolve("state.json"),
                 target: "remote",
                 dryRun: true,
+                assetsOnly: false,
                 maxUploadBytes: 4096,
             },
         );
@@ -33,6 +34,18 @@ describe("Stage asset publisher", () => {
             () => parseStageAssetPublishArgs(["--release-dir", "release", "--object-prefix", "../production"]),
             /Invalid R2 object prefix/,
         );
+    });
+
+    it("supports supplemental assets without replacing the shared manifest", () => {
+        deepEqual(parseStageAssetPublishArgs(["--release-dir", "release", "--assets-only"]).assetsOnly, true);
+        const path = "item/other/en/thumb/thumb_trade_jewel_09119/thumb_trade_jewel_09119.png";
+        const asset = { path, objectKey: `game-assets/${path}`,
+            sourceUrl: "official-cpk-extract://item/other/en/thumb/thumb_trade_jewel_09119.cpk#thumb_trade_jewel_09119.png",
+            sourceFiles: ["archives/thumb_trade_jewel_09119.cpk", "extracted/thumb_trade_jewel_09119/thumb_trade_jewel_09119.png"],
+            sha256: "a".repeat(64), sizeBytes: 100, contentType: "image/png" as const };
+        validateStageAssetManifest(stageAssetManifest([asset]));
+        throws(() => validateStageAssetManifest(stageAssetManifest([{ ...asset,
+            sourceUrl: asset.sourceUrl.replaceAll("09119", "00001") }])), /Unsafe Stage asset source URL/);
     });
 
     it("validates inventory identity and rejects duplicate immutable keys", () => {
