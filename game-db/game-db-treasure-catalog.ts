@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { gzipSync } from "zlib";
 import { GameDbRow } from "./game-db-source";
 import { buildTreasureModeSources, TreasureModeTables } from "./game-db-treasure-mode-sources";
+import { buildTreasureTradeSources } from "./game-db-treasure-trade-sources";
 
 export interface TreasureSourceTables extends Partial<TreasureModeTables> {
     treasure_items: GameDbRow[]; missions: GameDbRow[]; mission_rewards: GameDbRow[];
@@ -34,7 +35,7 @@ function instant(raw: string): string | null {
     return date.toISOString();
 }
 /** Offline projection; drop quantities/rates and current event availability are not inferred. */
-export function buildTreasureCatalog(t: TreasureSourceTables, snapshot: string, databaseSha256: string) {
+export function buildTreasureCatalog(t: TreasureSourceTables, snapshot: string, databaseSha256: string, shop?: unknown) {
     if (!/^\d+$/.test(snapshot) || !/^[a-f0-9]{64}$/.test(databaseSha256)) throw Error("Invalid provenance");
     const treasures = index(t.treasure_items), missions = index(t.missions), quests = index(t.quests);
     const maps = index(t.sugoroku_maps), areas = index(t.areas);
@@ -82,7 +83,8 @@ export function buildTreasureCatalog(t: TreasureSourceTables, snapshot: string, 
     }
     if (t.budokais) buildTreasureModeSources(t as TreasureModeTables).forEach(add);
     const content = {
-        schemaVersion: 1, contract: "dokkan-treasure-catalog", contractVersion: "1.1.0",
+        schemaVersion: 1, contract: "dokkan-treasure-catalog", contractVersion: "1.2.0",
+        trades: shop === undefined ? null : buildTreasureTradeSources(shop, t.treasure_items),
         sourceSnapshotVersion: snapshot, sourceDatabaseSha256: databaseSha256,
         treasures: [...treasures.values()].map(r => {
             const suffix = id(r.image_suffix_number).padStart(5, "0");

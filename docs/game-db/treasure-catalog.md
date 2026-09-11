@@ -58,8 +58,26 @@ Android accepts both 1.0.0 and 1.1.0, requires matching manifest/payload version
 and validates mode/type-specific fields. Clash repeats with identical requirement
 and quantity share a visual row; distinct quantities remain separate, never summed.
 
-Treasure-for-treasure exchange, login, gifts and paid packs remain outside this
-slice. See the coverage audit for evidence and remaining limitations.
+## Treasure trades (1.2.0)
+
+The CLI accepts an optional fifth argument pointing to the sanitized public shop
+projection (never a HAR). `game-db-treasure-trade-sources.ts` adds `trades` with
+the independent shop `capturedAt` and six single-treasure offers. Each records the
+exact offer/currency/reward IDs, cost, received quantity and known interval.
+Unknown joins, self trades, duplicate IDs, ambiguous discounts and multi-reward
+treasure bundles fail closed. Ordinary non-treasure offers remain outside this
+adapter; the card-only exchange contract is unchanged. No current availability,
+account eligibility, purchase-limit or unlimited-stock claim is emitted.
+
+Candidate reproduction: append
+`.agent-logs/treasure-login-probe-current-result/public-offers.json` after a new
+output directory in the command above. Without this argument, `trades` is null.
+The staging candidate is 85,021 compressed / 1,485,025 expanded bytes. It preserves
+all 3,804 mission/drop/mode sources and adds six trade offers for six treasures.
+Android accepts 1.0.0, 1.1.0 and 1.2.0. Login, gifts and paid packs remain outside
+this slice. No account request or remote publication is performed.
+
+Trade tests: `node node_modules/mocha/bin/mocha --no-config lib/game-db/game-db-treasure-trade-sources.spec.js`.
 
 Focused producer tests: `node node_modules/mocha/bin/mocha --no-config lib/game-db/game-db-treasure-catalog.spec.js`.
 Mode tests: `node node_modules/mocha/bin/mocha --no-config lib/game-db/game-db-treasure-mode-sources.spec.js`.

@@ -1,12 +1,12 @@
 import { createHash } from "crypto";
-import { createReadStream, mkdirSync, writeFileSync } from "fs";
+import { createReadStream, mkdirSync, writeFileSync, readFileSync, statSync } from "fs";
 import { resolve } from "path";
 import { buildTreasureCatalog, TreasureSourceTables } from "./game-db-treasure-catalog";
 import { TREASURE_MODE_TABLES } from "./game-db-treasure-mode-sources";
 
 /** Node 24+, offline and read-only. Explicit provenance prevents accidental snapshot mixing. */
 async function run() {
-    const [databasePath, snapshot, expectedSha256, outputPath] = process.argv.slice(2);
+    const [databasePath, snapshot, expectedSha256, outputPath, shopPath] = process.argv.slice(2);
     if (!databasePath || !outputPath || !/^\d+$/.test(snapshot ?? "") || !/^[a-f0-9]{64}$/.test(expectedSha256 ?? "")) {
         throw Error("Usage: <database.sqlite> <snapshot> <expected-sha256> <new-output-directory>");
     }
@@ -23,7 +23,9 @@ async function run() {
                 Object.fromEntries(Object.entries(row).map(([key, value]) => [key, value == null ? "" : String(value)])));
         }
     } finally { db.close(); }
-    const result = buildTreasureCatalog(tables, snapshot, expectedSha256);
+    if (shopPath && statSync(shopPath).size > 8 * 1024 * 1024) throw Error("Shop projection exceeds budget");
+    const result = buildTreasureCatalog(tables, snapshot, expectedSha256,
+        shopPath ? JSON.parse(readFileSync(shopPath, "utf8")) : undefined);
     mkdirSync(resolve(outputPath)); // Never overwrite an existing candidate.
     writeFileSync(resolve(outputPath, "manifest.json"), JSON.stringify(result.manifest, null, 2) + "\n", { flag: "wx" });
     writeFileSync(resolve(outputPath, "catalog.payload"), result.compressed, { flag: "wx" });
