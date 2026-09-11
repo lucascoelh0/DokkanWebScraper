@@ -81,3 +81,21 @@ Trade tests: `node node_modules/mocha/bin/mocha --no-config lib/game-db/game-db-
 
 Focused producer tests: `node node_modules/mocha/bin/mocha --no-config lib/game-db/game-db-treasure-catalog.spec.js`.
 Mode tests: `node node_modules/mocha/bin/mocha --no-config lib/game-db/game-db-treasure-mode-sources.spec.js`.
+
+## Remote staging delivery — 2026-09-11
+
+`game-db/publish-treasure-catalog.ts` accepts a candidate directory and
+`--dry-run` or `--publish`. Its destination is fixed to
+`dokkanpanion-data/staging/v2/treasure-catalog`; it cannot publish production or
+delete objects. It validates compressed hash/size, expanded size and provenance,
+uploads `catalog-<sha256>.payload` with immutable caching, verifies the public
+bytes, then uploads `manifest.json` with revalidation caching. Only the remote
+manifest gains `fileName`; the payload contract and APK bundle stay unchanged.
+
+The 1.2.0 candidate was published and publicly verified: 85,535 total bytes,
+payload SHA-256 `548c2ba4a0ed600e2889b40b81135d0611478631556ca8650b36db81abe0c681`.
+Preflight bucket size was approximately 1.64 GB. No production keys changed.
+Four focused publisher tests and TypeScript no-emit checking passed.
+Future runs still require a dry-run/byte report before publication. A rollback
+can republish a previously validated candidate manifest/payload; immutable old
+payloads are retained. Earlier local-only statements above describe those slices.

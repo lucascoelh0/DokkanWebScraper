@@ -3784,6 +3784,21 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ## Maintenance Rule
 
+### Treasure catalog remote staging delivery — 2026-09-11
+
+- Treasure contract 1.2.0 is published at
+  `https://assets.dkbcompanion.com/staging/v2/treasure-catalog/manifest.json`.
+  Immutable payload plus manifest total 85,535 bytes; public hashes verified.
+- Android worktree `C:/Users/Lucas/.codex/worktrees/94f3/Dokkanpanion` now has
+  local-first state, validated atomic cache, on-demand refresh and APK fallback.
+  Production endpoint remains disabled. Source identity is pinned to the bundle
+  until a future coordinated primary-snapshot upgrade.
+- 17 Android tests and four publisher tests passed; STG installed in place on
+  LDPlayer. Actual downloaded cache payload hash matched the remote manifest.
+  User requested no phone install and approved committing/pushing this integration.
+- Details: `docs/game-db/treasure-catalog.md` and Android
+  `docs/features/treasure-sources-staging.md`. No production keys changed.
+
 Update this file after a major integration, publish, cutover or user-visible
 milestone. Keep low-level evidence in the relevant report/specification and
 create or supersede an ADR when a durable decision changes.
