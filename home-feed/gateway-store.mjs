@@ -13,7 +13,8 @@ export function gatewayStore(env, fetchImpl = fetch) {
     try {
       const response = await fetchImpl(new URL(path, origin), {
         ...options, redirect: 'error', signal: AbortSignal.timeout(20000),
-        headers: { ...options.headers, authorization: `Bearer ${token}` },
+        // Compression can turn a strong ETag into W/"...", breaking R2 CAS.
+        headers: { ...options.headers, 'accept-encoding': 'identity', authorization: `Bearer ${token}` },
       });
       const reader = response.body?.getReader();
       const chunks = []; let size = 0;
