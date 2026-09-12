@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'home-feed/**'
+      - '.github/workflows/home-feed-refresh.yml'
+      - 'docs/home-feed-automatic-refresh.md'
+      - '.github/workflows/pipeline.yml'
   workflow_dispatch:
 
 jobs:
