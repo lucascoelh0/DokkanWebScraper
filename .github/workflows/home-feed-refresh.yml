@@ -45,6 +45,8 @@ jobs:
           HOME_GATEWAY_URL: ${{ vars.HOME_GATEWAY_URL }}
           HOME_GATEWAY_TOKEN: ${{ secrets.HOME_GATEWAY_TOKEN }}
           HOME_FEED_ENABLE_PUBLICATION: ${{ vars.HOME_FEED_ENABLE_PUBLICATION }}
+          HOME_FEED_EVENTS_ENABLED: ${{ vars.HOME_FEED_EVENTS_ENABLED }}
+          HOME_FEED_EVENTS_CATALOG_SHA256: ${{ vars.HOME_FEED_EVENTS_CATALOG_SHA256 }}
           PUBLISH_REQUESTED: ${{ github.event_name == 'schedule' || inputs.publish }}
         shell: bash
         run: |

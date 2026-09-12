@@ -7,7 +7,9 @@ function instant(v) {
   return ms;
 }
 
-/** Internal adapter for collectEvents output. Invalid enrichment never erases summons. */
+/** Explicit internal-to-public boundary for collectEvents output. The raw projection
+ * remains non-publishable; only this whitelisted section may enter a candidate when
+ * the separate enableEvents gate is true. Invalid enrichment never erases summons. */
 export function prepareEventSection(collection, now) {
   try {
     if (!Number.isSafeInteger(now) || collection?.status !== 'collected') return null;

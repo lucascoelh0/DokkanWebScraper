@@ -17,7 +17,8 @@ function instant(value) {
   return ms;
 }
 
-/** Offline-only experiment. Not imported by collector, publisher or Android. */
+/** Internal projection, never a publishable payload. A fresh collector receipt plus
+ * prepareEventSection's explicit field whitelist is required for public delivery. */
 export function projectEvents(input) {
   try {
     return project(input);

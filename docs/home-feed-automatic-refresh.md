@@ -1,5 +1,12 @@
 # Automatic Home refresh — implementation plan, 2026-09-12
 
+Events integration update: the local runner now supports the separately gated
+`HOME_FEED_EVENTS_ENABLED` and independently approved expanded-content
+`HOME_FEED_EVENTS_CATALOG_SHA256`. Neither is enabled remotely by this change.
+See `home-events-local-projection.md` for 95-test coverage, the real collect-only
+candidate, Android validation, and the remaining push/deployment gate. Summons
+still work if optional events cannot be collected or validated.
+
 Status: six-hour Actions schedule enabled on main, restricted Cloudflare gateway
 deployed, hosted collection and manual gateway publication verified. The first
 complete scheduled cycle after the ETag fix is still pending.

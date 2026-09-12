@@ -276,3 +276,55 @@ the expanded contract is pending. The weekly sample validates the current window
 not all campaign overrides or all long-running Z-Battle schedules. Next integration
 must retain exact catalog joins and carry these separate semantics into the feed;
 it must not render `validUntil` or a rotation boundary as the event's deadline.
+
+## Scheduled-runner integration — 2026-09-12
+
+The preceding entries are chronological investigation notes. The interpreter,
+collector and optional Android DTO are now integrated locally. Checkpoints:
+producer ea9337f; Android 888a3e9b. The changes below follow those checkpoints.
+
+`run-refresh.mjs` now supports optional events in both collect-only and scheduled
+publication paths. Summons finish and close their session before events begin.
+The public catalog is read without game credentials from the fixed staging host;
+schema-2 manifest, hash-shaped object key, compressed size/hash and bounded
+expanded size are checked. The expanded hash must also equal the independent
+`HOME_FEED_EVENTS_CATALOG_SHA256` configuration value. Missing/mismatched pins
+omit optional events. No game login is made when catalog validation fails.
+
+`HOME_FEED_EVENTS_ENABLED` must equal literal `true`. Both new settings are wired
+to the workflow, but no remote variables, deployed checkout, schedule, R2 or
+publication gate were changed. When approving a new Stage catalog, update its
+expanded-byte pin deliberately; do not derive that approval from the same
+mutable manifest in the scheduled process.
+
+The raw schema-2 projection still has `publicationAllowed: false`: it is an
+internal diagnostic object, never a public payload. `prepareEventSection` is the
+explicit conversion boundary: verify a fresh collector receipt, copy only the
+public field whitelist, and let the separate event flag govern candidate inclusion.
+The existing global staging-publication gate and manifest-last publisher remain
+unchanged. No private response body, credentials, receipt, or internal projection
+is written into the candidate.
+
+95 isolated tests pass. An initial live collect-only run safely omitted events
+because the new reader expected schema 1 rather than the real schema-2 manifest.
+After fixing that mismatch, the real integrated run completed in 11,462 ms with
+15 summons and 20 event entries. Payload: 12,934 bytes (4,822 bytes over the
+8,112-byte summons-only payload); 17 local objects total 3,463,258 bytes including
+unchanged banner images. This is candidate size, not a remote upload plan.
+
+Payload SHA: 03f14cc4d0498968a0a144cb711d7e55627d60283f8057d65a6c8203d7262731.
+Event lease: 2026-09-13T05:28:15.908Z. Catalog expanded SHA:
+4a06f9639050c6a5e429e82787a6a64404aa10475db7304b229d6a99a87d8350.
+Evidence: ignored `.agent-logs/home-events-integrated-candidate-20260912-b/` and
+`.agent-logs/home-events-live-integration-b.log`. Candidate hashes were checked.
+
+The same real payload rendered successfully in the Android Studio emulator, with
+Journey to Planet Namek, Grand Elder Guru's Guidance and Bulma as the first three
+rows. Their real finite deadlines were shown; no fixture dates were substituted.
+Evidence: Android worktree `.agent-logs/home-events-real.png`. Public cached feed
+and emulator connectivity were restored after the check.
+
+Remaining: explicit push/deployment and staging activation, followed by remote
+preflight and observation of an actual scheduled cycle. This pass did not publish,
+push, alter GitHub variables, or transfer credentials. Security review accepted
+the independent pin and clarified internal-to-public conversion boundary.

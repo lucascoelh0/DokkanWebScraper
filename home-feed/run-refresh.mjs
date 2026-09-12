@@ -10,6 +10,7 @@ import { publicRead } from './r2-store.mjs';
 import { gatewayStore } from './gateway-store.mjs';
 import { acquireSlot } from './slot-lease.mjs';
 import { refreshCycle } from './refresh-cycle.mjs';
+import { collectHome } from './collect-home.mjs';
 
 export async function run(args=process.argv.slice(2),env=process.env) {
   assert(args.length===2 && ['--validate-auth','--collect-only','--publish-staging'].includes(args[0]));
@@ -30,7 +31,7 @@ export async function run(args=process.argv.slice(2),env=process.env) {
   const responses=[];
   const start=Date.now();
   try {
-    const collect=async()=>{
+    const collectBanners=async()=>{
       phase='collection';
       session=await createSession(config,{fetchImpl:async(url,options)=>{
         const path=new URL(url).pathname;
@@ -42,11 +43,16 @@ export async function run(args=process.argv.slice(2),env=process.env) {
           return response;
         }catch {responses.push({stage:kind,status:null});throw Error('request_failed');}
       }});
-      return collectSummons({...session,now:()=>new Date()});
+      try { return await collectSummons({...session,now:()=>new Date()}); }
+      finally { session.close(); }
     };
+    const enableEvents=env.HOME_FEED_EVENTS_ENABLED==='true';
+    const collect=()=>collectHome({collectSummons:collectBanners,config,enableEvents,
+      expectedCatalogSha256:env.HOME_FEED_EVENTS_CATALOG_SHA256});
+    const prepare=({observation,eventCollection})=>prepareCandidate(observation,Date.now(),{enableEvents,eventCollection});
     if(args[0]==='--collect-only') {
       const observation=await collect();phase='preparation';
-      const candidate=await prepareCandidate(observation);
+      const candidate=await prepare(observation);
       phase='local_output';
       for(const op of candidate.operations)await writeFile(resolve(destination,op.key.split('/').at(-1)),op.bytes,{flag:'wx'});
       const report={status:'candidate_only',durationMs:Date.now()-start,
@@ -61,7 +67,7 @@ export async function run(args=process.argv.slice(2),env=process.env) {
     const bytes=await store.inventoryBytes();assert(bytes+4096<8_000_000_000);
     console.log(JSON.stringify({phase:'control_preflight',maxWriteBytes:4096,bucketBytes:bytes}));
     const pub=publication(store,publicRead);
-    const result=await refreshCycle({acquireLease:()=>acquireSlot(store),collect,prepare:prepareCandidate,
+    const result=await refreshCycle({acquireLease:()=>acquireSlot(store),collect,prepare,
       plan:async candidate=>{const plan=await pub.plan(candidate);console.log(JSON.stringify({phase:'preflight',...plan}));return plan;},
       publish:pub.publish});
     return {...result,durationMs:Date.now()-start};
