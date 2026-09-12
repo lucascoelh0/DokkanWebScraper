@@ -20,7 +20,7 @@ concurrency:
 jobs:
   refresh:
     # Disabled until secrets, live validation, and default-branch deployment are approved.
-    if: vars.HOME_FEED_ENABLED == 'true'
+    if: vars.HOME_FEED_ENABLED == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: home-feed-staging
@@ -36,13 +36,14 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Test without credentials
         working-directory: home-feed
-        run: npm test
+        run: |
+          npm test
+          node --experimental-strip-types --test gateway/test/*.test.mjs
       - name: Refresh
         env:
           HOME_GAME_AUTH_JSON: ${{ secrets.HOME_GAME_AUTH_JSON }}
-          HOME_R2_ACCOUNT_ID: ${{ secrets.HOME_R2_ACCOUNT_ID }}
-          HOME_R2_ACCESS_KEY_ID: ${{ secrets.HOME_R2_ACCESS_KEY_ID }}
-          HOME_R2_SECRET_ACCESS_KEY: ${{ secrets.HOME_R2_SECRET_ACCESS_KEY }}
+          HOME_GATEWAY_URL: ${{ vars.HOME_GATEWAY_URL }}
+          HOME_GATEWAY_TOKEN: ${{ secrets.HOME_GATEWAY_TOKEN }}
           HOME_FEED_ENABLE_PUBLICATION: ${{ vars.HOME_FEED_ENABLE_PUBLICATION }}
           PUBLISH_REQUESTED: ${{ github.event_name == 'schedule' || inputs.publish }}
         shell: bash
