@@ -180,3 +180,20 @@ verification passed for all operations and independently for manifest/payload.
 Hosted collection evidence: https://github.com/lucascoelh0/DokkanWebScraper/actions/runs/34714925203.
 The retained failed attempt is documented above, not represented as a successful
 end-to-end hosted run. Future failures remain visible in GitHub Actions.
+
+## Event schedule activation — 2026-09-12
+
+- Isolated event integration deployed to main as `c5bd3fb` after 95 feed tests
+  and 12 gateway tests passed. No Worker, production data or spending settings
+  were changed.
+- Environment `home-feed-staging` now enables `HOME_FEED_EVENTS_ENABLED=true`
+  and pins `HOME_FEED_EVENTS_CATALOG_SHA256` to
+  `4a06f9639050c6a5e429e82787a6a64404aa10475db7304b229d6a99a87d8350`.
+- Hosted collect-only run `34725998357` succeeded. It does not publish data.
+- Actual scheduled event publication remains pending the next nominal run at
+  2026-09-13T00:23Z. Keep the existing reservation; do not bypass it or represent
+  enabled configuration as a successful publication. The runner reports its
+  bounded control preflight and candidate byte/collision plan before writes.
+- The new event documentation initially triggered the unrelated NPM workflow
+  (`34725987919`), which was cancelled. Its exact path is now excluded alongside
+  the other Home-only paths to prevent recurrence.
