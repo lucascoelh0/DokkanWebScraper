@@ -192,14 +192,16 @@ function learnGashaIds(value) {
  * Creates a one-shot, server-side authenticated session around caller-supplied
  * fetch. Secrets stay in closure memory and all outward failures are sanitized.
  */
-export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs = DEFAULT_TIMEOUT_MS, apiScope = "summons" } = {}) {
   try {
+    if (!["summons", "events"].includes(apiScope)) fail();
     if (typeof fetchImpl !== "function") fail();
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > DEFAULT_TIMEOUT_MS) fail();
     let secrets = normalizeConfig(config);
     let token = null;
     let learnedIds = null;
     let gashasRequested = false;
+    let eventsRequested = false;
     const requestedIds = new Set();
     const controllers = new Set();
     let apiRequests = 0;
@@ -215,7 +217,7 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
     async function perform(url, options, maximum, contentType, isApi) {
       usable();
       if (isApi) {
-        if (apiRequests >= API_LIMIT) fail();
+        if (apiRequests >= (apiScope === "events" ? 3 : API_LIMIT)) fail();
         apiRequests += 1;
       } else {
         if (imageRequests >= IMAGE_LIMIT) fail();
@@ -308,7 +310,10 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
     async function requestApi(path) {
       return guarded(async () => {
         let id = null;
-        if (path === "/gashas") {
+        if (apiScope === "events") {
+          if (path !== "/events" || eventsRequested) fail();
+          eventsRequested = true;
+        } else if (path === "/gashas") {
           if (gashasRequested) fail();
           gashasRequested = true;
         } else {
@@ -320,13 +325,14 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
         await ensureAuthenticated();
         const headers = { ...secrets.apiHeaders, authorization: `Bearer ${token}` };
         const body = await jsonRequest(path, "GET", headers);
-        if (id === null) learnedIds = learnGashaIds(body);
+        if (path === "/gashas") learnedIds = learnGashaIds(body);
         return { status: 200, body };
       });
     }
 
     async function fetchImage(value) {
       return guarded(async () => {
+        if (apiScope !== "summons") fail();
         const url = validateImageUrl(value);
         const bytes = await perform(
           url,

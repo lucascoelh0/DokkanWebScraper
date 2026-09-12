@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
+import { prepareEventSection } from './prepare-events.mjs';
 
 export const PREFIX = 'staging/v2/home/';
 export const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -9,7 +10,7 @@ const object = (key, bytes, contentType, mutable = false) => ({ key, bytes,
   cacheControl: mutable ? 'no-cache' : 'public,max-age=31536000,immutable' });
 
 /** Consumes the complete collector observation, not arbitrary raw API objects. */
-export async function prepareCandidate(observation, now = Date.now()) {
+export async function prepareCandidate(observation, now = Date.now(), { enableEvents = false, eventCollection } = {}) {
   const { snapshot, receipts, images, featuredResponses } = observation;
   const observed = Date.parse(snapshot.observedAt);
   assert(Number.isSafeInteger(now) && Number.isFinite(observed));
@@ -66,8 +67,13 @@ export async function prepareCandidate(observation, now = Date.now()) {
   }
   // Preserve server order within each grouping; no fixed IDs or title inference.
   summons.sort((a, b) => Number(b.group === 'main') - Number(a.group === 'main'));
-  const payload = Buffer.from(JSON.stringify({ schemaVersion: 1, generatedAt,
-    validUntil: new Date(validUntil).toISOString(), spotlight: summons.find(s => s.group === 'main') ?? null, summons }));
+  const content = { schemaVersion: 1, generatedAt,
+    validUntil: new Date(validUntil).toISOString(), spotlight: summons.find(s => s.group === 'main') ?? null, summons };
+  const eventSchedule = enableEvents === true ? prepareEventSection(eventCollection, now) : null;
+  // Optional enrichment cannot push a healthy summons payload over the client cap.
+  if (eventSchedule && Buffer.byteLength(JSON.stringify({ ...content, eventSchedule })) <= 65536)
+    content.eventSchedule = eventSchedule;
+  const payload = Buffer.from(JSON.stringify(content));
   assert(payload.length <= 65536);
   const hash = sha(payload);
   const manifest = Buffer.from(JSON.stringify({ schemaVersion: 1, file: hash + '.json', sizeBytes: payload.length, sha256: hash }));

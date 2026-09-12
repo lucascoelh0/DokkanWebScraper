@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { interpretEventAvailability } from './event-availability.mjs';
 
 const fail = () => { throw new Error('Invalid local event observation'); };
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -14,13 +15,6 @@ function instant(value) {
   const ms = Date.parse(value);
   if (!Number.isFinite(ms) || new Date(ms).toISOString() !== value) fail();
   return ms;
-}
-function period(row) {
-  // Experimental seconds-only interpretation; reject open-ended/sentinel windows.
-  const { start_at: start, end_at: end } = row;
-  if (![start, end].every(v => Number.isSafeInteger(v) && v >= 1420070400 && v < 4102444800)
-      || end <= start || end - start > 366 * 86400) return null;
-  return { startsAt: new Date(start * 1000).toISOString(), endsAt: new Date(end * 1000).toISOString() };
 }
 
 /** Offline-only experiment. Not imported by collector, publisher or Android. */
@@ -60,7 +54,7 @@ function project({ bodyBytes, status, endpoint, observedAt, now, catalogBytes, c
     }
   }
   const candidates = [], seen = new Set();
-  const excluded = { invalidPeriod: 0, recurrenceUnproved: 0, unresolvedTarget: 0, superZBattleDeferred: 0 };
+  const excluded = { unavailableOrInvalidSchedule: 0, unresolvedTarget: 0, superZBattleDeferred: 0 };
   for (const [kind, rows] of [['event', body.events], ['z-battle', body.z_battle_stages]]) {
     for (const row of rows) {
       if (!object(row) || !id(row.id)) fail();
@@ -68,21 +62,21 @@ function project({ bodyBytes, status, endpoint, observedAt, now, catalogBytes, c
       if (seen.has(key)) fail();
       seen.add(key);
       if (kind === 'z-battle' && row.super_z_battle_stage != null) excluded.superZBattleDeferred++;
-      const window = period(row);
-      if (!window) { excluded.invalidPeriod++; continue; }
-      if ((kind === 'event' && !Array.isArray(row.wday))
-          || (row.wday != null && (!Array.isArray(row.wday) || row.wday.length !== 0))
-          || [row.wday_start_at, row.wday_end_at].some(v => v != null && v !== 0)) {
-        excluded.recurrenceUnproved++; continue;
-      }
-      let target;
       if (kind === 'event') {
         if (!Array.isArray(row.quests) || row.quests.length > 4096) fail();
-        const areas = new Set(), questIds = new Set();
-        let resolved = row.quests.length > 0;
+        const questIds = new Set();
         for (const quest of row.quests) {
           if (!object(quest) || !id(quest.id) || questIds.has(quest.id)) fail();
           questIds.add(quest.id);
+        }
+      }
+      const availability = interpretEventAvailability(row, { kind, observedAt, now });
+      if (!availability) { excluded.unavailableOrInvalidSchedule++; continue; }
+      let target;
+      if (kind === 'event') {
+        const areas = new Set();
+        let resolved = row.quests.length > 0;
+        for (const quest of row.quests) {
           const matches = quests.get(String(quest.id));
           if (!matches || matches.size !== 1) resolved = false;
           else for (const area of matches) areas.add(area);
@@ -90,14 +84,16 @@ function project({ bodyBytes, status, endpoint, observedAt, now, catalogBytes, c
         if (resolved && areas.size === 1) target = { kind: 'event-area', id: [...areas][0] };
       } else if (zBattles.has(String(row.id))) target = { kind: 'z-battle', id: String(row.id) };
       if (!target) { excluded.unresolvedTarget++; continue; }
-      candidates.push({ id: key, target, ...window });
+      candidates.push({ id: key, target, availability });
     }
   }
-  candidates.sort((a, b) => a.endsAt.localeCompare(b.endsAt) || a.id.localeCompare(b.id));
+  // Finite event deadlines first. Rotation/cache expiry must not create urgency.
+  candidates.sort((a, b) => Number(a.availability.eventEndsAt === null) - Number(b.availability.eventEndsAt === null)
+    || (a.availability.eventEndsAt ?? '').localeCompare(b.availability.eventEndsAt ?? '') || a.id.localeCompare(b.id));
   return {
-    schemaVersion: 1, mode: 'offline-experiment', publicationAllowed: false,
-    authority: 'partial-global-account-observation', timestampSemantics: 'unix-seconds-unverified-on-current-response',
+    schemaVersion: 2, mode: 'offline-experiment', publicationAllowed: false,
+    authority: 'partial-global-account-observation', timestampSemantics: 'absolute-window-intersection',
     observedAt, validUntil: new Date(observed + 6 * 3600000).toISOString(),
-    catalogSha256, candidates, excluded,
+    observationSha256: digest(bodyBytes), catalogSha256, candidates, excluded,
   };
 }

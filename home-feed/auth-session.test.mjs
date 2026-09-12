@@ -49,12 +49,43 @@ function successfulFetch({ gashaIds = [123] } = {}) {
     if (path === "/auth/nonce") return json({ auth_transaction_id: "fresh-transaction-id" });
     if (path === "/auth/sign_in") return json({ access_token: SECRET_NEW_TOKEN, token_type: "Bearer" });
     if (path === "/gashas") return json({ gashas: gashaIds.map((id) => ({ id })) });
+    if (path === "/events") return json({ events: [], z_battle_stages: [] });
     if (path.endsWith("/featured_cards")) return json({ gasha_items: [{ card_id: 999 }] });
     if (new URL(url).hostname === "cf.ishin-global.aktsk.com") return imageResponse();
     throw new Error(`unexpected ${SECRET_OLD_BEARER}`);
   };
   return { fetchImpl, calls };
 }
+
+test("explicit events scope permits one GET with fresh login and nothing else", async () => {
+  const io = successfulFetch();
+  const session = createSession(config(), { fetchImpl: io.fetchImpl, apiScope: "events" });
+  assert.deepEqual(await session.requestApi('/events'), { status: 200, body: { events: [], z_battle_stages: [] } });
+  assert.equal(io.calls.length, 3);
+  assert.equal(io.calls[2].options.method, 'GET');
+  assert.equal(io.calls[2].options.headers.authorization, `Bearer ${SECRET_NEW_TOKEN}`);
+  await rejectsCleanly(() => session.requestApi('/events'));
+  assert.equal(io.calls.length, 3);
+  session.close();
+});
+
+test("event scope cannot broaden the default or access arbitrary routes/images", async () => {
+  for (const path of ['/gashas', '/events?x=1', '/events/eventkagi_events', '/resources/home', '/missions']) {
+    const io = successfulFetch();
+    const session = createSession(config(), { fetchImpl: io.fetchImpl, apiScope: 'events' });
+    await rejectsCleanly(() => session.requestApi(path));
+    assert.equal(io.calls.length, 0);
+    session.close();
+  }
+  const io = successfulFetch();
+  const session = createSession(config(), { fetchImpl: io.fetchImpl });
+  await rejectsCleanly(() => session.requestApi('/events'));
+  assert.equal(io.calls.length, 0);
+  const events = createSession(config(), { fetchImpl: io.fetchImpl, apiScope: 'events' });
+  await rejectsCleanly(() => events.fetchImage(SIGNED_IMAGE));
+  assert.equal(io.calls.length, 0);
+  events.close();
+});
 
 async function rejectsCleanly(operation) {
   await assert.rejects(operation, (error) => {
