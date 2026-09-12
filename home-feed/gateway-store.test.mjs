@@ -12,6 +12,7 @@ test('gateway client follows bounded inventory pages and sends auth privately',a
   let calls=0;
   const store=gatewayStore(env,async(url,options)=>{
     assert.equal(options.headers.authorization,`Bearer ${env.HOME_GATEWAY_TOKEN}`);
+    assert.equal(options.headers['accept-encoding'],'identity');
     assert.equal(options.redirect,'error');calls++;
     return Response.json(calls===1?{bytes:10,truncated:true,cursor:'next'}:{bytes:20,truncated:false});
   });

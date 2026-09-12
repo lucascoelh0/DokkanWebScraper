@@ -120,3 +120,34 @@ read-only repository permission, no persisted Git checkout credential, no artifa
 uploads, and no dependency install scripts. Only the final step receives secrets.
 The Actions $0 spending cap is not modified. A failed run remains visible in Actions;
 notification delivery depends on the user's existing GitHub notification settings.
+
+## Operations and security boundary
+
+- Pause: set repository variable `HOME_FEED_ENABLED` to `false`. Leave the last
+  published feed intact; Android's existing validity checks still apply.
+- Publication-only gate: environment variable `HOME_FEED_ENABLE_PUBLICATION`.
+  A false value rejects publish mode, rather than silently writing locally.
+- Rotate the gateway key: generate a fresh 32-byte random value; update Worker
+  secret `GATEWAY_TOKEN` and environment secret `HOME_GATEWAY_TOKEN` together.
+  Pause scheduling during rotation. Never copy an R2 key into either field.
+- Update game login configuration only in environment secret `HOME_GAME_AUTH_JSON`.
+  Version/authentication rejections stop that attempt; no automatic login loop.
+- Worker deployments use local Cloudflare authorization, not GitHub credentials.
+  The Worker has bucket access internally; its reviewed handler is the remote
+  enforcement boundary, not a Cloudflare bucket-prefix permission. GitHub cannot
+  deploy or reconfigure it. Anyone able to modify main remains trusted with the
+  two environment secrets, so protect the GitHub account and enable 2FA.
+- Remote checks include 401 without authentication, 400 for a production key,
+  405 for DELETE, and read-only candidate collision/size verification.
+- Local checks: 50 publisher/client tests plus 12 gateway tests and strict gateway
+  typecheck. The hosted job runs both test groups before receiving secrets.
+- There is no automatic retention deletion. Inventory checks fail closed before
+  the 8 GB safety ceiling. The gateway is not a general-purpose upload service.
+
+Hosted publish attempt 34715192413 stopped in the state phase before game login
+or feed publication. Cloudflare's compressed response weakened the read ETag
+(`W/"..."`) while the write receipt had a strong ETag. The client now requests
+identity encoding, preserving the CAS token. The failed scheduled-slot reservation
+is retained; no automatic login retry or deletion was introduced. A one-off
+validation can publish the existing verified candidate using a separate numeric
+validation receipt, without new game requests or reclaiming the scheduled slot.
