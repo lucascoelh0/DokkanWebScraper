@@ -1,8 +1,8 @@
 # Automatic Home refresh — implementation plan, 2026-09-12
 
-Status: Actions collection validated on main; restricted Cloudflare gateway
-deployed. Publication is still gated pending end-to-end verification.
-Existing staging feed is unchanged at this checkpoint.
+Status: six-hour Actions schedule enabled on main, restricted Cloudflare gateway
+deployed, hosted collection and manual gateway publication verified. The first
+complete scheduled cycle after the ETag fix is still pending.
 
 Activation authorized on 2026-09-12, conditional on security. GitHub environment
 `home-feed-staging` permits only branch main. It holds HOME_GAME_AUTH_JSON and
@@ -151,3 +151,25 @@ identity encoding, preserving the CAS token. The failed scheduled-slot reservati
 is retained; no automatic login retry or deletion was introduced. A one-off
 validation can publish the existing verified candidate using a separate numeric
 validation receipt, without new game requests or reclaiming the scheduled slot.
+
+## Activation receipt — 2026-09-12
+
+After the ETag correction, the existing candidate was published through the same
+gateway/client, coordinator, conditional lease and manifest-last publisher, using
+a separate manual validation receipt. No game requests were repeated. Public
+verification passed for all operations and independently for manifest/payload.
+
+- Receipt: `staging/v2/home/runs/1789242724481.json`.
+- Manifest SHA-256: `ebcd785099e8c838861e4a987c6d0a07f0e000834da2754e9edac5b24660033b`.
+- Feed: 15 summons, 2 main; valid until 2026-09-13T18:35:18.592Z.
+- Preflight: bucket 1,650,520,074 bytes; 8,112 additional bytes, 8,303 feed write
+  bytes plus a bounded 4 KiB operational receipt. No production writes.
+- `HOME_FEED_ENABLED=true`, `HOME_FEED_ENABLE_PUBLICATION=true`; cadence every
+  six hours at minute 23 UTC. The next nominal slot is 2026-09-13T00:23Z; Actions
+  may delay execution. First complete scheduled run remains to be observed.
+- Main integration: `280e0a5` (feature branch equivalent `be3462f`). NPM workflow
+  did not run. No Actions spending limit or Cloudflare plan was changed.
+
+Hosted collection evidence: https://github.com/lucascoelh0/DokkanWebScraper/actions/runs/34714925203.
+The retained failed attempt is documented above, not represented as a successful
+end-to-end hosted run. Future failures remain visible in GitHub Actions.
