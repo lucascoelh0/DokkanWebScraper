@@ -1,13 +1,15 @@
 # Automatic Home refresh — implementation plan, 2026-09-12
 
-Status: server adapters and disabled Actions workflow implemented locally;
-no live scheduler, credential migration or automatic publisher activated.
-Existing staging feed is unchanged.
+Status: Actions collection validated on main; restricted Cloudflare gateway
+deployed. Publication is still gated pending end-to-end verification.
+Existing staging feed is unchanged at this checkpoint.
 
-Activation authorized on 2026-09-12, conditional on security. Cloudflare dashboard
-requires user sign-in before a dedicated access boundary can be configured.
-Do not transfer the existing bucket-wide R2 keys to GitHub. The schedule remains
-disabled and no secrets have been installed. NPM push trigger ignores changes
+Activation authorized on 2026-09-12, conditional on security. GitHub environment
+`home-feed-staging` permits only branch main. It holds HOME_GAME_AUTH_JSON and
+HOME_GATEWAY_TOKEN; no bucket-wide R2 keys or Cloudflare administrative credentials
+were transferred. A dedicated Worker enforces the staging key allowlist remotely,
+conditional writes, content hashes and size limits, with no delete endpoint.
+NPM push trigger ignores changes
 limited to this isolated feed, its workflow/documentation and the NPM workflow
 itself; other package changes still trigger the existing package pipeline.
 
@@ -23,7 +25,10 @@ credential-shape validation passed with zero requests. CDN Content-Type is now
 advisory: PNG signature, bounded dimensions and full decode remain mandatory.
 Diagnostics contain only route/stage, HTTP status, image MIME/encoding and elapsed
 time, never signed URLs or credentials. There is no automatic authentication retry.
-This is not an operational automation yet.
+Hosted collect-only run 34714925203 also passed, taking 2,183 ms for collection
+and preparation (excluding job setup). Its 17 objects total 3,458,435 bytes.
+Run 34714744909 was skipped while the repository enable variable remained false;
+it made no game requests. Publication must pass before claiming operational status.
 
 Read-only R2 preflight also passed: zero conflicts, bucket 1,650,519,981 bytes,
 8,112 additional bytes and 8,303 proposed write bytes (existing image bytes reused).
@@ -63,8 +68,8 @@ GitHub-hosted Actions runner, with environment-scoped secrets and R2 public
 delivery. Account UI checked: Free plan, 115/2000 Actions minutes used, 0.3/0.5 GB
 storage used, $0 billable and $0 Actions budget with Stop usage enabled. Leave
 that budget untouched. No promise of exact-time execution or future free capacity.
-Workflow requires default-branch publication, which is not authorized by this
-implementation request. Docker or an always-on personal PC is not required.
+Workflow has been isolated onto main without unrelated feature-branch commits.
+Docker or an always-on personal PC is not required.
 
 A single free Cloudflare Worker is not assumed adequate: current documented
 free CPU allowance is 10 ms and 50 external subrequests per invocation; full
@@ -98,17 +103,14 @@ never be logged. No raw HAR should be uploaded to a runner or stored as an artif
 
 1. Local collect-only validation completed (21 seconds, excluding Actions setup).
    Measure a complete hosted run before estimating monthly runner consumption.
-2. Obtain a dedicated R2 Object Read & Write credential limited to the intended
-   bucket; never reuse Wrangler OAuth/admin credentials as Actions secrets.
-   The bucket also holds production: code restricts staging prefixes, but a
-   bucket-scoped credential is not server-enforced prefix isolation. Prefer a
-   separately scoped broker/credential if available before granting access.
-3. Explicitly approve storing the secondary account login configuration and R2
-   credential in GitHub environment `home-feed-staging`. Use secret-management
-   tooling without printing values; never store the full HAR there.
-4. Review, commit/push and deploy workflow on default branch with separate user
-   authorization. Existing `pipeline.yml` publishes NPM on main push: account for
-   that side effect before any merge; do not push blindly.
+2. Restricted gateway deployed at
+   https://dokkanpanion-home-feed-r2-gateway.lcsilva2099.workers.dev.
+   It has a fixed R2 binding. Actions cannot manage the Worker or address other
+   bucket objects. Inventory exposes byte totals and opaque cursors only.
+3. Secondary login configuration and gateway key installed in GitHub environment
+   `home-feed-staging`, under explicit user authorization. Full HAR stays local.
+4. Isolated main deployment authorized; NPM paths-ignore prevents a feed-only
+   deployment from publishing the package.
 5. Set HOME_FEED_ENABLED only after environment configuration and a manual
    collect-only run; set HOME_FEED_ENABLE_PUBLICATION after remote dry-run review.
 6. Verify successful manifest-last publication and next recurring execution.

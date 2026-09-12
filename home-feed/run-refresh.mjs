@@ -6,7 +6,8 @@ import { collectSummons } from './collect-summons.mjs';
 import { createSession } from './auth-session.mjs';
 import { prepareCandidate } from './prepare-candidate.mjs';
 import { publication } from './publication.mjs';
-import { r2Store, publicRead } from './r2-store.mjs';
+import { publicRead } from './r2-store.mjs';
+import { gatewayStore } from './gateway-store.mjs';
 import { acquireSlot } from './slot-lease.mjs';
 import { refreshCycle } from './refresh-cycle.mjs';
 
@@ -55,7 +56,8 @@ export async function run(args=process.argv.slice(2),env=process.env) {
       return report;
     }
     assert(env.HOME_FEED_ENABLE_PUBLICATION==='true');
-    store=r2Store(env);
+    // Hosted publication must go through the server-enforced staging boundary.
+    store=gatewayStore(env);
     const bytes=await store.inventoryBytes();assert(bytes+4096<8_000_000_000);
     console.log(JSON.stringify({phase:'control_preflight',maxWriteBytes:4096,bucketBytes:bytes}));
     const pub=publication(store,publicRead);
