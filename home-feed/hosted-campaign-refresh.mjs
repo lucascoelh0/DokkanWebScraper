@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { open, lstat } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { prepareCampaignDelivery } from './prepare-campaign-delivery.mjs';
 import { campaignGatewayStore } from './campaign-gateway-store.mjs';
 import { campaignPublicRead } from './campaign-r2-store.mjs';
@@ -8,6 +9,16 @@ import { createCampaignRefreshStep } from './campaign-refresh-step.mjs';
 
 const LIMIT = 2 * 1024 * 1024;
 const TARGET = 'staging/v2/campaigns/';
+
+export function decodeCampaignDefinitions(encoded) {
+  assert(typeof encoded === 'string' && encoded.length > 0 && encoded.length <= 32768);
+  assert(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded));
+  const compressed = Buffer.from(encoded, 'base64');
+  assert(compressed.toString('base64') === encoded);
+  const bytes = gunzipSync(compressed, { maxOutputLength: LIMIT });
+  assert(bytes.length > 0);
+  return bytes;
+}
 
 export async function readCampaignDefinitions(path) {
   assert(typeof path === 'string' && isAbsolute(path));
@@ -42,6 +53,7 @@ export function hostedCampaignRefresh(env, config, {
     CAMPAIGN_GATEWAY_TOKEN: env.CAMPAIGN_GATEWAY_TOKEN,
   };
   const path = env.HOME_FEED_CAMPAIGNS_DEFINITIONS_PATH;
+  const encoded = env.HOME_FEED_CAMPAIGNS_DEFINITIONS_GZIP_BASE64;
   const expectedDefinitionSha256 = env.HOME_FEED_CAMPAIGNS_DEFINITIONS_SHA256;
   const expectedDatabaseSha256 = env.HOME_FEED_CAMPAIGNS_DATABASE_SHA256;
   const attempted = new WeakSet();
@@ -52,7 +64,8 @@ export function hostedCampaignRefresh(env, config, {
       if (attempted.has(lease)) return { status: 'already_attempted' };
       attempted.add(lease);
       await lease.assertOwned();
-      const definitionBytes = await readDefinitions(path);
+      assert(!(path && encoded));
+      const definitionBytes = encoded ? decodeCampaignDefinitions(encoded) : await readDefinitions(path);
       const observedAt = new Date(now()).toISOString();
       // Full validation, not merely a checksum, before constructing auth/store.
       prepareCampaignDelivery({ definitionBytes, expectedDefinitionSha256, expectedDatabaseSha256,

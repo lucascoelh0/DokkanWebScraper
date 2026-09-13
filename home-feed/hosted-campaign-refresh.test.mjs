@@ -4,7 +4,33 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hostedCampaignRefresh, readCampaignDefinitions } from './hosted-campaign-refresh.mjs';
+import { gzipSync } from 'node:zlib';
+import { hostedCampaignRefresh, readCampaignDefinitions, decodeCampaignDefinitions } from './hosted-campaign-refresh.mjs';
+
+test('hosted definitions require canonical bounded gzip and bounded decoded bytes', () => {
+  const bytes = Buffer.from('{"example":true}');
+  assert.deepEqual(decodeCampaignDefinitions(gzipSync(bytes).toString('base64')), bytes);
+  for (const value of [undefined, '', '!!!!', 'A'.repeat(32772), Buffer.from('not gzip').toString('base64'),
+    gzipSync(Buffer.alloc(0)).toString('base64'), gzipSync(Buffer.alloc(2 * 1024 * 1024 + 1)).toString('base64')]) {
+    assert.throws(() => decodeCampaignDefinitions(value));
+  }
+});
+
+test('ambiguous or invalid hosted definitions fail before storage or file access', async () => {
+  for (const changes of [
+    { HOME_FEED_CAMPAIGNS_DEFINITIONS_GZIP_BASE64: gzipSync(definitions).toString('base64') },
+    { HOME_FEED_CAMPAIGNS_DEFINITIONS_PATH: undefined, HOME_FEED_CAMPAIGNS_DEFINITIONS_GZIP_BASE64: 'invalid' },
+    { HOME_FEED_CAMPAIGNS_DEFINITIONS_PATH: undefined, HOME_FEED_CAMPAIGNS_DEFINITIONS_GZIP_BASE64: gzipSync(definitions).toString('base64'), HOME_FEED_CAMPAIGNS_DEFINITIONS_SHA256: 'b'.repeat(64) },
+  ]) {
+    let fileReads = 0, stores = 0;
+    const step = hostedCampaignRefresh({ ...env, ...changes }, config, {
+      readDefinitions: () => { fileReads++; throw Error(); },
+      makeStore: () => { stores++; throw Error(); }, now: () => at,
+    });
+    assert.deepEqual(await step({ lease: lease() }), { status: 'failed' });
+    assert.equal(fileReads, 0); assert.equal(stores, 0);
+  }
+});
 
 const at = Date.parse('2026-09-13T18:00:00Z');
 const definitions = Buffer.from(JSON.stringify({ schemaVersion: 2, contract: 'dokkan-campaign-definitions',

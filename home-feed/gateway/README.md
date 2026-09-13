@@ -18,7 +18,7 @@ It intentionally has no extra rate-limit binding: malformed and unauthorized
 requests are rejected before any R2 operation, while volumetric controls remain
 an account/route policy concern.
 
-## Campaign capability (local preparation, not deployed)
+## Campaign capability
 
 The optional `CAMPAIGN_GATEWAY_TOKEN` secret is separate from `GATEWAY_TOKEN`.
 Without it, campaign routes return 503 without touching R2. Reusing the Home
@@ -60,7 +60,7 @@ Local reference check: Cloudflare's Workers best practices and R2 Workers API,
 retrieved 2026-09-13; installed types `5.20260911.1`. Existing bindings/config remain
 unchanged. No secrets, deployment, hosted workflow, R2 object or schedule changed.
 
-### Runner inputs (not enabled in workflow)
+### Runner inputs
 
 `run-refresh.mjs --publish-staging` now optionally invokes campaigns after verified
 Home publication. `--collect-only` and `--validate-auth` retain their old behavior.
@@ -75,7 +75,25 @@ Missing/invalid campaign settings fail only the campaign step after Home success
 there is no retry in the same lease. The capability closes on success or failure.
 Only publication counts/capacity totals and sanitized status leave the step.
 
-No workflow variables, secrets or definition-upload/download step were added.
-Activation still needs an approved way to provision the pinned definitions file on
-the runner, and approval for deploying/provisioning the isolated gateway capability.
-Do not auto-download an unpinned `latest` definition or use the APK as secret storage.
+The hosted workflow alternatively accepts
+`HOME_FEED_CAMPAIGNS_DEFINITIONS_GZIP_BASE64`: canonical base64, at most 32 KiB
+encoded, gzip decompressed to at most 2 MiB. It is mutually exclusive with the
+local path and undergoes the same schema/database/checksum validation before
+authentication. This small, reviewed static game-content snapshot is an environment
+variable, not account data or a credential. Update it together with both reviewed
+pins when exporting new definitions; never accept an unpinned `latest` input.
+
+The workflow exposes these settings only as environment values, never interpolated
+shell source. Its optional `check_campaigns` manual input performs GET-only gateway
+checks using the hosted secret, skips game login and publication, and reports only
+operation/status/capacity. It does not consume a Home publication slot.
+
+2026-09-13 rollout: gateway code deployed (initial version
+`425a2917-7318-41a4-9810-e54236c2af02`), distinct campaign secrets provisioned in
+Cloudflare and GitHub `home-feed-staging`. Definitions are 116344 bytes / 17768
+encoded bytes, SHA-256
+`633c9be4fe1c097348381093cddd2da23fd3a662a8c8f8564e3fe85a40a23d3e`, database
+`dcccb18baf72727e3f31db6b2f17a11eefb1b3f9aecaa75a04cfbabfae89e7b8`.
+The immediate local gateway smoke check failed with sanitized diagnostics;
+hosted verification is required before activation. Campaigns remain disabled.
+No production objects or Home credentials were changed.
