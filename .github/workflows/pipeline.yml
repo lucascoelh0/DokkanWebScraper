@@ -9,6 +9,7 @@ on:
       - '.github/workflows/home-feed-refresh.yml'
       - 'docs/home-feed-automatic-refresh.md'
       - 'docs/home-events-local-projection.md'
+      - 'docs/project-state.md'
       - '.github/workflows/pipeline.yml'
   workflow_dispatch:
 

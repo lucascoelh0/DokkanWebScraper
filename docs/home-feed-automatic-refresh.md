@@ -254,3 +254,12 @@ revision. The public staging manifest currently references payload SHA-256
 This confirms public Home content, not complete event activation or the cause of
 earlier failures. New safe diagnostics are still needed to distinguish omitted
 and unavailable optional events on the hosted runner.
+
+## Documentation-only package workflow isolation — 2026-09-13
+
+The campaign checkpoint update to `docs/project-state.md` at `455f98b` triggered
+the legacy NPM workflow, run `34786514619`. It failed with TypeScript `TS1005`;
+the inspected log had no publication attempt or published-package receipt.
+That documentation path is now excluded from the NPM push trigger alongside
+the existing Home-only paths. Source-code/package changes still trigger it.
+The legacy compilation issue is not fixed or retried by this scoped change.

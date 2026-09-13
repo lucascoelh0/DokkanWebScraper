@@ -288,6 +288,11 @@ objects were not changed.
 
 ## Hosted storage capability preparation — 2026-09-13
 
+Historical preparation record; superseded by the deployed activation checkpoint
+in `gateway/README.md` and `../docs/project-state.md`. The hosted capability and
+pinned definitions are now configured and enabled, but the first enriched
+scheduled publication remains unconfirmed. Do not repeat secret provisioning.
+
 The gateway now has a separately authenticated, default-disabled campaign route
 and a dedicated Node publisher adapter. The existing Home token retains its old
 object scope. Tests cover cross-token denial, exact paths, byte limits, immutable
