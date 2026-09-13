@@ -15,7 +15,7 @@ type ObjectPolicy = Readonly<{
   limit: number;
 }>;
 
-type GatewayEnv = Env & Readonly<{ GATEWAY_TOKEN?: string }>;
+type GatewayEnv = Env & Readonly<{ GATEWAY_TOKEN?: string; CAMPAIGN_GATEWAY_TOKEN?: string }>;
 
 function json(body: Readonly<Record<string, unknown>>, status = 200, extraHeaders?: HeadersInit): Response {
   const headers = new Headers(extraHeaders);
@@ -29,7 +29,20 @@ function error(code: string, status: number, extraHeaders?: HeadersInit): Respon
   return json({ error: code }, status, extraHeaders);
 }
 
-function policyFor(key: string): ObjectPolicy | null {
+function policyFor(key: string, campaign = false): ObjectPolicy | null {
+  if (campaign) {
+    if (key === "staging/v2/campaigns/manifest.json") return {
+      cacheControl: "no-cache, no-transform", contentType: "application/json",
+      immutableHash: null, limit: 4096,
+    };
+    const match = /^staging\/v2\/campaigns\/(index|details|images)\/([a-f0-9]{64})\.(json|png)$/.exec(key);
+    if (!match || (match[1] === "images") !== (match[3] === "png")) return null;
+    return {
+      cacheControl: "public, max-age=31536000, immutable",
+      contentType: match[1] === "images" ? "image/png" : "application/json",
+      immutableHash: match[2], limit: match[1] === "index" ? 32768 : 524288,
+    };
+  }
   if (!KEY_ALLOWED.test(key)) return null;
   const png = HASHED_PNG.exec(key);
   if (png) return {
@@ -220,23 +233,33 @@ async function inventory(url: URL, env: GatewayEnv): Promise<Response> {
 }
 
 async function route(request: Request, env: GatewayEnv): Promise<Response> {
-  const auth = await authorize(request, env.GATEWAY_TOKEN);
+  const url = new URL(request.url);
+  const campaign = url.pathname === "/campaign-object" || url.pathname === "/campaign-inventory";
+  const selectedToken = campaign ? env.CAMPAIGN_GATEWAY_TOKEN : env.GATEWAY_TOKEN;
+  const auth = await authorize(request, selectedToken);
   if (auth === "misconfigured") return error("service_unavailable", 503);
   if (auth === "unauthorized") {
     return error("unauthorized", 401, { "WWW-Authenticate": "Bearer" });
   }
 
-  const url = new URL(request.url);
-  if (url.pathname === "/inventory") {
+  // A new capability never silently expands the existing Home credential.
+  if (campaign && typeof env.GATEWAY_TOKEN === "string" && typeof selectedToken === "string"
+      && encoder.encode(env.GATEWAY_TOKEN).byteLength <= MAX_TOKEN_BYTES) {
+    const [homeHash, campaignHash] = await Promise.all([
+      sha256(encoder.encode(env.GATEWAY_TOKEN)), sha256(encoder.encode(selectedToken)),
+    ]);
+    if (crypto.subtle.timingSafeEqual(homeHash, campaignHash)) return error("service_unavailable", 503);
+  }
+  if (url.pathname === (campaign ? "/campaign-inventory" : "/inventory")) {
     if (request.method !== "GET") return error("method_not_allowed", 405, { Allow: "GET" });
     return inventory(url, env);
   }
-  if (url.pathname !== "/object") return error("not_found", 404);
+  if (url.pathname !== (campaign ? "/campaign-object" : "/object")) return error("not_found", 404);
   if (request.method !== "GET" && request.method !== "PUT") {
     return error("method_not_allowed", 405, { Allow: "GET, PUT" });
   }
   const key = oneQueryValue(url, "key", new Set(["key"]));
-  const policy = key === null ? null : policyFor(key);
+  const policy = key === null ? null : policyFor(key, campaign);
   if (key === null || policy === null) return error("invalid_key", 400);
   return request.method === "GET"
     ? getObject(key, policy, env)

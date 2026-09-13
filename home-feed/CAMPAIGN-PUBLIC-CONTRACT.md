@@ -285,3 +285,28 @@ Verification: 78 focused Node checks and 12 Python export checks passed. Android
 contract review additionally required aggregate artwork limits and byte-verified
 image loading before rendering. Hosted permissions, production and remote staging
 objects were not changed.
+
+## Hosted storage capability preparation — 2026-09-13
+
+The gateway now has a separately authenticated, default-disabled campaign route
+and a dedicated Node publisher adapter. The existing Home token retains its old
+object scope. Tests cover cross-token denial, exact paths, byte limits, immutable
+hashes, manifest CAS, bounded reads and sanitized failures. Shared-bucket capacity
+totals are an explicit metadata-only exception required by publication preflight;
+they expose no object names or content. Independent review accepted this boundary.
+
+See `gateway/README.md` for activation gates. These changes are local only;
+Hosted configuration, secrets and scheduled activation remain unchanged. Local
+`run-refresh.mjs` now calls the optional `hosted-campaign-refresh.mjs` adapter only
+in publish mode, after verified Home publication under the existing lease. The
+adapter validates bounded, pinned definitions before authentication, enables artwork,
+closes its capability and emits only sanitized counts/status. Disabled configuration
+does no campaign I/O. The next step is approved provisioning of the pinned definition
+file and separate deployment/publication authorization, then remote validation.
+
+Verification: all 203 isolated feed tests pass, including six hosted-adapter cases;
+the earlier gateway/coordination batch passed 51 tests and gateway typecheck passed.
+Independent review found no material runner-integration issue. Evidence:
+`.agent-logs/hosted-campaign-regression.log`, `.agent-logs/hosted-campaign-tests.log`
+and `.agent-logs/campaign-gateway-final-tests.log`. All auth/storage interactions in
+these checks used synthetic mocks; no live login, publication or schedule change.

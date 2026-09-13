@@ -17,3 +17,65 @@ no delete route and does not log request headers, query strings, or exceptions.
 It intentionally has no extra rate-limit binding: malformed and unauthorized
 requests are rejected before any R2 operation, while volumetric controls remain
 an account/route policy concern.
+
+## Campaign capability (local preparation, not deployed)
+
+The optional `CAMPAIGN_GATEWAY_TOKEN` secret is separate from `GATEWAY_TOKEN`.
+Without it, campaign routes return 503 without touching R2. Reusing the Home
+secret is rejected. Neither token authenticates the other's routes.
+
+- `/campaign-object` permits only `staging/v2/campaigns/manifest.json`,
+  `index/<sha256>.json`, `details/<sha256>.json`, and `images/<sha256>.png`.
+- Limits are respectively 4 KiB, 32 KiB, 512 KiB, and 512 KiB. Immutable files
+  are create-only and hash-verified. Only the manifest accepts strong ETag CAS.
+- `/campaign-inventory` is the deliberate aggregate-capacity exception: it counts
+  the whole shared bucket, returning only bytes and an opaque pagination cursor,
+  never object names or contents. The publisher needs this total to enforce the
+  shared storage ceiling; a campaign-prefix subtotal would undercount usage.
+- There is no production, Home, run-state, arbitrary key, delete or list-names
+  capability for this credential. Full JSON schema/image decoding and publication
+  ordering remain collector/publisher responsibilities, not gateway guarantees.
+
+`../campaign-gateway-store.mjs` implements the publisher's read/write/inventory
+interface using `CAMPAIGN_GATEWAY_URL` and `CAMPAIGN_GATEWAY_TOKEN`. It never falls
+back to Home or broad S3 credentials. Import/construction performs no network I/O.
+This does not provision the secret, deploy the Worker or enable a scheduled job.
+
+### Activation gates
+
+1. Review and authorize deploying the optional capability and provisioning a
+   distinct secret. Keep its value outside source, logs and the APK.
+2. Supply independently reviewed, hash-pinned campaign definitions from the current
+   database; do not use a private HAR or emulator overlay as fresh public data.
+3. Configure the opt-in runner step in the existing Home slot, preserving one
+   attempt per slot, ownership checks and sanitized status receipts. Do not add
+   another timer. Runner wiring is implemented locally; hosted settings remain off.
+4. Run a fresh collection and read-only publication preflight. Report exact object
+   bytes and projected shared-bucket usage before any approved R2 write.
+5. Publish immutable images/details/index first, conditional manifest last; verify
+   public hashes/sizes and then test the Android consumer against remote data.
+6. Validate one scheduled observation before claiming automatic refresh is active.
+
+Local reference check: Cloudflare's Workers best practices and R2 Workers API,
+retrieved 2026-09-13; installed types `5.20260911.1`. Existing bindings/config remain
+unchanged. No secrets, deployment, hosted workflow, R2 object or schedule changed.
+
+### Runner inputs (not enabled in workflow)
+
+`run-refresh.mjs --publish-staging` now optionally invokes campaigns after verified
+Home publication. `--collect-only` and `--validate-auth` retain their old behavior.
+Only the exact string `HOME_FEED_CAMPAIGNS_ENABLED=true` activates the optional step.
+It needs `CAMPAIGN_GATEWAY_URL`, `CAMPAIGN_GATEWAY_TOKEN`, an absolute regular-file
+`HOME_FEED_CAMPAIGNS_DEFINITIONS_PATH`, plus independently reviewed
+`HOME_FEED_CAMPAIGNS_DEFINITIONS_SHA256` and `HOME_FEED_CAMPAIGNS_DATABASE_SHA256`.
+
+The definitions file is read with a 2 MiB ceiling and full schema/pin validation
+before constructing auth/storage. Presentation is enabled for this new path.
+Missing/invalid campaign settings fail only the campaign step after Home success;
+there is no retry in the same lease. The capability closes on success or failure.
+Only publication counts/capacity totals and sanitized status leave the step.
+
+No workflow variables, secrets or definition-upload/download step were added.
+Activation still needs an approved way to provision the pinned definitions file on
+the runner, and approval for deploying/provisioning the isolated gateway capability.
+Do not auto-download an unpinned `latest` definition or use the APK as secret storage.

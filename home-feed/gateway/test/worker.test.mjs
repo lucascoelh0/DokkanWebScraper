@@ -15,6 +15,8 @@ if (typeof crypto.subtle.timingSafeEqual !== "function") {
 const TOKEN = "0123456789abcdef0123456789abcdef";
 const PREFIX = "staging/v2/home/";
 const auth = { Authorization: `Bearer ${TOKEN}` };
+const CAMPAIGN_TOKEN = "c".repeat(64);
+const campaignAuth = { Authorization: `Bearer ${CAMPAIGN_TOKEN}` };
 
 function object(bytes, etag = "etag-1") {
   const value = Uint8Array.from(bytes);
@@ -238,5 +240,67 @@ describe("reads and inventory", () => {
     const body = await response.text();
     assert.deepEqual(JSON.parse(body), { error: "internal_error" });
     assert.doesNotMatch(body, /secret|credential/i);
+  });
+});
+
+describe("isolated campaign capability", () => {
+  const key = "staging/v2/campaigns/manifest.json";
+  const campaignEnv = bucket => ({ ...env(bucket), CAMPAIGN_GATEWAY_TOKEN: CAMPAIGN_TOKEN });
+  test("stays disabled without its own secret and rejects both cross-scope tokens", async () => {
+    const bucket = stubBucket();
+    assert.equal((await fetch(request(`/campaign-object?key=${key}`, { headers: auth }), env(bucket))).status, 503);
+    assert.equal((await fetch(request(`/campaign-object?key=${key}`, { headers: auth }), campaignEnv(bucket))).status, 401);
+    assert.equal((await fetch(request(`/object?key=${PREFIX}manifest.json`, { headers: campaignAuth }), campaignEnv(bucket))).status, 401);
+    assert.equal((await fetch(request(`/campaign-object?key=${key}`, { headers: auth }), { ...env(bucket), CAMPAIGN_GATEWAY_TOKEN: TOKEN })).status, 503);
+    assert.deepEqual(bucket.calls, []);
+  });
+  test("rejects other prefixes, extensions, runs, traversal and duplicate keys", async () => {
+    const bucket = stubBucket();
+    for (const bad of [PREFIX + 'manifest.json', 'production/v2/campaigns/manifest.json',
+      'staging/v2/campaigns/runs/1.json', 'staging/v2/campaigns/details/' + 'a'.repeat(64) + '.png',
+      'staging/v2/campaigns/images/' + 'a'.repeat(64) + '.json', 'staging/v2/campaigns/../home/manifest.json']) {
+      assert.equal((await fetch(request(`/campaign-object?key=${encodeURIComponent(bad)}`, { headers: campaignAuth }), campaignEnv(bucket))).status, 400);
+    }
+    assert.equal((await fetch(request(`/campaign-object?key=${key}&key=${key}`, { headers: campaignAuth }), campaignEnv(bucket))).status, 400);
+    assert.equal((await fetch(request(`/campaign-object?key=${key}`, { method: 'DELETE', headers: campaignAuth }), campaignEnv(bucket))).status, 405);
+    assert.deepEqual(bucket.calls, []);
+  });
+  test("enforces each campaign byte ceiling before R2", async () => {
+    const bucket = stubBucket();
+    for (const [suffix, size] of [['manifest.json', 4097], [`index/${'a'.repeat(64)}.json`, 32769],
+      [`details/${'a'.repeat(64)}.json`, 524289], [`images/${'a'.repeat(64)}.png`, 524289]]) {
+      assert.equal((await fetch(request(`/campaign-object?key=staging/v2/campaigns/${suffix}`, {
+        method: 'PUT', headers: { ...campaignAuth, 'If-None-Match': '*', 'Content-Length': String(size) }, body: 'x',
+      }), campaignEnv(bucket))).status, 413);
+    }
+    assert.deepEqual(bucket.calls, []);
+  });
+  test("campaign manifest uses CAS and no-transform metadata", async () => {
+    const bucket = stubBucket();
+    const first = await fetch(request(`/campaign-object?key=${key}`, {
+      method: 'PUT', headers: { ...campaignAuth, 'If-None-Match': '*' }, body: '{}',
+    }), campaignEnv(bucket));
+    assert.equal(first.status, 200);
+    assert.deepEqual(bucket.data.get(key).metadata, { cacheControl: 'no-cache, no-transform', contentType: 'application/json' });
+    assert.equal((await fetch(request(`/campaign-object?key=${key}`, {
+      method: 'PUT', headers: { ...campaignAuth, 'If-Match': '"wrong"' }, body: '{}',
+    }), campaignEnv(bucket))).status, 412);
+  });
+  test("inventory exposes only shared capacity totals and remains credential-isolated", async () => {
+    const bucket = stubBucket(new Map([
+      ['production/private-name', { bytes: new Uint8Array(13), etag: 'private' }],
+      [key, { bytes: new Uint8Array(7), etag: 'campaign' }],
+    ]));
+    assert.equal((await fetch(request('/campaign-inventory', { headers: auth }), campaignEnv(bucket))).status, 401);
+    assert.equal((await fetch(request('/inventory', { headers: campaignAuth }), campaignEnv(bucket))).status, 401);
+    assert.deepEqual(bucket.calls, []);
+    const response = await fetch(request('/campaign-inventory', { headers: campaignAuth }), campaignEnv(bucket));
+    assert.deepEqual(await response.json(), { bytes: 20, truncated: false, cursor: null });
+    assert.deepEqual(bucket.calls, [['list', { limit: 1000, include: [] }]]);
+  });
+  test("Home token never gets campaign objects through the original route", async () => {
+    const bucket = stubBucket();
+    assert.equal((await fetch(request(`/object?key=${key}`, { headers: auth }), campaignEnv(bucket))).status, 400);
+    assert.deepEqual(bucket.calls, []);
   });
 });
