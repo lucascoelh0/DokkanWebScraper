@@ -97,7 +97,13 @@ export async function run(args=process.argv.slice(2),env=process.env) {
   } finally {session?.close();store?.close();}
 }
 
+// Preserve the successful Home receipt while exposing partial failure to the host.
+// This is an exit status only: it must not retry or undo any publication.
+export function refreshExitCode(result) {
+  return result.status === 'failed' || result.campaigns?.status === 'failed' ? 1 : 0;
+}
+
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
-  try {const result=await run();console.log(JSON.stringify(result));if(result.status==='failed')process.exitCode=1;}
+  try {const result=await run();console.log(JSON.stringify(result));process.exitCode=refreshExitCode(result);}
   catch {console.error(JSON.stringify({status:'failed',reason:'refresh_stopped_no_retry'}));process.exitCode=1;}
 }

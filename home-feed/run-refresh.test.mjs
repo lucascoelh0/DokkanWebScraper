@@ -3,7 +3,20 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { run, summarizeResponses } from './run-refresh.mjs';
+import { run, summarizeResponses, refreshExitCode } from './run-refresh.mjs';
+
+test('host exit status exposes partial campaign failure without changing the Home receipt', () => {
+  const result = Object.freeze({status:'success',campaigns:Object.freeze({status:'failed'})});
+  assert.equal(refreshExitCode(result),1);
+  assert.equal(result.status,'success');
+  assert.equal(refreshExitCode({status:'failed'}),1);
+  for(const status of ['success','candidate_only','not_due','already_running','disabled']) {
+    assert.equal(refreshExitCode({status}),0);
+  }
+  for(const status of ['published','disabled','already_attempted']) {
+    assert.equal(refreshExitCode({status:'success',campaigns:{status}}),0);
+  }
+});
 
 test('failure diagnostics keep only bounded operation labels and HTTP codes',()=>{
   const rows=[{stage:'/auth/nonce',status:200},{stage:'/auth/sign_in',status:401},
