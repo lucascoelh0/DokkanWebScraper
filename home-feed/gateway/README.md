@@ -105,3 +105,20 @@ Do not clear the reservation or force a retry. The next scheduled slot must prov
 successful campaign publication and public image/detail/index hash verification.
 This configuration does not yet prove a successful scheduled campaign publication.
 No production objects or Home credentials were changed.
+
+### Independent public verification
+
+Run `node home-feed/verify-public-campaigns.mjs --require-v2` after a new campaign
+publication. It has no credential input and performs only fixed-origin GETs.
+It checks bounded manifest/index/detail/image bytes and hashes, revision/context
+consistency, campaign identity and board counts, typed event destinations, PNG
+decoding/dimensions, freshness, and unchanged manifest at completion. Shared
+artwork is fetched once, with eight images and a 4 MiB snapshot ceiling (plus
+one bounded manifest reread). It is an integrity audit, not a replacement for the
+Android parser or a device UX check. Output contains only sanitized phases,
+counts, timestamps and a manifest digest; never raw payloads or exception text.
+
+Without `--require-v2`, it can verify legacy staging data but reports schema 1
+and zero artwork; that is not evidence of the enriched rollout. On 2026-09-13,
+the existing schema-1 snapshot verified as 8 campaigns / 191 missions, expiring
+2026-09-14T00:05:50.718Z. The monitor must require schema 2 for rollout acceptance.

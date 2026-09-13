@@ -92,3 +92,15 @@ test('Home publication failure cannot start a campaign login', async () => {
   let called = false; h.args.refreshCampaigns = async () => { called = true; };
   assert.equal((await refreshCycle(h.args)).status, 'failed'); assert.equal(called, false);
 });
+
+test('campaign failures retain only explicitly safe phase labels', async () => {
+  for (const phase of ['configuration','ownership','collection','publication','PRIVATE token',undefined]) {
+    const h = harness();
+    h.args.refreshCampaigns = async () => ({ status:'failed',phase,body:'PRIVATE' });
+    const result = await refreshCycle(h.args);
+    assert.equal(result.status,'success');
+    assert.deepEqual(result.campaigns, {status:'failed',
+      ...(['configuration','ownership','collection','publication'].includes(phase)?{phase}:{})});
+    assert(!JSON.stringify([result,h.records]).includes('PRIVATE'));
+  }
+});

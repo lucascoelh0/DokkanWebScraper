@@ -59,7 +59,9 @@ export async function refreshCycle({ acquireLease, collect, prepare, plan, publi
           campaigns = { status: 'published', manifestSha256: result.manifestSha256 };
         else if (['disabled', 'already_attempted'].includes(result?.status))
           campaigns = { status: result.status };
-        else campaigns = { status: 'failed' };
+        else campaigns = { status: 'failed',
+          ...(['configuration','ownership','collection','publication'].includes(result?.phase)
+            ? { phase: result.phase } : {}) };
       } catch { campaigns = { status: 'failed' }; }
     }
     phase = 'receipt';

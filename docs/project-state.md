@@ -8,6 +8,35 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ## Repository Checkpoints
 
+### Campaign automation checkpoint — 2026-09-13
+
+- Active pipeline worktree: `D:/Dokkan/DokkanWebScraper-home-feed-deploy`, integrated
+  into remote `main`. Campaign artwork/event-destination projection, dedicated
+  staging gateway, bounded pinned hosted definitions and the optional refresh
+  step are deployed/configured. Production and Android worktrees were untouched
+  by this activation pass.
+- GitHub environment `home-feed-staging` enables campaigns in the existing
+  six-hour Home workflow. Its distinct campaign secret cannot access Home,
+  run-state or production keys; credentials never enter the APK.
+- Hosted read-only gateway run `34784816102` passed. Publication attempt
+  `34784938863` returned `already_running` because the slot was already consumed;
+  do not remove that reservation or describe it as a new publication.
+- Public staging still held schema 1: 8 campaigns / 191 missions, observed
+  2026-09-13T18:05:50.718Z, valid until 2026-09-14T00:05:50.718Z. Its index and all
+  details passed byte/hash verification. Enriched schema-2 remote publication
+  remains pending the next scheduled slot, not a user approval.
+- `home-feed/verify-public-campaigns.mjs --require-v2` is the credential-free
+  post-publication audit. It validates bounded bytes, hashes, PNG decode and
+  dimensions, freshness, context/identity, typed destinations and manifest
+  stability. It does not replace Android rendering acceptance.
+- Partial campaign failures preserve an already-published Home receipt but now
+  fail the hosted process, retaining only allowlisted failure phases. No retry
+  or rollback was added. The isolated feed suite passes 220 tests.
+- A thread heartbeat named “Validar atualização automática das campanhas” starts
+  checking no earlier than 2026-09-14T00:40Z. It is read-only, reports only actionable
+  outcomes, then pauses. No hibernation is authorized by this new monitor.
+
+
 - `D:\Dokkan\DokkanWebScraper` owns the TypeScript data pipeline.
   Its integrated history includes E0–E9, H0–H13, F0–F6 and M0–M6, together
   with the DB0–DB50/C1–C5 database-first foundation and the AQ0–AQ6/DQ0–DQ6
