@@ -49,16 +49,16 @@ This does not provision the secret, deploy the Worker or enable a scheduled job.
    database; do not use a private HAR or emulator overlay as fresh public data.
 3. Configure the opt-in runner step in the existing Home slot, preserving one
    attempt per slot, ownership checks and sanitized status receipts. Do not add
-   another timer. Runner wiring is implemented locally; hosted settings remain off.
+   another timer. Hosted settings must pass the read-only check before activation.
 4. Run a fresh collection and read-only publication preflight. Report exact object
    bytes and projected shared-bucket usage before any approved R2 write.
 5. Publish immutable images/details/index first, conditional manifest last; verify
    public hashes/sizes and then test the Android consumer against remote data.
 6. Validate one scheduled observation before claiming automatic refresh is active.
 
-Local reference check: Cloudflare's Workers best practices and R2 Workers API,
+Reference check: Cloudflare's Workers best practices and R2 Workers API,
 retrieved 2026-09-13; installed types `5.20260911.1`. Existing bindings/config remain
-unchanged. No secrets, deployment, hosted workflow, R2 object or schedule changed.
+unchanged. See the dated rollout record below for deployment and activation state.
 
 ### Runner inputs
 
@@ -94,6 +94,14 @@ Cloudflare and GitHub `home-feed-staging`. Definitions are 116344 bytes / 17768
 encoded bytes, SHA-256
 `633c9be4fe1c097348381093cddd2da23fd3a662a8c8f8564e3fe85a40a23d3e`, database
 `dcccb18baf72727e3f31db6b2f17a11eefb1b3f9aecaa75a04cfbabfae89e7b8`.
-The immediate local gateway smoke check failed with sanitized diagnostics;
-hosted verification is required before activation. Campaigns remain disabled.
+The immediate local gateway smoke check failed with sanitized diagnostics; the
+subsequent hosted GET-only check passed in run `34784816102`, with inventory and
+manifest HTTP 200, and shared-bucket usage of 1657039479 bytes. The early failure's
+exact cause is not established; credentials were not rotated or exposed to retry.
+Campaigns were then enabled in the existing six-hour Home workflow. One normal
+publication run `34784938863` completed with `already_running`: the current slot
+was already reserved, so it made no new game login or campaign publication.
+Do not clear the reservation or force a retry. The next scheduled slot must prove
+successful campaign publication and public image/detail/index hash verification.
+This configuration does not yet prove a successful scheduled campaign publication.
 No production objects or Home credentials were changed.

@@ -82,9 +82,13 @@ test('pin reader accepts regular bounded files and rejects directories, empty an
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('hosted composition publishes real v2 candidate, reports only totals and closes capability', async () => {
+for (const compressed of [false, true]) test(`hosted composition publishes real v2 candidate (compressed=${compressed})`, async () => {
   const objects = new Map(), calls = [], reports = []; let closed = false;
-  const step = hostedCampaignRefresh(env, config, { now: () => at, readDefinitions: async () => definitions,
+  const settings = compressed ? { ...env, HOME_FEED_CAMPAIGNS_DEFINITIONS_PATH: undefined,
+    HOME_FEED_CAMPAIGNS_DEFINITIONS_GZIP_BASE64: gzipSync(definitions).toString('base64') } : env;
+  const step = hostedCampaignRefresh(settings, config, { now: () => at, readDefinitions: async () => {
+    assert(!compressed); return definitions;
+  },
     makeStore: settings => {
       assert.deepEqual(Object.keys(settings).sort(), ['CAMPAIGN_GATEWAY_TOKEN', 'CAMPAIGN_GATEWAY_URL']);
       return {
