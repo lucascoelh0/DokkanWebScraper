@@ -41,7 +41,7 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def export_definitions(database, expected_sha256, selection):
+def export_definitions(database, expected_sha256, selection, include_destinations=False):
     if not isinstance(expected_sha256, str) or not re.fullmatch('[a-f0-9]{64}', expected_sha256):
         raise ValueError()
     if not isinstance(selection, dict) or set(selection) != {'categoryIds', 'completionMissionIds'}:
@@ -82,6 +82,16 @@ def export_definitions(database, expected_sha256, selection):
                 rewards.append(dict(id=reward_id,itemId=item_id,itemType=r[2],quantity=quantity))
             missions[mission_id] = dict(id=mission_id,categoryId=category_id,type=text(row[2],80),
                 name=text(row[3],256),description=text(row[4],4096,True,True),priority=row[5],rewards=rewards)
+            if include_destinations:
+                link = connection.execute('SELECT link_to FROM missions WHERE id=?', (mission_id,)).fetchone()[0]
+                match = re.fullmatch(r'internal:EventTopScene:([1-9][0-9]{0,8})', link or '')
+                destination = None
+                if match:
+                    area_id = positive(int(match.group(1)))
+                    area = connection.execute('SELECT id FROM areas WHERE id=?', (area_id,)).fetchone()
+                    if area:
+                        destination = dict(type='event-area', areaId=area_id)
+                missions[mission_id]['destination'] = destination
         for category in sorted(selection['categoryIds']):
             for row in connection.execute('SELECT ' + columns + ' FROM missions WHERE mission_category_id=? ORDER BY id LIMIT 5001', (category,)):
                 if row[0] in missions:
@@ -100,7 +110,7 @@ def export_definitions(database, expected_sha256, selection):
             if len(rows) != 1:
                 raise ValueError()
             categories[category] = dict(id=positive(rows[0][0]),name=text(rows[0][1],256))
-        payload = dict(schemaVersion=1,contract='dokkan-campaign-definitions',source='dokkan-game-db',
+        payload = dict(schemaVersion=2 if include_destinations else 1,contract='dokkan-campaign-definitions',source='dokkan-game-db',
             databaseSha256=expected_sha256,categories=list(categories.values()),
             missions=[missions[k] for k in sorted(missions)])
         result = json.dumps(payload,ensure_ascii=False,separators=(',',':')).encode('utf-8')
@@ -116,12 +126,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--database', required=True)
     parser.add_argument('--database-sha256', required=True)
+    parser.add_argument('--include-destinations', action='store_true')
     args = parser.parse_args()
     try:
         raw = sys.stdin.buffer.read(65537)
         if len(raw) > 65536:
             raise ValueError()
-        result = export_definitions(args.database,args.database_sha256,json.loads(raw.decode('utf-8')))
+        result = export_definitions(args.database,args.database_sha256,json.loads(raw.decode('utf-8')),args.include_destinations)
         sys.stdout.buffer.write(result)
     except Exception:
         print('campaign_definition_export_failed',file=sys.stderr)

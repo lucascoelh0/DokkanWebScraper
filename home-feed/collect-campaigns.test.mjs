@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { collectCampaigns, prepareCollectedCampaignCandidate } from './collect-campaigns.mjs';
+import sharp from 'sharp';
+import { planCampaignPublication } from './plan-campaign-publication.mjs';
 
 const at = Date.parse('2026-09-13T02:00:00.000Z');
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -38,6 +40,44 @@ test('explicit enablement and independent definitions are required before login'
   }
   assert.deepEqual(await collectCampaigns({ ...input(), expectedDefinitionSha256: 'b'.repeat(64) }, mock), { status: 'unavailable' });
   assert.equal(mock.calls.length, 0);
+});
+
+test('opt-in presentation publishes only decoded hash artwork and typed event references', async () => {
+  const options = input();
+  const defs = JSON.parse(options.definitionBytes);
+  defs.schemaVersion = 2;
+  defs.missions[0].destination = { type: 'event-area', areaId: 1768 };
+  options.definitionBytes = Buffer.from(JSON.stringify(defs));
+  options.expectedDefinitionSha256 = sha(options.definitionBytes);
+  options.includePresentation = true;
+  const png = await sharp({ create: { width: 640, height: 160, channels: 4, background: '#123456' } }).png().toBuffer();
+  const mock = io();
+  let imageCalls = 0;
+  const collection = await collectCampaigns(options, { now: () => at, fetchImpl: async (url, request) => {
+    if (new URL(url).hostname === 'cf.ishin-global.aktsk.com') {
+      imageCalls++;
+      assert.equal(request.headers.authorization, undefined);
+      return new Response(png, { headers: { 'content-type': 'image/png' } });
+    }
+    const response = await mock.fetchImpl(url, request);
+    if (new URL(url).pathname !== '/missions/mission_board_campaigns') return response;
+    const body = await response.json();
+    body.mission_board_campaigns[0].banner_image_path = 'https://cf.ishin-global.aktsk.com/images/en/panel_mission/banner.png?PRIVATE-SIGNATURE';
+    return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+  } });
+  assert.equal(collection.status, 'collected');
+  assert.equal(imageCalls, 1);
+  const candidate = prepareCollectedCampaignCandidate(collection, { now: () => at });
+  const index = JSON.parse(candidate.indexBytes), detail = JSON.parse(candidate.details[0].bytes);
+  assert.equal(index.schemaVersion, 2);
+  assert.deepEqual(index.campaigns[0].artwork, detail.campaign.artwork);
+  assert.deepEqual(detail.missions[0].destination, { type: 'event-area', areaId: 1768 });
+  assert.equal(candidate.images[0].sha256, sha(candidate.images[0].bytes));
+  assert(!/PRIVATE|banner_image_path|https:/.test(candidate.indexBytes + candidate.details[0].bytes));
+  const plan = planCampaignPublication(collection, { now: () => at });
+  assert.equal(plan.objects[0].contentType, 'image/png');
+  assert(plan.objects[0].key.endsWith('.png'));
+  assert(plan.objects.at(-1).key.endsWith('/manifest.json'));
 });
 test('one scoped fresh login creates only sanitized offline artifacts', async () => {
   const mock = io(); let tick = 0;

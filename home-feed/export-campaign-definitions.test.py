@@ -53,6 +53,19 @@ class ExportCampaignDefinitionsTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.export_definitions(self.path,pin,self.selection)
 
+    def test_destinations_require_exact_supported_link_and_existing_area(self):
+        with closing(sqlite3.connect(self.path)) as c:
+            c.executescript("ALTER TABLE missions ADD COLUMN link_to TEXT; CREATE TABLE areas(id INTEGER PRIMARY KEY); INSERT INTO areas VALUES(1768);")
+            c.commit()
+        for link, expected in [('internal:EventTopScene:1768', {'type':'event-area','areaId':1768}),
+                               ('internal:EventTopScene:999', None), ('internal:RMBattleTopScene:1768', None),
+                               ('https://example.com/1768', None), ('internal:EventTopScene:01768', None)]:
+            with closing(sqlite3.connect(self.path)) as c:
+                c.execute('UPDATE missions SET link_to=? WHERE id=5',(link,)); c.commit()
+            result=json.loads(module.export_definitions(self.path,self.digest(),self.selection,include_destinations=True))
+            self.assertEqual(result['schemaVersion'],2)
+            self.assertEqual(result['missions'][0]['destination'],expected)
+
     def test_unresolved_selection_rejected(self):
         for selection in [dict(categoryIds=[99],completionMissionIds=[]),dict(categoryIds=[],completionMissionIds=[99])]:
             with self.assertRaises(ValueError): self.export(selection)

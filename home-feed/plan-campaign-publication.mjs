@@ -7,15 +7,16 @@ export function planCampaignPublication(collection, { now = Date.now } = {}) {
     const instant = now();
     const candidate = prepareCollectedCampaignCandidate(collection, { now: () => instant });
     const target = 'staging/v2/campaigns/';
-    const object = (relativeKey, bytes, immutable) => Object.freeze({
+    const object = (relativeKey, bytes, immutable, contentType = 'application/json') => Object.freeze({
       key: target + relativeKey,
       sha256: createHash('sha256').update(bytes).digest('hex'),
       sizeBytes: bytes.length,
-      contentType: 'application/json',
+      contentType,
       cacheControl: immutable ? 'public, max-age=31536000, immutable' : 'no-cache, no-transform',
       mode: immutable ? 'create-or-verify-identical' : 'compare-and-swap-last',
     });
     const objects = Object.freeze([
+      ...candidate.images.map(image => object(image.objectKey, image.bytes, true, 'image/png')),
       ...candidate.details.map(detail => object(detail.objectKey, detail.bytes, true)),
       object(`index/${candidate.indexSha256}.json`, candidate.indexBytes, true),
       object('manifest.json', candidate.manifestBytes, false),

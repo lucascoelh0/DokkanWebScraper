@@ -253,3 +253,35 @@ does not grant campaign writes. Activation requires reviewed narrow campaign
 storage capability and a safely supplied, pinned definitions artifact; do not
 upload the broad local R2 credentials as a shortcut. No schedule, permissions,
 remote object or credential was changed by this implementation pass.
+
+## Optional campaign presentation — 2026-09-13
+
+Local implementation only; this extension has not been published or enabled in
+the hosted runner. `includePresentation: true` opts into the `campaigns-media`
+scope and public index/detail schema 2. The manifest remains schema 1. Existing
+schema-1 publication and consumers remain unchanged when the option is absent.
+
+The campaign-list API already supplies `banner_image_path`; the separate images
+endpoint is not needed for these banners. Signed URLs remain private. The collector
+accepts only exact learned campaign CDN paths, fetches without account headers,
+fully decodes and re-encodes PNGs, and projects only hash, size and dimensions.
+Limits: eight unique images, 512 KiB each, 4096 pixels per side, four million
+pixels per image, and 4 MiB for the complete candidate. Immutable images are
+uploaded and verified before details/index and the final conditional manifest.
+
+`export-campaign-definitions.py --include-destinations` emits definitions schema 2.
+Only exact `internal:EventTopScene:<areaId>` links with an existing database area
+become `{type: "event-area", areaId}`. Unsupported links remain null; titles and
+mission conditions are not guessed. The inspected database yields 55 supported
+mission links across 41 areas among 191 missions. These enriched definitions are
+for the public v2 projection; the legacy Android private preview remains v1-only.
+
+Private captured-banner inspection recovered eight official 620x300 PNGs without
+new game authentication. Local receipts omit signatures, tokens and account state.
+An emulator-only cache overlay preserves the published observation/expiry; it is
+not a fresh collection and cannot be passed to the publisher as a collector result.
+
+Verification: 78 focused Node checks and 12 Python export checks passed. Android
+contract review additionally required aggregate artwork limits and byte-verified
+image loading before rendering. Hosted permissions, production and remote staging
+objects were not changed.

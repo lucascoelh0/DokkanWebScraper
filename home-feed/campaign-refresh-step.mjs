@@ -8,7 +8,7 @@ const TARGET = 'staging/v2/campaigns/';
  * ownership checks do not cancel in-flight writes or replace conditional writes.
  * No credentials, schedule or hosted storage capability is provisioned here.
  */
-export function createCampaignRefreshStep({ enabled = false, config, definitionBytes,
+export function createCampaignRefreshStep({ enabled = false, includePresentation = false, config, definitionBytes,
   expectedDefinitionSha256, expectedDatabaseSha256, authorizedTarget,
   readObject, readBucketBytes, putObject, publicRead, reportPreflight,
 } = {}, { fetchImpl = fetch, now = Date.now } = {}) {
@@ -27,7 +27,7 @@ export function createCampaignRefreshStep({ enabled = false, config, definitionB
       phase = 'ownership';
       await lease.assertOwned();
       phase = 'collection';
-      const collection = await collectCampaigns({ enabled: true, config,
+      const collection = await collectCampaigns({ enabled: true, includePresentation, config,
         definitionBytes: definitions, expectedDefinitionSha256, expectedDatabaseSha256 }, {
         now, fetchImpl: async (...args) => {
           await lease.assertOwned();

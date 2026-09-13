@@ -144,7 +144,7 @@ function validateResponse(response, contentType) {
   if (contentType !== null && actualType !== contentType) fail();
 }
 
-function validateImageUrl(value) {
+function validateImageUrl(value, pathPattern = CDN_PATH) {
   if (
     typeof value !== "string" ||
     value.length < 1 ||
@@ -171,7 +171,7 @@ function validateImageUrl(value) {
     url.hash !== "" ||
     url.search.length < 2 ||
     url.pathname.includes("%") ||
-    !CDN_PATH.test(url.pathname)
+    !pathPattern.test(url.pathname)
   ) {
     fail();
   }
@@ -194,7 +194,7 @@ function learnGashaIds(value) {
  */
 export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs = DEFAULT_TIMEOUT_MS, apiScope = "summons" } = {}) {
   try {
-    if (!["summons", "events", "campaigns"].includes(apiScope)) fail();
+    if (!["summons", "events", "campaigns", "campaigns-media"].includes(apiScope)) fail();
     if (typeof fetchImpl !== "function") fail();
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > DEFAULT_TIMEOUT_MS) fail();
     let secrets = normalizeConfig(config);
@@ -209,6 +209,7 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
     let imageRequests = 0;
     let closed = false;
     let poisoned = false;
+    const campaignImageUrls = new Set();
     let authenticating = null;
 
     function usable() {
@@ -221,7 +222,7 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
         if (apiRequests >= (apiScope === "summons" ? API_LIMIT : 3)) fail();
         apiRequests += 1;
       } else {
-        if (imageRequests >= IMAGE_LIMIT) fail();
+        if (imageRequests >= (apiScope === 'campaigns-media' ? 8 : IMAGE_LIMIT)) fail();
         imageRequests += 1;
       }
       const controller = new AbortController();
@@ -311,7 +312,7 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
     async function requestApi(path) {
       return guarded(async () => {
         let id = null;
-        if (apiScope === "campaigns") {
+        if (apiScope === "campaigns" || apiScope === "campaigns-media") {
           if (path !== "/missions/mission_board_campaigns" || campaignsRequested) fail();
           campaignsRequested = true;
         } else if (apiScope === "events") {
@@ -333,6 +334,13 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
         // from an already-used game session must never be replayed here.
         headers["x-requestversion"] = "1";
         const body = await jsonRequest(path, "GET", headers);
+        if (apiScope === 'campaigns-media') {
+          if (!Array.isArray(body.mission_board_campaigns) || body.mission_board_campaigns.length > 100) fail();
+          for (const campaign of body.mission_board_campaigns) {
+            if (campaign.banner_image_path != null) campaignImageUrls.add(validateImageUrl(
+              campaign.banner_image_path, /^\/images\/en\/panel_mission\/[A-Za-z0-9_-]+\.png$/u));
+          }
+        }
         if (path === "/gashas") learnedIds = learnGashaIds(body);
         return { status: 200, body };
       });
@@ -340,8 +348,10 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
 
     async function fetchImage(value) {
       return guarded(async () => {
-        if (apiScope !== "summons") fail();
-        const url = validateImageUrl(value);
+        if (apiScope !== "summons" && apiScope !== 'campaigns-media') fail();
+        if (apiScope === 'campaigns-media' && !campaignImageUrls.has(value)) fail();
+        const url = validateImageUrl(value, apiScope === 'campaigns-media'
+          ? /^\/images\/en\/panel_mission\/[A-Za-z0-9_-]+\.png$/u : CDN_PATH);
         const bytes = await perform(
           url,
           { method: "GET", headers: { accept: "image/png", "accept-encoding": "identity" } },

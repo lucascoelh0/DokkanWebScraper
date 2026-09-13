@@ -65,6 +65,7 @@ export async function publishCampaigns(collection, {
 
     const bytesByKey = new Map(candidate.details.map(detail =>
       [TARGET + detail.objectKey, Buffer.from(detail.bytes)]));
+    for (const image of candidate.images) bytesByKey.set(TARGET + image.objectKey, Buffer.from(image.bytes));
     bytesByKey.set(`${TARGET}index/${candidate.indexSha256}.json`, Buffer.from(candidate.indexBytes));
     bytesByKey.set(`${TARGET}manifest.json`, Buffer.from(candidate.manifestBytes));
     if (report.target !== TARGET || report.objects.length !== bytesByKey.size) throw new Error();

@@ -10,6 +10,7 @@ function limitFor(key) {
   if(relative==='manifest.json')return 4096;
   if(/^index\/[a-f0-9]{64}\.json$/.test(relative))return 32768;
   if(/^details\/[a-f0-9]{64}\.json$/.test(relative))return 524288;
+  if(/^images\/[a-f0-9]{64}\.png$/.test(relative))return 524288;
   throw Error('campaign_key_rejected');
 }
 const versionOk=v=>typeof v==='string' && /^"[a-fA-F0-9-]{1,128}"$/.test(v);
@@ -62,11 +63,12 @@ export function campaignR2Store(env,{client: injectedClient}={}) {
       try {
         const limit=limitFor(key);assert(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=limit);
         const manifest=key===PREFIX+'manifest.json';
-        assert(options.contentType==='application/json');
+        const image=key.startsWith(PREFIX+'images/');
+        assert(options.contentType===(image?'image/png':'application/json'));
         assert(options.cacheControl===(manifest?'no-cache, no-transform':'public, max-age=31536000, immutable'));
         assert((options.ifNoneMatch==='*'&&options.ifMatch===undefined)
           ||(manifest&&versionOk(options.ifMatch)&&options.ifNoneMatch===undefined));
-        if(!manifest)assert(key.endsWith('/'+createHash('sha256').update(bytes).digest('hex')+'.json'));
+        if(!manifest)assert(key.endsWith('/'+createHash('sha256').update(bytes).digest('hex')+(image?'.png':'.json')));
         const result=await send(new PutObjectCommand({Bucket:BUCKET,Key:key,Body:bytes,
           IfMatch:options.ifMatch,IfNoneMatch:options.ifNoneMatch,
           ContentType:options.contentType,CacheControl:options.cacheControl}));

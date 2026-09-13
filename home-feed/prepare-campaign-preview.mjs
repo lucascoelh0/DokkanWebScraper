@@ -75,7 +75,7 @@ function definition(definitionBytes, expectedDefinitionSha256, expectedDatabaseS
 
   const raw = parse(definitionBytes, MAX_DEFINITION_BYTES);
   exactKeys(raw, ['schemaVersion', 'contract', 'source', 'databaseSha256', 'categories', 'missions']);
-  if (raw.schemaVersion !== 1 || raw.contract !== 'dokkan-campaign-definitions'
+  if (![1, 2].includes(raw.schemaVersion) || raw.contract !== 'dokkan-campaign-definitions'
       || raw.source !== 'dokkan-game-db' || raw.databaseSha256 !== expectedDatabaseSha256
       || !HASH.test(raw.databaseSha256) || !Array.isArray(raw.categories)
       || raw.categories.length > MAX_CATEGORIES || !Array.isArray(raw.missions)
@@ -93,7 +93,17 @@ function definition(definitionBytes, expectedDefinitionSha256, expectedDatabaseS
   const rewards = new Map();
   let rewardCount = 0;
   for (const row of raw.missions) {
-    exactKeys(row, ['id', 'categoryId', 'type', 'name', 'description', 'priority', 'rewards']);
+    exactKeys(row, ['id', 'categoryId', 'type', 'name', 'description', 'priority', 'rewards',
+      ...(raw.schemaVersion === 2 ? ['destination'] : [])]);
+    let destination;
+    if (raw.schemaVersion === 2) {
+      destination = null;
+      if (row.destination !== null) {
+        exactKeys(row.destination, ['type', 'areaId']);
+        if (row.destination.type !== 'event-area') fail();
+        destination = { type: 'event-area', areaId: id(row.destination.areaId) };
+      }
+    }
     const missionId = id(row.id);
     if (missions.has(missionId) || !Array.isArray(row.rewards)) fail();
     const categoryId = id(row.categoryId);
@@ -121,6 +131,7 @@ function definition(definitionBytes, expectedDefinitionSha256, expectedDatabaseS
       description: text(row.description, 4096, { nullable: true, allowEmpty: true, multiline: true }),
       priority: priority(row.priority),
       rewards: missionRewards,
+      ...(raw.schemaVersion === 2 ? { destination } : {}),
     });
   }
   return { categories, missions, rewards };
