@@ -328,6 +328,9 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
         }
         await ensureAuthenticated();
         const headers = { ...secrets.apiHeaders, authorization: `Bearer ${token}` };
+        // First-party 2026-09-11 capture: campaigns use request version 5,
+        // not the Treasure Shop's version 11 from the reusable login config.
+        if (apiScope === "campaigns") headers["x-requestversion"] = "5";
         const body = await jsonRequest(path, "GET", headers);
         if (path === "/gashas") learnedIds = learnGashaIds(body);
         return { status: 200, body };

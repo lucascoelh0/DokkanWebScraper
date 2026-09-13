@@ -12,6 +12,18 @@ import { acquireSlot } from './slot-lease.mjs';
 import { refreshCycle } from './refresh-cycle.mjs';
 import { collectHome } from './collect-home.mjs';
 
+// Only fixed operation labels and HTTP status codes may leave the runner.
+export function summarizeResponses(responses) {
+  return responses.slice(0, 96).map(({stage, status}) => ({
+    stage: stage === '/auth/nonce' ? 'nonce'
+      : stage === '/auth/sign_in' ? 'sign_in'
+      : stage === '/gashas' ? 'summons'
+      : /^\/gashas\/[0-9]+\/featured_cards$/.test(stage) ? 'featured_cards'
+      : stage === 'image' ? 'image' : 'other',
+    status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
+  }));
+}
+
 export async function run(args=process.argv.slice(2),env=process.env) {
   assert(args.length===2 && ['--validate-auth','--collect-only','--publish-staging'].includes(args[0]));
   const destination=resolve(args[1]);
@@ -75,9 +87,10 @@ export async function run(args=process.argv.slice(2),env=process.env) {
     const result=await refreshCycle({acquireLease:()=>acquireSlot(store),collect,prepare,
       plan:async candidate=>{const plan=await pub.plan(candidate);console.log(JSON.stringify({phase:'preflight',...plan}));return plan;},
       publish:pub.publish});
-    return {...result,durationMs:Date.now()-start};
+    return {...result,...(result.status==='failed'?{responses:summarizeResponses(responses)}:{}),
+      durationMs:Date.now()-start};
   } catch {
-    console.error(JSON.stringify({status:'failed',phase,responses,durationMs:Date.now()-start}));
+    console.error(JSON.stringify({status:'failed',phase,responses:summarizeResponses(responses),durationMs:Date.now()-start}));
     throw Error('refresh_failed');
   } finally {session?.close();store?.close();}
 }

@@ -224,3 +224,33 @@ Android can subsequently hide expired entries or unresolved catalog targets.
 This diagnostic follow-up is local and has not been pushed or deployed. The
 already scheduled activation continues using `102b5bf`; its public payload and
 manifest, rather than these new logs, remain the activation evidence.
+
+## Terminal collection diagnostics — 2026-09-13
+
+Scheduled run `34739120383` failed in collection. The coordinator returns a
+sanitized failure instead of throwing, so the runner's catch-only diagnostics
+were bypassed. Existing logs cannot establish the specific failing request.
+
+The local follow-up now attaches response diagnostics to failed coordinator
+results as well as thrown failures. Only six fixed labels (`nonce`, `sign_in`,
+`summons`, `featured_cards`, `image`, `other`) and HTTP status codes or null are
+retained, with a 96-entry bound. No URLs, card IDs, headers, response bodies or
+exception text are copied. Retry policy, credentials and publication permissions
+are unchanged. This improves future diagnosis; it does not fix or identify the
+original upstream failure by itself.
+
+Eighteen focused runner/coordinator tests pass, including a mocked hosted failure
+that makes one game request and writes only the existing run reservation/status,
+never a content object or manifest. All network calls in those tests are mocked.
+This follow-up remains local and requires commit/push before hosted use.
+
+### Later public observation
+
+Run `34768600974` subsequently completed successfully on the unchanged `102b5bf`
+revision. The public staging manifest currently references payload SHA-256
+`39dfb776ac2312ca851f0a60c137eed2d9fdc0e6b289b1c7b6d71c620774239b`:
+8,112 bytes, independently downloaded size/hash matching the manifest, expiry
+`2026-09-13T18:35:18.592Z`. It contains spotlight and summons but **no eventSchedule**.
+This confirms public Home content, not complete event activation or the cause of
+earlier failures. New safe diagnostics are still needed to distinguish omitted
+and unavailable optional events on the hosted runner.

@@ -114,6 +114,21 @@ test('campaign scope permits exactly one mission-board GET and no images', async
   images.close();
 });
 
+test("campaign request version is endpoint-specific and does not mutate shared config", async () => {
+  const shared=config({apiHeaders:{'x-requestversion':'11'}});
+  const io=successfulFetch();
+  const session=createSession(shared,{fetchImpl:io.fetchImpl,apiScope:'campaigns'});
+  await session.requestApi('/missions/mission_board_campaigns');
+  assert.equal(io.calls[2].options.headers['x-requestversion'],'5');
+  assert.equal(shared.apiHeaders['x-requestversion'],'11');
+  session.close();
+  const other=successfulFetch();
+  const summons=createSession(shared,{fetchImpl:other.fetchImpl});
+  await summons.requestApi('/gashas');
+  assert.equal(other.calls[2].options.headers['x-requestversion'],'11');
+  summons.close();
+});
+
 test('campaign scope cannot leak into events or summons and rejects arbitrary paths before login', async () => {
   for (const path of ['/gashas', '/events', '/missions', '/missions/mission_board_campaigns?x=1', '/missions/1/accept']) {
     const io = successfulFetch();

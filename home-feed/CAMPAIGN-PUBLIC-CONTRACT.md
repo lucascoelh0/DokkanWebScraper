@@ -162,3 +162,39 @@ remote verification. There is no live adapter, new permission or publication.
 A future adapter must bound and cancel network requests itself: checks after an
 await do not cancel a reader that never resolves. A publisher must obtain the
 separate prefix authorization and freshly recheck all conditions before writing.
+
+## Authorized staging activation — 2026-09-13
+
+Lucas explicitly authorized checkpoint push and campaign staging publication.
+The new local `campaign-r2-store.mjs` adapter restricts reads/writes to manifest,
+hashed index and hashed detail objects under `staging/v2/campaigns/`, pins the
+existing bucket, enforces size/hash/conditional-write metadata, and exposes no
+delete. Existing local R2 credentials remain local; the hosted Home gateway,
+its permissions, production and spending settings are not changed.
+
+`publish-campaigns.mjs` requires the exact authorized target and a genuine
+in-process collection, reports preflight before any put, rechecks inventory and
+manifest witnesses, verifies immutable dependencies before manifest promotion,
+and verifies public bytes. Failed/uncertain writes never claim rollback.
+
+The first live collection authenticated but campaigns returned HTTP 400. Offline
+comparison with the successful first-party capture found endpoint-specific
+`X-RequestVersion: 5`, while the reusable Shop config supplies `11`. The session
+now overrides that header for campaigns only, without altering login or other
+scopes. Regression tests passed. This is a new corrected attempt, not an automatic
+retry loop; a subsequent failure must stop without publication.
+
+The corrected attempt also returned HTTP 400 after nonce/sign-in HTTP 200.
+It stopped before projection/preflight/publication: no campaign objects were
+written and no existing manifests were changed. Safe receipts are local at
+`D:/Dokkan/DokkanWebScraper/.agent-logs/campaign-live-20260913-{a,b}/receipt.json`.
+The header mismatch was real but does not by itself explain the current rejection.
+Further game requests are paused pending a current successful campaign-screen
+capture; do not guess parameters or loop authentication attempts. The publication
+authorization remains valid, conditional on successful collection and validation.
+
+Verification: 179 integrated Node tests passed; after the measured inventory
+duration adjustment, all 12 publisher tests passed again. Publisher lifetime is
+180 seconds, preflight remains 60 seconds, and each transport request is bounded.
+The read-only bucket inventory observed 1,656,917,608 bytes. No actual campaign
+write proposal was produced because collection failed first.
