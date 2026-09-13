@@ -50,6 +50,7 @@ function successfulFetch({ gashaIds = [123] } = {}) {
     if (path === "/auth/sign_in") return json({ access_token: SECRET_NEW_TOKEN, token_type: "Bearer" });
     if (path === "/gashas") return json({ gashas: gashaIds.map((id) => ({ id })) });
     if (path === "/events") return json({ events: [], z_battle_stages: [] });
+    if (path === "/missions/mission_board_campaigns") return json({ mission_board_campaigns: [] });
     if (path.endsWith("/featured_cards")) return json({ gasha_items: [{ card_id: 999 }] });
     if (new URL(url).hostname === "cf.ishin-global.aktsk.com") return imageResponse();
     throw new Error(`unexpected ${SECRET_OLD_BEARER}`);
@@ -98,6 +99,54 @@ async function rejectsCleanly(operation) {
     return true;
   });
 }
+
+test('campaign scope permits exactly one mission-board GET and no images', async () => {
+  const io = successfulFetch();
+  const session = createSession(config(), { fetchImpl: io.fetchImpl, apiScope: 'campaigns' });
+  assert.equal((await session.requestApi('/missions/mission_board_campaigns')).status, 200);
+  assert.equal(io.calls.length, 3);
+  await rejectsCleanly(() => session.requestApi('/missions/mission_board_campaigns'));
+  assert.equal(io.calls.length, 3);
+  session.close();
+  const images = createSession(config(), { fetchImpl: io.fetchImpl, apiScope: 'campaigns' });
+  await rejectsCleanly(() => images.fetchImage(SIGNED_IMAGE));
+  assert.equal(io.calls.length, 3);
+  images.close();
+});
+
+test('campaign scope cannot leak into events or summons and rejects arbitrary paths before login', async () => {
+  for (const path of ['/gashas', '/events', '/missions', '/missions/mission_board_campaigns?x=1', '/missions/1/accept']) {
+    const io = successfulFetch();
+    const session = createSession(config(), { fetchImpl: io.fetchImpl, apiScope: 'campaigns' });
+    await rejectsCleanly(() => session.requestApi(path));
+    assert.equal(io.calls.length, 0);
+    session.close();
+  }
+  for (const apiScope of ['summons', 'events']) {
+    const io = successfulFetch();
+    const session = createSession(config(), { fetchImpl: io.fetchImpl, apiScope });
+    await rejectsCleanly(() => session.requestApi('/missions/mission_board_campaigns'));
+    assert.equal(io.calls.length, 0);
+    session.close();
+  }
+});
+
+test('campaign response has a tighter one MiB limit even without a length header', async () => {
+  for (const advertised of [true, false]) {
+    const io = successfulFetch();
+    const session = createSession(config(), { apiScope: 'campaigns', fetchImpl: async (url, options) => {
+      if (new URL(url).pathname !== '/missions/mission_board_campaigns') return io.fetchImpl(url, options);
+      return new Response(advertised ? '{}' : 'x'.repeat(1024 * 1024 + 1), {
+        headers: { 'content-type': 'application/json', ...(advertised ? { 'content-length': String(1024 * 1024 + 1) } : {}) },
+      });
+    } });
+    await rejectsCleanly(() => session.requestApi('/missions/mission_board_campaigns'));
+    assert.equal(io.calls.length, 2);
+    await rejectsCleanly(() => session.requestApi('/missions/mission_board_campaigns'));
+    assert.equal(io.calls.length, 2);
+    session.close();
+  }
+});
 
 test("logs in once, replaces the nonce lineage, and uses only the fresh bearer for API reads", async () => {
   const io = successfulFetch();

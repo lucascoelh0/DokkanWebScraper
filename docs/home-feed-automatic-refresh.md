@@ -197,3 +197,30 @@ end-to-end hosted run. Future failures remain visible in GitHub Actions.
 - The new event documentation initially triggered the unrelated NPM workflow
   (`34725987919`), which was cancelled. Its exact path is now excluded alongside
   the other Home-only paths to prevent recurrence.
+
+## Prepared-content diagnostics (local follow-up)
+
+The runner emits `phase: candidate_prepared` after successful preparation in
+both collect-only and publish modes. This is not a publication receipt. The
+summary contains only public-output counts, payload size/hash, and the included
+event section's catalog hash and expiry. It does not copy collector errors,
+account fields, credentials, names, raw observations or response bodies.
+
+`eventsStatus` has five fixed values:
+
+- `disabled`: optional events were not explicitly enabled.
+- `unavailable`: collection/catalog validation did not produce an observation.
+- `omitted`: an observation was collected but not included, for example because
+  it was invalid, expired, or exceeded the optional payload budget.
+- `empty`: the validated included section contains no current entries.
+- `included`: the validated included section contains at least one entry.
+
+`eventsCount` describes this partial section, not the total active game events.
+Collect-only also saves the same summary under `content` in local `summary.json`,
+with `published: false`. The summary does not enter delivered JSON or change its
+hash. Only the existing verified publisher receipt can establish publication;
+Android can subsequently hide expired entries or unresolved catalog targets.
+
+This diagnostic follow-up is local and has not been pushed or deployed. The
+already scheduled activation continues using `102b5bf`; its public payload and
+manifest, rather than these new logs, remain the activation evidence.

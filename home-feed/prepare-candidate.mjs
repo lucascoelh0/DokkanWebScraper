@@ -80,5 +80,18 @@ export async function prepareCandidate(observation, now = Date.now(), { enableEv
   operations.push(object(PREFIX + hash + '.json', payload, 'application/json'));
   operations.push(object(PREFIX + 'manifest.json', manifest, 'application/json', true));
   assert(operations.reduce((n, o) => n + o.sizeBytes, 0) <= 16 * 1024 * 1024);
-  return { validUntil, operations, manifestSha256: sha(manifest) };
+  // Operational metadata only: never copy collector diagnostics or raw responses.
+  // Prepared is not published; the coordinator's verified receipt owns that claim.
+  const summary = {
+    summonsCount: summons.length,
+    eventsStatus: enableEvents !== true ? 'disabled'
+      : content.eventSchedule ? (content.eventSchedule.items.length ? 'included' : 'empty')
+      : eventCollection?.status === 'collected' ? 'omitted' : 'unavailable',
+    eventsCount: content.eventSchedule?.items.length ?? 0,
+    eventsValidUntil: content.eventSchedule?.validUntil ?? null,
+    eventsCatalogSha256: content.eventSchedule?.catalogSha256 ?? null,
+    payloadBytes: payload.length,
+    payloadSha256: hash,
+  };
+  return { validUntil, operations, manifestSha256: sha(manifest), summary };
 }

@@ -22,6 +22,10 @@ test('full decode then canonical public payload, manifest last', async () => {
   assert.equal(payload.summons[0].group, 'main');
   assert.deepEqual(payload.summons[0].featuredCardIds, ['123']);
   assert(!JSON.stringify(payload).includes('private'));
+  assert.equal(result.summary.summonsCount,1);
+  assert.equal(result.summary.eventsStatus,'disabled');
+  assert.equal(result.summary.payloadBytes,result.operations.at(-2).bytes.length);
+  assert.equal(result.summary.payloadSha256,manifest.sha256);
 });
 test('unknown categories never get featured placement', async () => {
   const result = await prepareCandidate(await observation(99), now);
@@ -32,6 +36,7 @@ test('empty current observation clears expired list without extending old conten
   const o = await observation(); o.snapshot.banners = []; o.receipts = []; o.featuredResponses = [];
   const result = await prepareCandidate(o, now);
   assert.deepEqual(JSON.parse(result.operations.at(-2).bytes).summons, []);
+  assert.equal(result.summary.summonsCount,0);
 });
 test('corrupt PNG fails full decode even with matching hash and headers', async () => {
   const o = await observation(), r = o.receipts[0];
@@ -75,4 +80,36 @@ test('fresh collector output reaches hashed payload only under explicit opt-in',
   const disabled = await prepareCandidate(o,now,{eventCollection});
   assert.equal('eventSchedule' in JSON.parse(disabled.operations.at(-2).bytes),false);
   assert.equal(JSON.stringify(payload).includes('private'),false);
+  assert.deepEqual(enabled.summary,{
+    summonsCount:1,eventsStatus:'included',eventsCount:1,
+    eventsValidUntil:payload.eventSchedule.validUntil,
+    eventsCatalogSha256:sha(catalogBytes),
+    payloadBytes:enabled.operations.at(-2).bytes.length,
+    payloadSha256:sha(enabled.operations.at(-2).bytes),
+  });
+  assert.equal(JSON.stringify(enabled.summary).includes('private'),false);
+  eventCollection.projection.candidates=[];
+  const empty=await prepareCandidate(o,now,{enableEvents:true,eventCollection});
+  assert.equal(empty.summary.eventsStatus,'empty');
+  assert.equal(empty.summary.eventsCount,0);
+  assert.equal(empty.summary.eventsCatalogSha256,sha(catalogBytes));
+});
+
+test('operational summary separates unavailability from omitted observations without leaking errors',async()=>{
+  const o=await observation(),baseline=await prepareCandidate(o,now);
+  for(const [eventCollection,expected] of [
+    [undefined,'unavailable'],
+    [{status:'unavailable',error:'PRIVATE account token'},'unavailable'],
+    [{status:'PRIVATE error'},'unavailable'],
+    [{status:'collected',projection:{secret:'PRIVATE'}},'omitted'],
+  ]){
+    const result=await prepareCandidate(o,now,{enableEvents:true,eventCollection});
+    assert.equal(result.summary.eventsStatus,expected);
+    assert.equal(result.summary.eventsCount,0);
+    assert.equal(result.summary.eventsValidUntil,null);
+    assert.equal(result.summary.eventsCatalogSha256,null);
+    assert.equal(JSON.stringify(result.summary).includes('PRIVATE'),false);
+    assert.equal('published' in result.summary,false);
+    assert.deepEqual(result.operations,baseline.operations);
+  }
 });

@@ -194,7 +194,7 @@ function learnGashaIds(value) {
  */
 export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs = DEFAULT_TIMEOUT_MS, apiScope = "summons" } = {}) {
   try {
-    if (!["summons", "events"].includes(apiScope)) fail();
+    if (!["summons", "events", "campaigns"].includes(apiScope)) fail();
     if (typeof fetchImpl !== "function") fail();
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > DEFAULT_TIMEOUT_MS) fail();
     let secrets = normalizeConfig(config);
@@ -202,6 +202,7 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
     let learnedIds = null;
     let gashasRequested = false;
     let eventsRequested = false;
+    let campaignsRequested = false;
     const requestedIds = new Set();
     const controllers = new Set();
     let apiRequests = 0;
@@ -217,7 +218,7 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
     async function perform(url, options, maximum, contentType, isApi) {
       usable();
       if (isApi) {
-        if (apiRequests >= (apiScope === "events" ? 3 : API_LIMIT)) fail();
+        if (apiRequests >= (apiScope === "summons" ? API_LIMIT : 3)) fail();
         apiRequests += 1;
       } else {
         if (imageRequests >= IMAGE_LIMIT) fail();
@@ -252,7 +253,7 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
           headers,
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         },
-        API_BYTES,
+        path === "/missions/mission_board_campaigns" ? 1024 * 1024 : API_BYTES,
         "application/json",
         true,
       );
@@ -310,7 +311,10 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
     async function requestApi(path) {
       return guarded(async () => {
         let id = null;
-        if (apiScope === "events") {
+        if (apiScope === "campaigns") {
+          if (path !== "/missions/mission_board_campaigns" || campaignsRequested) fail();
+          campaignsRequested = true;
+        } else if (apiScope === "events") {
           if (path !== "/events" || eventsRequested) fail();
           eventsRequested = true;
         } else if (path === "/gashas") {

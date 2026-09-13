@@ -1,0 +1,49 @@
+// Synthetic public producer interop fixture. All authentication/network is mocked.
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { collectCampaigns, prepareCollectedCampaignCandidate } from '../collect-campaigns.mjs';
+
+const observedAt = '2026-09-12T12:00:00.000Z';
+const at = Date.parse(observedAt), seconds = at / 1000;
+const mission = (id, categoryId) => ({ id, categoryId, type: 'Mission', name: `Synthetic mission ${id}`,
+  description: 'First line\nSecond line', priority: 0,
+  rewards: [{ id, itemId: id, itemType: 'Point::Stone', quantity: 1 }] });
+const campaign = id => ({ id, name: `Synthetic campaign ${id}`, start_at: seconds - 60,
+  end_at: seconds + 3600, end_at_hidden: id === 2, priority: id, announcement_id: id,
+  campaign_complete_mission_id: id * 100,
+  mission_boards: [{ id, number: 1, contents_lv: 0, mission_category_id: id * 10,
+    complete_mission_id: id * 100, display_reward_id: id * 100 }] });
+const definitionBytes = Buffer.from(JSON.stringify({ schemaVersion: 1,
+  contract: 'dokkan-campaign-definitions', source: 'dokkan-game-db', databaseSha256: 'a'.repeat(64),
+  categories: [{ id: 10, name: 'Synthetic board 1' }, { id: 20, name: 'Synthetic board 2' }],
+  missions: [mission(100, 10), mission(101, 10), mission(200, 20)] }));
+const collection = await collectCampaigns({ enabled: true, definitionBytes,
+  expectedDefinitionSha256: createHash('sha256').update(definitionBytes).digest('hex'),
+  expectedDatabaseSha256: 'a'.repeat(64), config: { nonceHeaders: {}, loginHeaders: { authorization: 'Basic test' },
+    loginBody: {}, apiHeaders: {} } }, { now: () => at, fetchImpl: async url => {
+    const path = new URL(url).pathname;
+    let body;
+    if (path === '/auth/nonce') body = { auth_transaction_id: 'SYNTHETIC-NONCE' };
+    else if (path === '/auth/sign_in') body = { token_type: 'bearer', access_token: 'SYNTHETIC-TOKEN' };
+    else if (path === '/missions/mission_board_campaigns') body = { mission_board_campaigns: [campaign(1), campaign(2)] };
+    else throw Error('Unexpected fixture request');
+    return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+  } });
+const result = prepareCollectedCampaignCandidate(collection, { now: () => at });
+if (process.argv.length !== 3) throw new Error('Expected explicit synthetic-fixture output directory');
+const directory = resolve(process.argv[2]);
+await mkdir(directory, { recursive: true });
+const files = [['manifest.json', result.manifestBytes], ['index.json', result.indexBytes],
+  ...result.details.map(d => [`detail-${d.campaignId}.json`, d.bytes]),
+  ['receipt.json', Buffer.from(JSON.stringify({ synthetic: true, observedAt,
+    indexSha256: result.indexSha256, indexSizeBytes: result.indexBytes.length,
+    details: result.details.map(({ campaignId, sha256, sizeBytes }) => ({ campaignId, sha256, sizeBytes })) }))],
+];
+for (const [name, bytes] of files) {
+  try { await writeFile(resolve(directory, name), bytes, { flag: 'wx' }); }
+  catch (error) {
+    if (error.code !== 'EEXIST' || !(await readFile(resolve(directory, name))).equals(bytes)) throw new Error('Fixture conflict');
+  }
+}
+console.log(JSON.stringify({ synthetic: true, files: files.length, indexBytes: result.indexBytes.length }));

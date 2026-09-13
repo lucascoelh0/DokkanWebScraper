@@ -49,7 +49,11 @@ export async function run(args=process.argv.slice(2),env=process.env) {
     const enableEvents=env.HOME_FEED_EVENTS_ENABLED==='true';
     const collect=()=>collectHome({collectSummons:collectBanners,config,enableEvents,
       expectedCatalogSha256:env.HOME_FEED_EVENTS_CATALOG_SHA256});
-    const prepare=({observation,eventCollection})=>prepareCandidate(observation,Date.now(),{enableEvents,eventCollection});
+    const prepare=async({observation,eventCollection})=>{
+      const candidate=await prepareCandidate(observation,Date.now(),{enableEvents,eventCollection});
+      console.log(JSON.stringify({phase:'candidate_prepared',...candidate.summary}));
+      return candidate;
+    };
     if(args[0]==='--collect-only') {
       const observation=await collect();phase='preparation';
       const candidate=await prepare(observation);
@@ -57,7 +61,8 @@ export async function run(args=process.argv.slice(2),env=process.env) {
       for(const op of candidate.operations)await writeFile(resolve(destination,op.key.split('/').at(-1)),op.bytes,{flag:'wx'});
       const report={status:'candidate_only',durationMs:Date.now()-start,
         objects:candidate.operations.length,totalBytes:candidate.operations.reduce((n,o)=>n+o.sizeBytes,0),
-        validUntil:new Date(candidate.validUntil).toISOString(),published:false};
+        validUntil:new Date(candidate.validUntil).toISOString(),published:false,
+        content:candidate.summary};
       await writeFile(resolve(destination,'summary.json'),JSON.stringify(report),{flag:'wx'});
       return report;
     }
