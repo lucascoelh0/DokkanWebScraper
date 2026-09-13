@@ -114,18 +114,20 @@ test('campaign scope permits exactly one mission-board GET and no images', async
   images.close();
 });
 
-test("campaign request version is endpoint-specific and does not mutate shared config", async () => {
+test("fresh read-only sessions replace captured counters without mutating config", async () => {
   const shared=config({apiHeaders:{'x-requestversion':'11'}});
   const io=successfulFetch();
   const session=createSession(shared,{fetchImpl:io.fetchImpl,apiScope:'campaigns'});
   await session.requestApi('/missions/mission_board_campaigns');
-  assert.equal(io.calls[2].options.headers['x-requestversion'],'5');
+  assert.equal(io.calls[2].options.headers['x-requestversion'],'1');
   assert.equal(shared.apiHeaders['x-requestversion'],'11');
   session.close();
   const other=successfulFetch();
   const summons=createSession(shared,{fetchImpl:other.fetchImpl});
   await summons.requestApi('/gashas');
-  assert.equal(other.calls[2].options.headers['x-requestversion'],'11');
+  assert.equal(other.calls[2].options.headers['x-requestversion'],'1');
+  await summons.requestApi('/gashas/123/featured_cards');
+  assert.equal(other.calls[3].options.headers['x-requestversion'],'1');
   summons.close();
 });
 

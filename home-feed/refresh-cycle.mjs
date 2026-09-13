@@ -9,7 +9,7 @@ const STORAGE_CEILING = 8_000_000_000;
  * plan is read-only; publish must verify objects and conditionally promote last.
  * No scheduler or credentials are configured by importing this module.
  */
-export async function refreshCycle({ acquireLease, collect, prepare, plan, publish, now = Date.now }) {
+export async function refreshCycle({ acquireLease, collect, prepare, plan, publish, refreshCampaigns, now = Date.now }) {
   const lease = await acquireLease();
   if (!lease) return { status: 'already_running' };
   let phase = 'state';
@@ -47,11 +47,27 @@ export async function refreshCycle({ acquireLease, collect, prepare, plan, publi
     // Adapter must bind proposal to candidate digest and expected previous manifest.
     const receipt = await publish(candidate, proposal, lease);
     assert(receipt?.verified === true && /^[a-f0-9]{64}$/.test(receipt.manifestSha256));
+    // An optional campaign step shares this slot, after successful Home publication.
+    // Its failure does not relabel the already verified Home feed as unpublished.
+    let campaigns;
+    if (refreshCampaigns !== undefined) {
+      phase = 'campaigns';
+      await lease.assertOwned();
+      try {
+        const result = await refreshCampaigns({ lease });
+        if (result?.status === 'published' && /^[a-f0-9]{64}$/.test(result.manifestSha256))
+          campaigns = { status: 'published', manifestSha256: result.manifestSha256 };
+        else if (['disabled', 'already_attempted'].includes(result?.status))
+          campaigns = { status: result.status };
+        else campaigns = { status: 'failed' };
+      } catch { campaigns = { status: 'failed' }; }
+    }
     phase = 'receipt';
     await lease.writeState({ lastAttemptAt: startedAt, lastSuccessAt: now(),
       nextAttemptAt: startedAt + REFRESH_INTERVAL_MS, status: 'success',
-      validUntil: candidate.validUntil, manifestSha256: receipt.manifestSha256 });
-    return { status: 'success', validUntil: candidate.validUntil };
+      validUntil: candidate.validUntil, manifestSha256: receipt.manifestSha256,
+      ...(campaigns ? { campaigns } : {}) });
+    return { status: 'success', validUntil: candidate.validUntil, ...(campaigns ? { campaigns } : {}) };
   } catch {
     // Never serialize exception messages: API errors can echo private material.
     // A receipt failure can occur AFTER publication: do not claim rollback.

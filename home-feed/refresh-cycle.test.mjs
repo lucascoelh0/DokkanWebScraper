@@ -67,3 +67,28 @@ test('unverified receipt cannot mark success', async () => {
   assert.equal((await refreshCycle(h.args)).status, 'failed');
   assert(!h.records.some(r => r.status === 'success'));
 });
+
+test('optional campaigns share the Home slot after verified publication', async () => {
+  const h = harness();
+  h.args.refreshCampaigns = async ({ lease }) => {
+    assert.equal(lease, h.lease); h.calls.push('campaigns');
+    return { status: 'published', manifestSha256: 'b'.repeat(64), private: 'PRIVATE' };
+  };
+  const result = await refreshCycle(h.args);
+  assert.equal(result.campaigns.status, 'published');
+  assert(h.calls.indexOf('campaigns') > h.calls.indexOf('publish'));
+  assert(!JSON.stringify([result, h.records]).includes('PRIVATE'));
+});
+
+test('optional campaign failure preserves Home success without leaking errors', async () => {
+  const h = harness(); h.args.refreshCampaigns = async () => { throw Error('PRIVATE'); };
+  const result = await refreshCycle(h.args);
+  assert.equal(result.status, 'success'); assert.deepEqual(result.campaigns, { status: 'failed' });
+  assert(!JSON.stringify([result, h.records]).includes('PRIVATE'));
+});
+
+test('Home publication failure cannot start a campaign login', async () => {
+  const h = harness(); h.args.publish = async () => { throw Error(); };
+  let called = false; h.args.refreshCampaigns = async () => { called = true; };
+  assert.equal((await refreshCycle(h.args)).status, 'failed'); assert.equal(called, false);
+});

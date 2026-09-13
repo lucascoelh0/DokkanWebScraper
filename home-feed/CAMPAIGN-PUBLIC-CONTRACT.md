@@ -165,6 +165,13 @@ separate prefix authorization and freshly recheck all conditions before writing.
 
 ## Authorized staging activation — 2026-09-13
 
+**Later capture correction:** the user-supplied September 13 captures show the
+same campaign endpoint succeeding with `X-RequestVersion` 5, 23 and 25. The fixed
+endpoint-version interpretation below is superseded; the override must not be
+treated as a verified live fix. See the main pipeline
+`docs/game-db/api-capture-update-20260913.md`. New captures project 8 campaigns /
+20 boards offline, but have not been promoted through the fresh-session gate.
+
 Lucas explicitly authorized checkpoint push and campaign staging publication.
 The new local `campaign-r2-store.mjs` adapter restricts reads/writes to manifest,
 hashed index and hashed detail objects under `staging/v2/campaigns/`, pins the
@@ -198,3 +205,51 @@ duration adjustment, all 12 publisher tests passed again. Publisher lifetime is
 180 seconds, preflight remains 60 seconds, and each transport request is bounded.
 The read-only bucket inventory observed 1,656,917,608 bytes. No actual campaign
 write proposal was produced because collection failed first.
+
+## Fresh-session correction and staging publication — 2026-09-13
+
+The preceding failed-attempt status is superseded. Native client evidence and the
+new login capture identify `X-RequestVersion` as a session counter, not a fixed
+endpoint version. `auth-session.mjs` now replaces captured counters with `1` for
+the GET-only API phase after fresh sign-in, including featured-card reads, while
+leaving the caller configuration intact. It does not replay mutation endpoints.
+All 179 integrated Node tests passed after this change.
+
+The current database audit covers all 20 captured boards, 191 missions and 534
+reward records. Fresh collection with the current login configuration succeeded;
+both configuration and counter changed, so the earlier failures are not attributed
+exclusively to the counter. Publication completed at `2026-09-13T18:07:26.117Z`:
+eight campaign details plus index and manifest, ten objects / 121,680 bytes,
+projected bucket size 1,657,039,288 bytes. The manifest was promoted last and all
+ten public objects passed publisher and independent size/hash verification.
+
+Index SHA-256: `3e9b52587f27ab495f6d88772c28d9858b36b50d94f7a32095791a883d39cba3`.
+Manifest SHA-256: `32343923b355594d6057058cd5bee263e0cf73d94070a6bffe0b8f49db3c8624`.
+Validity ends at `2026-09-14T00:05:50.718Z`. Safe local receipt:
+`D:/Dokkan/DokkanWebScraper/.agent-logs/campaign-live-20260913-d/receipt.json`.
+The prior attempt stopped at an operational approval deadline before writes;
+the successful attempt enforced the reported write-byte ceiling before upload.
+
+This activates staging data only, not Android UI or automatic campaign refresh.
+Production, APKs, hosted credentials and gateway permissions remain unchanged.
+
+## Optional shared-slot refresh integration — 2026-09-13
+
+`campaign-refresh-step.mjs` supplies a disabled-by-default step for the existing
+Home slot owner. `refreshCycle` can invoke it after verified Home publication,
+before its final receipt. Campaign failures are recorded separately from Home
+success. Only whitelisted status and manifest hash reach the durable receipt.
+
+The step validates pinned definitions before login, performs one fresh scoped
+collection per supplied lease, and checks ownership before each API request and
+each conditional object write. It neither acquires/releases a competing slot nor
+retries authentication. Loss after a write is reported as failure without a
+rollback claim. Checks cannot revoke in-flight requests; transport deadlines and
+the publisher's conditional immutable/manifest writes remain required.
+
+Focused coordination checks: 24 passed; integrated isolated Node suite: 189 passed.
+The hosted runner/workflow is deliberately not wired yet: its Home-only gateway
+does not grant campaign writes. Activation requires reviewed narrow campaign
+storage capability and a safely supplied, pinned definitions artifact; do not
+upload the broad local R2 credentials as a shortcut. No schedule, permissions,
+remote object or credential was changed by this implementation pass.
