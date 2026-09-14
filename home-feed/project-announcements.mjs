@@ -34,6 +34,9 @@ export function projectAnnouncements(payload) {
     return {
       id,
       category: integer(row.category),
+      ...(row.announcement_tab_id == null ? {} : {
+        tabId: integer(row.announcement_tab_id) || fail(),
+      }),
       title: plain(row.title, 500, true),
       summary: plain(row.summary, 2000),
       startsAt: integer(row.start_at, 9_999_999_999),

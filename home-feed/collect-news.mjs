@@ -104,6 +104,7 @@ export function prepareCollectedNews(collection, now = Date.now()) {
         cacheControl: 'public,max-age=31536000,immutable' });
     }
     return { id: String(row.id), title: row.title, summary: row.summary, category: row.category,
+      ...(row.tabId == null ? {} : { tabId: row.tabId }),
       publishedAt: new Date(row.startsAt * 1000).toISOString(), imageUrl, paragraphs: [...row.paragraphs] };
   });
   const section = { schemaVersion: 1, coverage: 'partial', observedAt: new Date(stored.observedAt).toISOString(),

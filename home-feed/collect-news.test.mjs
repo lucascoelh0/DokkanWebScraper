@@ -75,7 +75,7 @@ test('slow response and clock rollback fail closed', async () => {
 
 test('media scope downloads only observed art, deduplicates, and preserves public references', async () => {
   const signed = 'https://cf.ishin-global.aktsk.com/banners/en/news/example.png?Signature=PRIVATE';
-  const body = { announcements: [1, 2].map(id => ({ id, category: 0, title: 'News', summary: '', start_at: 100, banner: signed })) };
+  const body = { announcements: [1, 2].map(id => ({ id, category: 0, announcement_tab_id: 2, title: 'News', summary: '', start_at: 100, banner: signed })) };
   const mock = io(body);
   const bytes = await sharp({ create: { width: 20, height: 10, channels: 4, background: '#ff8800' } }).png().toBuffer();
   let images = 0;
@@ -93,6 +93,8 @@ test('media scope downloads only observed art, deduplicates, and preserves publi
   assert.ok(!JSON.stringify(result).includes('PRIVATE'));
   const prepared = prepareCollectedNews(result, at);
   assert.equal(prepared.section.items[0].paragraphs[0], 'Full article\nSecond line');
+  assert.equal(prepared.section.items[0].tabId, 2);
+  assert.equal(prepared.section.items[0].category, 0);
   assert.equal(prepared.images.length, 1);
   assert.ok(!JSON.stringify(prepared.section).includes('PRIVATE'));
   result.projection.announcements[0].title = 'MUTATED';
@@ -104,6 +106,7 @@ test('media scope downloads only observed art, deduplicates, and preserves publi
   const candidate = await prepareCandidate(observation, at, { enableNews: true, newsCollection: result });
   const payload = JSON.parse(candidate.operations.find(op => op.key.endsWith('.json') && !op.mutable).bytes);
   assert.equal(payload.news.items.length, 2);
+  assert.equal(payload.news.items[0].tabId, 2);
   assert.equal(candidate.operations.filter(op => op.contentType === 'image/png').length, 1);
   assert.ok(!JSON.stringify(payload).includes('MUTATED'));
   const disabled = await prepareCandidate(observation, at, { newsCollection: result });

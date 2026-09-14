@@ -7,6 +7,14 @@ const row = (overrides = {}) => ({ id: 1, category: 0, title: "News\r\n title", 
   is_new: true, link_to: "private", account: "PRIVATE", ...overrides });
 const project = (...rows) => projectAnnouncements({ announcements: rows, account: "PRIVATE" });
 
+test('tab identity is optional, validated and independent from the news category', () => {
+  assert.equal(project(row({ category: 2, announcement_tab_id: 1 })).announcements[0].tabId, 1);
+  assert.equal(project(row()).announcements[0].tabId, undefined);
+  for (const announcement_tab_id of [0, -1, 1.5, '1', 1000000000]) {
+    assert.throws(() => project(row({ announcement_tab_id })));
+  }
+});
+
 test("whitelists public fields and drops signed queries and account state", () => {
   const result = project(row());
   assert.deepEqual(result.announcements[0], { id: 1, category: 0, title: "News title", summary: "Summary",
