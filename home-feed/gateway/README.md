@@ -106,6 +106,36 @@ successful campaign publication and public image/detail/index hash verification.
 This configuration does not yet prove a successful scheduled campaign publication.
 No production objects or Home credentials were changed.
 
+### Hosted recovery verified — 2026-09-14
+
+Read-only history established that run `34782284641` failed during collection:
+nonce/sign-in returned 200, then summons returned 400. The later `already_running`
+result meant a consumed six-hour slot, not an active process. No reservation was
+deleted or reclaimed. Hosted login configuration still dated 2026-09-12, before
+the successful current-session capture from 2026-09-13.
+
+After offline validation of that capture's nonce/login lineage and bearer
+association, the primary updated only `HOME_GAME_AUTH_JSON` in the existing
+`home-feed-staging` environment. The secret was encrypted with GitHub's public
+key; no raw capture, old bearer, token or login configuration was logged or
+committed. No job was active during the update. One manual dispatch used the
+ordinary protected publishing path in a new slot, with no retry or lock bypass.
+
+Run `34797853252`, main `8a97207319a54d345acedcbba3c231788b455d78`, passed tests
+and published Home plus enriched campaigns. Campaign preflight reported
+1,092,869 write bytes and projected shared storage 1,659,516,743 bytes.
+Independent public verification passed schema 2, eight campaigns, 191 missions,
+55 typed event links and eight decoded images (1,093,122 verification bytes).
+Manifest SHA-256:
+`90158387f145adcf54a29b754e33d8088e8ae1c7c74f4f5e6a5f1309f31ecf76`.
+Observation: `2026-09-14T02:03:53.808Z`; validity:
+`2026-09-14T08:03:53.808Z`. Old observation expiry was not extended.
+
+This proves the hosted manual path, not a subsequent cron-triggered run. The
+six-hour schedule and its safeguards remain unchanged. Production is untouched.
+If the game rejects a future read, inspect sanitized phases and configuration
+age before retrying; `already_running` alone must never be called a stuck lock.
+
 ### Independent public verification
 
 Run `node home-feed/verify-public-campaigns.mjs --require-v2` after a new campaign

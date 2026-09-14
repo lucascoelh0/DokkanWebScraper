@@ -1,3 +1,4 @@
+import { projectEventArtwork } from './project-event-artwork.mjs';
 const API_ORIGIN = "https://ishin-global.aktsk.com";
 const CDN_HOST = "cf.ishin-global.aktsk.com";
 const CDN_PATH = /^\/banners\/en\/gashasocool\/[A-Za-z0-9_-]+\.png$/u;
@@ -194,7 +195,7 @@ function learnGashaIds(value) {
  */
 export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs = DEFAULT_TIMEOUT_MS, apiScope = "summons" } = {}) {
   try {
-    if (!["summons", "events", "campaigns", "campaigns-media"].includes(apiScope)) fail();
+    if (!["summons", "events", "events-media", "campaigns", "campaigns-media", "news", "news-media"].includes(apiScope)) fail();
     if (typeof fetchImpl !== "function") fail();
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > DEFAULT_TIMEOUT_MS) fail();
     let secrets = normalizeConfig(config);
@@ -202,6 +203,7 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
     let learnedIds = null;
     let gashasRequested = false;
     let eventsRequested = false;
+    let newsRequested = false;
     let campaignsRequested = false;
     const requestedIds = new Set();
     const controllers = new Set();
@@ -210,6 +212,9 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
     let closed = false;
     let poisoned = false;
     const campaignImageUrls = new Set();
+    const newsImageUrls = new Set();
+    const eventImageUrls = new Set();
+    const newsDetailIds = new Set();
     let authenticating = null;
 
     function usable() {
@@ -219,10 +224,12 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
     async function perform(url, options, maximum, contentType, isApi) {
       usable();
       if (isApi) {
-        if (apiRequests >= (apiScope === "summons" ? API_LIMIT : 3)) fail();
+        // News: two auth calls, one index, six visible articles, at most eight
+        // additional exact-ID summon period articles. Duplicate IDs stay blocked.
+        if (apiRequests >= (apiScope === "summons" ? API_LIMIT : apiScope === 'news-media' ? 17 : 3)) fail();
         apiRequests += 1;
       } else {
-        if (imageRequests >= (apiScope === 'campaigns-media' ? 8 : IMAGE_LIMIT)) fail();
+        if (imageRequests >= (apiScope === 'events-media' ? 20 : apiScope === 'news-media' ? 12 : apiScope === 'campaigns-media' ? 8 : IMAGE_LIMIT)) fail();
         imageRequests += 1;
       }
       const controller = new AbortController();
@@ -315,7 +322,14 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
         if (apiScope === "campaigns" || apiScope === "campaigns-media") {
           if (path !== "/missions/mission_board_campaigns" || campaignsRequested) fail();
           campaignsRequested = true;
-        } else if (apiScope === "events") {
+        } else if (apiScope === "news" || apiScope === "news-media") {
+          if (path === '/announcements' && !newsRequested) newsRequested = true;
+          else {
+            const match = /^\/announcements\/([1-9][0-9]{0,8})$/u.exec(path);
+            if (apiScope !== 'news-media' || !match || !newsDetailIds.has(match[1]) || requestedIds.has(match[1])) fail();
+            requestedIds.add(match[1]);
+          }
+        } else if (apiScope === "events" || apiScope === "events-media") {
           if (path !== "/events" || eventsRequested) fail();
           eventsRequested = true;
         } else if (path === "/gashas") {
@@ -334,6 +348,25 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
         // from an already-used game session must never be replayed here.
         headers["x-requestversion"] = "1";
         const body = await jsonRequest(path, "GET", headers);
+        if (apiScope === 'events-media') {
+          const allowed = new Set(projectEventArtwork(body).map(row => `${row.imageHost}${row.imagePath}`));
+          for (const row of [...body.events, ...body.z_battle_stages]) {
+            try {
+              const url = new URL(row.banner_image);
+              if (row.banner_image.split('?')[0] === `https://${CDN_HOST}${url.pathname}` &&
+                  allowed.has(`${url.hostname}${url.pathname}`)) eventImageUrls.add(validateImageUrl(
+                row.banner_image, /^\/banners\/en\/event\/eve_banner\/[A-Za-z0-9_-]+\.png$/u));
+            } catch { /* Invalid optional artwork keeps its text fallback. */ }
+          }
+        }
+        if (apiScope === 'news-media' && path === '/announcements') {
+          if (!Array.isArray(body.announcements) || body.announcements.length > 500) fail();
+          for (const row of body.announcements) {
+            if (Number.isSafeInteger(row.id) && row.id > 0 && row.id <= 999999999) newsDetailIds.add(String(row.id));
+            if (row.banner) newsImageUrls.add(validateImageUrl(row.banner,
+              /^\/banners\/en\/news\/[A-Za-z0-9_-]+\.png$/u));
+          }
+        }
         if (apiScope === 'campaigns-media') {
           if (!Array.isArray(body.mission_board_campaigns) || body.mission_board_campaigns.length > 100) fail();
           for (const campaign of body.mission_board_campaigns) {
@@ -348,9 +381,13 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
 
     async function fetchImage(value) {
       return guarded(async () => {
-        if (apiScope !== "summons" && apiScope !== 'campaigns-media') fail();
+        if (apiScope !== "summons" && apiScope !== 'campaigns-media' && apiScope !== 'news-media' && apiScope !== 'events-media') fail();
+        if (apiScope === 'events-media' && !eventImageUrls.has(value)) fail();
+        if (apiScope === 'news-media' && !newsImageUrls.has(value)) fail();
         if (apiScope === 'campaigns-media' && !campaignImageUrls.has(value)) fail();
-        const url = validateImageUrl(value, apiScope === 'campaigns-media'
+        const url = validateImageUrl(value, apiScope === 'events-media'
+          ? /^\/banners\/en\/event\/eve_banner\/[A-Za-z0-9_-]+\.png$/u : apiScope === 'news-media'
+          ? /^\/banners\/en\/news\/[A-Za-z0-9_-]+\.png$/u : apiScope === 'campaigns-media'
           ? /^\/images\/en\/panel_mission\/[A-Za-z0-9_-]+\.png$/u : CDN_PATH);
         const bytes = await perform(
           url,
@@ -373,6 +410,9 @@ export function createSession(config, { fetchImpl = globalThis.fetch, timeoutMs 
       token = null;
       learnedIds?.clear();
       requestedIds.clear();
+      newsImageUrls.clear();
+      eventImageUrls.clear();
+      newsDetailIds.clear();
       secrets = null;
       authenticating = null;
     }

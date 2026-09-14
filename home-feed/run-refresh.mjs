@@ -60,10 +60,11 @@ export async function run(args=process.argv.slice(2),env=process.env) {
       finally { session.close(); }
     };
     const enableEvents=env.HOME_FEED_EVENTS_ENABLED==='true';
-    const collect=()=>collectHome({collectSummons:collectBanners,config,enableEvents,
+    const enableNews=env.HOME_FEED_NEWS_ENABLED==='true';
+    const collect=()=>collectHome({collectSummons:collectBanners,config,enableEvents,enableNews,
       expectedCatalogSha256:env.HOME_FEED_EVENTS_CATALOG_SHA256});
-    const prepare=async({observation,eventCollection})=>{
-      const candidate=await prepareCandidate(observation,Date.now(),{enableEvents,eventCollection});
+    const prepare=async({observation,eventCollection,newsCollection})=>{
+      const candidate=await prepareCandidate(observation,Date.now(),{enableEvents,eventCollection,enableNews,newsCollection});
       console.log(JSON.stringify({phase:'candidate_prepared',...candidate.summary}));
       return candidate;
     };

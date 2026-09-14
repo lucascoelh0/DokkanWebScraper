@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { projectSummonRewards } from "./project-summon-rewards.mjs";
+import { summonDescription, projectSummonDiscount } from "./project-summon-presentation.mjs";
 
 const SOURCE = "authorized_manual_global_gashas_read";
 const COVERAGE = "account_observation_not_complete_global_inventory";
@@ -97,6 +99,11 @@ function projectBanner(row) {
   }
   const name = requireName(row.name);
   const image = parseBannerUrl(row.banner_url);
+  // Optional presentation cannot invalidate otherwise usable summons.
+  let rewards = [];
+  try { rewards = projectSummonRewards(row); } catch { /* Unknown enrichment is omitted. */ }
+  const description = summonDescription(row.description);
+  const discount = projectSummonDiscount(row);
 
   return {
     public: {
@@ -105,8 +112,13 @@ function projectBanner(row) {
       gasha_category_id: gashaCategoryId,
       open_at: openAt,
       end_at: endAt,
+      ...(Number.isSafeInteger(row.information_announcement_id) && row.information_announcement_id > 0 && row.information_announcement_id <= MAX_PUBLIC_ID
+        ? { information_announcement_id: row.information_announcement_id } : {}),
       imageHost: image.imageHost,
       imagePath: image.imagePath,
+      ...(rewards.length ? { rewards } : {}),
+      ...(description ? { description } : {}),
+      ...(discount ? { discount } : {}),
     },
     signedUrl: image.signedUrl,
   };

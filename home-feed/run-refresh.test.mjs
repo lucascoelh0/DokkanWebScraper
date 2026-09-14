@@ -4,6 +4,48 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run, summarizeResponses, refreshExitCode } from './run-refresh.mjs';
+import sharp from 'sharp';
+import { createHash } from 'node:crypto';
+
+test('collect-only runner gates complete news and official artwork without publishing', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'home-news-runner-'));
+  const image = await sharp({ create: { width: 20, height: 10, channels: 4, background: '#ff8800' } }).png().toBuffer();
+  let newsCalls = 0;
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(globalThis, 'fetch', async url => {
+    const path = new URL(url).pathname;
+    if (path === '/auth/nonce') return Response.json({ auth_transaction_id: 'PRIVATE' });
+    if (path === '/auth/sign_in') return Response.json({ access_token: 'PRIVATE', token_type: 'bearer' });
+    if (path === '/gashas') return Response.json({ gashas: [] });
+    if (path === '/announcements') {
+      newsCalls++;
+      return Response.json({ announcements: [{ id: 1, category: 0, title: 'Test news', summary: '',
+        start_at: Math.floor(Date.now() / 1000) - 60, banner: 'https://cf.ishin-global.aktsk.com/banners/en/news/test.png?Signature=PRIVATE' }] });
+    }
+    if (path === '/announcements/1') return Response.json({ announcement: { id: 1, bodies: [{ description: 'Complete text' }] } });
+    if (path === '/banners/en/news/test.png') return new Response(image);
+    throw Error('Unexpected request');
+  });
+  try {
+    for (const flag of ['false', 'true']) {
+      const destination = join(root, flag);
+      await run(['--collect-only', destination], { HOME_FEED_NEWS_ENABLED: flag,
+        HOME_GAME_AUTH_JSON: JSON.stringify({ nonceHeaders: { authorization: 'Basic test' }, loginHeaders: { authorization: 'Basic test' }, loginBody: {}, apiHeaders: {} }) });
+      const manifest = JSON.parse(await readFile(join(destination, 'manifest.json')));
+      const payload = JSON.parse(await readFile(join(destination, manifest.file)));
+      assert.equal(!!payload.news, flag === 'true');
+      if (flag === 'true') {
+        assert.deepEqual(payload.news.items[0].paragraphs, ['Complete text']);
+        assert.match(payload.news.items[0].imageUrl, /^https:\/\/assets.dkbcompanion.com\/staging\/v2\/home\/images\/[a-f0-9]{64}\.png$/);
+        const imageFile = payload.news.items[0].imageUrl.split('/').at(-1);
+        const delivered = await readFile(join(destination, imageFile));
+        assert.equal(createHash('sha256').update(delivered).digest('hex'), imageFile.slice(0, -4));
+        assert.ok(!JSON.stringify(payload).includes('PRIVATE'));
+      }
+    }
+    assert.equal(newsCalls, 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test('host exit status exposes partial campaign failure without changing the Home receipt', () => {
   const result = Object.freeze({status:'success',campaigns:Object.freeze({status:'failed'})});

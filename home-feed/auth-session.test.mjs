@@ -50,6 +50,7 @@ function successfulFetch({ gashaIds = [123] } = {}) {
     if (path === "/auth/sign_in") return json({ access_token: SECRET_NEW_TOKEN, token_type: "Bearer" });
     if (path === "/gashas") return json({ gashas: gashaIds.map((id) => ({ id })) });
     if (path === "/events") return json({ events: [], z_battle_stages: [] });
+    if (path === "/announcements") return json({ announcements: [] });
     if (path === "/missions/mission_board_campaigns") return json({ mission_board_campaigns: [] });
     if (path.endsWith("/featured_cards")) return json({ gasha_items: [{ card_id: 999 }] });
     if (new URL(url).hostname === "cf.ishin-global.aktsk.com") return imageResponse();
@@ -57,6 +58,37 @@ function successfulFetch({ gashaIds = [123] } = {}) {
   };
   return { fetchImpl, calls };
 }
+
+test("news scope permits exactly one announcement index and no other routes", async () => {
+  const io = successfulFetch();
+  const session = createSession(config(), { fetchImpl: io.fetchImpl, apiScope: 'news' });
+  assert.deepEqual(await session.requestApi('/announcements'), { status: 200, body: { announcements: [] } });
+  await rejectsCleanly(() => session.requestApi('/announcements'));
+  assert.equal(io.calls.length, 3);
+  session.close();
+  for (const path of ['/gashas', '/announcements/1', '/announcements?display=all', '/resources/home', '/events']) {
+    const blocked = successfulFetch();
+    const isolated = createSession(config(), { fetchImpl: blocked.fetchImpl, apiScope: 'news' });
+    await rejectsCleanly(() => isolated.requestApi(path));
+    assert.equal(blocked.calls.length, 0);
+    isolated.close();
+  }
+  const isolated = createSession(config(), { fetchImpl: io.fetchImpl, apiScope: 'news' });
+  await rejectsCleanly(() => isolated.fetchImage(SIGNED_IMAGE));
+  isolated.close();
+});
+
+test('news media denies unobserved URLs before any image request', async () => {
+  for (const firstRead of [false, true]) {
+    const io = successfulFetch();
+    const session = createSession(config(), { fetchImpl: io.fetchImpl, apiScope: 'news-media' });
+    if (firstRead) await session.requestApi('/announcements');
+    const before = io.calls.length;
+    await rejectsCleanly(() => session.fetchImage('https://cf.ishin-global.aktsk.com/banners/en/news/unobserved.png'));
+    assert.equal(io.calls.length, before);
+    session.close();
+  }
+});
 
 test("explicit events scope permits one GET with fresh login and nothing else", async () => {
   const io = successfulFetch();

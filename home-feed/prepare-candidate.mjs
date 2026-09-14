@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { prepareEventSection } from './prepare-events.mjs';
+import { prepareCollectedNews, collectedBannerEnd } from './collect-news.mjs';
+import { prepareCollectedEventArtwork } from './collect-events.mjs';
 
 export const PREFIX = 'staging/v2/home/';
 export const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -10,7 +12,7 @@ const object = (key, bytes, contentType, mutable = false) => ({ key, bytes,
   cacheControl: mutable ? 'no-cache' : 'public,max-age=31536000,immutable' });
 
 /** Consumes the complete collector observation, not arbitrary raw API objects. */
-export async function prepareCandidate(observation, now = Date.now(), { enableEvents = false, eventCollection } = {}) {
+export async function prepareCandidate(observation, now = Date.now(), { enableEvents = false, eventCollection, enableNews = false, newsCollection } = {}) {
   const { snapshot, receipts, images, featuredResponses } = observation;
   const observed = Date.parse(snapshot.observedAt);
   assert(Number.isSafeInteger(now) && Number.isFinite(observed));
@@ -58,9 +60,20 @@ export async function prepareCandidate(observation, now = Date.now(), { enableEv
     assert(Array.isArray(rows) && rows.length <= 100);
     assert(rows.every(r => Number.isSafeInteger(r.card_id) && r.card_id > 0 && r.card_id <= 999999999));
     assert(new Set(rows.map(r => r.card_id)).size === rows.length);
+    const bannerEndsAt = enableNews === true ? collectedBannerEnd(newsCollection, b, now) : null;
     summons.push({ id: `gasha-${b.id}`, title: b.name, action: 'catalog',
+      ...(bannerEndsAt ? { bannerEndsAt } : {}),
       imageUrl: 'https://assets.dkbcompanion.com/' + key,
-      startsAt: generatedAt, endsAt: new Date(Math.min(validUntil, b.end_at * 1000)).toISOString(),
+      ...(b.discount?.kind === 'three-plus-one' &&
+        b.discount.endsAt === new Date(b.end_at * 1000).toISOString() &&
+        b.end_at - b.open_at + 1 === 400 * 3600
+        ? { discount: { kind: 'three-plus-one', endsAt: b.discount.endsAt } } : {}),
+      ...(typeof b.description === 'string' && b.description.length <= 1000 &&
+        !/[<>\u0000-\u001f\u007f]/u.test(b.description) ? { description: b.description } : {}),
+      ...(Array.isArray(b.rewards) && b.rewards.length <= 30 && b.rewards.every(r =>
+        r.itemType === 'TreasureItem' && [r.courseNo, r.itemId, r.quantity].every(n => Number.isSafeInteger(n) && n > 0 && n <= 999999999))
+        ? { rewards: b.rewards.map(r => ({ courseNo: r.courseNo, itemType: r.itemType, itemId: r.itemId, quantity: r.quantity })) } : {}),
+      startsAt: new Date(b.open_at * 1000).toISOString(), endsAt: new Date(Math.min(validUntil, b.end_at * 1000)).toISOString(),
       group: b.gasha_category_id === 1 ? 'main' : 'more',
       featuredCardIds: rows.map(r => String(r.card_id)),
       category: ({ 1: 'featured', 2: 'dragon_stones', 3: 'tickets', 4: 'friend' })[b.gasha_category_id] ?? 'other' });
@@ -73,6 +86,32 @@ export async function prepareCandidate(observation, now = Date.now(), { enableEv
   // Optional enrichment cannot push a healthy summons payload over the client cap.
   if (eventSchedule && Buffer.byteLength(JSON.stringify({ ...content, eventSchedule })) <= 65536)
     content.eventSchedule = eventSchedule;
+  const news = enableNews === true ? prepareCollectedNews(newsCollection, now) : null;
+  const newsImageSlots = news?.images.filter(image => !operations.some(op => op.key === image.key)).length ?? 0;
+  const eventArt = content.eventSchedule ? prepareCollectedEventArtwork(eventCollection, now)
+    ?.slice(0, Math.max(0, 40 - operations.length - newsImageSlots)) : null;
+  if (eventArt?.length) {
+    const enriched = { ...eventSchedule, items: eventSchedule.items.map(item => {
+      const image = eventArt.find(image => image.id === item.id);
+      return image ? { ...item, imageUrl: 'https://assets.dkbcompanion.com/' + image.key } : item;
+    }) };
+    const uniqueImages = [...new Map(eventArt.map(image => [image.key, image])).values()]
+      .filter(image => !operations.some(op => op.key === image.key));
+    if (operations.length + uniqueImages.length <= 40 &&
+        Buffer.byteLength(JSON.stringify({ ...content, eventSchedule: enriched })) <= 65536 &&
+        operations.reduce((sum, op) => sum + op.sizeBytes, 0) + uniqueImages.reduce((sum, image) => sum + image.sizeBytes, 0) <= 15 * 1024 * 1024) {
+      content.eventSchedule = enriched;
+      for (const image of uniqueImages) operations.push(object(image.key, image.bytes, 'image/png'));
+    }
+  }
+  if (news && operations.length + news.images.filter(image => !operations.some(op => op.key === image.key)).length <= 40 &&
+      Buffer.byteLength(JSON.stringify({ ...content, news: news.section })) <= 65536 &&
+      operations.reduce((sum, op) => sum + op.sizeBytes, 0) + news.images.reduce((sum, image) => sum + image.sizeBytes, 0) <= 15 * 1024 * 1024) {
+    content.news = news.section;
+    for (const image of news.images) {
+      if (!operations.some(op => op.key === image.key)) operations.push(object(image.key, image.bytes, 'image/png'));
+    }
+  }
   const payload = Buffer.from(JSON.stringify(content));
   assert(payload.length <= 65536);
   const hash = sha(payload);
@@ -84,6 +123,8 @@ export async function prepareCandidate(observation, now = Date.now(), { enableEv
   // Prepared is not published; the coordinator's verified receipt owns that claim.
   const summary = {
     summonsCount: summons.length,
+    newsStatus: enableNews !== true ? 'disabled' : content.news ? 'included' : 'unavailable',
+    newsCount: content.news?.items.length ?? 0,
     eventsStatus: enableEvents !== true ? 'disabled'
       : content.eventSchedule ? (content.eventSchedule.items.length ? 'included' : 'empty')
       : eventCollection?.status === 'collected' ? 'omitted' : 'unavailable',

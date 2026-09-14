@@ -7,6 +7,16 @@ import { createHash } from 'node:crypto';
 const now=Date.parse('2026-09-12T21:00:00.000Z');
 const observation=()=>({snapshot:{observedAt:new Date(now).toISOString(),
   source:'authorized_manual_global_gashas_read',banners:[]},receipts:[],images:new Map(),featuredResponses:[]});
+
+test('news is explicit, sequential and optional without erasing summons', async () => {
+  const order = [];
+  const result = await collectHome({ collectSummons: async () => { order.push('summons'); return observation(); }, enableNews: true },
+    { collectNewsObservation: async () => { order.push('news'); throw Error('PRIVATE'); } });
+  assert.deepEqual(order, ['summons', 'news']);
+  assert.deepEqual(result.newsCollection, { status: 'unavailable' });
+  const baseline = await prepareCandidate(result.observation, now);
+  assert.deepEqual((await prepareCandidate(result.observation, now, { enableNews: true, newsCollection: result.newsCollection })).operations, baseline.operations);
+});
 test('disabled by default and nonliteral flags perform no event work',async()=>{
   for(const enableEvents of [undefined,false,'true',1]){
     const source=observation();

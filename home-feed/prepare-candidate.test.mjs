@@ -20,6 +20,7 @@ test('full decode then canonical public payload, manifest last', async () => {
   assert.equal(manifest.sha256, sha(result.operations.at(-2).bytes));
   const payload = JSON.parse(result.operations.at(-2).bytes);
   assert.equal(payload.summons[0].group, 'main');
+  assert.equal(payload.summons[0].startsAt, new Date(now - 1000).toISOString());
   assert.deepEqual(payload.summons[0].featuredCardIds, ['123']);
   assert(!JSON.stringify(payload).includes('private'));
   assert.equal(result.summary.summonsCount,1);
@@ -81,7 +82,7 @@ test('fresh collector output reaches hashed payload only under explicit opt-in',
   assert.equal('eventSchedule' in JSON.parse(disabled.operations.at(-2).bytes),false);
   assert.equal(JSON.stringify(payload).includes('private'),false);
   assert.deepEqual(enabled.summary,{
-    summonsCount:1,eventsStatus:'included',eventsCount:1,
+    summonsCount:1,newsStatus:'disabled',newsCount:0,eventsStatus:'included',eventsCount:1,
     eventsValidUntil:payload.eventSchedule.validUntil,
     eventsCatalogSha256:sha(catalogBytes),
     payloadBytes:enabled.operations.at(-2).bytes.length,
@@ -93,6 +94,18 @@ test('fresh collector output reaches hashed payload only under explicit opt-in',
   assert.equal(empty.summary.eventsStatus,'empty');
   assert.equal(empty.summary.eventsCount,0);
   assert.equal(empty.summary.eventsCatalogSha256,sha(catalogBytes));
+});
+test('discount uses source deadline independently of clipped feed expiry', async () => {
+  const o = await observation();
+  const banner = o.snapshot.banners[0];
+  banner.end_at = banner.open_at + 400 * 3600 - 1;
+  banner.discount = { kind: 'three-plus-one', endsAt: new Date(banner.end_at * 1000).toISOString() };
+  const output = JSON.parse((await prepareCandidate(o, now)).operations.at(-2).bytes);
+  assert.deepEqual(output.summons[0].discount, banner.discount);
+  assert.ok(Date.parse(output.summons[0].endsAt) < Date.parse(output.summons[0].discount.endsAt));
+  banner.discount.endsAt = new Date(now).toISOString();
+  const invalid = JSON.parse((await prepareCandidate(o, now)).operations.at(-2).bytes);
+  assert.equal(invalid.summons[0].discount, undefined);
 });
 
 test('operational summary separates unavailability from omitted observations without leaking errors',async()=>{
