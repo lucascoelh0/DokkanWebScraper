@@ -8,7 +8,7 @@ const refresh = workflow.split('      - name: Refresh\n')[1];
 test('Home rollout documents do not trigger unrelated package publication', () => {
   const pipeline = readFileSync(new URL('../.github/workflows/pipeline.yml', import.meta.url), 'utf8');
   const ignored = pipeline.split('    paths-ignore:')[1]?.split('  workflow_dispatch:')[0];
-  for (const path of ['docs/home-news-login-summon-plan.md', 'docs/home-refresh-rollout.md'])
+  for (const path of ['docs/home-news-login-summon-plan.md', 'docs/home-refresh-rollout.md', 'docs/home-news-presentation-contract.md'])
     assert.ok(ignored?.includes(`- '${path}'`));
 });
 
