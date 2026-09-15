@@ -8,7 +8,13 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ## Repository Checkpoints
 
-### Shared horizontal event artwork — local, 2026-09-15
+### Shared horizontal event artwork — staging verified, 2026-09-15
+
+- User approved release and subsequent PC hibernation. Android `33b2f9a1` pushed;
+  pipeline `ff8c0c7` pushed and integrated into main. Data-only staging promotion
+  verified 20 artworks including Light of Hope/Frieza, with 1,022,666 bytes written.
+  Existing feed dates/news/summons preserved; reserved collection slot respected,
+  zero game requests. Receipt/manifest and limits: `docs/shared-event-artwork.md`.
 
 - User requested updating changing event art across Home/list/detail and rejected
   the oversized Light of Hope poster. Correct field is listbutton_image (500x110),

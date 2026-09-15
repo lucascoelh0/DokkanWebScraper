@@ -1,6 +1,6 @@
 # Shared event artwork refresh
 
-Status: implemented locally, not committed/pushed/published. User requested on
+Status: committed, pushed and staging art verified on 2026-09-15. User requested on
 2026-09-15. Decoder remains on hold; News/Summons presentation is out of scope.
 
 ## Source truth
@@ -75,4 +75,15 @@ shards, protect referenced PNGs, and be explicitly approved with a dry-run.
   Primary inspected both screenshots, confirmed horizontal Light of Hope and
   current Frieza art, with no clipping. Screenshots are in the Android worktree
   `.agent-logs/shared-art-studio-phone.png` and `shared-art-studio-wide.png`.
-- Commit, push, integration and R2 publication still require explicit approval.
+- User approved commit, push and staging publication on 2026-09-15, then PC hibernation.
+- Android commit `33b2f9a1`; pipeline `ff8c0c7`, fast-forwarded to remote main.
+- The full refresh respected the already reserved six-hour slot and made no
+  game request. An authorized data-only promotion instead published 20 recently
+  verified first-party artworks, including Light of Hope and current Frieza.
+  Existing live Home dates, News and Summons were preserved (no replay payload).
+- Dry-run: bucket 1,687,893,110 bytes; writes 1,022,666 bytes; new bytes 1,022,474.
+  All objects publicly verified before conditional manifest promotion. The
+  previous manifest ETag fenced this data-only operation; no scheduled lock was
+  removed, reclaimed or modified, and no game login occurred.
+- Verified manifest SHA: `a93a9d3dff75caab1d8ae3368bfe5167ffabb2c9c34a820bf8ccac27d3bd9344`.
+  Existing scheduled main refresh will retain/extend this registry in later batches.
