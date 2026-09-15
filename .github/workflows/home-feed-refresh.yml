@@ -3,6 +3,10 @@ name: Refresh staging Home feed
 on:
   workflow_dispatch:
     inputs:
+      recover_failed_collection:
+        description: One recovery of a failed collection after its lease expires (requires publish)
+        type: boolean
+        default: false
       check_news:
         description: Read-only News gateway check (no game login or publication)
         type: boolean
@@ -81,6 +85,7 @@ jobs:
           HOME_FEED_CAMPAIGNS_DEFINITIONS_SHA256: ${{ vars.HOME_FEED_CAMPAIGNS_DEFINITIONS_SHA256 }}
           HOME_FEED_CAMPAIGNS_DATABASE_SHA256: ${{ vars.HOME_FEED_CAMPAIGNS_DATABASE_SHA256 }}
           PUBLISH_REQUESTED: ${{ github.event_name == 'schedule' || inputs.publish }}
+          HOME_FEED_MANUAL_RECOVERY: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && inputs.recover_failed_collection }}
         shell: bash
         run: |
           if [ "$PUBLISH_REQUESTED" = "true" ]; then

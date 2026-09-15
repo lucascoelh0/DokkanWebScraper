@@ -8,6 +8,63 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ## Repository Checkpoints
 
+### Controlled recovery and Events restored — 2026-09-15
+
+- User authorized implementing one exceptional manual recovery after a failed
+  collection, with single-flight ownership and no automatic login retry loop.
+  Local pipeline implements expired failed-collection CAS takeover, persisted
+  one-recovery cap, manual-only workflow input and one in-process publication
+  retry using the same fresh candidate/lease with a new preflight. Foreign
+  manifest changes block retry. Process-crash candidate resumption is not built.
+- 319 pipeline tests and 19 gateway tests passed; 28 focused tests passed again
+  after final defensive parsing/formatting edits. No Android changes required.
+  User approved commit/push after staging verification; integrating the checkpoint
+  into main for the hosted workflow.
+- Used the authorized recovery on slot 82846 without deleting its reservation.
+  Control preflight <=4096 bytes; Home preflight 1,491,198 write bytes,
+  1,491,006 new bytes; storage around 1.69 GB. Fresh Home publicly verified by
+  size/SHA: c929606dfd29e45b4f01edbf42f3738c0f66098ee5539b1890a7767ef7b0475a,
+  generated 15:40:42.208 UTC; Events observed 15:40:32.557 UTC. Twenty events now
+  carry 13 overall starts and seven Burst periods. Android preview selection:
+  event:507 (Frieza Burst), event:257 (Light of Hope), event:1770 (Ginyu).
+- Campaigns also published (preflight maximum 129,097 bytes); full News library
+  failed and retains its prior manifest. Health correctly reports news_library
+  stale/nonzero exit without undoing Home/Campaign success. Exact News failure
+  phase was dropped by the old cycle result; local code now preserves only safe
+  phase labels for future diagnosis. No repeated login or production writes.
+  Receipt: `.agent-logs/manual-recovery-publication-receipt.json` (ignored).
+- Show more checked against the actual public 20-item feed: expands the same
+  sorted rows, not a legacy source. Seven Bursts precede ordinary events; Scout
+  Battle (29 August) precedes older active EZAs (22 August). Only the compact
+  preview balances one Burst and two ordinary events. This is a partial Home
+  feed, not the full catalog. No additional Android changes made in this check.
+
+### Events publication retry requested — 2026-09-15 12:27 BRT
+
+- User authorized correcting the staging publication. Read-only R2 inspection
+  confirms slot 82846 is reserved with status failed, phase collection; the next
+  window opens 18:00 UTC / 15:00 BRT. No reservation reset, login or upload made.
+- Current event availability/highlight/public-section tests passed (20 tests).
+  Current code includes overall starts/category/Burst; public Home still lacks
+  them. Publication is not fixed or verified yet. Next step is inspect the next
+  hosted refresh, diagnose any failure with sanitized stage/status diagnostics,
+  then verify public event fields and Android ordering after successful promotion.
+  Do not relabel prior captures as fresh or bypass the six-hour no-reclaim policy.
+
+### CHECK news and legacy event preview — 2026-09-15
+
+- User requested text-only CHECK news cards when imageUrl is absent, including
+  removal of empty summary space. Android Home/directory updated locally; build
+  passed, staging APK installed. Not committed/pushed in this follow-up.
+- Current public Home generated00:33:30UTC contains the legacy event selection:
+  no eventStartsAt/category/Burst fields and no Light of Hope/Ginyu/Frieza targets.
+  The ten finite Z-Battles tie on missing start and same end, so target IDs decide
+  the displayed order. Current sorting code still uses true period starts and
+  Burst priority; daily availableFrom must NOT become a newness fallback.
+- This is missing published enrichment, not evidence that these EZAs are new.
+  Correct highlight selection remains pending a successful current collector
+  publication; do not invent dates or silently republish old fixtures as fresh.
+
 ### Home refresh resilience — released code; live refresh failed, 2026-09-15
 
 - User reported blank News/Events/Campaigns and missing Frieza/Goku after the

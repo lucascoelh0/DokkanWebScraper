@@ -57,6 +57,7 @@ function validate(candidate, now) {
  */
 export function publication(store, publicRead, now = Date.now) {
   const plans = new WeakMap();
+  const startingManifests = new WeakMap();
   return {
     async plan(candidate, lease) {
       validate(candidate, now());
@@ -71,6 +72,14 @@ export function publication(store, publicRead, now = Date.now) {
         assert(now() < deadline, 'publication_budget_exhausted');
         const existing = await store.get(o.key);
         const mutable = o.key === MANIFEST;
+        if(mutable){
+          if(!startingManifests.has(candidate))startingManifests.set(candidate,existing?.bytes ? Buffer.from(existing.bytes) : null);
+          const initial=startingManifests.get(candidate);
+          // Recovery may see our own uncertain promotion or the original head,
+          // never adopt a different publisher's head and overwrite it.
+          assert((existing?.bytes?.equals(o.bytes)) ||
+            (initial===null ? existing===null : existing?.bytes?.equals(initial)), 'manifest_changed');
+        }
         if (existing && !mutable) assert(existing.bytes.equals(o.bytes), 'immutable_collision');
         const write = !existing || !existing.bytes.equals(o.bytes);
         if (write) { writeBytes += o.sizeBytes; newBytes += Math.max(0, o.sizeBytes - (existing?.bytes.length ?? 0)); }

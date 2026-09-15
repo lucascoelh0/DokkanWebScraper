@@ -25,12 +25,17 @@ Execution reliability:
 
 - A scheduler wakeup is not proof of a successful refresh. Skipping a slot while
   public sections are stale must be surfaced as degraded/failed health.
-- Keep single-flight ownership and no same-slot login retry. Do not reclaim a
-  failed/reserved run or remove its lock. Keep the existing boundary safety gap;
+- Scheduled ticks keep single-flight ownership and never reclaim a same-slot
+  run. One explicit manual recovery may CAS-replace a failed collection after
+  its ownership deadline; its persisted recovery count cannot be reset by later
+  state writes. Success, running/crashed and publication-failure states cannot
+  trigger another login through this exception. Never remove the lock.
+  Keep the existing boundary safety gap;
   report slot_boundary separately from slot_reserved and wake hourly, so a late
   wakeup can be followed by another chance in the next slot.
 - More frequent scheduler wakeups may reuse the same six-hour login slots; they
-  must not multiply authentication attempts within a slot.
+  must not multiply authentication attempts within a slot. The exceptional
+  manual input is false for scheduled runs and requires publication opt-in.
 - No scheduler or network can promise zero failures. Last-known safe content,
   explicit freshness, guarded retries and observable health avoid silent blanks.
 
@@ -59,3 +64,24 @@ feeds the compatibility `endsAt` bounded by the snapshot's original validUntil.
 Verification includes delayed/occupied skips, hourly duplicate prevention,
 expired optional sections, no-write/no-login skip checks and the post-discount
 banner transition with and without verified overall-end evidence.
+
+## Controlled recovery — 2026-09-15
+
+`workflow_dispatch` exposes `recover_failed_collection` (off by default, requires
+`publish`). It permits at most one extra collection per slot, only after a known
+collection failure and expired lease. CAS acquisition fences competing manual
+runs; the hourly automatic path cannot consume this exception.
+
+Home publication can retry once in the same live process using its exact prepared
+candidate, original TTL and lease. It performs and reports a new read-only plan,
+reuses verified objects, and rechecks storage/ownership/freshness. A changed
+foreign manifest blocks retry; an uncertain promotion of this same candidate is
+verified idempotently. No new game login occurs for this retry. A process crash
+does not preserve the in-memory candidate: cross-process publication resumption
+is not implemented and must not be described as available. Campaign/News steps
+retain their existing independent failure behavior.
+
+Validation: 319 pipeline tests passed, including manual CAS races, expired leases,
+one-recovery cap, publication retry without recollection, expiry and foreign-head
+protection. User approved commit/push after the verified staging recovery;
+the checkpoint is being integrated into main for the hosted workflow.

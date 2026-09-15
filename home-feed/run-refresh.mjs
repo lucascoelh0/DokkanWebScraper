@@ -90,14 +90,16 @@ export async function run(args=process.argv.slice(2),env=process.env) {
     const healthOptions={events:enableEvents,news:enableNews,
       campaigns:env.HOME_FEED_CAMPAIGNS_ENABLED==='true',newsLibrary:env.HOME_FEED_NEWS_LIBRARY_ENABLED==='true'};
     // Cheap hourly skipped ticks must not scan the full bucket or touch the game.
-    const availability=await inspectSlot(store);
+    const manualRecovery=env.HOME_FEED_MANUAL_RECOVERY==='true';
+    const availability=await inspectSlot(store,Date.now,{manualRecovery});
     if(!availability.eligible)return {status:'already_running',skipReason:availability.reason,
       health:await checkRefreshHealth(healthOptions),durationMs:Date.now()-start};
     const bytes=await store.inventoryBytes();assert(bytes+4096<8_000_000_000);
     console.log(JSON.stringify({phase:'control_preflight',maxWriteBytes:4096,bucketBytes:bytes}));
     const pub=publication(store,publicRead);
     let skipReason;
-    const result=await refreshCycle({acquireLease:()=>acquireSlot(store,Date.now,{onSkip:reason=>{skipReason=reason;}}),collect,prepare,
+    const result=await refreshCycle({acquireLease:()=>acquireSlot(store,Date.now,{manualRecovery,onSkip:reason=>{skipReason=reason;}}),collect,prepare,
+      publicationRecovery:true,
       refreshCampaigns:hostedCampaignRefresh(env,config),
       refreshNews:hostedNewsRefresh(env,config),
       plan:async (candidate,lease)=>{const plan=await pub.plan(candidate,lease);console.log(JSON.stringify({phase:'preflight',...plan}));return plan;},

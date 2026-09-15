@@ -29,6 +29,42 @@ function harness(state = {}) {
   } };
 }
 
+test('publication recovery re-plans same candidate once without collecting again',async()=>{
+ const h=harness();h.args.publicationRecovery=true;
+ let attempts=0,firstCandidate;
+ h.args.publish=async c=>{
+  attempts++;firstCandidate??=c;assert.equal(c,firstCandidate);
+  if(attempts===1)throw Error('PRIVATE');
+  return {verified:true,manifestSha256:'a'.repeat(64)};
+ };
+ assert.equal((await refreshCycle(h.args)).status,'success');
+ assert.equal(attempts,2);
+ assert.equal(h.calls.filter(x=>x==='collect').length,1);
+ assert.equal(h.calls.filter(x=>x==='plan').length,2);
+});
+
+test('publication recovery is bounded and expired candidates cannot retry',async()=>{
+ for(const expire of [false,true]){
+  const h=harness();h.args.publicationRecovery=true;let attempts=0;
+  // Use a mutable clock captured by refreshCycle.
+  let clock=1000;h.args.now=()=>clock;
+  h.args.publish=async()=>{attempts++;if(expire)clock=200000;throw Error('PRIVATE');};
+  assert.equal((await refreshCycle(h.args)).status,'failed');
+  assert.equal(attempts,expire?1:2);
+  assert.equal(h.calls.filter(x=>x==='collect').length,1);
+ }
+});
+
+test('News failure records only a safe phase without erasing Home success',async()=>{
+ for(const phase of ['configuration','collection','publication','PRIVATE']){
+  const h=harness();h.args.refreshNews=async()=>({status:'failed',phase,body:'PRIVATE'});
+  const r=await refreshCycle(h.args);
+  assert.equal(r.status,'success');
+  assert.deepEqual(r.news,{status:'failed',...(phase==='PRIVATE'?{}:{phase})});
+  assert(!JSON.stringify(r).includes('PRIVATE'));
+ }
+});
+
 test('reserves interval before collecting; dry-run precedes fenced publication', async () => {
   const h = harness();
   assert.equal((await refreshCycle(h.args)).status, 'success');

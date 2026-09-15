@@ -50,6 +50,21 @@ test('foreign plan and changed candidate rejected',async()=>{
   await assert.rejects(h.pub.plan(h.candidate));
 });
 
+test('replanning after uncertain own promotion reuses objects without writes',async()=>{
+ const h=await setup();const p=await h.pub.plan(h.candidate);
+ await h.pub.publish(h.candidate,p,h.lease);
+ const recovery=await h.pub.plan(h.candidate);
+ assert.equal(recovery.writeBytes,0);
+ assert.equal((await h.pub.publish(h.candidate,recovery,h.lease)).verified,true);
+});
+
+test('replanning cannot replace a competing manifest',async()=>{
+ const h=await setup();await h.pub.plan(h.candidate);
+ h.data.set(PREFIX+'manifest.json',Buffer.from('competing-head'));
+ await assert.rejects(h.pub.plan(h.candidate));
+ assert.equal(h.writes.length,0);
+});
+
 test('planning and publication share a bounded budget and respect lease reserve', async () => {
   const h = await setup(); let clock = now;
   const pub = publication(h.store, async k => h.data.get(k), () => clock);

@@ -6,6 +6,37 @@ function storage(){const data=new Map();return {data,
  get:async k=>data.get(k)??null,
  put:async(k,bytes,o)=>{assert(o.ifNoneMatch?!data.has(k):o.ifMatch===data.get(k)?.etag);
  const etag=sha(bytes);data.set(k,{bytes,etag});return etag;}};}
+
+test('manual recovery is expired, failed-collection only and once per slot',async()=>{
+ const store=storage();let time=21600001;const now=()=>time;
+ const first=await acquireSlot(store,now);
+ await first.recordFailure({status:'failed',phase:'collection'});
+ assert.equal(await acquireSlot(store,now,{manualRecovery:true}),null);
+ time+=16*60*1000;
+ assert.equal(await acquireSlot(store,now),null);
+ const recovered=await acquireSlot(store,now,{manualRecovery:true});assert(recovered);
+ await assert.rejects(first.writeState({status:'running'}));
+ await recovered.recordFailure({status:'failed',phase:'collection'});
+ time+=16*60*1000;
+ assert.equal(await acquireSlot(store,now,{manualRecovery:true}),null);
+});
+
+test('manual recovery never recollects publication failures, success or crashed running state',async()=>{
+ for(const state of [{status:'failed',phase:'publication'},{status:'success'},{status:'running'}]){
+  const store=storage();let time=21600001;
+  const lease=await acquireSlot(store,()=>time);await lease.writeState(state);
+  time+=16*60*1000;
+  assert.equal(await acquireSlot(store,()=>time,{manualRecovery:true}),null);
+ }
+});
+
+test('concurrent manual recoveries have only one CAS winner',async()=>{
+ const store=storage();let time=21600001;
+ const lease=await acquireSlot(store,()=>time);
+ await lease.recordFailure({status:'failed',phase:'collection'});time+=16*60*1000;
+ const results=await Promise.allSettled([1,2].map(()=>acquireSlot(store,()=>time,{manualRecovery:true})));
+ assert.equal(results.filter(r=>r.status==='fulfilled'&&r.value).length,1);
+});
 test('reservation blocks duplicate login slots even after release',async()=>{
  const store=storage(),now=()=>21600001;
  const lease=await acquireSlot(store,now);assert(lease);
