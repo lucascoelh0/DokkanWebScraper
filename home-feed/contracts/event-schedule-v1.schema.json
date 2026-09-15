@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Home event schedule v1",
+  "description": "Partial, fresh account-observed availability, never a full catalog. Home admits challenge, bonus, limited and z-battles; growth only with active Burst; excludes Story/DB Story/quests/unknown. Burst first, then its own start or eventStartsAt descending, real end ascending, stable id; deduplicate typed targets before max 20. Preview reserves at most one Burst before recent ordinary events when available. Active Burst uses its own independent observed availability bound; base eventStartsAt/eventEndsAt are omitted/null in that case. Old consumers ignore optional additions. Rotation boundaries never imply novelty or urgency.",
+  "type": "object",
+  "required": ["schemaVersion", "observedAt", "validUntil", "catalogSha256", "coverage", "items"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "observedAt": { "$ref": "#/$defs/instant" },
+    "validUntil": { "$ref": "#/$defs/instant" },
+    "catalogSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "coverage": { "const": "partial" },
+    "items": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/event" } }
+  },
+  "$defs": {
+    "instant": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+    "event": {
+      "type": "object",
+      "required": ["id", "target", "availableFrom", "availableUntil", "eventEndsAt", "validUntil"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^(event|z-battle):[1-9][0-9]{0,8}$" },
+        "target": {
+          "type": "object", "required": ["kind", "id"],
+          "properties": {
+            "kind": { "enum": ["event-area", "z-battle"] },
+            "id": { "type": "string", "pattern": "^[1-9][0-9]{0,8}$" }
+          }
+        },
+        "eventStartsAt": {
+          "description": "Optional overall API start_at, at or before availableFrom; not first-ever release, not weekday start, not observation time. Missing/null means unknown; invalid optional values degrade to unknown in Android.",
+          "anyOf": [{ "$ref": "#/$defs/instant" }, { "type": "null" }]
+        },
+        "category": { "enum": ["challenge", "bonus", "limited", "growth", "story", "db-story", "quests", "z-battles", "unknown"] },
+        "burstMode": {
+          "description": "Optional fresh resources/login genkai_battles schedule exactly joined by area_id. Independent from base event dates and weekday rotation. Never inferred from is_new, titles, or modifiers. Highlight only while startsAt <= now < validUntil; validUntil <= endsAt and source expire_at. A base-area destination is not a Burst configuration screen.",
+          "type": "object", "required": ["id", "scheduleId", "startsAt", "endsAt", "validUntil"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^[1-9][0-9]{0,8}$" },
+            "scheduleId": { "type": "string", "pattern": "^[1-9][0-9]{0,8}$" },
+            "startsAt": { "$ref": "#/$defs/instant" },
+            "endsAt": { "$ref": "#/$defs/instant" },
+            "validUntil": { "$ref": "#/$defs/instant" }
+          }
+        },
+        "availableFrom": { "$ref": "#/$defs/instant" },
+        "availableUntil": { "$ref": "#/$defs/instant" },
+        "eventEndsAt": { "anyOf": [{ "$ref": "#/$defs/instant" }, { "type": "null" }] },
+        "validUntil": { "$ref": "#/$defs/instant" },
+        "imageUrl": { "type": "string", "pattern": "^https://assets\\.dkbcompanion\\.com/(staging/)?v2/home/images/[a-f0-9]{64}\\.png$" },
+        "headerImageUrl": { "type": "string", "description": "Legacy optional poster from event_image. Not suitable for horizontal previews; superseded by the shared eventArtwork registry using listbutton_image.", "pattern": "^https://assets\\.dkbcompanion\\.com/(staging/)?v2/home/images/[a-f0-9]{64}\\.png$" }
+      }
+    }
+  }
+}

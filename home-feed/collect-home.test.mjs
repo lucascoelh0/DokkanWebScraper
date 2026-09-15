@@ -56,7 +56,7 @@ test('sequential collection flows into the optional public section',async()=>{
           {headers:{'content-type':'application/json'}});
     }}),
   });
-  assert.deepEqual(order,['summons','catalog','/auth/nonce','/auth/sign_in','/events']);
+  assert.deepEqual(order,['summons','catalog','/auth/nonce','/auth/sign_in','/events','/resources/login']);
   const candidate=await prepareCandidate(result.observation,now,{enableEvents:true,eventCollection:result.eventCollection});
   const payload=JSON.parse(candidate.operations.find(o=>!o.mutable && o.key.endsWith('.json')).bytes);
   assert.equal(payload.eventSchedule.items[0].target.id,'211');

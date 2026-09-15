@@ -8,6 +8,52 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ## Repository Checkpoints
 
+### Shared horizontal event artwork — local, 2026-09-15
+
+- User requested updating changing event art across Home/list/detail and rejected
+  the oversized Light of Hope poster. Correct field is listbutton_image (500x110),
+  not event_image (852x610). Both Light of Hope and updated Frieza horizontal PNGs
+  were verified from live first-party URLs. Prior header-fix notes are superseded.
+- Shared immutable art index/shards now integrate with the existing refresh runner;
+  catalog-bound typed targets, hash-versioned images, bounded fair batches and
+  last-good retention. 303 pipeline tests passed. No commit/push/R2 publication.
+- Details, limits and rollout boundary: `docs/shared-event-artwork.md`.
+- PC crashed mid-work. Saved pipeline survived; Android worker resumed. User now
+  requests Android Studio emulator instead of LDPlayer; Store_Phone34 is running.
+- Android integration completed: 71 focused unit tests, APK build and two native
+  replay tests passed. Primary inspected phone and enlarged-font screenshots;
+  correct horizontal Light of Hope and updated Frieza art. Native replay dates
+  remain historical fixtures, not a published live schedule.
+
+### Home Events recency — local, 2026-09-14
+
+- Header delivery follow-up: fresh authorized GET /events and exact signed CDN
+  download verified Light of Hope's official event_image (852x610, 299427 bytes,
+  SHA-256 e9151ea0a82dc95ad825c6957c1926d1320df86a7122914157f721c72c75d2f7).
+  Additive headerImageUrl now carries verified owned PNGs separately from legacy
+  list imageUrl; Android prefers it and preserves the source aspect ratio.
+  Catalog fallback remains for old feeds. 288 pipeline and 45 Android unit tests
+  passed; APK build passed. No commit, push or R2 publication in this follow-up.
+  Earlier no-live-request notes below describe the previous offline-only pass.
+
+- Revised user direction: exclude Story/DB Story from Home, keep challenge,
+  bonus/limited and Z-Battles. Growth only with explicit active Burst period.
+  Native preview balances one Burst with two recent ordinary events; independent
+  Burst dates ignore base weekday rotation. Exact GET-only genkai resource
+  collection is integrated locally with bounded optional failure handling.
+  Latest checks: 286 pipeline, 43 Android unit, two native replay tests. Still
+  no commit, push, live game request or R2 publication; asset gap remains below.
+
+- User approved recent active previews. Implemented optional overall
+  `eventStartsAt`, selection/deduplication before the 20-item producer cap, three
+  native preview rows and finite-deadline-only Ending soon within 72 hours.
+- Contract and evidence: `docs/home-events-recency.md`; Android companion
+  `docs/features/home-events-recency.md`. 279 pipeline tests, 39 Android unit
+  tests, two native replay tests passed. Old cached feeds remain supported.
+- Uncommitted/unpublished in home-feed-deploy and Android worktree 94f3. No
+  schedule changes, game login or R2 writes. Light of Hope's catalog artwork
+  returns 404; use the safe fallback until an authorized asset rollout.
+
 ### Campaign automation checkpoint — 2026-09-13
 
 - Active pipeline worktree: `D:/Dokkan/DokkanWebScraper-home-feed-deploy`, integrated

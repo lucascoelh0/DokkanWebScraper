@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { interpretEventAvailability } from './event-availability.mjs';
+import { eventCategory, projectBurstPeriods } from './event-highlights.mjs';
 
 const fail = () => { throw new Error('Invalid local event observation'); };
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -28,7 +29,7 @@ export function projectEvents(input) {
   }
 }
 
-function project({ bodyBytes, status, endpoint, observedAt, now, catalogBytes, catalogSha256 }) {
+function project({ bodyBytes, status, endpoint, observedAt, now, catalogBytes, catalogSha256, burstBodyBytes }) {
   if (status !== 200 || endpoint !== '/events') fail();
   const observed = instant(observedAt), current = instant(now);
   if (current < observed || current - observed >= 6 * 3600000) fail();
@@ -54,7 +55,8 @@ function project({ bodyBytes, status, endpoint, observedAt, now, catalogBytes, c
       areas.add(row.areaId); quests.set(row.questId, areas);
     }
   }
-  const candidates = [], seen = new Set();
+  const bursts = burstBodyBytes ? projectBurstPeriods(parse(burstBodyBytes, 4 * 1024 * 1024), observedAt, now) : new Map();
+  const candidates = [], artworkTargets = [], seen = new Set();
   const excluded = { unavailableOrInvalidSchedule: 0, unresolvedTarget: 0, superZBattleDeferred: 0 };
   for (const [kind, rows] of [['event', body.events], ['z-battle', body.z_battle_stages]]) {
     for (const row of rows) {
@@ -71,8 +73,6 @@ function project({ bodyBytes, status, endpoint, observedAt, now, catalogBytes, c
           questIds.add(quest.id);
         }
       }
-      const availability = interpretEventAvailability(row, { kind, observedAt, now });
-      if (!availability) { excluded.unavailableOrInvalidSchedule++; continue; }
       let target;
       if (kind === 'event') {
         const areas = new Set();
@@ -85,7 +85,21 @@ function project({ bodyBytes, status, endpoint, observedAt, now, catalogBytes, c
         if (resolved && areas.size === 1) target = { kind: 'event-area', id: [...areas][0] };
       } else if (zBattles.has(String(row.id))) target = { kind: 'z-battle', id: String(row.id) };
       if (!target) { excluded.unresolvedTarget++; continue; }
-      candidates.push({ id: key, target, availability });
+      // Artwork identity is independent from daily availability and Home relevance.
+      artworkTargets.push({id:key,target});
+      const matching = catalog.entries.filter(entry => target.kind === 'event-area'
+        ? entry.kind === 'quest-level' && entry.areaId === target.id
+        : entry.kind === 'z-battle' && entry.id === target.id);
+      const category = eventCategory(matching, kind);
+      const burstMode = target.kind === 'event-area' ? bursts.get(target.id) : null;
+      // An explicitly active Burst period is independent from the base area's
+      // weekday window. Its source expiry remains a conservative observation bound.
+      const availability = burstMode ? {
+        basis: 'observed-burst-window', availableFrom: burstMode.startsAt,
+        availableUntil: burstMode.validUntil, eventEndsAt: null, validUntil: burstMode.validUntil,
+      } : interpretEventAvailability(row, { kind, observedAt, now });
+      if (!availability) { excluded.unavailableOrInvalidSchedule++; continue; }
+      candidates.push({ id: key, target, availability, category, ...(burstMode ? { burstMode } : {}) });
     }
   }
   // Finite event deadlines first. Rotation/cache expiry must not create urgency.
@@ -95,6 +109,7 @@ function project({ bodyBytes, status, endpoint, observedAt, now, catalogBytes, c
     schemaVersion: 2, mode: 'offline-experiment', publicationAllowed: false,
     authority: 'partial-global-account-observation', timestampSemantics: 'absolute-window-intersection',
     observedAt, validUntil: new Date(observed + 6 * 3600000).toISOString(),
-    observationSha256: digest(bodyBytes), catalogSha256, candidates, excluded,
+    observationSha256: digest(bodyBytes), catalogSha256, candidates, excluded, artworkTargets,
+    ...(burstBodyBytes ? { burstObservationSha256: digest(burstBodyBytes) } : {}),
   };
 }

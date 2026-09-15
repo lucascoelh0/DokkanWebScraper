@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { prepareEventSection } from './prepare-events.mjs';
 import { prepareCollectedNews, collectedBannerEnd } from './collect-news.mjs';
-import { prepareCollectedEventArtwork } from './collect-events.mjs';
+import { prepareCollectedEventArtwork, prepareCollectedSharedArtwork } from './collect-events.mjs';
+import { prepareArtworkIndex } from './event-artwork-index.mjs';
 
 export const PREFIX = 'staging/v2/home/';
 export const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -12,7 +13,9 @@ const object = (key, bytes, contentType, mutable = false) => ({ key, bytes,
   cacheControl: mutable ? 'no-cache' : 'public,max-age=31536000,immutable' });
 
 /** Consumes the complete collector observation, not arbitrary raw API objects. */
-export async function prepareCandidate(observation, now = Date.now(), { enableEvents = false, eventCollection, enableNews = false, newsCollection } = {}) {
+export async function prepareCandidate(observation, now = Date.now(), { enableEvents = false, eventCollection, enableNews = false, newsCollection, previousArtwork } = {}) {
+  // Unreadable published graph is not an empty registry. Keep the previous release.
+  assert(!enableEvents || previousArtwork !== null);
   const { snapshot, receipts, images, featuredResponses } = observation;
   const observed = Date.parse(snapshot.observedAt);
   assert(Number.isSafeInteger(now) && Number.isFinite(observed));
@@ -82,6 +85,7 @@ export async function prepareCandidate(observation, now = Date.now(), { enableEv
   summons.sort((a, b) => Number(b.group === 'main') - Number(a.group === 'main'));
   const content = { schemaVersion: 1, generatedAt,
     validUntil: new Date(validUntil).toISOString(), spotlight: summons.find(s => s.group === 'main') ?? null, summons };
+  if (enableEvents && previousArtwork?.index) content.eventArtwork = previousArtwork.index;
   const eventSchedule = enableEvents === true ? prepareEventSection(eventCollection, now) : null;
   // Optional enrichment cannot push a healthy summons payload over the client cap.
   if (eventSchedule && Buffer.byteLength(JSON.stringify({ ...content, eventSchedule })) <= 65536)
@@ -93,7 +97,7 @@ export async function prepareCandidate(observation, now = Date.now(), { enableEv
   if (eventArt?.length) {
     const enriched = { ...eventSchedule, items: eventSchedule.items.map(item => {
       const image = eventArt.find(image => image.id === item.id);
-      return image ? { ...item, imageUrl: 'https://assets.dkbcompanion.com/' + image.key } : item;
+      return image ? { ...item, [image.header ? 'headerImageUrl' : 'imageUrl']: 'https://assets.dkbcompanion.com/' + image.key } : item;
     }) };
     const uniqueImages = [...new Map(eventArt.map(image => [image.key, image])).values()]
       .filter(image => !operations.some(op => op.key === image.key));
@@ -110,6 +114,29 @@ export async function prepareCandidate(observation, now = Date.now(), { enableEv
     content.news = news.section;
     for (const image of news.images) {
       if (!operations.some(op => op.key === image.key)) operations.push(object(image.key, image.bytes, 'image/png'));
+    }
+  }
+  // Separate shared registry: availability/category never gates catalog/detail artwork.
+  const sharedArt = enableEvents ? prepareCollectedSharedArtwork(eventCollection, now) : null;
+  if (sharedArt && operations.length <= 40) {
+    const items = sharedArt.items;
+    const artOperations = [];
+    let cursor = sharedArt.cursor, lastIncluded = previousArtwork?.index?.cursor;
+    let budget = 15 * 1024 * 1024 - operations.reduce((sum,op) => sum + op.sizeBytes,0) - 8 * 65536;
+    for (const image of sharedArt.images) {
+      const exists = [...operations,...artOperations].some(op => op.key === image.key);
+      if (!exists && (operations.length + artOperations.length >= 60 || image.sizeBytes > budget)) {
+        cursor = lastIncluded;
+        break; // Retry unpublished targets before advancing the durable scan cursor.
+      }
+      if (!exists) { artOperations.push(object(image.key,image.bytes,'image/png')); budget -= image.sizeBytes; }
+      items[image.targetKey] = [image.sha256,image.checkedAt];
+      lastIncluded = image.targetKey;
+    }
+    const prepared = prepareArtworkIndex(sharedArt.catalogSha256,items,now,cursor);
+    if (Buffer.byteLength(JSON.stringify({...content,eventArtwork:prepared.index})) <= 65536) {
+      content.eventArtwork = prepared.index;
+      operations.push(...artOperations,...prepared.operations);
     }
   }
   const payload = Buffer.from(JSON.stringify(content));

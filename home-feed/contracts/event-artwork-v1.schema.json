@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dkb:event-artwork:v1",
+  "description": "Shared horizontal event art, independent of availability/recency. Home payload optional eventArtwork points to up to eight immutable shards under the configured Home base URL. Shard filenames must be distinct; target keys must be distinct across shards and total at most 2000 (cross-document invariants enforced by provider and consumer). Keep last verified art on refresh failure; join only matching expanded catalog SHA. Signed source URLs never leave collector. Shards and PNGs are published before Home manifest. Shared-art releases allow at most 70 objects under the existing 16 MiB write ceiling; legacy Home releases remain at 42.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "catalogSha256", "shards"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "catalogSha256": {"$ref": "#/$defs/hash"},
+    "cursor": {"type": "string", "pattern": "^(event-area|z-battle):[1-9][0-9]{0,8}$", "description": "Last attempted target, used only by producer for bounded fair rotation, including failures. Never event recency."},
+    "shards": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/descriptor"}}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "descriptor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["file", "sha256", "sizeBytes"],
+      "properties": {
+        "file": {"type": "string", "pattern": "^[a-f0-9]{64}\\.json$"},
+        "sha256": {"$ref": "#/$defs/hash"},
+        "sizeBytes": {"type": "integer", "minimum": 1, "maximum": 65536}
+      }
+    },
+    "shard": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "catalogSha256", "items"],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "catalogSha256": {"$ref": "#/$defs/hash"},
+        "items": {
+          "type": "object", "maxProperties": 512,
+          "propertyNames": {"pattern": "^(event-area|z-battle):[1-9][0-9]{0,8}$"},
+          "additionalProperties": {
+            "type": "array", "minItems": 2, "maxItems": 2,
+            "description": "[PNG SHA-256, last successful checkedAt Unix seconds]. PNG must be the observed first-party listbutton_image in eve_listbutton and horizontal (ratio 3..6). URLs derive as images/<sha>.png. CheckedAt is NOT event release time.",
+            "prefixItems": [{"$ref": "#/$defs/hash"}, {"type": "integer", "minimum": 1230768000, "maximum": 4102444799}]
+          }
+        }
+      }
+    }
+  }
+}

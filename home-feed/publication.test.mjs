@@ -49,3 +49,29 @@ test('foreign plan and changed candidate rejected',async()=>{
   h.candidate.operations[0].key='v2/home/manifest.json';
   await assert.rejects(h.pub.plan(h.candidate));
 });
+
+test('planning and publication share a bounded budget and respect lease reserve', async () => {
+  const h = await setup(); let clock = now;
+  const pub = publication(h.store, async k => h.data.get(k), () => clock);
+  await assert.rejects(pub.plan(h.candidate, {deadline:now + 30_000}));
+  const plan = await pub.plan(h.candidate, {deadline:now + 15 * 60_000});
+  clock += 5 * 60_000;
+  await assert.rejects(pub.publish(h.candidate, plan, h.lease));
+  assert.deepEqual(h.writes, []);
+});
+
+test('an empty artwork marker does not authorize unrelated extra operations', async () => {
+  const h = await setup();
+  const body = JSON.parse(h.candidate.operations.at(-2).bytes);
+  body.eventArtwork = {schemaVersion:1,catalogSha256:'a'.repeat(64),shards:[]};
+  const bytes = Buffer.from(JSON.stringify(body)), digest = sha(bytes);
+  const payload = {...h.candidate.operations.at(-2),bytes,sha256:digest,sizeBytes:bytes.length,key:PREFIX+digest+'.json'};
+  const manifestBytes = Buffer.from(JSON.stringify({schemaVersion:1,file:digest+'.json',sha256:digest,sizeBytes:bytes.length}));
+  const manifest = {...h.candidate.operations.at(-1),bytes:manifestBytes,sha256:sha(manifestBytes),sizeBytes:manifestBytes.length};
+  const extra = Array.from({length:41},(_,n)=>{
+    const bytes=Buffer.from('unrelated-'+n),digest=sha(bytes);
+    return {key:PREFIX+'images/'+digest+'.png',bytes,sha256:digest,sizeBytes:bytes.length};
+  });
+  await assert.rejects(h.pub.plan({...h.candidate,operations:[...extra,payload,manifest],manifestSha256:manifest.sha256}));
+  assert.deepEqual(h.writes, []);
+});

@@ -3,10 +3,10 @@ import { collectEvents } from './collect-events.mjs';
 import { collectNews } from './collect-news.mjs';
 
 /** Optional events are collected only after summons succeed, never in parallel login sessions. */
-export async function collectHome({ collectSummons, config, enableEvents = false, enableNews = false, expectedCatalogSha256 },
+export async function collectHome({ collectSummons, config, enableEvents = false, enableNews = false, expectedCatalogSha256, previousArtwork },
   { loadCatalog = loadEventCatalog, collectEventObservation = collectEvents, collectNewsObservation = collectNews } = {}) {
   const observation = await collectSummons();
-  const result = { observation };
+  const result = { observation, ...(previousArtwork === undefined ? {} : {previousArtwork}) };
   if (enableNews === true) {
     try { result.newsCollection = await collectNewsObservation({ config, includePresentation: true, banners: observation.snapshot?.banners ?? [] }); }
     catch { result.newsCollection = { status: 'unavailable' }; }
@@ -15,7 +15,8 @@ export async function collectHome({ collectSummons, config, enableEvents = false
   let eventCollection;
   try {
     const catalog = await loadCatalog({ expectedCatalogSha256 });
-    eventCollection = await collectEventObservation({ config, ...catalog, includePresentation: true });
+    eventCollection = await collectEventObservation({ config, ...catalog, includePresentation: true, includeBurst: true,
+      ...(previousArtwork === undefined ? {} : {previousArtwork}) });
   } catch { eventCollection = { status: 'unavailable' }; }
   return { ...result, eventCollection };
 }

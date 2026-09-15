@@ -6,6 +6,7 @@ const weekly = { start_at: 1664865000, end_at: 2145916800, wday: ['monday', 'sat
 
 test('observed Prodigy Prince rotation has an availability boundary but no event deadline', () => {
   assert.deepEqual(interpret(weekly, options), {
+    eventStartsAt: new Date(weekly.start_at * 1000).toISOString(),
     basis: 'observed-weekday-window', availableFrom: '2026-09-12T06:30:00.000Z',
     availableUntil: '2026-09-13T06:30:00.000Z', eventEndsAt: null,
     validUntil: '2026-09-13T03:38:35.426Z',
@@ -47,4 +48,12 @@ test('arbitrary account fields never survive and inputs are not mutated', () => 
   assert.equal(JSON.stringify(interpret(row, options)).includes('SECRET'), false);
   assert.equal(interpret(null, options), null);
   assert.equal(interpret(weekly), null);
+});
+
+test('daily rotation changes never change overall period start', () => {
+  const first=interpret(weekly,options);
+  const next=interpret({...weekly,wday_start_at:weekly.wday_start_at+86400,wday_end_at:weekly.wday_end_at+86400},
+    {...options,observedAt:'2026-09-13T21:38:35.426Z',now:'2026-09-13T21:38:35.426Z'});
+  assert.equal(first.eventStartsAt,next.eventStartsAt);
+  assert.notEqual(first.availableFrom,next.availableFrom);
 });

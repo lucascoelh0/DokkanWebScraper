@@ -40,6 +40,7 @@ export function interpretEventAvailability(row, { kind, observedAt, now } = {}) 
       || current >= availabilityEnd) return null;
   return {
     basis,
+    eventStartsAt: iso(start),
     availableFrom: iso(availabilityStart),
     availableUntil: iso(availabilityEnd),
     eventEndsAt,

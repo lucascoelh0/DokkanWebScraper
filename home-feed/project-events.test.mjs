@@ -14,7 +14,8 @@ function input(body = { events: [event()], z_battle_stages: [] }, entries = [ent
 }
 test('joins quests to area instead of assuming event ID is area ID', () => {
   const result = projectEvents(input());
-  assert.deepEqual(result.candidates[0], { id: 'event:7', target: { kind: 'event-area', id: '99' }, availability: {
+  assert.deepEqual(result.candidates[0], { id: 'event:7', category: 'unknown', target: { kind: 'event-area', id: '99' }, availability: {
+    eventStartsAt: '2026-09-12T11:59:00.000Z',
     basis: 'overall-period', availableFrom: '2026-09-12T11:59:00.000Z', availableUntil: '2026-09-12T12:01:00.000Z',
     eventEndsAt: '2026-09-12T12:01:00.000Z', validUntil: '2026-09-12T12:01:00.000Z' } });
   assert.equal(result.publicationAllowed, false);

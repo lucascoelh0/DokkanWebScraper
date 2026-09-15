@@ -13,6 +13,7 @@ import { refreshCycle } from './refresh-cycle.mjs';
 import { collectHome } from './collect-home.mjs';
 import { hostedCampaignRefresh } from './hosted-campaign-refresh.mjs';
 import { hostedNewsRefresh } from './hosted-news-refresh.mjs';
+import { loadPreviousEventArtwork } from './event-artwork-index.mjs';
 
 // Only fixed operation labels and HTTP status codes may leave the runner.
 export function summarizeResponses(responses) {
@@ -62,10 +63,11 @@ export async function run(args=process.argv.slice(2),env=process.env) {
     };
     const enableEvents=env.HOME_FEED_EVENTS_ENABLED==='true';
     const enableNews=env.HOME_FEED_NEWS_ENABLED==='true';
-    const collect=()=>collectHome({collectSummons:collectBanners,config,enableEvents,enableNews,
-      expectedCatalogSha256:env.HOME_FEED_EVENTS_CATALOG_SHA256});
-    const prepare=async({observation,eventCollection,newsCollection})=>{
-      const candidate=await prepareCandidate(observation,Date.now(),{enableEvents,eventCollection,enableNews,newsCollection});
+    const collect=async()=>collectHome({collectSummons:collectBanners,config,enableEvents,enableNews,
+      expectedCatalogSha256:env.HOME_FEED_EVENTS_CATALOG_SHA256,
+      ...(enableEvents ? {previousArtwork:await loadPreviousEventArtwork(env.HOME_FEED_EVENTS_CATALOG_SHA256)} : {})});
+    const prepare=async({observation,eventCollection,newsCollection,previousArtwork})=>{
+      const candidate=await prepareCandidate(observation,Date.now(),{enableEvents,eventCollection,enableNews,newsCollection,previousArtwork});
       console.log(JSON.stringify({phase:'candidate_prepared',...candidate.summary}));
       return candidate;
     };
@@ -90,7 +92,7 @@ export async function run(args=process.argv.slice(2),env=process.env) {
     const result=await refreshCycle({acquireLease:()=>acquireSlot(store),collect,prepare,
       refreshCampaigns:hostedCampaignRefresh(env,config),
       refreshNews:hostedNewsRefresh(env,config),
-      plan:async candidate=>{const plan=await pub.plan(candidate);console.log(JSON.stringify({phase:'preflight',...plan}));return plan;},
+      plan:async (candidate,lease)=>{const plan=await pub.plan(candidate,lease);console.log(JSON.stringify({phase:'preflight',...plan}));return plan;},
       publish:pub.publish});
     return {...result,...(result.status==='failed'?{responses:summarizeResponses(responses)}:{}),
       durationMs:Date.now()-start};

@@ -133,6 +133,7 @@ test('collect-only logs prepared counts without claiming publication or leaking 
   t.mock.method(console,'log',line=>logs.push(JSON.parse(line)));
   t.mock.method(globalThis,'fetch',async url=>{
     const target=new URL(url);
+    if(target.pathname==='/staging/v2/home/manifest.json')return new Response('',{status:404});
     if(target.hostname==='assets.dkbcompanion.com')throw Error('PRIVATE catalog response');
     const body=target.pathname==='/auth/nonce'?{auth_transaction_id:'PRIVATE nonce'}
       :target.pathname==='/auth/sign_in'?{access_token:'PRIVATE-token',token_type:'bearer'}

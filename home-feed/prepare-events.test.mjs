@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { prepareEventSection } from './prepare-events.mjs';
+import { readFileSync } from 'node:fs';
+import Ajv from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
+const ajv = new Ajv();
+addFormats(ajv);
+const validContract = ajv.compile(JSON.parse(readFileSync(new URL('./contracts/event-schedule-v1.schema.json', import.meta.url))));
 const at = Date.parse('2026-09-12T12:00:00.000Z');
 const date = ms => new Date(ms).toISOString();
 function fixture() {
@@ -16,6 +22,7 @@ function fixture() {
 test('bounded public projection drops internal and arbitrary fields', () => {
   const c = fixture(); c.projection.candidates[0].token = 'PRIVATE';
   const out = prepareEventSection(c, at);
+  assert.equal(validContract(out),true,JSON.stringify(validContract.errors));
   assert.equal(out.items[0].target.id, '99');
   assert.equal(out.coverage, 'partial');
   assert.equal(JSON.stringify(out).includes('PRIVATE'), false);
@@ -39,8 +46,37 @@ test('mismatched receipt and invalid structure omit optional section', () => {
 });
 test('validates every row before truncating to twenty', () => {
   const c = fixture(); const row = c.projection.candidates[0];
-  c.projection.candidates = Array.from({length:30},(_,i)=>({...row,id:`event:${i+1}`}));
+  c.projection.candidates = Array.from({length:30},(_,i)=>({...row,id:`event:${i+1}`,target:{kind:'event-area',id:String(i+1)}}));
   assert.equal(prepareEventSection(c, at).items.length,20);
   c.projection.candidates[29].target = {kind:'event-area',id:'bad'};
   assert.equal(prepareEventSection(c, at),null);
+});
+
+test('selects newest overall periods before cap, not the daily rotation or nearest deadline', () => {
+  const c = fixture(), base = c.projection.candidates[0];
+  c.projection.candidates = Array.from({length:30}, (_, i) => ({
+    ...base, id:`event:${i+1}`, target:{kind:'event-area',id:String(i+1)},
+    availability:{...base.availability, eventStartsAt:date(at - (30-i)*86400000)},
+  }));
+  const out = prepareEventSection(c,at);
+  assert.equal(validContract(out),true,JSON.stringify(validContract.errors));
+  assert.equal(out.items.length,20);
+  assert.equal(out.items[0].id,'event:30');
+  assert.equal(out.items[19].id,'event:11');
+  assert.equal(out.items[0].availableFrom,base.availability.availableFrom);
+});
+
+test('deduplicates typed destinations after ordering and retains legacy unknown starts', () => {
+  const c = fixture(), base = c.projection.candidates[0];
+  c.projection.candidates.push({...base,id:'event:2',availability:{...base.availability,eventStartsAt:date(at-86400000)}});
+  const out=prepareEventSection(c,at);
+  assert.deepEqual(out.items.map(i=>i.id),['event:2']);
+  assert.equal('eventStartsAt' in prepareEventSection(fixture(),at).items[0],false);
+});
+
+test('rejects malformed or later than availability overall starts', () => {
+  for (const start of ['bad',date(at),42]) {
+    const c=fixture(); c.projection.candidates[0].availability.eventStartsAt=start;
+    assert.equal(prepareEventSection(c,at),null);
+  }
 });

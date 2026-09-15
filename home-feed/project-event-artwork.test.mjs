@@ -20,6 +20,28 @@ test('separates event and Z-Battle namespaces even for equal IDs', () => {
   assert.deepEqual(projectEventArtwork(input).map(x => x.id), ['event:403', 'z-battle:403']);
 });
 
+test('illustrated event_image wins without guessing or relabeling a list banner', () => {
+  const input = payload();
+  input.events[0].event_image = url.replace('/eve_banner/', '/eve_header/') + '?Signature=private';
+  const [ref] = projectEventArtwork(input);
+  assert.equal(ref.sourceField, 'event_image');
+  assert.match(ref.imagePath, /\/eve_header\//);
+  assert(!JSON.stringify(ref).includes('private'));
+  input.events[0].event_image = url;
+  assert.equal(projectEventArtwork(input)[0].sourceField, undefined);
+  input.events[0].event_image = 'https://evil.test/header.png';
+  assert.equal(projectEventArtwork(input)[0].sourceField, undefined);
+});
+
+test('horizontal illustrated listbutton wins over poster and plain banner', () => {
+  const input=payload();
+  input.events[0].event_image=url.replace('/eve_banner/','/eve_header/');
+  input.events[0].listbutton_image=url.replace('/eve_banner/','/eve_listbutton/');
+  const [ref]=projectEventArtwork(input);
+  assert.equal(ref.sourceField,'listbutton_image');
+  assert.match(ref.imagePath,/\/eve_listbutton\//);
+});
+
 test('missing and invalid optional art degrade without URL guessing', () => {
   for (const value of [null, '', 12, 'http://example.test/a.png', url.replace('cf.ishin-global', 'evil'),
     url.replace('/eve_banner/', '/eve_header/'), url + '#fragment', url.replace('https://', 'https://user@'),

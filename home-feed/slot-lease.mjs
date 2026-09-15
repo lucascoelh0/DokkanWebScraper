@@ -27,7 +27,7 @@ export async function acquireSlot(store, now=Date.now) {
     const bytes=Buffer.from(JSON.stringify(state));assert(bytes.length<=4096);
     etag=await store.put(key,bytes,{ifMatch:etag,contentType:'application/json',cacheControl:'no-store'});
   }
-  return {assertOwned,readState:async()=>state,writeState,
+  return {deadline,assertOwned,readState:async()=>state,writeState,
     recordFailure:async failure=>writeState({...state,...failure}),
     release:async()=>{ /* Durable reservation remains until slot ends; no deletion. */ }};
 }

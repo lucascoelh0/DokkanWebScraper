@@ -31,7 +31,7 @@ export async function refreshCycle({ acquireLease, collect, prepare, plan, publi
     const candidate = await prepare(observation);
     assert(Number.isSafeInteger(candidate.validUntil) && candidate.validUntil > now());
     phase = 'preflight';
-    const proposal = await plan(candidate);
+    const proposal = await plan(candidate, lease);
     assert(proposal.conflicts === 0 && proposal.target === 'staging/v2/home/');
     for (const field of ['writeBytes', 'newBytes', 'bucketBytes'])
       assert(Number.isSafeInteger(proposal[field]) && proposal[field] >= 0);
@@ -47,6 +47,11 @@ export async function refreshCycle({ acquireLease, collect, prepare, plan, publi
     // Adapter must bind proposal to candidate digest and expected previous manifest.
     const receipt = await publish(candidate, proposal, lease);
     assert(receipt?.verified === true && /^[a-f0-9]{64}$/.test(receipt.manifestSha256));
+    // Preserve verified Home completion before optional campaigns/news can consume
+    // the remaining lease. Their later failure must not erase this durable receipt.
+    await lease.writeState({ lastAttemptAt: startedAt, lastSuccessAt: now(),
+      nextAttemptAt: startedAt + REFRESH_INTERVAL_MS, status: 'success',
+      validUntil: candidate.validUntil, manifestSha256: receipt.manifestSha256 });
     // An optional campaign step shares this slot, after successful Home publication.
     // Its failure does not relabel the already verified Home feed as unpublished.
     let campaigns;

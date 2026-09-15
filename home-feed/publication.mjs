@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { PREFIX, sha } from './prepare-candidate.mjs';
+import { validateArtworkItems } from './event-artwork-index.mjs';
 const MANIFEST = PREFIX + 'manifest.json';
 
 function validate(candidate, now) {
   assert(candidate.validUntil > now);
-  assert(candidate.operations.length >= 2 && candidate.operations.length <= 42);
+  assert(candidate.operations.length >= 2 && candidate.operations.length <= 70);
   assert(new Set(candidate.operations.map(o => o.key)).size === candidate.operations.length);
   assert(candidate.operations.at(-1).key === MANIFEST);
   for (const o of candidate.operations) {
@@ -19,6 +20,35 @@ function validate(candidate, now) {
   assert(manifest.file === payload.sha256 + '.json' && manifest.sha256 === payload.sha256);
   assert(manifest.sizeBytes === payload.sizeBytes && payload.key === PREFIX + manifest.file);
   const body = JSON.parse(payload.bytes);
+  // Shared-art releases allow 20 additional PNGs and up to eight index shards;
+  // the legacy ceiling and universal 16 MiB write/storage guards remain intact.
+  if (candidate.operations.length > 42) {
+    const index = body.eventArtwork;
+    assert(index?.schemaVersion === 1 && /^[a-f0-9]{64}$/.test(index.catalogSha256));
+    assert(Array.isArray(index.shards) && index.shards.length <= 8);
+    const artKeys = new Set(), imageKeys = new Set(), targetKeys = new Set();
+    for (const ref of index.shards) {
+      assert(ref.file === ref.sha256 + '.json' && /^[a-f0-9]{64}$/.test(ref.sha256));
+      const key = PREFIX + ref.file;
+      assert(!artKeys.has(key));
+      const op = candidate.operations.slice(0, -2).find(o => o.key === key);
+      assert(op && op.sizeBytes === ref.sizeBytes);
+      const shard = JSON.parse(op.bytes);
+      assert(shard.schemaVersion === 1 && shard.catalogSha256 === index.catalogSha256);
+      const items = validateArtworkItems(shard.items, now);
+      assert(Object.keys(items).length <= 512);
+      for (const [target, [image]] of Object.entries(items)) {
+        assert(!targetKeys.has(target)); targetKeys.add(target);
+        imageKeys.add(PREFIX + 'images/' + image + '.png');
+      }
+      artKeys.add(key);
+    }
+    assert(targetKeys.size <= 2000);
+    const artImages = candidate.operations.filter(o => imageKeys.has(o.key));
+    assert(artImages.length <= 20);
+    for (const o of artImages) artKeys.add(o.key);
+    assert(candidate.operations.filter(o => !artKeys.has(o.key)).length <= 42);
+  }
   assert(Date.parse(body.validUntil) === candidate.validUntil && Date.parse(body.generatedAt) <= now);
 }
 
@@ -28,12 +58,17 @@ function validate(candidate, now) {
 export function publication(store, publicRead, now = Date.now) {
   const plans = new WeakMap();
   return {
-    async plan(candidate) {
+    async plan(candidate, lease) {
       validate(candidate, now());
+      // One five-minute budget spans preflight and publication, with a full
+      // network-operation reserve before the durable ownership deadline.
+      const deadline = Math.min(now() + 5 * 60_000, (lease?.deadline ?? Infinity) - 120_000);
+      assert(now() < deadline, 'publication_budget_exhausted');
       const bucketBytes = await store.inventoryBytes();
       let newBytes = 0, writeBytes = 0;
       const operations = [];
       for (const o of candidate.operations) {
+        assert(now() < deadline, 'publication_budget_exhausted');
         const existing = await store.get(o.key);
         const mutable = o.key === MANIFEST;
         if (existing && !mutable) assert(existing.bytes.equals(o.bytes), 'immutable_collision');
@@ -44,7 +79,7 @@ export function publication(store, publicRead, now = Date.now) {
       }
       assert(writeBytes <= 16 * 1024 * 1024 && bucketBytes + newBytes < 8_000_000_000);
       const result = Object.freeze({ target: PREFIX, conflicts: 0, bucketBytes, newBytes, writeBytes });
-      plans.set(result, { operations, manifestSha256: candidate.manifestSha256 });
+      plans.set(result, { operations, manifestSha256: candidate.manifestSha256, deadline });
       return result;
     },
     async publish(candidate, plan, lease) {
@@ -53,6 +88,7 @@ export function publication(store, publicRead, now = Date.now) {
       assert(bound && bound.manifestSha256 === candidate.manifestSha256);
       plans.delete(plan); // A failed/uncertain operation must not be blindly retried.
       for (const o of bound.operations) {
+        assert(now() < bound.deadline, 'publication_budget_exhausted');
         await lease.assertOwned();
         assert(candidate.validUntil > now());
         if (o.write) await store.put(o.key, o.bytes, { ...o.condition,
