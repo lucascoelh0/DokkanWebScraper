@@ -164,3 +164,23 @@ test('collect-only logs prepared counts without claiming publication or leaking 
     assert.equal('eventsStatus' in payload,false);
   } finally { await rm(root,{recursive:true,force:true}); }
 });
+test('reserved hourly tick checks public freshness without inventory, writes or game login',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'home-reserved-health-'));
+ const clock=1789257600000; t.mock.method(Date,'now',()=>clock);
+ const payload=Buffer.from(JSON.stringify({generatedAt:new Date(clock-1000).toISOString(),validUntil:new Date(clock-1).toISOString()}));
+ const digest=(await import('node:crypto')).createHash('sha256').update(payload).digest('hex');
+ let checks=0;
+ t.mock.method(globalThis,'fetch',async(url,options={})=>{
+  const target=new URL(url);
+  assert.notEqual(options.method,'PUT');assert.notEqual(target.pathname,'/inventory');
+  if(target.hostname==='test.test.workers.dev')return new Response('{}',{headers:{etag:'"reserved"'}});
+  assert.equal(target.hostname,'assets.dkbcompanion.com');checks++;
+  return target.pathname.endsWith('/manifest.json')?Response.json({schemaVersion:1,file:digest+'.json',sha256:digest,sizeBytes:payload.length}):new Response(payload);
+ });
+ try {
+  const result=await run(['--publish-staging',join(root,'candidate')],{
+   HOME_GAME_AUTH_JSON:'{}',HOME_FEED_ENABLE_PUBLICATION:'true',HOME_GATEWAY_URL:'https://test.test.workers.dev',HOME_GATEWAY_TOKEN:'a'.repeat(64),
+  });
+  assert.equal(result.skipReason,'slot_reserved');assert.equal(result.health.fresh,false);assert.equal(checks,2);
+ }finally{await rm(root,{recursive:true,force:true});}
+});

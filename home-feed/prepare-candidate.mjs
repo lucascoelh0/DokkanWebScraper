@@ -35,7 +35,9 @@ export async function prepareCandidate(observation, now = Date.now(), { enableEv
     assert(!/[\u0000-\u001f\u007f-\u009f]/.test(b.name));
     assert(Number.isSafeInteger(b.open_at) && Number.isSafeInteger(b.end_at));
     assert(b.open_at >= 0 && b.end_at > b.open_at);
-    if (b.open_at * 1000 > now || b.end_at * 1000 <= now) continue;
+    const bannerEndsAt = enableNews === true ? collectedBannerEnd(newsCollection, b, now) : null;
+    const availabilityEnd = bannerEndsAt ? Date.parse(bannerEndsAt) : b.end_at * 1000;
+    if (b.open_at * 1000 > now || availabilityEnd <= now) continue;
     assert(b.imageHost === 'cf.ishin-global.aktsk.com');
     assert(/^\/banners\/en\/gashasocool\/[A-Za-z0-9_-]+\.png$/.test(b.imagePath));
     const receipt = receipts.find(r => r.bannerId === b.id);
@@ -63,20 +65,22 @@ export async function prepareCandidate(observation, now = Date.now(), { enableEv
     assert(Array.isArray(rows) && rows.length <= 100);
     assert(rows.every(r => Number.isSafeInteger(r.card_id) && r.card_id > 0 && r.card_id <= 999999999));
     assert(new Set(rows.map(r => r.card_id)).size === rows.length);
-    const bannerEndsAt = enableNews === true ? collectedBannerEnd(newsCollection, b, now) : null;
+    const description = b.discount && Date.parse(b.discount.endsAt) <= now
+      ? b.description?.replace(/400 hours only!\s*Perform 3 Multi-Summons and get one FREE!\s*/giu, '').trim()
+      : b.description;
     summons.push({ id: `gasha-${b.id}`, title: b.name, action: 'catalog',
       ...(bannerEndsAt ? { bannerEndsAt } : {}),
       imageUrl: 'https://assets.dkbcompanion.com/' + key,
       ...(b.discount?.kind === 'three-plus-one' &&
         b.discount.endsAt === new Date(b.end_at * 1000).toISOString() &&
-        b.end_at - b.open_at + 1 === 400 * 3600
+        b.end_at - b.open_at + 1 === 400 * 3600 && b.end_at * 1000 > now
         ? { discount: { kind: 'three-plus-one', endsAt: b.discount.endsAt } } : {}),
-      ...(typeof b.description === 'string' && b.description.length <= 1000 &&
-        !/[<>\u0000-\u001f\u007f]/u.test(b.description) ? { description: b.description } : {}),
+      ...(typeof description === 'string' && description.length <= 1000 &&
+        !/[<>\u0000-\u001f\u007f]/u.test(description) ? { description } : {}),
       ...(Array.isArray(b.rewards) && b.rewards.length <= 30 && b.rewards.every(r =>
         r.itemType === 'TreasureItem' && [r.courseNo, r.itemId, r.quantity].every(n => Number.isSafeInteger(n) && n > 0 && n <= 999999999))
         ? { rewards: b.rewards.map(r => ({ courseNo: r.courseNo, itemType: r.itemType, itemId: r.itemId, quantity: r.quantity })) } : {}),
-      startsAt: new Date(b.open_at * 1000).toISOString(), endsAt: new Date(Math.min(validUntil, b.end_at * 1000)).toISOString(),
+      startsAt: new Date(b.open_at * 1000).toISOString(), endsAt: new Date(Math.min(validUntil, availabilityEnd)).toISOString(),
       group: b.gasha_category_id === 1 ? 'main' : 'more',
       featuredCardIds: rows.map(r => String(r.card_id)),
       category: ({ 1: 'featured', 2: 'dragon_stones', 3: 'tickets', 4: 'friend' })[b.gasha_category_id] ?? 'other' });

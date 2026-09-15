@@ -4,6 +4,24 @@ import test from "node:test";
 
 import { collectSummons } from "./collect-summons.mjs";
 
+test('reported expired discount phase remains a candidate for verified overall period resolution',async()=>{
+ const end=NOW_SECONDS-1;
+ const row=banner({gasha_category_id:1,type:'Gasha::StoneGasha',timer_layout_type:2,
+   open_at:end-400*3600+1,end_at:end,description:'400 hours only! Perform 3 Multi-Summons and get one FREE! New SSR arrives!'});
+ const result=await collectSummons(adapters([row]));
+ assert.equal(result.snapshot.banners.length,1);
+ assert.equal(result.snapshot.banners[0].discount.endsAt,new Date(end*1000).toISOString());
+});
+
+test('forty live banners are not displaced or rejected by an expired promotion',async()=>{
+ const live=Array.from({length:40},(_,i)=>banner({id:i+1}));
+ const expired=banner({id:999,gasha_category_id:1,type:'Gasha::StoneGasha',timer_layout_type:2,
+   open_at:NOW_SECONDS-400*3600,end_at:NOW_SECONDS-1,description:'400 hours only! Perform 3 Multi-Summons and get one FREE!'});
+ const result=await collectSummons(adapters([expired,...live]));
+ assert.equal(result.snapshot.banners.length,40);
+ assert.deepEqual(result.snapshot.banners.map(b=>b.id),live.map(b=>b.id));
+});
+
 const NOW = new Date("2026-09-12T12:00:00.000Z");
 const NOW_SECONDS = NOW.getTime() / 1_000;
 

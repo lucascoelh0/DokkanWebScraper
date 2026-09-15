@@ -25,7 +25,7 @@ test('hosted refresh preserves isolated credentials, main gate and single-flight
   assert.match(workflow, /persist-credentials: false/);
   assert.match(workflow, /github\.ref == 'refs\/heads\/main'/);
   assert.match(workflow, /group: staging-home-feed-refresh\s+cancel-in-progress: false/);
-  assert.match(workflow, /cron: '23 \*\/6 \* \* \*'/);
+  assert.match(workflow, /cron: '23 \* \* \* \*'/);
   const tests = workflow.slice(workflow.indexOf('      - name: Test without credentials'), workflow.indexOf('      - name: Check campaign gateway'));
   assert.ok(tests.includes('npm test'));
   assert.equal(tests.includes('secrets.'), false);

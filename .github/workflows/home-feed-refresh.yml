@@ -16,7 +16,9 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '23 */6 * * *'
+    # Hourly wakeups; durable six-hour slots still bound actual game logins.
+    # A delayed/near-boundary wakeup no longer costs an entire next six-hour window.
+    - cron: '23 * * * *'
 
 permissions:
   contents: read

@@ -4,7 +4,33 @@ import sharp from 'sharp';
 import { collectSummons } from './collect-summons.mjs';
 import { prepareCandidate, sha } from './prepare-candidate.mjs';
 import { collectEvents } from './collect-events.mjs';
+import { collectNews } from './collect-news.mjs';
 const now = Date.parse('2026-09-12T12:00:00Z');
+
+test('expired promotion keeps verified overall banner availability and removes discount claim',async()=>{
+ const tick=Date.parse('2026-09-30T12:00:00Z');
+ const source={id:12472,information_announcement_id:107229,gasha_category_id:1,open_at:1789273800,end_at:1790713799,
+   type:'Gasha::StoneGasha',timer_layout_type:2,name:'Banner',description:'400 hours only! Perform 3 Multi-Summons and get one FREE! New SSR arrives!',
+   banner_url:'https://cf.ishin-global.aktsk.com/banners/en/gashasocool/a.png?signature=private'};
+ const png=await sharp({create:{width:2,height:2,channels:4,background:'#000000'}}).png().toBuffer();
+ const observation=await collectSummons({now:()=>new Date(tick),fetchImage:async()=>png,
+   requestApi:async path=>({status:200,body:path==='/gashas'?{gashas:[source]}:{gasha_items:[{card_id:123}]}})});
+ const news=await collectNews({config:{nonceHeaders:{authorization:'Basic test'},loginHeaders:{authorization:'Basic test'},loginBody:{account_id:'private'},apiHeaders:{}},includePresentation:true,banners:observation.snapshot.banners},
+  {now:()=>tick,fetchImpl:async url=>{
+   const path=new URL(url).pathname;
+   const value=path==='/auth/nonce'?{auth_transaction_id:'private'}:path==='/auth/sign_in'?{access_token:'private',token_type:'bearer'}:
+    path==='/announcements'?{announcements:[{id:107229,category:0,title:'Summons',summary:'',start_at:1789273800,banner:null}]}:
+    {announcement:{id:107229,bodies:[{description:'= Event Period =\n- Dokkan Festival x Legendary Summon Carnival{color}\n{duration:1789273800,1792483140,DT,U}\n= Notes ='}]}};
+   return Response.json(value);
+  }});
+ const candidate=await prepareCandidate(observation,tick,{enableNews:true,newsCollection:news});
+ const banner=JSON.parse(candidate.operations.at(-2).bytes).summons[0];
+ assert.equal(banner.bannerEndsAt,'2026-10-20T07:59:00.000Z');
+ assert(Date.parse(banner.endsAt)>tick);assert.equal(banner.discount,undefined);
+ assert.equal(banner.description,'New SSR arrives!');
+ const unverified=await prepareCandidate(observation,tick);
+ assert.equal(JSON.parse(unverified.operations.at(-2).bytes).summons.length,0);
+});
 async function observation(category = 1) {
   const png = await sharp({ create: { width: 2, height: 2, channels: 4, background: '#000000' } }).png().toBuffer();
   return collectSummons({ now: () => new Date(now), fetchImage: async () => png,

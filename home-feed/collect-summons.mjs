@@ -231,6 +231,11 @@ async function collect({ requestApi, fetchImage, now }) {
   if (active.length > MAX_ACTIVE_BANNERS) {
     invalid();
   }
+  // A reported expired promotion is optional evidence, never a reason to starve
+  // truly live rows or expand the existing image/featured-card request budget.
+  active.push(...projected.filter(banner => banner.public.open_at <= epochSeconds &&
+    epochSeconds >= banner.public.end_at && banner.public.discount?.kind === 'three-plus-one')
+    .slice(0, MAX_ACTIVE_BANNERS - active.length));
 
   const receipts = [];
   const images = new Map();
