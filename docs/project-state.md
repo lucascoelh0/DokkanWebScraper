@@ -8,6 +8,42 @@ decisions live in [`adr/`](adr/), and current workflow instructions live in
 
 ## Repository Checkpoints
 
+### Home refresh resilience — released code; live refresh failed, 2026-09-15
+
+- User reported blank News/Events/Campaigns and missing Frieza/Goku after the
+  discount deadline. Public data confirms freshness expired around06:33UTC;
+  bannerEndsAt remains20October while legacy endsAt equals the discount cutoff.
+- Read-only GitHub audit: latest scheduled jobs returned already_running and
+  green success. Run34965719065 began11:53UTC, inside the final20min slot guard.
+- Local provider fixes: hourly wakeups with unchanged six-hour no-reclaim slots;
+  cheap skip checks, explicit skip reason, bounded public metadata/freshness
+  health and nonzero stale exit. Discount candidates use fresh verified overall
+  deadline, cannot displace40 truly live banners, and lose expired promo copy.
+- 312 pipeline tests passed. Android bounded last-known retention and stale
+  notices/navigation compile, with focused and related unit suites green.
+  Policy: `docs/home-freshness-policy.md`. LDPlayer verified four main banners,
+  retained News/Events, Campaign list and navigable campaign detail with warning.
+- Network/invalid-payload failures retain the previous verified feed. A newly
+  verified feed explicitly omitting optional sections is not merged with older
+  sections: omission cannot safely be distinguished from publisher removal.
+- User approved release. Android `bf6824ae` and `b010589e` pushed to
+  `codex/character-detail-enrichment`; the latter covers section TTLs expiring
+  before the outer feed. Focused regression/build passed, APK installed in
+  LDPlayer without clearing data. Unrelated working-tree changes preserved.
+- Pipeline `0218d34` pushed to its branch and main. GitHub read-only verification
+  confirms workflow active and all publication/Home/Events/News/Campaign gates on.
+- Approved manual refresh: bucket preflight 1,688,915,584 bytes; <=4096 control
+  write approved/reported. Slot82846 was reserved, then collection failed before
+  content publication. No fresh data or manifest was promoted. Safe local auth
+  configuration validation passes with network disabled; exact live collection
+  failure cause is not captured by this manual wrapper. Do not infer token expiry.
+  Receipt: `.agent-logs/freshness-publication-receipt.json` (ignored).
+- Public health remains stale for Events, News, Campaigns and News library.
+  Do not reclaim/retry the reserved slot. Next slot opens18:00UTC (15:00BRT),
+  with scheduled hourly opportunity15:23BRT subject to GitHub delay.
+  Follow-up must inspect the hosted result before declaring fresh publication.
+- Do NOT hibernate; the user explicitly cancelled that request.
+
 ### Shared horizontal event artwork — staging verified, 2026-09-15
 
 - User approved release and subsequent PC hibernation. Android `33b2f9a1` pushed;
