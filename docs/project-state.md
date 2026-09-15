@@ -3833,3 +3833,18 @@ Consumer report: docs/features/super-attack-farming-execution.md in the Android
 worktree C:/Users/Lucas/.codex/worktrees/94f3/Dokkanpanion.
 Treasure Exchange materials were requested for the future and recorded in the
 Android character-progression backlog; they are not implemented in this slice.
+
+## Full News library published — 2026-09-14 Brasília
+
+News directory now reads a separate public staging library instead of Home's
+six-item preview. Native articles preserve image/text order, source colors and
+readable emphasis. Android `433311d2` is pushed to its existing feature branch;
+pipeline `bfeb96d` / `3d5d0f1` reached main. The isolated News gateway is deployed
+and the existing six-hour Home workflow now includes News, sharing its lease.
+Hosted publication run `34913626813` succeeded: 91 articles and 189 unique PNGs,
+21,885,097 bytes added, bucket about 1.688 GB. No production writes or deletions.
+Public manifest SHA `8b1b244829f3b42ccc6a65e9daa199c5cfd93d21eb30430451dc237c55ff8066`;
+observation `2026-09-15T00:35:50.065Z`, six-hour freshness. All public bytes and
+the real Android repository loading path verified; details in
+`docs/news-library-delivery.md`. Decoder remains on hold. Future cron execution
+is configured but not claimed observed; the hosted manual path is proven.

@@ -65,3 +65,35 @@ Android consumes the separate index, pins immutable article descriptors across
 restoration, validates and caches image bytes, and uses cancellable bounded HTTP.
 Unknown layouts and game-specific embedded character widgets remain explicit
 unavailable content; this renderer does not claim full game-widget parity.
+
+## Published and verified — 2026-09-15 UTC / 2026-09-14 Brasília
+
+Authorized rollout is complete on pipeline main (`bfeb96d`, `3d5d0f1`) and the
+Android feature branch (`433311d2`). Gateway version
+`ae708963-89b2-478f-af53-8f3f0025fcc1` is deployed with the isolated News secret.
+The read-only hosted check succeeded with zero game requests/writes. The existing
+six-hour workflow is enabled for News; manual execution of that same hosted path
+completed successfully: GitHub Actions run `34913626813`. This proves the hosted
+path, not a later cron tick; no parallel scheduler or slot bypass was introduced.
+
+Actual observation `2026-09-15T00:35:50.065Z`, valid through
+`2026-09-15T06:35:50.065Z`: 91 announcements / 91 articles. The collector saw
+195 source image references, deduplicated to 189 content-addressed PNGs.
+282 objects total; 21,885,097 bytes written. Before publication, the plan reported
+bucket 1,666,007,704 bytes and projected 1,687,892,801 bytes, under 8 GB.
+Home and Campaigns also published successfully in the same slot. No production
+namespace changed and no objects were deleted.
+
+Manifest SHA-256:
+`8b1b244829f3b42ccc6a65e9daa199c5cfd93d21eb30430451dc237c55ff8066`.
+Index SHA-256:
+`4e467ce06a1e353dac0c6d7444634918b6f38189130d0a60428578dc36bcf55a`.
+Independent public downloads verified all 91 articles, all 189 PNG sizes/hashes/
+dimensions and an unchanged manifest. The real Android repository integration
+test passed on emulator-5554 with the published index and both Daily Capsule /
+100-hour article illustrations, without fixture seeding or app-data clearing.
+
+Checks: 275 pipeline tests, 19 gateway tests, gateway typecheck/deploy dry-run,
+32 focused Android unit tests and the prior three native fixture renders. One
+additional opt-in live Android test confirms publication delivery. The real
+release did not repeat a login within an occupied reservation.
