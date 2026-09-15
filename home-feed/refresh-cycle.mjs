@@ -9,7 +9,7 @@ const STORAGE_CEILING = 8_000_000_000;
  * plan is read-only; publish must verify objects and conditionally promote last.
  * No scheduler or credentials are configured by importing this module.
  */
-export async function refreshCycle({ acquireLease, collect, prepare, plan, publish, refreshCampaigns, now = Date.now }) {
+export async function refreshCycle({ acquireLease, collect, prepare, plan, publish, refreshCampaigns, refreshNews, now = Date.now }) {
   const lease = await acquireLease();
   if (!lease) return { status: 'already_running' };
   let phase = 'state';
@@ -64,12 +64,23 @@ export async function refreshCycle({ acquireLease, collect, prepare, plan, publi
             ? { phase: result.phase } : {}) };
       } catch { campaigns = { status: 'failed' }; }
     }
+    let news;
+    if (refreshNews !== undefined) {
+      phase = 'news';
+      await lease.assertOwned();
+      try {
+        const result = await refreshNews({ lease });
+        news = result?.status === 'published' && /^[a-f0-9]{64}$/.test(result.manifestSha256)
+          ? { status: 'published', manifestSha256: result.manifestSha256 }
+          : { status: 'failed' };
+      } catch { news = { status: 'failed' }; }
+    }
     phase = 'receipt';
     await lease.writeState({ lastAttemptAt: startedAt, lastSuccessAt: now(),
       nextAttemptAt: startedAt + REFRESH_INTERVAL_MS, status: 'success',
       validUntil: candidate.validUntil, manifestSha256: receipt.manifestSha256,
-      ...(campaigns ? { campaigns } : {}) });
-    return { status: 'success', validUntil: candidate.validUntil, ...(campaigns ? { campaigns } : {}) };
+      ...(campaigns ? { campaigns } : {}), ...(news ? { news } : {}) });
+    return { status: 'success', validUntil: candidate.validUntil, ...(campaigns ? { campaigns } : {}), ...(news ? { news } : {}) };
   } catch {
     // Never serialize exception messages: API errors can echo private material.
     // A receipt failure can occur AFTER publication: do not claim rollback.

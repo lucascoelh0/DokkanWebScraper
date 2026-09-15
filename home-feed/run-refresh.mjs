@@ -12,6 +12,7 @@ import { acquireSlot } from './slot-lease.mjs';
 import { refreshCycle } from './refresh-cycle.mjs';
 import { collectHome } from './collect-home.mjs';
 import { hostedCampaignRefresh } from './hosted-campaign-refresh.mjs';
+import { hostedNewsRefresh } from './hosted-news-refresh.mjs';
 
 // Only fixed operation labels and HTTP status codes may leave the runner.
 export function summarizeResponses(responses) {
@@ -88,6 +89,7 @@ export async function run(args=process.argv.slice(2),env=process.env) {
     const pub=publication(store,publicRead);
     const result=await refreshCycle({acquireLease:()=>acquireSlot(store),collect,prepare,
       refreshCampaigns:hostedCampaignRefresh(env,config),
+      refreshNews:hostedNewsRefresh(env,config),
       plan:async candidate=>{const plan=await pub.plan(candidate);console.log(JSON.stringify({phase:'preflight',...plan}));return plan;},
       publish:pub.publish});
     return {...result,...(result.status==='failed'?{responses:summarizeResponses(responses)}:{}),
@@ -101,7 +103,7 @@ export async function run(args=process.argv.slice(2),env=process.env) {
 // Preserve the successful Home receipt while exposing partial failure to the host.
 // This is an exit status only: it must not retry or undo any publication.
 export function refreshExitCode(result) {
-  return result.status === 'failed' || result.campaigns?.status === 'failed' ? 1 : 0;
+  return result.status === 'failed' || result.campaigns?.status === 'failed' || result.news?.status === 'failed' ? 1 : 0;
 }
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){

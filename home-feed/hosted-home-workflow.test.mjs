@@ -14,7 +14,7 @@ test('Home rollout documents do not trigger unrelated package publication', () =
 
 test('hosted refresh passes optional news/events flags without hardcoded activation', () => {
   assert.ok(refresh);
-  for (const name of ['HOME_FEED_NEWS_ENABLED', 'HOME_FEED_EVENTS_ENABLED', 'HOME_FEED_EVENTS_CATALOG_SHA256']) {
+  for (const name of ['HOME_FEED_NEWS_ENABLED', 'HOME_FEED_EVENTS_ENABLED', 'HOME_FEED_EVENTS_CATALOG_SHA256', 'HOME_FEED_NEWS_LIBRARY_ENABLED', 'NEWS_GATEWAY_URL']) {
     assert.ok(refresh.includes(`${name}: ${'${{'} vars.${name} }}`), name);
     assert.equal(workflow.match(new RegExp(`^\\s+${name}:`, 'gm'))?.length, 1);
   }

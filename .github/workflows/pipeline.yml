@@ -11,6 +11,7 @@ on:
       - 'docs/home-events-local-projection.md'
       - 'docs/home-news-login-summon-plan.md'
       - 'docs/home-news-presentation-contract.md'
+      - 'docs/news-library-delivery.md'
       - 'docs/home-refresh-rollout.md'
       - 'docs/project-state.md'
       - '.github/workflows/pipeline.yml'

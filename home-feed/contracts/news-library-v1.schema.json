@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dkb:news-library:1",
+  "description": "Standalone public news library. Owner: pipeline; consumer: Android. No game credentials, signed URLs or account state. Existing Home v1 is unchanged. Manifest last; descriptor hashes bind exact UTF-8 bytes. All paths are derived from hashes under staging/v2/news/.",
+  "oneOf": [{"$ref":"#/$defs/index"},{"$ref":"#/$defs/article"}],
+  "$defs": {
+    "digest": {"type":"string","pattern":"^[a-f0-9]{64}$"},
+    "id": {"type":"string","pattern":"^[1-9][0-9]{0,8}$"},
+    "descriptor": {"type":"object","additionalProperties":false,"required":["sha256","sizeBytes"],"properties":{"sha256":{"$ref":"#/$defs/digest"},"sizeBytes":{"type":"integer","minimum":1,"maximum":262144}}},
+    "image": {"type":"object","additionalProperties":false,"required":["sha256","sizeBytes","width","height"],"properties":{"sha256":{"$ref":"#/$defs/digest"},"sizeBytes":{"type":"integer","minimum":24,"maximum":2097152},"width":{"type":"integer","minimum":1,"maximum":4096},"height":{"type":"integer","minimum":1,"maximum":4096}}},
+    "item": {"type":"object","additionalProperties":false,"required":["id","title","summary","category","publishedAt","image","detail"],"properties":{"id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1,"maxLength":500},"summary":{"type":"string","maxLength":2000},"category":{"type":"integer","minimum":0,"maximum":999999999},"tabId":{"type":"integer","minimum":1,"maximum":999999999},"publishedAt":{"type":"string","format":"date-time"},"image":{"oneOf":[{"type":"null"},{"$ref":"#/$defs/image"}]},"detail":{"oneOf":[{"type":"null"},{"$ref":"#/$defs/descriptor"}]}}},
+    "index": {"type":"object","additionalProperties":false,"required":["schemaVersion","coverage","observedAt","validUntil","items"],"properties":{"schemaVersion":{"const":1},"coverage":{"const":"api-observation"},"observedAt":{"type":"string","format":"date-time"},"validUntil":{"type":"string","format":"date-time"},"items":{"type":"array","maxItems":500,"items":{"$ref":"#/$defs/item"}}}},
+    "block": {"oneOf":[{"type":"object","additionalProperties":false,"required":["kind","markup"],"properties":{"kind":{"const":"text"},"markup":{"type":"string","maxLength":24000}}},{"type":"object","additionalProperties":false,"required":["kind","image"],"properties":{"kind":{"const":"image"},"image":{"$ref":"#/$defs/image"}}},{"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"unavailable"}}}]},
+    "article": {"type":"object","additionalProperties":false,"required":["schemaVersion","id","blocks"],"properties":{"schemaVersion":{"const":1},"id":{"$ref":"#/$defs/id"},"blocks":{"type":"array","maxItems":90,"items":{"$ref":"#/$defs/block"}}}}
+  }
+}

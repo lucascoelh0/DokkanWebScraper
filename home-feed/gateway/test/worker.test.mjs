@@ -18,6 +18,22 @@ const auth = { Authorization: `Bearer ${TOKEN}` };
 const CAMPAIGN_TOKEN = "c".repeat(64);
 const campaignAuth = { Authorization: `Bearer ${CAMPAIGN_TOKEN}` };
 
+test('News capability is isolated, hash bounded and supports conditional metadata repair',async()=>{
+ const bucket=stubBucket();const environment={...env(bucket),CAMPAIGN_GATEWAY_TOKEN:CAMPAIGN_TOKEN,NEWS_GATEWAY_TOKEN:'d'.repeat(64)};
+ const headers={Authorization:'Bearer '+'d'.repeat(64)};
+ for(const key of ['v2/news/manifest.json','staging/v2/home/manifest.json','staging/v2/campaigns/manifest.json'])assert.equal((await fetch(request('/news-object?key='+key,{headers}),environment)).status,400);
+ assert.equal((await fetch(request('/news-inventory',{headers:auth}),environment)).status,401);
+ assert.equal((await fetch(request('/inventory',{headers}),environment)).status,401);
+ assert.equal((await fetch(request('/news-inventory',{headers:campaignAuth}),{...environment,NEWS_GATEWAY_TOKEN:CAMPAIGN_TOKEN})).status,503);
+ const bytes=new TextEncoder().encode('{"schemaVersion":1}');const digest=Buffer.from(await crypto.subtle.digest('SHA-256',bytes)).toString('hex');
+ const path='/news-object?key=staging/v2/news/articles/'+digest+'.json';
+ const first=await fetch(request(path,{method:'PUT',headers:{...headers,'if-none-match':'*'},body:bytes}),environment);assert.equal(first.status,200);
+ const repair=await fetch(request(path,{method:'PUT',headers:{...headers,'if-match':first.headers.get('etag')},body:bytes}),environment);assert.equal(repair.status,200);
+ const read=await fetch(request(path,{headers}),environment);assert.equal(read.headers.get('x-stored-content-type'),'application/json');
+ assert.equal((await fetch(request(path,{method:'PUT',headers:{...headers,'if-match':repair.headers.get('etag')},body:'wrong'}),environment)).status,422);
+ assert.equal((await fetch(request('/news-object?key=staging/v2/news/manifest.json',{method:'PUT',headers:{...headers,'if-none-match':'*'},body:'x'.repeat(1025)}),environment)).status,413);
+});
+
 function object(bytes, etag = "etag-1") {
   const value = Uint8Array.from(bytes);
   return {
@@ -37,7 +53,7 @@ function stubBucket(initial = new Map()) {
     async get(key) {
       calls.push(["get", key]);
       const row = data.get(key);
-      return row ? object(row.bytes, row.etag) : null;
+      return row ? {...object(row.bytes, row.etag),httpMetadata:row.metadata} : null;
     },
     async put(key, bytes, options) {
       calls.push(["put", key, options]);

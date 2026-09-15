@@ -2,6 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { refreshCycle, REFRESH_INTERVAL_MS } from './refresh-cycle.mjs';
 
+test('news shares the original slot after Home, partial failure preserves Home success',async()=>{
+ for(const fail of [false,true]){
+  const h=harness();h.args.refreshNews=async({lease})=>{assert.equal(lease,h.lease);h.calls.push('news');return fail?{status:'failed',secret:'PRIVATE'}:{status:'published',manifestSha256:'c'.repeat(64)};};
+  const r=await refreshCycle(h.args);assert.equal(r.status,'success');assert.equal(r.news.status,fail?'failed':'published');assert(h.calls.indexOf('news')>h.calls.indexOf('publish'));assert(!JSON.stringify(r).includes('PRIVATE'));
+ }
+ const h=harness();h.args.acquireLease=async()=>null;h.args.refreshNews=()=>assert.fail('occupied slot');await refreshCycle(h.args);
+});
+
 function harness(state = {}) {
   const calls = [], records = [];
   const lease = {

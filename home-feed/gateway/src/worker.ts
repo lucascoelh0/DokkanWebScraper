@@ -15,7 +15,7 @@ type ObjectPolicy = Readonly<{
   limit: number;
 }>;
 
-type GatewayEnv = Env & Readonly<{ GATEWAY_TOKEN?: string; CAMPAIGN_GATEWAY_TOKEN?: string }>;
+type GatewayEnv = Env & Readonly<{ GATEWAY_TOKEN?: string; CAMPAIGN_GATEWAY_TOKEN?: string; NEWS_GATEWAY_TOKEN?: string }>;
 
 function json(body: Readonly<Record<string, unknown>>, status = 200, extraHeaders?: HeadersInit): Response {
   const headers = new Headers(extraHeaders);
@@ -29,7 +29,17 @@ function error(code: string, status: number, extraHeaders?: HeadersInit): Respon
   return json({ error: code }, status, extraHeaders);
 }
 
-function policyFor(key: string, campaign = false): ObjectPolicy | null {
+function policyFor(key: string, campaign = false, news = false): ObjectPolicy | null {
+  if (news) {
+    if (key === "staging/v2/news/manifest.json") return {
+      cacheControl: "no-cache", contentType: "application/json", immutableHash: null, limit: 1024,
+    };
+    const match = /^staging\/v2\/news\/(index|articles|images)\/([a-f0-9]{64})\.(json|png)$/.exec(key);
+    if (!match || (match[1] === "images") !== (match[3] === "png")) return null;
+    return { cacheControl: "public,max-age=31536000,immutable",
+      contentType: match[1] === "images" ? "image/png" : "application/json",
+      immutableHash: match[2], limit: match[1] === "images" ? 2097152 : match[1] === "index" ? 1048576 : 262144 };
+  }
   if (campaign) {
     if (key === "staging/v2/campaigns/manifest.json") return {
       cacheControl: "no-cache, no-transform", contentType: "application/json",
@@ -164,12 +174,15 @@ async function getObject(key: string, policy: ObjectPolicy, env: GatewayEnv): Pr
       "Content-Type": policy.contentType,
       "ETag": object.httpEtag,
       "X-Content-Type-Options": "nosniff",
+      "X-Stored-Content-Type": object.httpMetadata?.contentType ?? "",
+      "X-Stored-Cache-Control": object.httpMetadata?.cacheControl ?? "",
     },
   });
 }
 
 async function putObject(request: Request, key: string, policy: ObjectPolicy, env: GatewayEnv): Promise<Response> {
-  const condition = putCondition(request, policy.immutableHash !== null);
+  // News permits hash-checked CAS repair of metadata; bytes still must match the key.
+  const condition = putCondition(request, policy.immutableHash !== null && !key.startsWith("staging/v2/news/"));
   if (condition === null) return error("precondition_required", 428);
 
   const declared = request.headers.get("Content-Length");
@@ -235,7 +248,8 @@ async function inventory(url: URL, env: GatewayEnv): Promise<Response> {
 async function route(request: Request, env: GatewayEnv): Promise<Response> {
   const url = new URL(request.url);
   const campaign = url.pathname === "/campaign-object" || url.pathname === "/campaign-inventory";
-  const selectedToken = campaign ? env.CAMPAIGN_GATEWAY_TOKEN : env.GATEWAY_TOKEN;
+  const news = url.pathname === "/news-object" || url.pathname === "/news-inventory";
+  const selectedToken = news ? env.NEWS_GATEWAY_TOKEN : campaign ? env.CAMPAIGN_GATEWAY_TOKEN : env.GATEWAY_TOKEN;
   const auth = await authorize(request, selectedToken);
   if (auth === "misconfigured") return error("service_unavailable", 503);
   if (auth === "unauthorized") {
@@ -243,23 +257,27 @@ async function route(request: Request, env: GatewayEnv): Promise<Response> {
   }
 
   // A new capability never silently expands the existing Home credential.
-  if (campaign && typeof env.GATEWAY_TOKEN === "string" && typeof selectedToken === "string"
+  if ((campaign || news) && typeof env.GATEWAY_TOKEN === "string" && typeof selectedToken === "string"
       && encoder.encode(env.GATEWAY_TOKEN).byteLength <= MAX_TOKEN_BYTES) {
     const [homeHash, campaignHash] = await Promise.all([
       sha256(encoder.encode(env.GATEWAY_TOKEN)), sha256(encoder.encode(selectedToken)),
     ]);
     if (crypto.subtle.timingSafeEqual(homeHash, campaignHash)) return error("service_unavailable", 503);
   }
-  if (url.pathname === (campaign ? "/campaign-inventory" : "/inventory")) {
+  if (news && typeof env.CAMPAIGN_GATEWAY_TOKEN === "string" && typeof selectedToken === "string") {
+    const hashes = await Promise.all([sha256(encoder.encode(env.CAMPAIGN_GATEWAY_TOKEN)), sha256(encoder.encode(selectedToken))]);
+    if (crypto.subtle.timingSafeEqual(hashes[0], hashes[1])) return error("service_unavailable", 503);
+  }
+  if (url.pathname === (news ? "/news-inventory" : campaign ? "/campaign-inventory" : "/inventory")) {
     if (request.method !== "GET") return error("method_not_allowed", 405, { Allow: "GET" });
     return inventory(url, env);
   }
-  if (url.pathname !== (campaign ? "/campaign-object" : "/object")) return error("not_found", 404);
+  if (url.pathname !== (news ? "/news-object" : campaign ? "/campaign-object" : "/object")) return error("not_found", 404);
   if (request.method !== "GET" && request.method !== "PUT") {
     return error("method_not_allowed", 405, { Allow: "GET, PUT" });
   }
   const key = oneQueryValue(url, "key", new Set(["key"]));
-  const policy = key === null ? null : policyFor(key, campaign);
+  const policy = key === null ? null : policyFor(key, campaign, news);
   if (key === null || policy === null) return error("invalid_key", 400);
   return request.method === "GET"
     ? getObject(key, policy, env)
